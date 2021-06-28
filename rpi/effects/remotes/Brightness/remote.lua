@@ -56,7 +56,3 @@ end
 actions.stop = function ()
     script.default("/usr/bin/screen -dm /bin/bash /opt/rpi/leds stop");
 end
-
-actions.global = function ()
-    script.default("/usr/bin/screen -dm /bin/bash /opt/rpi/leds global");
-end

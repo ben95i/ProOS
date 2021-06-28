@@ -103,8 +103,3 @@ end
 actions.gold = function ()
 script.default("/usr/bin/screen -dm /bin/bash /opt/rpi/leds gold");
 end
-
-actions.global = function ()
-script.default("/usr/bin/screen -dm /bin/bash /opt/rpi/leds global");
-end
-

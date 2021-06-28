@@ -92,7 +92,3 @@ end
 actions.violet = function ()
 script.default("/usr/bin/screen -dm /bin/bash /opt/rpi/leds violet");
 end
-
-actions.global = function ()
-script.default("/usr/bin/screen -dm /bin/bash /opt/rpi/leds global");
-end

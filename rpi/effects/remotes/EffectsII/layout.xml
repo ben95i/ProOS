@@ -31,7 +31,6 @@
         <button text="Gold" ontap="gold" color="#000030" />
     </row>
     <row>
-        <button text="LEDSync" ontap="global" color="#000037" />
         <button icon="pause" ontap="pause" color="#252629" />
         <button icon="off" ontap="stop" color="#000000" />
     </row>

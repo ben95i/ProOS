@@ -31,7 +31,6 @@
         <button text="Fireworks" ontap="fireworks" color="#000030" />
     </row>
     <row>
-        <button text="LEDSync" ontap="global" color="#000037" />
         <button icon="pause" ontap="neo0" color="#252629" />
         <button icon="off" ontap="neo14" color="#000000" />
     </row>

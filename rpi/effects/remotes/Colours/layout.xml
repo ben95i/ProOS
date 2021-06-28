@@ -32,7 +32,6 @@
         <button text="Candle" ontap="candle" color="#cc6600" />
     </row>
     <row>
-        <button text="LEDSync" ontap="global" color="blue" />
         <button icon="pause" ontap="pause" color="grey" />
         <button icon="off" ontap="stop" color="black" />
     </row>
