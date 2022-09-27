@@ -286,8 +286,10 @@ void volIncrement (byte dir_flag, byte speed_flag)
     if (volLevel <= volMin)
       return;
   }
-  if (volMute == 1 && dir_flag == volControlUp) {
+  if (volMute == 1 ) {
     volMute = 0;
+    volUpdate(volLevel, 1);
+    return;
    // !! add restore display volume (unmute)
   }
   if (dir_flag == volControlUp) {
@@ -346,9 +348,9 @@ void volUpdate (byte _vol, byte _force)
   if (volMute == 0) {
     setRelays(volSetAddr, volResetAddr, _vol, volRelayCount, _force);    
     volLastLevel = volLevel;
-  }
-  // update display
-  lcdVolume(_vol);   
+    // update display
+    lcdVolume(_vol); 
+  }  
 }
 
 
@@ -363,14 +365,14 @@ void lcdVolume(int _level) {
 }
 
 
-void toggle_mute()
+void volMuteToggle()
 {
 	if (volMute == 0) { // mute==0 when mute feature is OFF 
-		if (vol_span == 0) { // Don't mute if min_vol == max_vol
+		if (volSpan == 0) { // Don't mute if min_vol == max_vol
 			return;
 		}
-		digitalWrite(MOTOR_POT_ROTATE_CCW, LOW);  // stop turning left
-		digitalWrite(MOTOR_POT_ROTATE_CW,  LOW);  // stop turning right
+		digitalWrite(motorPinCW, LOW);  // stop turning left
+		digitalWrite(motorPinCCW,  LOW);  // stop turning right
 		volUpdate(volMin, 1);
 		volMute = 1;  // toggle its value
 		//redraw_volume_display(volume, 1);  // draw the '--' chars
@@ -521,7 +523,7 @@ void irReceive()
         }
         if (IrReceiver.decodedIRData.command == 0x5F) {
           // Mute
-          toggle_mute();
+          volMuteToggle();
         }
       }  
     }
