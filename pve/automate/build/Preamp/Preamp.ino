@@ -562,6 +562,30 @@ void setPowerState() {
     }
   }
   lastPowerButton = reading; 
+  // power state actions  
+  if (powerCycled == 0){  
+    init(1);
+    if (powerState == 1){
+      // runs once on boot
+      lcd.setCursor(6,0);
+      lcd.print("Power On");
+      potState = MOTOR_INIT;
+      volUpdate(volLevel, 1);
+    } else {  
+      // runs once on shutdown
+      volUpdate(0,0);  
+      lcd.clear();
+      lcd.setCursor(6,0);
+      lcd.print("Power Off"); 
+      delay(500);
+      lcd.clear();
+      lcd.setCursor(4,0);
+      lcd.print("Preamp v1.0"); 
+      lcd.setCursor(0,1);
+      lcd.print("Ben Provenzano III"); 
+    }  
+    powerCycled = 1;  
+  }  
 }
 
 
@@ -598,32 +622,9 @@ delay(100);
 
 void loop()
 {
-  setPowerState();
   irCodeScan = 1;
-  irReceive(); 
+  irReceive();
   analog_sensed_pot_logic();
   motor_pot_logic();
-  if (powerCycled == 0){  
-    init(1);
-    if (powerState == 1){
-      // runs once on boot
-      lcd.setCursor(6,0);
-      lcd.print("Power On");
-      potState = MOTOR_INIT;
-      volUpdate(volLevel, 1);
-    } else {  
-      // runs once on shutdown
-      volUpdate(0,0);  
-      lcd.clear();
-      lcd.setCursor(6,0);
-      lcd.print("Power Off"); 
-      delay(2500);
-      lcd.clear();
-      lcd.setCursor(4,0);
-      lcd.print("Preamp v1.0"); 
-      lcd.setCursor(0,1);
-      lcd.print("Ben Provenzano III"); 
-    }  
-    powerCycled = 1;  
-  }  
+  setPowerState();
 }
