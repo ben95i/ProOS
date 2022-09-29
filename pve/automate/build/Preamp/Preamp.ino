@@ -1,6 +1,9 @@
+///////////////////////////////////////////////////////////////////////////////
 // Preamp Controller v1.0 
 // by Ben Provenzano III
 // 09/28/2022
+///////////////////////////////////////////////////////////////////////////////
+
 
 // Libraries //
 #include "LiquidCrystal_I2C.h" // custom for MCP23008-E/P, power button support
@@ -20,9 +23,9 @@ LiquidCrystal_I2C lcd(lcdAddr);
 uint8_t lcdCols = 16; // number of columns in the LCD
 uint8_t lcdRows = 2;  // number of rows in the LCD
 #define lcdBacklightPin 9 // display backlight pin
-uint8_t lcdOffBrightness = 120; // standby-off LCD brightness level
-uint8_t lcdOnBrightness = 240; // online LCD brightness level
-// progress bar characters
+uint8_t lcdOffBrightness = 120; // standby-off LCD brightness level ***
+uint8_t lcdOnBrightness = 240; // online LCD brightness level ***
+// custom characters
 uint8_t bar1[8] = {0x10,0x10,0x10,0x10,0x10,0x10,0x10,0x10};
 uint8_t bar2[8] = {0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18};
 uint8_t bar3[8] = {0x1C,0x1C,0x1C,0x1C,0x1C,0x1C,0x1C,0x1C};
@@ -33,26 +36,24 @@ uint8_t sound[8] = {B00001,B00011,B00101,B01001,B01001,B01011,B11011,B11000};
 
 // IR (pin 8)
 int IRpin = 8;
-bool irCodeScan = 0;
+bool irCodeScan = 0; // enable IR codes on the terminal (1)
 
 // Input selector
 String inputSelected;
-String inputName1 = "DIGITAL   ";
-String inputName2 = "AUX       ";
-String inputName3 = "PHONO     ";
+String inputName1 = "DIGITAL   "; //***
+String inputName2 = "AUX       "; //***
+String inputName3 = "PHONO     "; //***
 uint8_t inputRelayCount = 3;
 
 // Volume control
-uint8_t volCoarseSteps = 4; // volume steps to skip for coarse adjust
-uint8_t volRelayCount = 6; // number of relays on volume attenuator board
-uint8_t volLimit = 80; // max volume percentage when in limit mode
-#define volControlDown 1 // constant
-#define volControlUp 2 // constant
-#define volControlSlow 1 // constant
-#define volControlFast 2 // constant
+uint8_t volCoarseSteps = 4; // volume steps to skip for coarse adjust ***
+uint8_t volRelayCount = 6; // number of relays on volume attenuator board ***
+uint8_t volLimit = 80; // max volume percentage when in limit mode ***
+#define volControlDown 1
+#define volControlUp 2
+#define volControlSlow 1 
+#define volControlFast 2 
 #define volLimitPin 4 // volume limit switch
-#define hpfRelayPin 3 // 50Hz high pass filter on/off
-bool hpfState = 0; // default HPF state 1=on, 0=off
 bool volLimitFlag = 1;
 uint8_t volLastLevel = 0;
 uint8_t volLevel = 0;
@@ -61,13 +62,17 @@ uint8_t volMin;
 uint8_t volSpan;
 bool volMute;
 
+// 50Hz high-pass filter 
+#define hpfRelayPin 3 // HPF relay pin
+bool hpfState = 0; // HPF default startup state 1=on, 0=off ***
+
 // Motor Pot
 #define motorInit 1 // motor initialization
 #define motorSettled 2 // pot at resting state
 #define motorInMotion 3 // pot is moving right now
 #define motorCoasting 4 // pot just passed read value
-#define potThreshold 5 // pot value change threshold
-#define potRereads 10 // amount of pot readings 
+#define potThreshold 3 // pot value change threshold
+#define potRereads 5 // amount of pot readings 
 #define potAnalogPin 1 // pot reading pin A1
 #define motorPinCW 16 // motor H-bridge CW pin
 #define motorPinCCW 17 // motor H-bridge CCW pin
@@ -78,19 +83,20 @@ uint8_t volPotLast;
 uint8_t potState;
 
 // Power
-#define powerButtonPin 5
 #define powerRelayPin 7
-int startDelay = 10; // startup delay in seconds, unmutes after
-int shutdownTime = 5; // shutdown delay before turning off aux power
-int initStartDelay = 3; // delay on initial cold start
-uint8_t debounceDelay = 50; // button debounce delay in ms
-unsigned long sysTime1 = 0;
+#define powerButtonPin 5
 uint8_t lastPowerButton = 0;
 uint8_t powerButton = 0;
 bool powerCycle = 0;
 bool powerState = 0;
+int startDelay = 10; // startup delay in seconds, unmutes after ***
+int shutdownTime = 5; // shutdown delay before turning off aux power ***
+int initStartDelay = 3; // delay on initial cold start
+uint8_t debounceDelay = 50; // button debounce delay in ms
+unsigned long sysTime = 0;
 
 
+///////////////////////////////////////////////////////////////////////////////
 
 
 // reverse byte function 
@@ -396,7 +402,7 @@ void volIncrement (uint8_t dir_flag, uint8_t speed_flag)
 
 
 // set a specific volume level
-void volUpdate (uint8_t _vol, uint8_t _force) 
+void volUpdate(uint8_t _vol, uint8_t _force) 
 {
 // set volume relays
   if (volMute == 0) {
@@ -409,49 +415,50 @@ void volUpdate (uint8_t _vol, uint8_t _force)
 }
 
 
-// mute system
-void muteSystem()
+// mute system (0=mute 1=unmute 2=toggle)
+void muteSystem(uint8_t _state)
 {	
-  if (volSpan == 0) { // Don't mute if min_vol == max_vol
+  if (_state >= 3) {  // invalid 
     return;
-  } // stop motor turning
-  digitalWrite(motorPinCW, LOW);   
-  digitalWrite(motorPinCCW, LOW);
-  // set volume to min
-  volUpdate(volMin, 1);
-  // mute status on display
-  lcd.setCursor(2,1);
-  lcd.print("          "); 
-  lcd.setCursor(0,0);
-  lcd.print("----------------"); 
-  lcd.setCursor(12,1);
-  lcd.print("MUTE"); 
-  lcd.createChar(0, speaker);
-  lcd.setCursor(0,1);
-  lcd.print(char(0));
-  // set mute flag
-  volMute = 1;	
-}
-
-void unmuteSystem()
-{	
-  volMute = 0;  
-  lcd.setCursor(0,0);
-  lcd.print("                "); 
-  volUpdate(volLevel, 1);
-  // music icon    
-  lcd.createChar(0, sound);
-  lcd.setCursor(0,1);
-  lcd.print(char(0));	
-}
-
-void muteToggle()
-{		
-  if (volMute == 0) { // 0 when mute feature is OFF 
-    muteSystem();
   } 
-  else {
-    unmuteSystem();
+  if (_state == 2) {  // mute toggle 
+    if (volMute == 0) {
+      _state = 0;
+    } 
+    else {
+      _state = 1;
+    }
+  } 
+  if (_state == 0) {  // mute on  
+    if (volSpan == 0) { // return if min_vol == max_vol
+      return;
+    } // stop motor turning
+    digitalWrite(motorPinCW, LOW);   
+    digitalWrite(motorPinCCW, LOW);
+    // set volume to min
+    volUpdate(volMin, 1);
+    // mute status on display
+    lcd.setCursor(2,1);
+    lcd.print("          "); 
+    lcd.setCursor(0,0);
+    lcd.print("----------------"); 
+    lcd.setCursor(12,1);
+    lcd.print("MUTE"); 
+    lcd.createChar(0, speaker);
+    lcd.setCursor(0,1);
+    lcd.print(char(0));
+    // set mute flag
+    volMute = 1;	
+  }
+  if (_state == 1) {	// unmute
+    volMute = 0;  
+    lcd.setCursor(0,0);
+    lcd.print("                "); 
+    volUpdate(volLevel, 1);
+    // music icon    
+    lcd.createChar(0, sound);
+    lcd.setCursor(0,1);
+    lcd.print(char(0));	
   }
 }
 
@@ -703,37 +710,79 @@ void lcdStandby()
 }  
 
 
-// receive IR remote commands !! add code to detect threshold of data (avoid dupl key presses) !!
+// receive IR remote commands
 void irReceive() 
 {
   if (IrReceiver.decode()) {
-  	// status on LED
-  	digitalWrite(LED_BUILTIN, HIGH);
+    // IR functions 
+    if (IrReceiver.decodedIRData.address == 0xCE) { // remote address
+      digitalWrite(LED_BUILTIN, HIGH); 
+      if (IrReceiver.decodedIRData.command == 0x3F) { // power toggle
+        powerState = !powerState;  
+        powerCycle = 1;
+      }  
+      if (IrReceiver.decodedIRData.command == 0x3) { // power on
+        if (powerState == 0) {
+          powerState = !powerState;  
+          powerCycle = 1;
+        }  
+      }
+      if (IrReceiver.decodedIRData.command == 0x3E) { // power off
+        if (powerState == 1) {
+          powerState = !powerState;  
+          powerCycle = 1;
+        }  
+      }  
+      if (powerState == 1) {
+        if (IrReceiver.decodedIRData.command == 0xC) { // volume down fast
+          volIncrement(1,2);       	
+        }      
+        if (IrReceiver.decodedIRData.command == 0xA) { // volume up fast
+          volIncrement(2,2);
+        }
+        if (IrReceiver.decodedIRData.command == 0x9) { // volume down slow
+          volIncrement(1,1);
+        }      
+        if (IrReceiver.decodedIRData.command == 0x6) { // volume up slow
+          volIncrement(2,1);
+        }
+        if (IrReceiver.decodedIRData.command == 0x5F) { // mute toggle
+          muteSystem(2);
+        }     
+        // inputUpdate(3);
+        // hpfControl(2);
+      }  
     // display IR codes on terminal
     if (irCodeScan == 1) {   
+      // display IR codes on terminal   
+      Serial.println("--------------");   
       if (IrReceiver.decodedIRData.protocol == UNKNOWN) {
-        IrReceiver.printIRResultRawFormatted(&Serial, true);
-        Serial.println("*"); 	
+        IrReceiver.printIRResultRawFormatted(&Serial, true);  
       } else {
-        IrReceiver.printIRResult(&Serial);
-        Serial.println("*"); 	
+        IrReceiver.printIRResultMinimal(&Serial); 
       }  
+      Serial.println("--------------"); 
       // store received IR code (v3 format)
       uint32_t irrecv = IrReceiver.decodedIRData.decodedRawData;
       uint32_t irtype = IrReceiver.decodedIRData.protocol;
       // display v3 format codes
-      Serial.print("IR Protocol: "); 
+      Serial.print("IR protocol: "); 
       Serial.println(irtype);       
-      Serial.print("IR v3 Decimal: "); 
+      int32_t irrecv_2s = -irrecv;
+      irrecv_2s = irrecv_2s * -1;
+      Serial.print("IR v3 decimal: "); 
       Serial.println(irrecv, DEC); 
-      Serial.print("IR v3 Hex: "); 
+      Serial.print("IR v3 (2's-compliment) decimal: "); 
+      Serial.println(irrecv_2s, DEC);  
+      Serial.print("IR v3 hex: "); 
       Serial.println(irrecv, HEX); 
       // convert 32-bit code into 4 seperate bytes (pointer)
       uint8_t *irbyte = (uint8_t*)&irrecv;
-      Serial.print("IR v3 Address: "); 
+      Serial.print("IR v3 address: "); 
       Serial.println(irbyte[3], HEX); 
-      Serial.print("IR v3 Command: "); 
+      Serial.print("IR v3 command: "); 
       Serial.println(irbyte[2], HEX); 
+      Serial.println("--------------"); 
       // reverse each byte (v3 format to v2 format)
       uint8_t irbyte0 = reverseByte(irbyte[0]); 
       uint8_t irbyte1 = reverseByte(irbyte[1]); 
@@ -745,47 +794,23 @@ void irReceive()
       irv2 = irv2 * 256 + irbyte2; // shift in the third byte
       irv2 = irv2 * 256 + irbyte3; // shift in the last byte
       // display v2 format codes
-      Serial.print("IR v2 Decimal: "); 
+      int32_t irv2_2s = -irv2;
+      irv2_2s = irv2_2s * -1;
+      Serial.print("IR v2 decimal: "); 
       Serial.println(irv2, DEC); 
-      Serial.print("IR v2 Hex: "); 
+      Serial.print("IR v2 (2's-compliment) decimal: "); 
+      Serial.println(irv2_2s, DEC);  
+      Serial.print("IR v2 hex: "); 
       Serial.println(irv2, HEX);
+      Serial.println(" "); 
+      Serial.println("v2 2's-comp is used by Automate/Xmit");
+      Serial.println("ignore decimal values with Sony codes, use hex");
+      Serial.println(" ");
     }
-    // IR functions 
-    if (IrReceiver.decodedIRData.address == 0xCE) {  
-      if (IrReceiver.decodedIRData.command == 0x3) {
-        // Power toggle
-        powerState = !powerState;  
-        powerCycle = 1;
-      }  
-      if (powerState == 1) {
-        if (IrReceiver.decodedIRData.command == 0xC) {
-          // Volume down fast
-          //volIncrement(1,2);
-          //inputUpdate(2);
-        	hpfControl(2);
-        }      
-        if (IrReceiver.decodedIRData.command == 0xA) {
-          // Volume up fast
-          //volIncrement(2,2);
-          inputUpdate(3);
-        }
-        if (IrReceiver.decodedIRData.command == 0x9) {
-          // Volume down slow
-          volIncrement(1,1);
-        }      
-        if (IrReceiver.decodedIRData.command == 0x6) {
-          // Volume up slow
-          volIncrement(2,1);
-        }
-        if (IrReceiver.decodedIRData.command == 0x5F) {
-          // Mute
-          muteToggle();
-        }     
-      }    
-    }
-    delay(75); 
-    IrReceiver.resume();      
-    digitalWrite(LED_BUILTIN, LOW);   
+  }
+  delay(50); // resume receiving 
+  IrReceiver.resume();      
+  digitalWrite(LED_BUILTIN, LOW);   
   }
 }
 
@@ -797,9 +822,9 @@ void setPowerState() {
   // if switch changed
   if (reading != lastPowerButton) {
     // reset the debouncing timer
-    sysTime1 = millis();
+    sysTime = millis();
   }
-  if ((millis() - sysTime1) > debounceDelay) {
+  if ((millis() - sysTime) > debounceDelay) {
     // if the button state has changed:
     if (reading != powerButton) {
       powerButton = reading;
@@ -831,7 +856,7 @@ void setPowerState() {
 
 void shutdown() {
   // shutdown routines
-  muteSystem(); // mute    	
+  muteSystem(0); // mute    	
   // shutdown animation
   lcd.clear();
   lcd.setCursor(0,0);
@@ -873,7 +898,7 @@ void startup()
   inputUpdate(1);
 }
 
-
+///////////////////////////////////////////////////////////////////////////////
 // initialization 
 void setup() 
 { 	
@@ -915,28 +940,26 @@ void setup()
   lcd.createChar(5, bar5);
   lcdTimedBar(initStartDelay,1);
   // serial support
-  Serial.begin(9600);
-  // IR codes over serial
-  irCodeScan = 1;  
-  // startup complete
+  if (irCodeScan == 1){  
+    Serial.begin(9600);
+  } // startup complete
   lcdStandby();
 }
 
-// IR repeat codes fix, additional codes, volume levels 10,20,30,40
-
+///////////////////////////////////////////////////////////////////////////////
 // superloop
 void loop()
 {
-  // IR remote (1st)
-  irReceive();
-  // motor potentiometer (2nd)
+  // motor potentiometer (1st)
   if (powerState == 1) {
     if (potState == motorSettled ||
         potState == motorInit) {
     potValueChanges();
     }
     motorPot();
-  } 
+  }
+  // IR remote (2nd)
+  irReceive();  
   // power management (last)
   setPowerState();	  
 }
