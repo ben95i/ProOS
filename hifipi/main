@@ -1,9 +1,6 @@
 #!/bin/bash
 ###########################################################
 
-## Read the 2nd Argument
-ARG2=$2
-
 ## Read the 1st Argument
 case "$1" in
 
@@ -20,24 +17,10 @@ systemctl start rpi-netdetect
 exit
 ;;
 
-relax)
-## Play sound in loop
-systemctl stop rpi-relaxloop
-systemctl set-environment rpi_relaxmode=$ARG2
-systemctl start rpi-relaxloop
-exit
+
+*)
+echo "Hi-Fi System"
+echo "by Ben Provenzano III "
+exit 1
 ;;
-
-stoprelax)
-systemctl stop rpi-relaxloop
-exit
-;;
-
-
-
-        *)
-          echo "HiFi System"
-	      echo "  by Ben Provenzano III "
-          exit 1
-          ;;
-    esac   
+esac   

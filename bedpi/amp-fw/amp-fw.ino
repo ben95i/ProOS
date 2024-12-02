@@ -3,9 +3,6 @@
 // by Ben Provenzano III
 //////////////////////////////////////////////////////////////////////////
 
-// Libraries //
-#include <neotimer.h>
-
 // RS-232 Baud Rate
 const int CONFIG_SERIAL = 9600;
 #define toggleTV 10
@@ -125,7 +122,7 @@ void decodeMessage() {
     }
   }
   // send ack to computer
-  Serial.println("*");
+  Serial.println("*DATAOUT");
   digitalWrite(LED_BUILTIN, LOW);
 }
 
