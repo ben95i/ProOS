@@ -33,9 +33,4 @@ chown -R www-data:www-data /var/www/html/device.js
 ## Shortcut to main script
 ln -sf /opt/rpi/leds /usr/bin/leds
 
-## Replacement LED modules (for 93-pixel LED ring)
-cp -f $BIN/modconf/SpectroGraph.jar /opt/rpi/effects/spectro/lib/
-chmod 755 /opt/rpi/effects/spectro/lib/SpectroGraph.jar
-chown root:root /opt/rpi/effects/spectro/lib/SpectroGraph.jar
-
 exit

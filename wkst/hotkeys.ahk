@@ -1,7 +1,8 @@
 #KeyHistory 0
 
-; Disable Ctrl+Alt+Tab (Mouse Button)
-^!Tab::Return
+; Disable Ctrl+Alt+Tab (Mouse Side Button)
+^!Tab::
+return
 
 F1::
 Run, C:\PROGRA~1\Automate\curl.exe "http://automate.home/api?arg=lrlightsoff&var=&action=main", , hide
@@ -31,52 +32,49 @@ return
 Run, C:\PROGRA~1\Automate\curl.exe "http://automate.home/api?arg=stop&var=&action=leds", , hide
 return
 
-;; Mouse Control ################
-
 F5::
 Run, PowerShell.exe -ExecutionPolicy Bypass -File "C:\Program Files\Automate\mouse_acc.ps1"
 return
-
-;; Monitor Control ################
 
 ^F5::
 Run, "C:\Program Files\Automate\p2p_toggle.bat"
 return
 
-;; Mute ################
-
 F11::Volume_Mute
+return
 
 !F11::
 Run, C:\PROGRA~1\Automate\curl.exe "http://automate.home/api?arg=lrxmit&var=mute&action=main", , hide
 return
 
 ^F11::
-Run, C:\PROGRA~1\Automate\curl.exe "http://automate.home/api?arg=lrxmit&var=hifitoggle&action=main", , hide
+KeyWait,F11,T0.5
+If (ErrorLevel)
+{
+  Run, C:\PROGRA~1\Automate\curl.exe "http://automate.home/api?arg=lrxmit&var=hifitoggle&action=main", , hide
+}
 return
 
-;; Volume Down #########
-
 F12::Volume_Down
+return
 
 !F12::
-Run, C:\PROGRA~1\Automate\curl.exe "http://automate.home/api?arg=lrxmit&var=dwn&action=main", , hide
+Run, C:\PROGRA~1\Automate\curl.exe "http://automate.home/api?arg=lrxmit&var=voldwn&action=main", , hide
 return
 
 ^F12::
-Run, C:\PROGRA~1\Automate\curl.exe "http://automate.home/api?arg=lrxmit&var=dwnc&action=main", , hide
+Run, C:\PROGRA~1\Automate\curl.exe "http://automate.home/api?arg=lrxmit&var=voldwnc&action=main", , hide
 return
 
-;; Volume Up ###########
-
 Insert::Volume_Up
+return
 
 !Insert::
-Run, C:\PROGRA~1\Automate\curl.exe "http://automate.home/api?arg=lrxmit&var=up&action=main", , hide
+Run, C:\PROGRA~1\Automate\curl.exe "http://automate.home/api?arg=lrxmit&var=volup&action=main", , hide
 return
 
 ^Insert::
-Run, C:\PROGRA~1\Automate\curl.exe "http://automate.home/api?arg=lrxmit&var=upc&action=main", , hide
+Run, C:\PROGRA~1\Automate\curl.exe "http://automate.home/api?arg=lrxmit&var=volupc&action=main", , hide
 return
 
 

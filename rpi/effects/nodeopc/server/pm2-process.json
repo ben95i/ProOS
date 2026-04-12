@@ -1,9 +1,0 @@
-{
-  "apps" : [{
-    "name"       : "flx-opc-led-controller",
-    "watch"	 	 : false,
-    "script"     : "server.js",
-    "instances"  : 1,
-    "exec_mode"  : "fork"
-  }]
-}

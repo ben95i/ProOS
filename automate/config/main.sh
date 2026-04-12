@@ -10,70 +10,17 @@ LOGFILE="$RAMDISK/sysout.txt"
 MAX_PING_WAIT="0.5" ## Max Ping Timeout (s)
 LOCAL_DOMAIN="home" ## Local DNS Domain
 NET_RANGE="192.168.1.0" ## Network IP Range
-PICOLAMP1_IP="192.168.1.18" ## Window Lamp
 LRXMIT_IP="192.168.1.12" ## LEDwall Pi
 DESK_IP="192.168.1.14" ## Desktop PC
 BRPI_IP="192.168.1.15" ## Bedroom Pi
 BRPC_IP="192.168.1.17" ## Bedroom PC
 BRPC_MAC="90:2e:16:46:86:43" ## Bedroom PC MAC
+PICOLAMP1_IP="192.168.1.18" ## Window Lamp
 DELIMITER="|"
+CMD_SEP="-"
 
 ## Curl Command Line Arguments
 CURLARGS="--silent --fail --ipv4 --no-buffer --max-time 3 --retry 1 --retry-delay 1 --no-keepalive"
-
-function CALLAPI(){
-  local TARGET="${1}"
-  local API_ARG1="${2}"
-  local API_ARG2="${3}"
-  if [[ "$API_ARG1" == "" ]]; then
-    return
-  fi
-  SERVER="http://$TARGET:80/api?var=$API_ARG2&arg=$API_ARG1&action=main"
-  APIRESP=$(/usr/bin/curl $CURLARGS $SERVER)
-  TMPSTR="${APIRESP#*$DELIMITER}"
-  RESPOUT="${TMPSTR%$DELIMITER*}"
-  echo "$RESPOUT"
-}
-
-function CALLPICO(){
-  local TARGET="${1}"
-  local API_ARG1="${2}"
-  local API_ARG2="${3}"
-  if [[ "$API_ARG1" == "" ]]; then
-    return
-  fi
-  SERVER="http://$TARGET:4000/api?$API_ARG1,,$API_ARG2~"
-  RESPOUT=$(/usr/bin/curl $CURLARGS $SERVER)
-  echo "$RESPOUT"
-}
-
-function LOCAL_PING(){
-  if /usr/bin/ping -4 -A -c 1 -i "$MAX_PING_WAIT" -W "$MAX_PING_WAIT" "${1}" > /dev/null 2> /dev/null
-  then
-    echo "1" ## Online
-  else
-    echo "0" ## Offline
-  fi
-}
-
-function LOCALCOM(){
-  local ZTERM_CMD="${1}"
-  /usr/bin/singleton ZTERM_PROC /usr/bin/ztermcom $ZTERM_CMD
-}
-
-function LED_PRESET(){
-  local LED_PRESET_CMD="${1}"
-  /opt/system/leds "$LED_PRESET_CMD"
-}
-
-function WAKE_BRPC() {
-  if [[ "$(LOCAL_PING $BRPC_IP)" == "1" ]]
-  then
-    echo "bedroom PC already online."
-  else
-    /usr/bin/wakeonlan "$BRPC_MAC"
-  fi
-}
 
 function BRXMIT(){
   local TTY_CMD="${1}"
@@ -82,7 +29,7 @@ function BRXMIT(){
   ##
   ## Dresser Lamp
   "brlamp1")
-    LOCALCOM_RESP "10007" "0"
+    READ_COM_RESP "local" "10007" "0"
     ;;
   "brlamp1on")
     LOCALCOM "10002"
@@ -92,7 +39,7 @@ function BRXMIT(){
     ;;
   ## Vintage Macs
   "brmacs")
-    LOCALCOM_RESP "10007" "1"
+    READ_COM_RESP "local" "10007" "1"
     ;;
   "brmacson")
     LOCALCOM "10004"
@@ -102,7 +49,7 @@ function BRXMIT(){
     ;;
   ## RetroPi
   "retropi")
-    LOCALCOM_RESP "10007" "2"
+    READ_COM_RESP "local" "10007" "2"
     ;;
   "retropion")
     LOCALCOM "10006" 
@@ -112,14 +59,17 @@ function BRXMIT(){
     ;;
   ### Room Temperature & Humidity
   "roomth")
-    LOCALCOM_RESP "01005" ""
+    READ_COM_RESP "local" "01005" ""
     ;;
   ## Bedroom TV / PC
   "brtv")
-    if [[ "$(LOCALCOM_RESP '01003' '0')" == "1" ]]; then
+    RESP="$(READ_COM_RESP 'local' '01003' '0')"
+    if [[ "$RESP" == "1" ]]; then
       echo "1"
-    else
+    elif [[ "$RESP" == "0" ]]; then
       echo "0"
+    else
+      echo "X"
     fi
     ;;
   "brtvon")
@@ -162,11 +112,178 @@ function BRXMIT(){
   esac
 }
 
-function LOCALCOM_RESP(){
+function LRXMIT(){
+local CMD_IN="${1}"
+local CMD_1=${CMD_IN%$CMD_SEP*}
+local CMD_2=${CMD_IN#*$CMD_SEP}
+case "$CMD_1" in
+  ## Window Lamp
+  "wl_leds")
+    CALLPICO "$PICOLAMP1_IP" "4" "0"
+    ;; 
+  "wl_ledsoff")
+    CALLPICO "$PICOLAMP1_IP" "1" "2"
+    ;;
+  "wl_ledson")
+    CALLPICO "$PICOLAMP1_IP" "1" "3"
+    ;;  
+  "wl_leds_set")
+    CALLPICO "$PICOLAMP1_IP" "3" "$CMD_2"
+    ;;
+  "wl_led1off")
+    CALLPICO "$PICOLAMP1_IP" "1" "2"
+    ;;
+  "wl_led1on")
+    CALLPICO "$PICOLAMP1_IP" "1" "3"
+    ;; 
+  "wl_led2off")
+    CALLPICO "$PICOLAMP1_IP" "2" "0"
+    ;;
+  "wl_led2on")
+    CALLPICO "$PICOLAMP1_IP" "2" "1"
+    ;;
+  "wl_led2")
+    CALLPICO "$PICOLAMP1_IP" "2" "2"
+    ;;
+  ### Desktop PC ###
+  "wkststate")
+    RESP="$(LOCAL_PING "$DESK_IP")"
+    if [[ "$RESP" == "1" ]]; then 
+      ## Host Online
+      echo "pc_awake"
+    elif [[ "$RESP" == "0" ]]; then 
+      echo "0"
+    else 
+      echo "X"
+    fi
+    ;;
+  "wkststateoff")
+    CALLAPI "$LRXMIT_IP" "pc_power" ""  
+    ;;
+  "wkststateon")
+    CALLAPI "$LRXMIT_IP" "pc_power" ""  
+    ;;
+  ### HiFi Preamp/DAC ###
+  "hifistate")
+    RESP="$(READ_COM_RESP 'lrxmit' '15019' '')"
+    if [[ "$RESP" == "1" ]]; then 
+      echo "1"
+    elif [[ "$RESP" == "0" ]]; then 
+      echo "0"
+    else
+      echo "X"
+    fi
+    ;;
+  "hifistateoff")
+    CALLAPI "$LRXMIT_IP" "extcom" "15018"
+    ;;
+  "hifistateon")
+    CALLAPI "$LRXMIT_IP" "extcom" "15017"
+    ;;
+  "hifitoggle")
+    CALLAPI "$LRXMIT_IP" "extcom" "15016"
+    ;;
+  ## Aux
+  "aux")
+    CALLAPI "$LRXMIT_IP" "extcom" "15002" 
+    ;;
+  ## Phono
+  "phono")
+    CALLAPI "$LRXMIT_IP" "extcom" "15003"
+    ;;  
+  ## DAC USB Input
+  "usb")
+    CALLAPI "$LRXMIT_IP" "extcom" "15001"
+    ;;
+  ## Coaxial Input 
+  "coax")
+    CALLAPI "$LRXMIT_IP" "extcom" "15004"
+    ;;
+  ## Optical Input 
+  "opt")
+    CALLAPI "$LRXMIT_IP" "extcom" "15005" 
+    ;;
+  ## Auto Input
+  "curinput")
+    CALLAPI "$LRXMIT_IP" "extcom" "15007"
+    ;;
+  ## Auto Input
+  "autodac")
+    CALLAPI "$LRXMIT_IP" "extcom" "15006"
+    ;;
+  ## Volume Limit Mode
+  "vlimit")
+    CALLAPI "$LRXMIT_IP" "extcom" "15015"   
+    ;;      
+  ## Toggle Hi-Pass Filter
+  "togglehpf")
+    CALLAPI "$LRXMIT_IP" "extcom" "15014"   
+    ;;
+  ## Show Volume Limit ~ High-Pass Filter Status
+  "curhpfvollim")
+    CALLAPI "$LRXMIT_IP" "extcom" "15020"   
+    ;;
+  ## Mute Toggle
+  "volmute")
+    READ_COM_RESP "lrxmit" "15012" ""
+    ;;
+  ## Vol Down Fine
+  "voldwn")
+    READ_COM_RESP "lrxmit" "15010" ""
+    ;;
+  ## Vol Up Fine
+  "volup")
+    READ_COM_RESP "lrxmit" "15011" ""
+    ;;
+  ## Vol Down Course
+  "voldwnc")
+    READ_COM_RESP "lrxmit" "15008" ""
+    ;;
+  ## Vol Up Course
+  "volupc")
+    READ_COM_RESP "lrxmit" "15009" ""
+    ;;
+  ### Class D Amp ###
+  "submute")
+    CALLAPI "$LRXMIT_IP" "extcom" "17001"   
+    ;;
+  "subup")
+    CALLAPI "$LRXMIT_IP" "extcom" "17002"
+    ;;
+  "subdwn")
+    CALLAPI "$LRXMIT_IP" "extcom" "17003"
+    ;;
+  "subup_fast")
+    CALLAPI "$LRXMIT_IP" "extcom" "17004"
+    ;;
+  "subdwn_fast")
+    CALLAPI "$LRXMIT_IP" "extcom" "17005"
+    ;;
+*)
+  echo "invalid Xmit command!"
+  ;;
+esac
+}
+
+function READ_COM_RESP(){
   ## read character position
-  local RESP_CMD="${1}"
-  local RESP_POS="${2}"
-  TTY_RAW="$(LOCALCOM $RESP_CMD)"
+  local XMIT="${1}"
+  local RESP_CMD="${2}"
+  local RESP_POS="${3}"
+  local TTY_RAW=""
+  ## select device
+  if [[ "$XMIT" == "lrxmit" ]]; then
+    TTY_RAW="$(CALLAPI $LRXMIT_IP 'extcom' $RESP_CMD)"
+  fi
+  if [[ "$XMIT" == "local" ]]; then
+    TTY_RAW="$(LOCALCOM $RESP_CMD)"
+  fi
+  ## verify data
+  if [[ "$TTY_RAW" == "" ]]
+  then
+    echo "X"
+    return
+  fi
   ## extract response data
   TMP_STR="${TTY_RAW#*$DELIM}"
   TTY_OUT="${TMP_STR%$DELIM*}"
@@ -206,165 +323,58 @@ function LOCALCOM_RESP(){
   fi
 }
 
-function LRXMIT(){
-local CMD_SEP="-"
-local CMD_IN="${1}"
-local CMD_1=${CMD_IN%$CMD_SEP*}
-local CMD_2=${CMD_IN#*$CMD_SEP}
-case "$CMD_1" in
-  ## Window Lamp
-  "wl_leds")
-    CALLPICO "$PICOLAMP1_IP" "4" "0"
-    ;; 
-  "wl_ledsoff")
-    CALLPICO "$PICOLAMP1_IP" "1" "2"
-    ;;
-  "wl_ledson")
-    CALLPICO "$PICOLAMP1_IP" "1" "3"
-    ;;  
-  "wl_leds_set")
-    CALLPICO "$PICOLAMP1_IP" "3" "$CMD_2"
-    ;;
-  "wl_led1off")
-    CALLPICO "$PICOLAMP1_IP" "1" "2"
-    ;;
-  "wl_led1on")
-    CALLPICO "$PICOLAMP1_IP" "1" "3"
-    ;; 
-  "wl_led2off")
-    CALLPICO "$PICOLAMP1_IP" "2" "0"
-    ;;
-  "wl_led2on")
-    CALLPICO "$PICOLAMP1_IP" "2" "1"
-    ;;
-  "wl_led2")
-    CALLPICO "$PICOLAMP1_IP" "2" "2"
-    ;;
-  ### Desktop PC ###
-  "wkststate")
-    if [[ "$(LOCAL_PING "$DESK_IP")" == "1" ]]
-    then ## Host Online
-      echo "pc_awake"
-    else ## Host Offline
-      echo "0"
-    fi
-    ;;
-  "wkststateoff")
-    if [[ "$(LOCAL_PING "$DESK_IP")" == "1" ]]
-    then ## Host Online
-      CALLAPI "$LRXMIT_IP" "extcom" "02010"  
-    else ## Host Offline
-      echo "$DESK_IP is already offline"
-    fi
-    ;;
-  "wkststateon")
-    if [[ "$(LOCAL_PING "$DESK_IP")" == "1" ]]
-    then ## Host Online
-      echo "$DESK_IP is already online"
-    else ## Host Offline
-      CALLAPI "$LRXMIT_IP" "extcom" "02010"  
-    fi
-    ;;
-  ### HiFi Preamp/DAC ###
-  "hifistate")
-    if [[ "$(LOCAL_PING "hifipi.$LOCAL_DOMAIN")" == "1" ]]
-    then ## Host Online
-      echo "1"
-    else ## Host Offline
-      echo "0"
-    fi
-    ;;
-  "hifistateoff")
-    CALLAPI "$LRXMIT_IP" "extcom" "02122" ## Subwoofer Amp Off
-    sleep 1.0
-    CALLAPI "$LRXMIT_IP" "extcom" "02103" ## Preamp Off
-    ;;
-  "hifistateon")
-    CALLAPI "$LRXMIT_IP" "extcom" "02102" ## Preamp On
-    ;;
-  "hifitoggle")
-    CALLAPI "$LRXMIT_IP" "extcom" "02101" ## Preamp On/Off
-    ;;
-  ## Aux
-  "aux")
-    CALLAPI "$LRXMIT_IP" "extcom" "02108"   
-    ;;
-  ## Phono
-  "phono")
-    CALLAPI "$LRXMIT_IP" "extcom" "02109"
-    ;;  
-  ## DAC USB Input
-  "usb")
-    CALLAPI "$LRXMIT_IP" "extcom" "02107" ## Preamp Digital
-    sleep 0.5
-    CALLAPI "$LRXMIT_IP" "extcom" "02130" ## DAC USB
-    ;;
-  ## Coaxial Input 
-  "coax")
-    CALLAPI "$LRXMIT_IP" "extcom" "02110" ## Preamp Digital (AirPlay Label)
-    sleep 0.5
-    CALLAPI "$LRXMIT_IP" "extcom" "02131" ## DAC Coax
-    ;;
-  ## Optical Input 
-  "opt")
-    CALLAPI "$LRXMIT_IP" "extcom" "02112" ## Preamp Digital (Optical Label) 
-    sleep 0.5
-    CALLAPI "$LRXMIT_IP" "extcom" "02132" ## DAC Optical
-    ;;
-  ## Auto Input
-  "autodac")
-    CALLAPI "$LRXMIT_IP" "extcom" "02107" ## Preamp Digital
-    sleep 0.5
-    CALLAPI "$LRXMIT_IP" "extcom" "02133" ## DAC Auto Select
-    ;;
-  ## Volume Limit Mode
-  "vlimit")
-    CALLAPI "$LRXMIT_IP" "extcom" "02111"   
-    ;;      
-  ## Toggle Hi-Pass Filter
-  "togglehpf")
-    CALLAPI "$LRXMIT_IP" "extcom" "02106"   
-    ;;
-  ## Mute / Toggle
-  "mute")
-    CALLAPI "$LRXMIT_IP" "extcom" "02115"   
-    ;;
-  ## Vol Down Fine
-  "dwn")
-    CALLAPI "$LRXMIT_IP" "extcom" "02104"
-    ;;
-  ## Vol Up Fine
-  "up")
-    CALLAPI "$LRXMIT_IP" "extcom" "02105"
-    ;;
-  ## Vol Down Course
-  "dwnc")
-    CALLAPI "$LRXMIT_IP" "extcom" "02113"
-    ;;
-  ## Vol Up Course
-  "upc")
-    CALLAPI "$LRXMIT_IP" "extcom" "02114"
-    ;;
-  ### Class D Amp ###
-  "submute")
-    CALLAPI "$LRXMIT_IP" "extcom" "02120"   
-    ;;
-  "subon")
-    CALLAPI "$LRXMIT_IP" "extcom" "02121"   
-    ;;
-  "suboff")
-    CALLAPI "$LRXMIT_IP" "extcom" "02122"   
-    ;;
-  "subup")
-    CALLAPI "$LRXMIT_IP" "extcom" "02123"
-    ;;
-  "subdwn")
-    CALLAPI "$LRXMIT_IP" "extcom" "02124"
-    ;;
-*)
-  echo "invalid Xmit command!"
-  ;;
-esac
+function CALLAPI(){
+  local TARGET="${1}"
+  local API_ARG1="${2}"
+  local API_ARG2="${3}"
+  if [[ "$API_ARG1" == "" ]]; then
+    return
+  fi
+  SERVER="http://$TARGET:80/api?var=$API_ARG2&arg=$API_ARG1&action=main"
+  APIRESP=$(/usr/bin/curl $CURLARGS $SERVER)
+  TMPSTR="${APIRESP#*$DELIMITER}"
+  RESPOUT="${TMPSTR%$DELIMITER*}"
+  echo "$RESPOUT"
+}
+
+function CALLPICO(){
+  local TARGET="${1}"
+  local API_ARG1="${2}"
+  local API_ARG2="${3}"
+  if [[ "$API_ARG1" == "" ]]; then
+    return
+  fi
+  SERVER="http://$TARGET:4000/api?$API_ARG1,,$API_ARG2~"
+  RESPOUT=$(/usr/bin/curl $CURLARGS $SERVER)
+  echo "$RESPOUT"
+}
+
+function LOCAL_PING(){
+  if /usr/bin/ping -4 -A -c 1 -i "$MAX_PING_WAIT" -W "$MAX_PING_WAIT" "${1}" > /dev/null 2> /dev/null
+  then
+    echo "1" ## Online
+  else
+    echo "0" ## Offline
+  fi
+}
+
+function LOCALCOM(){
+  local ZTERM_CMD="${1}"
+  /usr/bin/ztermcom $ZTERM_CMD
+}
+
+function LED_PRESET(){
+  local LED_PRESET_CMD="${1}"
+  /opt/system/leds "$LED_PRESET_CMD"
+}
+
+function WAKE_BRPC() {
+  if [[ "$(LOCAL_PING $BRPC_IP)" == "1" ]]
+  then
+    echo "bedroom PC already online."
+  else
+    /usr/bin/wakeonlan "$BRPC_MAC"
+  fi
 }
 
 ########################
@@ -374,6 +384,21 @@ FIRST_ARG="${1//$'\n'/}"
 SECOND_ARG="${2//$'\n'/}"
 
 case "$FIRST_ARG" in
+
+## Fadecandy LEDs control
+fc_leds)
+LEVEL_IN=${SECOND_ARG#*$CMD_SEP}
+if [[ "$LEVEL_IN" == "" ]]
+then
+  ## List current brightness level
+  FC_RAW_LEVEL=$(/opt/system/leds level)
+  echo "${FC_RAW_LEVEL//\"/}"
+else
+  ## Set brightness level
+   /opt/system/leds fc "$LEVEL_IN"
+fi
+exit
+;;
 
 ## Bedroom Power ##
 

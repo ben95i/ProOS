@@ -1,7 +1,7 @@
- /////////////////////////////////////////////////////////////////////////
-// Integrated Amp Controller v2.4
-// by Ben Provenzano III
-//////////////////////////////////////////////////////////////////////////
+///////////////////////////////
+// Integrated Amp Controller //
+// by Ben Provenzano III //////
+///////////////////////////////
 
 // shared libraries
 #include <Wire.h>
@@ -18,8 +18,7 @@ const char nullTrm = '\0'; // null terminator
 
 // serial resources
 #define serialBaudRate 9600
-const uint16_t serialStartEndDelay = 25; // delay in (ms) between start and stop of serial read
-const uint8_t maxMessage = 32;
+const uint8_t maxMessage = 16;
 const uint8_t cmdRegLen = 2; // register length (99***)
 const uint8_t cmdDatLen = 3; // data length (**999)
 const char serialDataStart = '<';
@@ -28,8 +27,8 @@ const char respDelimiter = '|';
 uint16_t serialCurPos = 0;
 bool serialReading = 0;
 bool serialMsgEnd = 0;
-char serialMessageIn[maxMessage];
-char serialMessageOut[maxMessage];
+char serialMessageIn[maxMessage + 1];
+char serialMessageOut[maxMessage + 1];
 
 // GPIO pins
 #define ampPowerPin            12
@@ -69,7 +68,6 @@ bool blinkLEDdone = 0;
 #define digitalS0Pin           5     // 74HC4052 (S0)
 #define digitalS1Pin           6     // 74HC4052 (S1) 
 #define muteLockPin            7     // Mute Lock (active-high)
-uint8_t mcpState = 0x0;
 #define MCP23_ADDR             0x27  //  MCP's I2C address
 #define MCP23_DDR_A            0x00  //  data direction register A
 #define MCP23_POL_A            0x01  //  input polarity A
@@ -81,6 +79,7 @@ uint8_t mcpState = 0x0;
 #define MCP23_IOCR_DISSLW      0x10  //  slew rate control bit for SDA output.
 #define MCP23_IOCR_ODR         0x04  //  sets the INT pin as an open-drain output.
 #define MCP23_IOCR_INTPOL      0x02  //  polarity of the INT output pin.
+uint8_t mcpState = 0x0;
 
 // PGA2311 resources
 #define volumeClockPin         9     // clock pin for volume control
@@ -90,6 +89,15 @@ uint8_t mcpState = 0x0;
 #define maxVolume              192   // maximum PGA volume (192 is 0 dB -- no gain)
 #define minVolume              4
 
+// non-blocking volume fade resources
+Neotimer volTimer = Neotimer();
+bool isVolumeFading = 0;
+uint8_t fadeTargetVol = 0;
+uint8_t fadeCurrentVol = 0;
+uint8_t fadeDiff = 0;
+bool fadeDirectionUp = 0;
+const uint32_t fadeDelayMs = 25; // delay between volume steps in (ms)
+
 // volume control resources
 uint8_t lastChannelVolume = 0;
 uint8_t channelVolume = 0;
@@ -97,9 +105,12 @@ bool isMuted = 0;
 uint8_t lastMuteButton = 1;
 uint8_t muteButton = 0;
 uint32_t muteButtonMillis;
+
 // volume encoder resources
 Encoder volumeEncoder(inputEncPinB, inputEncPinA);
-uint8_t oldVolEncPos = 1;
+const uint8_t encDebounceDelay = 10; // encoder debounce in (ms)
+uint32_t encoderMillis;
+int32_t oldVolEncPos = 0;
 
 /// initialization ///
 void setup() {
@@ -193,62 +204,72 @@ void setVolume(long _intvol){
 }
 
 void scaleVolume(uint8_t startVolume, uint8_t endVolume, uint8_t volumeSteps){
-  uint8_t diff;
-  long counter;
-  if (endVolume == startVolume) {
+  if (startVolume == endVolume) {
     return;
   }
+  fadeTargetVol = endVolume;
+  fadeCurrentVol = startVolume;
+  // Calculate difference and direction
   if (endVolume > startVolume) {
-    diff = (endVolume - startVolume) / volumeSteps;
-    // Protect against a non-event
-    if (diff == 0){
-      diff = 1;
-    }
-    counter = startVolume;
-    while (counter < endVolume) {
-      setVolume(counter);
-      delay(25);  
-      counter += diff;  
-    }
-    setVolume(endVolume);               
+    fadeDiff = (endVolume - startVolume) / volumeSteps;
+    fadeDirectionUp = 1;
   } else {
-    diff = (startVolume - endVolume) / volumeSteps;
-    // Protect against a non-event
-    if (diff == 0) {
-      diff = 1;
-    }
-    counter = startVolume;
-    while (counter > endVolume){
-      setVolume(counter);
-      delay(25);  
-      counter -= diff; 
-    }
-    setVolume(endVolume);              
-  }  
-  return;
+    fadeDiff = (startVolume - endVolume) / volumeSteps;
+    fadeDirectionUp = 0;
+  }
+  // Protect against a non-event
+  if (fadeDiff == 0) {
+    fadeDiff = 1;
+  }
+  // Kick off the fading process
+  isVolumeFading = 1;
+  volTimer.set(fadeDelayMs);
+  volTimer.start();
 }
 
 void volumeUp(uint8_t _volumeStep) {
-  // volume up
-  if (isMuted == 0) {
+  if (isMuted == 0 && channelVolume < maxVolume) {
     lastChannelVolume = channelVolume;
-    channelVolume = channelVolume + _volumeStep;
-    if (channelVolume >= maxVolume) {
-      channelVolume = maxVolume;
-    }
-    scaleVolume(lastChannelVolume,channelVolume,_volumeStep);    
+    channelVolume = min(channelVolume + _volumeStep, maxVolume);
+    scaleVolume(lastChannelVolume, channelVolume, _volumeStep);    
   }
 }
 
 void volumeDown(uint8_t _volumeStep) {
-  // volume down 
-  if (isMuted == 0) {
+  if (isMuted == 0 && channelVolume > minVolume) {
     lastChannelVolume = channelVolume;
-    channelVolume = channelVolume - _volumeStep;
-    if (channelVolume <= minVolume) {
-      channelVolume = minVolume;
+    channelVolume = (channelVolume > _volumeStep + minVolume) ? (channelVolume - _volumeStep) : minVolume;
+    scaleVolume(lastChannelVolume, channelVolume, _volumeStep);    
+  }
+}
+
+void handleVolumeFade() {
+  if (isVolumeFading == 1) {
+    if (volTimer.done()) {
+      if (fadeDirectionUp == 1) {
+        // Stepping UP
+        if ((fadeCurrentVol + fadeDiff) >= fadeTargetVol) {
+          fadeCurrentVol = fadeTargetVol;
+          isVolumeFading = 0; // Target reached, stop fading
+        } else {
+          fadeCurrentVol += fadeDiff;
+        }
+      } else {
+        // Stepping DOWN
+        if (fadeCurrentVol <= (fadeTargetVol + fadeDiff)) { 
+          fadeCurrentVol = fadeTargetVol;
+          isVolumeFading = 0; // Target reached, stop fading
+        } else {
+          fadeCurrentVol -= fadeDiff;
+        }
+      }
+      // Update the hardware PGA chip
+      setVolume(fadeCurrentVol);
+      // if not done restart the timer for the next 25ms step
+      if (isVolumeFading == 1) {
+        volTimer.start();
+      }
     }
-    scaleVolume(lastChannelVolume,channelVolume,_volumeStep);    
   }
 }
 
@@ -259,13 +280,13 @@ void volumeMute() {
     setBlinkFrontLED(600,0,1);    
     // mute
     isMuted = 1;
-    scaleVolume(channelVolume,0,35);
+    scaleVolume(channelVolume, 0, 35);
   } else {
     // disable blinking LED
     disableFntLEDBlink(); 
     // un-mute
     isMuted = 0;
-    scaleVolume(0,channelVolume,40);
+    scaleVolume(0, channelVolume, 40);
   }
 }
 
@@ -323,7 +344,7 @@ void cycleThruInputs() {
     if ((_input > _maxInputRange) || (_input < _minInputRange)) {
       _input = _minInputRange;
     }
-    setBlinkFrontLED(300,1,0);
+    setBlinkFrontLED(300, 1, 0);
     audioInput(_input);
   }
 }
@@ -341,8 +362,7 @@ void writeVolumeStatus() {
 }
 
 void writeSerialMessage(int16_t value) {
-  uint16_t length = snprintf(NULL, 0, "%d", value);
-  snprintf(serialMessageOut, length + 1, "%d", value);
+  snprintf(serialMessageOut, maxMessage, "%d", value);
 }
 
 // set power states
@@ -489,7 +509,6 @@ void processSerialData(char rc, char startInd ,char endInd) {
       serialReading = 0;
       serialCurPos = 0;
       serialMsgEnd = 1;
-      delay(serialStartEndDelay);
     } else {
       // store characters in buffer
       if (rc != startInd) {
@@ -504,7 +523,6 @@ void processSerialData(char rc, char startInd ,char endInd) {
   } else {
     // start reading
     if (rc == startInd) {
-      delay(serialStartEndDelay);
       serialReading = 1;
       serialCurPos = 0;
       serialMsgEnd = 0;
@@ -537,7 +555,7 @@ void decodeMessage() {
   uint8_t _delims = 0;
   uint8_t _maxchars = 10;
   char _delimiter = ',';
-  for(uint8_t _idx = 0; _idx <= maxMessage; _idx++) {
+  for(uint8_t _idx = 0; _idx < maxMessage; _idx++) {
     char _vchr = serialMessageIn[_idx];  
     if (_vchr == nullTrm) {
       break;
@@ -553,7 +571,7 @@ void decodeMessage() {
   }
   // find first delimiter position
   uint8_t _linepos = 0;
-  for(uint8_t _idx = 0; _idx <= maxMessage; _idx++) {  
+  for(uint8_t _idx = 0; _idx < maxMessage; _idx++) {  
     char _vchr = serialMessageIn[_idx];  
     if (_vchr == nullTrm) {
       break;
@@ -615,7 +633,7 @@ void processCmdData(uint8_t messageStart) {
     if (_curchar == nullTrm) {
       break;
     }
-    if (isDigit(_curchar) && _numcnt < maxMessage) {
+    if (isDigit(_curchar) && _numcnt < _cmdlen) {
       _cmdarr[_numcnt] = _curchar;
       _numcnt++;
     }
@@ -711,15 +729,37 @@ void readMuteButton() {
 }
 
 void readVolumeEncoder() {
-  uint8_t volEncPosition = volumeEncoder.read();
-  if(volEncPosition != oldVolEncPos){
-    if (volEncPosition > oldVolEncPos) {
-      volumeUp(1); // volume step
+  int32_t volEncPosition = volumeEncoder.read() / 4;
+  if (volEncPosition != oldVolEncPos) {
+    if ((millis() - encoderMillis) > encDebounceDelay) {
+      if (volEncPosition > oldVolEncPos) {
+        directVolUp();
+      } else {
+        directVolDown();
+      }
+      oldVolEncPos = volEncPosition;
+      encoderMillis = millis(); // reset the timer
     }
-    if (volEncPosition < oldVolEncPos) {
-      volumeDown(1); // volume step
-    }
-    oldVolEncPos = volEncPosition;
+  }
+}
+
+void directVolUp() {
+  // volume up (no fade)  
+  if (channelVolume < maxVolume) {
+    isVolumeFading = 0;
+    channelVolume++;
+    setVolume(channelVolume);
+    lastChannelVolume = channelVolume;
+  }
+}
+
+void directVolDown() {
+  // volume down (no fade) 
+  if (channelVolume > minVolume) {
+    isVolumeFading = 0;
+    channelVolume--;
+    setVolume(channelVolume);
+    lastChannelVolume = channelVolume;
   }
 }
 
@@ -738,14 +778,14 @@ void powerOnLogic() {
   // set audio input
   audioInput(lastInput);
   // un-mute PGA
-  digitalWrite(volumeMutePin,LOW);
+  digitalWrite(volumeMutePin, LOW);
   isMuted = 0;
   delay(200);
   // turn power amps on 
   digitalWrite(ampPowerPin, HIGH);   
   delay(100);
   // scale into last set volume
-  scaleVolume(0,lastChannelVolume,50);
+  scaleVolume(0,lastChannelVolume, 50);
   // set power LED on
   frntLEDState = 1;
   writeMCP(powerLEDPin, frntLEDState);       
@@ -756,10 +796,10 @@ void powerOffLogic() {
   disableFntLEDBlink();
   // mute system
   if (isMuted == 0) {
-    scaleVolume(channelVolume,0,25);
+    scaleVolume(channelVolume, 0, 25);
     isMuted = 1;
   } // mute PGA
-  digitalWrite(volumeMutePin,HIGH);  
+  digitalWrite(volumeMutePin, HIGH);  
   // disconnect inputs
   audioInput(0);
   delay(200);
@@ -867,6 +907,8 @@ void setPowerState() {
 }
 
 void loop() {
+  // non-blocking volume fades
+  handleVolumeFade();
   // read serial port data
   serialProcess();  
   // read front-panel buttons

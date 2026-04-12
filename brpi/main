@@ -15,7 +15,7 @@ BLINKLED() {
 
 ZTERM_COM() {
   local CMD_DATA="${1}"
-  /opt/rpi/singleton.sh ZTERM_PROC /usr/bin/ztermcom $CMD_DATA
+  /usr/bin/ztermcom $CMD_DATA
 }
 
 OPTA_MODE() {

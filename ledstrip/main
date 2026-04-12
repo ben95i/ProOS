@@ -1,13 +1,36 @@
 #!/bin/bash
-###########################################################
-## LEDstrips main script by Ben Provenzano III ##############
-###########################################################
-###########################################################
+##########################################################
+## LEDstrip main script by Ben Provenzano III ############
+##########################################################
+##########################################################
 
-case "$1" in
+CURL_ARGS="--fail --no-buffer --max-time 3 --silent --retry 3 --retry-all-errors --retry-delay 1"
+LOCALHOST="127.0.0.1"
+
+## Read Command-Line Arguments
+ARG_1="${1//$'\n'/}"
+ARG_2="${2//$'\n'/}"
+
+FADECANDY_API() {
+  ## Fadecandy API Hook
+  if [ "$ARG_1" == "fc_leds" ]; then
+    CMD_SEP="-"
+    LEVEL_IN=${ARG_2#*$CMD_SEP}
+    if [[ "$LEVEL_IN" == "" ]]; then
+      /usr/bin/curl $CURL_ARGS $LOCALHOST:7892/brightness
+    else
+      /usr/bin/curl $CURL_ARGS $LOCALHOST:7892/set?b=$LEVEL_IN
+    fi
+    exit
+  fi
+  LED_OUT=$(/opt/rpi/leds "$ARG_1" "$ARG_2")
+  echo "$LED_OUT"
+}
+
+case "$ARG_1" in
 
 boot)
-/opt/rpi/leds fc norm
+/opt/rpi/leds start
 ## Auto Hotspot (on boot only)
 systemctl restart rpi-netdetect
 ## Turn off power LED
@@ -20,19 +43,13 @@ usbplug)
 echo "no function assigned"
 exit
 ;;
-
 	    
-    *)
-        if [ "$1" == "" ]; then
-          echo "Enter valid command."
-        else  
-	      if [ "$2" == "" ]; then
-	        echo "Sending $1 command..."
-	      else
-	      	echo "Sending $1:$2 command..."
-	      fi  
-	      /opt/rpi/leds "$1" "$2" 
-	    fi
-      exit
-      ;;
-    esac
+*)
+  if [ "$ARG_1" == "" ]; then
+    echo "Enter valid command."
+    exit
+  fi
+  FADECANDY_API
+  exit
+  ;;
+esac

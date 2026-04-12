@@ -1,22 +1,41 @@
 #!/bin/bash
-###########################################################
-## LEDwall main script by Ben Provenzano III v8 ###########
-###########################################################
-###########################################################
+########################################################
+## LEDwall main script by Ben Provenzano III ###########
+########################################################
+########################################################
 
 ## Arduino's Serial Port
-ARDUINO_PORT="ttyUSB0"
+ARDUINO_PORT="ttyAMA0"
+
+CURL_ARGS="--fail --no-buffer --max-time 3 --silent --retry 3 --retry-all-errors --retry-delay 1"
+LOCALHOST="127.0.0.1"
 
 ## Read Command-Line Arguments
-ARG1=$1
-ARG2=$2
+ARG_1="${1//$'\n'/}"
+ARG_2="${2//$'\n'/}"
 
 ZTERM_COM() {
   local CMD_DATA="$1"
-  /opt/rpi/singleton.sh ZTERM_PROC /usr/bin/ztermcom $CMD_DATA
+  /usr/bin/ztermcom $CMD_DATA
 }
 
-case "$1" in
+FADECANDY_API() {
+  ## Fadecandy API Hook
+  if [ "$ARG_1" == "fc_leds" ]; then
+    CMD_SEP="-"
+    LEVEL_IN=${ARG_2#*$CMD_SEP}
+    if [[ "$LEVEL_IN" == "" ]]; then
+      /usr/bin/curl $CURL_ARGS $LOCALHOST:7892/brightness
+    else
+      /usr/bin/curl $CURL_ARGS $LOCALHOST:7892/set?b=$LEVEL_IN
+    fi
+    exit
+  fi
+  LED_OUT=$(/opt/rpi/leds "$ARG_1" "$ARG_2")
+  echo "$LED_OUT"
+}
+
+case "$ARG_1" in
 
 boot)
 ## External Serial COM
@@ -25,7 +44,7 @@ ZTERM_COM "i"
 ## WiFi Toggle Switch
 systemctl start rpi-wifiswitch
 ## LED Controller
-/opt/rpi/leds fc norm
+/opt/rpi/leds start
 ## Flash LED
 /usr/bin/python3 - <<END
 import time
@@ -131,9 +150,27 @@ fi
 exit
 ;;
 
+pc_power)
+## PC Power Trigger
+/usr/bin/python3 - <<END
+import time
+import RPi.GPIO as GPIO
+GPIO.setwarnings(False)
+GPIO.setmode(GPIO.BCM)
+GPIO_PIN = 16
+GPIO.setup(GPIO_PIN, GPIO.OUT)
+GPIO.output(GPIO_PIN, True)
+time.sleep(0.3)
+GPIO.output(GPIO_PIN, False)
+GPIO.cleanup()
+quit()
+END
+exit
+;;
+
 ## Pass command to external serial port
 extcom)
-ZTERM_COM "$ARG2"
+ZTERM_COM "$ARG_2"
 exit
 ;;
 
@@ -148,24 +185,20 @@ update-fw)
 rm -rf /opt/fw-build
 mkdir -p /opt/fw-build
 arduino-cli -v compile --fqbn arduino:avr:uno \
-  /opt/rpi/AutomateHub_2/AutomateHub_2.ino --build-path /opt/fw-build
+  /opt/rpi/firmware.ino --build-path /opt/fw-build
 arduino-cli -v upload -p /dev/$ARDUINO_PORT \
   --fqbn arduino:avr:uno --input-dir /opt/fw-build
 LOCALCOM "i"
 exit
 ;;
-	    
-    *)
-        if [ "$ARG1" == "" ]; then
-          echo "Enter valid command."
-        else  
-	      if [ "$ARG2" == "" ]; then
-	        echo "Sending $ARG1 command..."
-	      else
-	      	echo "Sending $ARG1:$ARG2 command..."
-	      fi  
-	      /opt/rpi/leds "$ARG1" "$ARG2" 
-	    fi
-      exit
-     ;;
-    esac
+
+*)
+  if [ "$ARG_1" == "" ]; then
+    echo "Enter valid command."
+    exit
+  fi
+  FADECANDY_API
+  exit
+  ;;
+esac
+

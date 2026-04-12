@@ -1,2 +1,2 @@
-http://ledstrip.home:80|chkon|LEDstrip
-http://ledwall.home:80|chkon|LEDwall
+http://ledstrip.home:80|link|LEDstrip
+http://ledwall.home:80|link|LEDwall

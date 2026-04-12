@@ -86,19 +86,6 @@ if [ -e "$TRIGGERS_DIR/detach_bkps.txt" ]; then
   WRITE_TRAILER
 fi
 
-## Toggle Proxmox Web Interface
-if [ -e "$TRIGGERS_DIR/pve_webui_toggle.txt" ]; then
-  rm -f "$TRIGGERS_DIR/pve_webui_toggle.txt"
-  SYSDSTAT="$(systemctl is-active pveproxy)"
-  if [ "${SYSDSTAT}" == "active" ]; then
-    echo "PVE web interface running, stopping service..."
-    systemctl stop pveproxy 
-  else 
-    echo "PVE web interface not running, starting service..." 
-    systemctl start pveproxy
-  fi
-  WRITE_TRAILER
-fi
 ## List ZFS Snapshots
 if [ -e "$TRIGGERS_DIR/pve_listsnaps.txt" ]; then
   rm -f "$TRIGGERS_DIR/pve_listsnaps.txt"
@@ -131,13 +118,13 @@ fi
 if [ -e "$TRIGGERS_DIR/startunifi.txt" ]; then
   rm -f "$TRIGGERS_DIR/startunifi.txt"
   echo "starting unifi..."
-  pct start 107
+  qm start 107
   WRITE_TRAILER
 fi
 if [ -e "$TRIGGERS_DIR/stopunifi.txt" ]; then
   rm -f "$TRIGGERS_DIR/stopunifi.txt"
   echo "shutting down unifi..."
-  pct stop 107
+  qm stop 107
   WRITE_TRAILER
 fi
 #######################################################
@@ -170,7 +157,9 @@ fi
 if [ -e "$TRIGGERS_DIR/pve_vmsbkp.txt" ]; then
   VM_CONFS="/mnt/datastore/data/ProOS"
   rm -f "$TRIGGERS_DIR/pve_vmsbkp.txt"
+  ###
   ### Container Backups
+  ###
   echo " "
   echo "Backing-up Files LXC 101..."
   vzdump 101 --mode snapshot --compress zstd --node pve --storage local \
@@ -199,13 +188,14 @@ if [ -e "$TRIGGERS_DIR/pve_vmsbkp.txt" ]; then
   cp -v /etc/pve/lxc/106.conf $VM_CONFS/automate/lxc.conf
   chmod 777 $VM_CONFS/automate/lxc.conf
   ###
+  ### Virtual Machine Backups
+  ###
   echo " "
-  echo "Backing-up Unifi LXC 107..."
+  echo "Backing-up Unifi KVM 107..."
   vzdump 107 --mode snapshot --compress zstd --node pve --storage local \
     --maxfiles 1 --remove 1
-  cp -v /etc/pve/lxc/107.conf $VM_CONFS/unifi/lxc.conf
-  chmod 777 $VM_CONFS/unifi/lxc.conf 
-  ### Virtual Machine Backups
+  cp -v /etc/pve/qemu-server/107.conf $VM_CONFS/pve/vmbkps/vzdump-qemu-107.conf
+  chmod 777 $VM_CONFS/pve/vmbkps/vzdump-qemu-107.conf
   ###
   echo " "
   echo "Backing-up Router KVM 100..."

@@ -11,6 +11,8 @@
   box-sizing: border-box;
   font-family: JosefinSans, system-ui;
   font-size: 24px; /* default font size */
+  --secondary-color: #36363d; /* nav bar, menus, and border color */
+  --menu-hover-color: #1c1e20; 
 }
 
 body {
@@ -178,67 +180,87 @@ input.chkbox {
 }
 
 @-webkit-keyframes fadeOut {
-  0% { opacity: 1; }
-  100% { opacity: 0; }
+  0% { 
+    opacity: 1; 
+  }
+  100% { 
+    opacity: 0; 
+  }
 }
 
 @keyframes fadeOut {
-  0% { opacity: 1; }
-  100% { opacity: 0; }
+  0% { 
+    opacity: 1; 
+  }
+  100% { 
+    opacity: 0; 
+  }
 }
 
 /*
  *  Button Styles
  */
-
+ 
 .button {
-  transition: all 0.2s;
+  /* layout & spacing */
   width: 150px;
+  margin-top: 10px;
+  margin-bottom: 10px;
+  margin-left: 5px;
+  /* typography */
   user-select: none;
   -webkit-user-select: none;
-  touch-action: manipulation;
+  text-align: center;
+  color: #fff; 
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+  font-weight: 500;
+  /* keycap shape */
   border: none;
   outline: none;
-  margin-bottom: 5px;
-  margin-top: 5px;
-  margin-left: 5px;
-  text-align: center;
-  color: #fff; /* buttons font color */
-  text-shadow: 1px 1px 1px #000;
-  border-radius: 15px;
-  background-color: var(--main-color);
-  background-image: linear-gradient(to top left,
-                                    rgba(0, 0, 0, .2),
-                                    rgba(0, 0, 0, .2) 20%,
-                                    rgba(0, 0, 0, 0));
-  box-shadow: inset 2px 2px 3px rgba(255, 255, 255, .6),
-              inset -2px -2px 3px rgba(0, 0, 0, .6);         
-}
-
-.button:hover {
-  background-image: linear-gradient(to top left,
-                                    rgba(0, 0, 0, .2),
-                                    rgba(0, 0, 0, .2) 30%,
-                                    rgba(0, 0, 0, 0));
-  box-shadow: inset 4px 4px 6px rgba(255, 255, 255, .6),
-              inset -4px -4px 6px rgba(0, 0, 0, .6);
+  border-radius: 10px;
+  position: relative;
+  transition: all 0.1s cubic-bezier(0.4, 0, 0.2, 1);
+  /* button face color & gradient */
+  -webkit-tap-highlight-color: transparent;
+  background-color: color-mix(in srgb, var(--main-color), transparent 30%);
+  background-image: linear-gradient(to bottom, 
+                    rgba(255, 255, 255, 0.1) 0%, 
+                    rgba(0, 0, 0, 0.2) 100%);
+  /* 3D shape:
+     1. Inset Black Border (0 blur, 1px spread)
+     2. Inset highlight (Top edge rim)
+     3. Inset shadow (Bottom edge of top face)
+     4. DARK Side Walls
+     5. Ground Shadow
+  */
+  box-shadow: 
+    inset 0 0 0 1px rgba(0, 0, 0, 0.4), /* slight black border */
+    inset 0 1px 0 rgba(255, 255, 255, 0.2), 
+    inset 0 -1px 2px rgba(0, 0, 0, 0.4),
+    1px 1px 0 color-mix(in srgb, var(--main-color), #000 15%),
+    3px 3px 0 color-mix(in srgb, var(--main-color), #000 25%),
+    6px 6px 0 color-mix(in srgb, var(--main-color), #000 35%),
+    8px 8px 15px rgba(0, 0, 0, 0.6);
+  transform: translate(-4px, -4px);
+  backface-visibility: hidden;
 }
 
 .button:active {
-  box-shadow: inset -2px -2px 3px rgba(255, 255, 255, .6),
-              inset 2px 2px 3px rgba(0, 0, 0, .6);
-}
-
-.grid_btn {
-  background-color: color-mix(in srgb, var(--main-color), transparent 40%);
-}
-
-.dark_grid_btn {
-  background-color: color-mix(in srgb, var(--main-color), transparent 60%); 
+  transform: translate(1px, 1px);
+  box-shadow: 
+    inset 0 0 0 1px rgba(0, 0, 0, 0.5), /* keep border visible while pressed */
+    inset 0 2px 5px rgba(0, 0, 0, 0.5),
+    1px 1px 0 color-mix(in srgb, var(--main-color), #000 20%), 
+    2px 2px 4px rgba(0, 0, 0, 0.6);
+  transition: all 0.05s ease;
 }
 
 .submode_btn {
-  background-color: color-mix(in srgb, #8d2a2a, transparent 40%);
+  background-color: color-mix(in srgb, #a52b2b, transparent 40%);
+}
+
+.dark_btn {
+  background-color: color-mix(in srgb, var(--main-color), transparent 60%); 
 }
 
 .alert_btn {
@@ -257,13 +279,6 @@ input.chkbox {
   top: 7px;
 }
 
-.button__textsmall {
-  line-height: 3.8; /* small button height */
-  font-size: 20px;
-  -webkit-user-select: none;
-  user-select: none;
-}
-
 .button__lgr {
   width: 312px; /* large button width */
 }
@@ -278,7 +293,7 @@ input.chkbox {
   margin: 5px;
   line-height: 2.5;
   overflow: hidden;
-  background-color: #2d353d; /* nav background color */
+  background-color: var(--secondary-color); /* nav background color */
   border-radius: 25px;
   opacity: 75%;
 }
@@ -301,29 +316,32 @@ input.chkbox {
 }
 
 /*
- *  Console Log Window
+ * Popup Windows
  */
 
-.popup-win {
-  border-radius: 15px;
-  display: none;
-  position: fixed; /* Fixes the element relative to the viewport */
-  bottom: 10px;
-  left: 50%; /* Positions the left edge at the horizontal center */
-  transform: translateX(-50%); /* Adjusts for the element's width to truly center it */
-  border: 8px solid #202223;
-  outline: 1px solid #a2a5a9;
-  outline-offset: 0px;
-  z-index: 996;
-}
-
 .log-popup {
-  width: 75%; /* log window width */
-  height: 95%; /* log window height */
-  min-height: 95%;
+  width: 75vw;
+  height: 95%;
+  z-index: 997;
 }
 
-/* adjust elements when screen width is LT 900px */
+#cam-popup {
+  width: 90vw;
+  height: auto;
+  z-index: 997;
+}
+
+#cam-display {
+  width: 100%;
+  height: auto;
+  max-height: 80vh;
+  aspect-ratio: 16 / 9;
+  margin-bottom: 3px;
+  border-radius: 7px;
+  overflow: clip;
+}
+
+/* adjust elements when screen width is less-than 900px */
 @media screen and (max-width: 900px) {
   .column-right {
     padding-left: 0px;
@@ -337,83 +355,61 @@ input.chkbox {
   }
 }
 
-/* Add styles to the form container */
-.log-popup-ctn {
-  padding-bottom: 85px;
-  background-color: #202223;
+.popup-win {
+  display: none;
+  position: fixed;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 996;
+  border: solid 1px #fff;
+  border-radius: 15px;
+  background-color: var(--secondary-color);
   overflow: hidden;
-  height: 100%;
-  width: 100%;
 }
 
-/* Full-width textarea */
-.log-popup-ctn textarea {
+.popup-ctn {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  padding: 5px;
+  box-sizing: border-box;
+  flex-direction: column;
+}
+
+.popup-actions {
+  display: flex;
+  padding-top: 5px;
+  padding-left: 5px;
+  padding-right: 10px;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.popup-ctn textarea {
+  flex-grow: 1;
+  width: 100%;
+  padding: 6px;
   border-radius: 7px;
-  margin-bottom: 3px;
-  height: 100%;
-  width: 100%;
-  color: #fff; /* textbox font color */
-  background: #000; /* textbox background color */
-  resize: none;
-  font-kerning: none;
-  font-family: monospace,system-ui; /* log window font */
-  font-size: 15px; /* page default font size */
-  border: 0px;
-}
-
-/* When the textarea gets focus, do something */
-.log-popup-ctn textarea:focus {
-  background: #000; /* textbox selected background color */
+  background: #000;
+  color: #fff;
+  border: none;
   outline: none;
+  resize: none;
+  font-family: monospace;
+  font-size: 15px;
+  box-sizing: border-box;
 }
 
 .button_left_txtwin {
-  margin: 0px;
   height: 75px;
   width: 75px;
 }
 
 .button_right_txtwin {
-  margin: 0px;
   height: 75px;
   width: 120px;
-  float: right;
-}
-
-/*
- *  Camera Window Style
- */
-
-#camForm {
-  width: 90vw;
-  height: auto;
-}
-
-#camDiv {
-  background-color: #202223;
-  overflow: hidden;
-  resize: none;
-}
-
-#camImage {
-  width: 100%;
-  height: auto;
-  max-height: 80vh;
-  aspect-ratio: 16 / 9;
-  margin-bottom: 3px;
-  border-radius: 7px;
-  overflow: clip;
-}
-
-#camButtonLeft {
-  background-color: var(--main-color);
-  margin: 0px;
-}  
-
-#camButtonRight {
-  background-color: var(--main-color);
-  float: right;
-  margin: 0px;
+  margin-left: auto;
 }
 
 /*
@@ -466,7 +462,7 @@ input.chkbox {
 .dd-content {
   display: none;
   border-radius: 5px;
-  background-color: #4d5b69;
+  background-color: var(--secondary-color);
   opacity: 0.96;
   z-index: 998;
 }
@@ -484,15 +480,11 @@ input.chkbox {
 
 .dd-content a:hover {
   border-radius: 5px;
-  background-color: #1c1e20;
+  background-color: var(--menu-hover-color);
   color: #e8e5e5;
 }
 
 /* Status Menu */
-
-.no_select {
-  pointer-events: none;
-}
 
 .ind_dot {
   height: 25px;
@@ -510,11 +502,11 @@ input.chkbox {
 }
 
 .ind_dot_green {
-  background-color: #00FF00;
+  background-color: #00ff00;
 }
 
 .ind_dot_red {
-  background-color: #FF0000;
+  background-color: #ff0000;
 }
 
 .ind-button {
@@ -550,13 +542,17 @@ input.chkbox {
 #bookmarks::-webkit-scrollbar-track {
   margin-top: 3px;
   margin-bottom: 3px;
-  background-color: #2d353d;
+  background-color: var(--secondary-color);
   border-radius: 5px;
 }
 
 #bookmarks::-webkit-scrollbar-thumb {
   background-color: color-mix(in srgb, var(--main-color) 70%, #fff);
   border-radius: 5px;
+}
+
+#bookmarks::-webkit-scrollbar {
+  width: 5px;
 }
 
 #bookmarks::-webkit-scrollbar {
@@ -594,24 +590,29 @@ input.chkbox {
   margin-right: 16px;
 }
 
+.prompt_win {
+  border-radius: 15px;
+  background-color: #000;
+  border: 1px solid #fff;
+  position: absolute;
+  color: #fff;
+  z-index: 998;
+  text-decoration: none;
+  text-align: center;
+}
+
 /*
  *  Password Prompt Style
  */
 
 #pass__prompt_win {
-  border-radius: 15px;
-  background-color: #000;
-  border: 1px solid #fff;
-  position: absolute;
   top: 50%;
   left: 50%;
   margin-right: -50%;
   transform: translate(-50%, -50%);
   width: 350px;
   height: auto;
-  padding: 16px; 
-  color: #fff;
-  z-index: 997;
+  padding: 16px;
 }
 
 #pass__textbox {
@@ -639,10 +640,6 @@ input.chkbox {
  */
 
 #pinet__prompt {
-  border-radius: 15px;
-  background-color: #000;
-  border: 1px solid #fff;
-  position: absolute;
   top: 50%;
   left: 50%;
   margin-right: -50%;
@@ -650,8 +647,6 @@ input.chkbox {
   width: 350px;  
   height: auto;
   padding: 16px; 
-  color: #fff;
-  z-index: 997;
 }
 
 #pinet__ssidbox {
@@ -681,12 +676,6 @@ input.chkbox {
  */
 
 #wifi__prompt {
-  border-radius: 15px;
-  background-color: #000;
-  border: 1px solid #fff;
-  text-align: center;
-  text-decoration: none;
-  position: absolute;
   top: 50%;
   left: 50%;
   margin-right: -50%;
@@ -694,8 +683,6 @@ input.chkbox {
   width: auto;  
   height: auto;
   padding: 16px; 
-  color: #fff;
-  z-index: 997;
 }
 
 #wifi__img {
@@ -713,8 +700,6 @@ input.chkbox {
 #wifipmt__btn {
   width: 120px;
   height: 60px;
-  bottom: 15px;
-  left: 50%;
 }
 
 /*
@@ -722,11 +707,6 @@ input.chkbox {
  */
 
 #editFav__prompt {
-  border-radius: 15px;
-  background-color: #000;
-  border: 1px solid #fff;
-  text-align: center;
-  text-decoration: none;
   position: absolute;
   display: inline-block;
   padding-bottom: 10px; 
@@ -734,8 +714,6 @@ input.chkbox {
   left: 20%;
   height: auto;
   width: 360px;
-  color: #fff;
-  z-index: 997; 
 }
 
 .editFav__button {
@@ -774,12 +752,6 @@ input.chkbox {
  */
 
 #about__prompt {
-  border-radius: 15px;
-  background-color: #000;
-  border: 1px solid #fff;
-  text-align: center;
-  text-decoration: none;
-  position: absolute;
   top: 50%;
   left: 50%;
   margin-right: -50%;
@@ -796,7 +768,7 @@ input.chkbox {
   margin-left: -75px;
   width: 150px;
   height: 70px;
-  bottom: 18px;
+  bottom: 12px;
   left: 50%;
 }
 
@@ -816,12 +788,8 @@ input.chkbox {
  */
 
 .svropt__prompt {
-  border-radius: 15px;
   display: none;
   overflow-y: visible;
-  background-color: #000;
-  border: 1px solid #fff;
-  position: absolute;
   top: 50%;
   left: 50%;
   margin-right: -50%;
@@ -829,8 +797,6 @@ input.chkbox {
   width: 455px;
   height: auto;
   padding: 7px; 
-  z-index: 997;
-  color: #fff;
 }
 
 .svropt__bkp_brd {
@@ -866,19 +832,13 @@ input.chkbox {
  */
 
 #color__prompt {
-  border-radius: 15px;
-  background-color: #000;
-  border: 1px solid #fff;
-  position: absolute;
   top: 50%;
   left: 50%;
   margin-right: -50%;
   transform: translate(-50%, -50%);
-  width: 350px;  
+  width: 195px;  
   height: auto;
   padding: 16px; 
-  color: #fff;
-  z-index: 997; 
 }
 
 #color__text {
@@ -893,10 +853,10 @@ input.chkbox {
   border: 1px solid #fff;
   border-radius: 0px;
   background: none;
-  margin-top: 10px;
-  margin-left: 10px;
+  margin-top: 15px;
+  margin-bottom: 15px;
   height: 30px;
-  width: 295px;  
+  width: 100% 
 }
 
 #color__box::-webkit-color-swatch-wrapper {
@@ -919,7 +879,7 @@ input.chkbox {
   height: 100vh;
   position: fixed;
   background: #000;
-  z-index: -1000;
+  z-index: -999;
 }
 
 .star-tile {
@@ -1082,6 +1042,7 @@ input.chkbox {
 }
 
 .btn-spinner, .right-nav-spinner {
+  pointer-events: none;
   position: absolute;
   border-radius: 50%;
   display: inline-block;
@@ -1115,7 +1076,7 @@ input.chkbox {
   left: 50%;
   margin-left: -85px;
   padding: 8px;
-  z-index: 999;
+  z-index: 997;
   overflow: hidden;
   resize: none;
 }
@@ -1133,7 +1094,6 @@ input.chkbox {
   margin: 5px;
 }
 
-
 /*
  *  Volume Popup
  */
@@ -1149,11 +1109,10 @@ input.chkbox {
 .progress_grid {
   margin-top: 8px;
   margin-bottom: 15px;
-  background: #38383f;
+  background: var(--secondary-color);
   position: relative;
   height: 30px;
   width: 150px;
-  border: 4px solid #2a2a2e;
   border-radius: 20px;
   z-index: 1;
   display: none;
@@ -1174,13 +1133,7 @@ input.chkbox {
  */
 
  #temp__prompt {
-  border-radius: 15px;
-  background-color: #000;
-  border: 1px solid #fff;
   margin-left: -125px;
-  text-decoration: none;
-  text-align: center;
-  position: absolute;
   top: 20%;
   left: 50%;
   padding: 15px; 
@@ -1207,10 +1160,10 @@ input.chkbox {
 
 .thermometer {
   width: 25px;
-  background: #38383f;
+  background: var(--menu-hover-color);
   height: 240px;
   position: relative;
-  border: 9px solid #2a2a2e;
+  border: 9px solid var(--secondary-color);
   border-radius: 20px;
   z-index: 1;
 }
@@ -1224,7 +1177,7 @@ input.chkbox {
   height: 45px;
   background-color: #659df1;
   bottom: -40px;
-  border: 9px solid #2a2a2e;
+  border: 9px solid color-mix(in srgb, var(--secondary-color) 70%, #fff);
   z-index: -3;
   left: 50%;
 }
@@ -1263,10 +1216,10 @@ input.chkbox {
 }
 
 .slider-wide {
+  -webkit-appearance: none;
   left: -2px;
   bottom: -2px;
   width: 160px;
-  -webkit-appearance: none;
   position: absolute;
   overflow: hidden;
   cursor: pointer;
@@ -1275,12 +1228,12 @@ input.chkbox {
 
 .slider-wide::-webkit-slider-runnable-track {
   -webkit-appearance: none;
-  background: #212121;
+  background: var(--menu-hover-color);
 }
 
 .slider-wide::-webkit-slider-thumb {
-  border-radius: 0px;
   -webkit-appearance: none;
+  border-radius: 0px;
   width: 30px;
   height: 60px;
   background: #fff;

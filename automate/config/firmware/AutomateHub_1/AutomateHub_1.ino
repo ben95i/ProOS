@@ -1,7 +1,7 @@
 /*
  * Ben Provenzano III
  * -----------------
- * 10/10/2025
+ * 03/24/2026
  * Automate Hub #1
  * -----------------
  */
@@ -65,7 +65,6 @@ uint16_t serialCurPos = 0;
 bool serialFwrdMode = 0;
 bool serialReading = 0;
 bool serialMsgEnd = 0;
-const uint16_t serialStartEndDelay = 25; // delay in (ms) between start and stop of serial read
 const uint16_t maxFwrdWait = 500; // max wait in (ms) for external serial response
 Neotimer maxFwrdRead = Neotimer();
 
@@ -351,7 +350,6 @@ void readSerialData(char rc, char startInd ,char endInd) {
       serialReading = 0;
       serialCurPos = 0;
       serialMsgEnd = 1;
-      delay(serialStartEndDelay);
     } else {
       // store characters in buffer
       if (rc != startInd) {
@@ -366,7 +364,6 @@ void readSerialData(char rc, char startInd ,char endInd) {
   } else {
     // start reading
     if (rc == startInd) {
-      delay(serialStartEndDelay);
       serialReading = 1;
       serialCurPos = 0;
       serialMsgEnd = 0;
@@ -377,7 +374,7 @@ void readSerialData(char rc, char startInd ,char endInd) {
 void writeSerialData(bool InOut) {
   digitalWrite(LED_BUILTIN, HIGH);
   Serial.print(respDelimiter);
-  for(uint8_t _idx = 0; _idx <= maxMessage; _idx++) {
+  for(uint8_t _idx = 0; _idx < maxMessage; _idx++) {
     char _fwrdChr;
     if (InOut == 1){
       _fwrdChr = serialMessageIn[_idx];
@@ -402,7 +399,7 @@ void decodeMessage() {
   uint8_t _delims = 0;
   uint8_t _maxchars = 10;
   char _delimiter = ',';
-  for(uint8_t _idx = 0; _idx <= maxMessage; _idx++) {
+  for(uint8_t _idx = 0; _idx < maxMessage; _idx++) {
     char _vchr = serialMessageIn[_idx];  
     if (_vchr == nullTrm) {
       break;
@@ -418,7 +415,7 @@ void decodeMessage() {
   }
   // find first delimiter position
   uint8_t _linepos = 0;
-  for(uint8_t _idx = 0; _idx <= maxMessage; _idx++) {  
+  for(uint8_t _idx = 0; _idx < maxMessage; _idx++) {  
     char _vchr = serialMessageIn[_idx];  
     if (_vchr == nullTrm) {
       break;
@@ -446,7 +443,7 @@ void decodeMessage() {
   // find second delimiter position
   uint8_t _count = 0;
   uint8_t _cmd2pos = 0; 
-  for(uint8_t _idx = 0; _idx <= maxMessage; _idx++) {
+  for(uint8_t _idx = 0; _idx < maxMessage; _idx++) {
     char _vchr = serialMessageIn[_idx];
     if (_vchr == nullTrm) {
       break;
@@ -475,12 +472,12 @@ void processCmdData(uint8_t messageStart) {
   uint8_t _cmdlen = cmdRegLen + cmdDatLen;
   char _cmdarr[_cmdlen + 1];
   // extract control code from message
-  for(uint8_t _idx = messageStart; _idx <= maxMessage; _idx++) {
+  for(uint8_t _idx = messageStart; _idx < maxMessage; _idx++) {
     char _curchar = serialMessageIn[_idx];
     if (_curchar == nullTrm) {
       break;
     }
-    if (isDigit(_curchar) && _numcnt <= maxMessage) {
+    if (isDigit(_curchar) && _numcnt < _cmdlen) {
       _cmdarr[_numcnt] = _curchar;
       _numcnt++;
     }
@@ -544,7 +541,7 @@ void routeMessage(bool origin, uint8_t reg, uint16_t ctldata) {
     if (origin == 1) {
       ExtSerial.print("9,9,"); // static characters
     }
-    for(uint8_t _idx = 0; _idx <= maxMessage; _idx++) {  
+    for(uint8_t _idx = 0; _idx < maxMessage; _idx++) {  
       char _vchr;
       _vchr = serialMessageIn[_idx];
       if (_vchr == nullTrm) {

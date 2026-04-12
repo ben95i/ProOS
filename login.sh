@@ -5,23 +5,23 @@
 
 ## DNS domain name
 DOMAIN=".home"
-## Modules folder
+## modules folder
 ROOTDIR="/mnt/ProOS"
 ## SSH keys folder
 KEYS="$ROOTDIR/mgmt/keys"
-## Work folder
+## work folder
 WORKDIR="/opt/deploy"
-## Read arguments
-MODULE=${1}
-CMD=${2}
-HOST=${3}
-## Global constants
+## command line arguments
+MODULE="${1}"
+CMD="${2}"
+HOST="${3}"
+## constants
 SSH_PORT="22"
 SSH_TIMEOUT="450ms"
 SPACER="*********************"
 SSH_ARGS="ServerAliveInterval=5 -o ServerAliveCountMax=5"
-UPDATE_CMDS="apt update; apt upgrade; apt autoremove"
-## Global variables
+UPDATE_CMDS="apt update; apt upgrade; apt full-upgrade; apt autoremove; apt clean"
+## variables
 HOST_STATUS="offline"
 INTMODE=""
 
@@ -87,7 +87,7 @@ SSH_LOGIN(){
   fi
 }
 
-EXTRA_ARGS(){
+INIT_ARGS(){
 ### ProServer Help Menu
 if [ "$MODULE" == "" ]; then
 printf \
@@ -97,8 +97,8 @@ by Ben Provenzano III
 Logon to ProOS Pi / Server
 login "Hostname"
 
-Update Servers
-login updatepve
+Update Server (All LXCs/VMs)
+login update-server
 
 Sync ProOS (quick run config script) Pi / Server
 login "Hostname" sync
@@ -117,7 +117,6 @@ login rmtmp
 \n'
 exit
 fi
-
 ### Exit if matches this hosts
 if [ "$MODULE" == "logon" ] || \
    [ "$MODULE" == "login" ] || \
@@ -128,7 +127,6 @@ if [ "$MODULE" == "logon" ] || \
 echo "Hostname not allowed."
 exit
 fi
-
 if [ "$MODULE" == "cmds" ]; then
 printf \
 '* Linux Command Reference
@@ -148,12 +146,10 @@ qemu-img convert -f raw -O qcow2 /dev/rpool/proxmox/vm-100-disk-0 file.qcow2
 \n'
 exit
 fi
-
-if [ "$MODULE" == "updatepve" ]; then
+if [ "$MODULE" == "update-server" ]; then
 ## Update Proxmox LXCs/VMs/Host
 UPDATE_ALL_SVRS
 fi
-
 ### Remove temp files argument
 if [ "$MODULE" == "rmtmp" ]; then
 echo "deleting temporary files..."
@@ -163,7 +159,6 @@ if [ -e $WORKDIR ]; then
 else
   rm -rfv /tmp/protmp.*
 fi
-
 exit
 fi
 }
@@ -272,17 +267,17 @@ DEPLOY_PI(){
   fi
   EXCLUDED="--exclude=photos --exclude=sources"
   RSYNC_ARGS="--stats --human-readable --recursive --times --checksum"
-  ## install base software
+  echo "Downloading base software..."
   rsync -e "ssh -o $SSH_ARGS" $RSYNC_ARGS $EXCLUDED $ROOTDIR/rpi root@$HOST:/opt/
-  ## install shared software 
+  echo "Downloading shared software..."
   rsync -e "ssh -o $SSH_ARGS" $RSYNC_ARGS $ROOTDIR/automate/config/ztermcom.c root@$HOST:/opt/rpi/
   rsync -e "ssh -o $SSH_ARGS" $RSYNC_ARGS --mkpath $ROOTDIR/automate/config/nodeapi/ root@$HOST:/opt/nodeapi/
   rsync -e "ssh -o $SSH_ARGS" $RSYNC_ARGS --mkpath $ROOTDIR/automate/config/html/ root@$HOST:/opt/rpi/config/html-base/
-  ## install module-specific software
+  echo "Downloading module-specific software..."
   rsync -e "ssh -o $SSH_ARGS" $RSYNC_ARGS $EXCLUDED $ROOTDIR/$MODULE/ root@$HOST:/opt/rpi/
-  ## run installer on host
+  echo "Starting installer..."
   ssh -t -o $SSH_ARGS root@$HOST "cd /opt/rpi/config; echo $MODULE > ./hostname; chmod +x ./installer.sh; ./installer.sh"
-  ## copy website menu items (last)
+  echo "Configuring menu items..."
   rsync -e "ssh -o $SSH_ARGS" $RSYNC_ARGS --mkpath $ROOTDIR/automate/config/menus/*.txt root@$HOST:/var/www/html/ram/
   POST_DEPLOY_MENU
 }
@@ -316,7 +311,7 @@ DEPLOY_SERVER(){
 
 PRGM_INIT(){
   ## Process Initial Arguments
-  EXTRA_ARGS
+  INIT_ARGS
   ## Check For Proxmox Configuration
   if [ -e "$ROOTDIR/$MODULE/qemu.conf" ] || \
      [ -e "$ROOTDIR/$MODULE/lxc.conf" ] || \

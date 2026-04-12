@@ -53,8 +53,4 @@ echo " Welcome to ProOS Server!"
 echo " by Ben Provenzano III"
 echo "*"
 
-## Disable Web Interface on Boot
-sleep 20
-systemctl stop spiceproxy pveproxy
-
 exit 0

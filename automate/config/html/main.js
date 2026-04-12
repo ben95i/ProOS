@@ -2,11 +2,9 @@
 // by Ben Provenzano III
 
 // global variables //
-let ctlMode;
 let ctlCommand;
 let fileData = [];
 let serverCmdData;
-let fcSocket = null;
 let resizeState = false;
 let messagePopupTimer;
 let dynMenuActive = 0;
@@ -21,8 +19,6 @@ const BKM_INACTIVE = 0;
 const BKM_OPEN_MODE = 1;
 const BKM_EDIT_MODE = 2;
 const resizeTimeout = 750; // in ms
-
-//////////////////////
 
 // runs after DOM finishes loading
 window.addEventListener("DOMContentLoaded", () => {
@@ -51,11 +47,11 @@ function handleClicks(event) {
         event.target.classList.contains('fad') || // duotone icon clicks
         event.target.classList.contains('fab') || // brand icon clicks
         event.target.classList.contains('fas'))) { // solid icon clicks
-    hideDropdowns(true); // hide all dropdown menus
+    hideDropdowns(); // hide all dropdown menus
   }
 }
 
-function hideDropdowns(eraseDynMenus) {
+function hideDropdowns() {
   // hide all dropdown menus
   classDisplay("dd-content", "none");
   // hide / reset bookmarks menu
@@ -67,10 +63,7 @@ function hideDropdowns(eraseDynMenus) {
   removeBookmarkSearch();
   closeBookmarkPrompt();
   bookmarkState = BKM_INACTIVE;
-  // remove dynamic menus
-  if (eraseDynMenus === true) {
-    removeDynMenus();
-  }
+  removeDynMenus();
 }
 
 // show / hide multiple classes
@@ -141,6 +134,18 @@ function showPopup(message) {
   }, 4000); // hide delay in (ms)
 }
 
+// execute only if limit has passed since the last call
+function throttle(func, limit) {
+  let lastCall = 0;
+  return function(...args) {
+    const now = Date.now();
+    if (now - lastCall >= limit) {
+      lastCall = now;
+      return func.apply(this, args);
+    }
+  };
+}
+
 // open URL in new tab
 function GoToExtPage(_path) {
   let url = "https://" + _path;   
@@ -170,12 +175,10 @@ function loadPage() {
   if (sysModel === serverSite) {
     // load control menu saved state
     let _mode = localStorage.getItem("ctls-mode")
-    if (_mode === null || _mode === undefined || _mode === "") {
-      ctlMode = 'lr'; // living room 
-    } else {
-      ctlMode = _mode;
-    }
-    ctlsMenu(ctlMode);
+    if (_mode === null || _mode === undefined || _mode === "") { 
+      _mode = 'lr'; 
+    } // living room
+    ctlsMenu(_mode);
     // server home page
     classDisplay('server-grid', 'block');
   } else if (sysModel === 'Pi') {
@@ -197,11 +200,11 @@ function loadPage() {
 
 function detectOS() {
 	let userAgent = window.navigator.userAgent,
-		platform = window.navigator.platform,
-		macosPlatforms = ['Macintosh', 'MacIntel', 'MacPPC', 'Mac68K'],
-		windowsPlatforms = ['Win32', 'Win64', 'Windows', 'WinCE'],
-		iosPlatforms = ['iPhone', 'iPad', 'iPod'],
-		os = null;
+  platform = window.navigator.platform,
+  macosPlatforms = ['Macintosh', 'MacIntel', 'MacPPC', 'Mac68K'],
+  windowsPlatforms = ['Win32', 'Win64', 'Windows', 'WinCE'],
+  iosPlatforms = ['iPhone', 'iPad', 'iPod'],
+  os = null;
 	if (macosPlatforms.indexOf(platform) !== -1) {
 		os = 'MacOS';
 	} else if (iosPlatforms.indexOf(platform) !== -1) {
@@ -342,7 +345,7 @@ function openBackupOptions(){
 }
 
 function closeServerOptions(){
-  hideDropdowns(true);
+  hideDropdowns();
   clearPendingCmd();
   classDisplay("svropt__prompt", "none");
   classDisplay("svropt__main", "none");
@@ -359,7 +362,8 @@ async function aboutPrompt(){
     return;
   }
   let aboutprompt = document.createElement("div"); 
-  aboutprompt.id= _winid;
+  aboutprompt.id = _winid;
+  aboutprompt.classList.add("prompt_win");
   // title
   let abouttext = document.createElement("div");
   abouttext.className = "about__title";
@@ -410,7 +414,8 @@ async function showTempHumidity(){
   }
   // create window
   let tempprompt = document.createElement("div"); 
-  tempprompt.id= _winid;
+  tempprompt.id = _winid;
+  tempprompt.classList.add("prompt_win");
   // top window text
   let temptext = document.createElement("div");
   temptext.innerHTML = 'Temperature/Humidity';
@@ -562,7 +567,7 @@ async function showPiWiFiPrompt() {
   if (document.getElementById(winid)) {
     return;
   }
-  hideDropdowns(true);
+  hideDropdowns();
   let result = await piWiFiPrompt(winid);
   if (result !== null) {  
     if (result !== '') {  
@@ -574,7 +579,8 @@ async function showPiWiFiPrompt() {
 
 async function piWiFiPrompt(_winid){
   let pinetprompt = document.createElement("div"); 
-  pinetprompt.id = _winid; 
+  pinetprompt.id = _winid;
+  pinetprompt.classList.add("prompt_win");
   // SSID text
   let pinettext1 = document.createElement("div"); 
   pinettext1.innerHTML = "Network (SSID):"; 
@@ -666,6 +672,7 @@ async function wifiPrompt(){
   }
   let wifiprompt = document.createElement("div");
   wifiprompt.id = _winid;
+  wifiprompt.classList.add("prompt_win");
   let wifitext = document.createElement("div");
   wifitext.innerHTML = "Scan for WiFi Access"; 
   wifiprompt.appendChild(wifitext);
@@ -696,7 +703,7 @@ async function wifiPrompt(){
 async function getPassword(_type){
   let result;
   try{
-    hideDropdowns(true);
+    hideDropdowns();
     result = await passwordPrompt();
     if (result !== null) {  
       if (result !== '') {
@@ -717,6 +724,7 @@ function passwordPrompt(){
   }
   let pwprompt = document.createElement("div"); //creates the div to be used as a prompt
   pwprompt.id = _winid; //gives the prompt an id
+  pwprompt.classList.add("prompt_win");
   let pwtextdiv = document.createElement("div"); //create the div for the password-text
   pwtextdiv.innerHTML = "Enter password:"; //put inside the text
   pwprompt.appendChild(pwtextdiv); //append the text-div to the password-prompt
@@ -770,133 +778,50 @@ async function colorPrompt(){
   if (document.getElementById(winid)) {
     return;
   }
-  hideDropdowns(true);
+  hideDropdowns();
   let colorprompt = document.createElement("div"); //creates the div to be used as a prompt
-  colorprompt.id= winid; //gives the prompt an id
+  colorprompt.id = winid; //gives the prompt an id
+  colorprompt.classList.add("prompt_win");
   let colortext = document.createElement("div"); //create the div for the password-text
   colortext.innerHTML = "Pick a color:"; //put inside the text
   colortext.id = "color__text";
   colorprompt.appendChild(colortext); //append the text-div to the prompt
-  // the cancel-button
-  let colorcancelb = document.createElement("button"); 
-  colorcancelb.innerHTML = "Close";
-  colorcancelb.className ="button"; 
-  colorcancelb.type="button"; 
-  colorprompt.appendChild(colorcancelb); //append cancel-button
-  // the set color-button
-  let colorsetb = document.createElement("button"); 
-  colorsetb.innerHTML = "Apply";
-  colorsetb.className ="button"; 
-  colorsetb.type="button"; 
-  colorprompt.appendChild(colorsetb); //append set-button
   // color selector box
   let colorinput = document.createElement("input");
   colorinput.id = "color__box";
   colorinput.name = "color";
   colorinput.type = "color";
   colorinput.value = "#000000";
-  colorprompt.appendChild(colorinput);
+  colorprompt.appendChild(colorinput);  
+  // the cancel-button
+  let colorcancelb = document.createElement("button"); 
+  colorcancelb.innerHTML = "Close";
+  colorcancelb.className ="button"; 
+  colorcancelb.type="button"; 
+  colorprompt.appendChild(colorcancelb); //append cancel-button
   // append the password-prompt so it is visible
   document.body.appendChild(colorprompt); 
-  let _colorval;
   new Promise(function() {
       colorinput.addEventListener('input', function colorEventListener(inp_evnt) {
-        _colorval = colorinput.value; // save color values
+        let hex_rgb = colorinput.value.replace(/^#/, ''); // save color values
+        sendCmd('leds','hex',hex_rgb);
         // cleanup listener
         if (inp_evnt.target.tagName !== 'INPUT') { return; }
         colorinput.removeEventListener('click', colorEventListener); 
       });
       colorprompt.addEventListener('click', function handleButtonClicks(btn_evnt) {
         if (btn_evnt.target.tagName !== 'BUTTON') { return; } //nothing to do - user clicked somewhere else
-        if (btn_evnt.target === colorsetb) { 
-          // set button action
-          updateColor(_colorval);
-        } else { // close button
-          colorprompt.removeEventListener('click', handleButtonClicks);
-          document.body.removeChild(colorprompt);  //as we are done clean up by removing the-prompt
-        }  
+        // close button
+        colorprompt.removeEventListener('click', handleButtonClicks);
+        document.body.removeChild(colorprompt);  //as we are done clean up by removing the-prompt
       });
   });   
-}
-
-function updateColor(_hexin) {
-  let _proto = 'wss://';
-  let color;
-  if (location.protocol === 'http:'){
-    _proto = 'ws://';
-  }
-  _host = _proto + location.hostname + ":7890";
-  // Connect to a Fadecandy server
-  fcSocket = new WebSocket(_host);
-  fcSocket.onopen = function() {
-    color = hexToRgb(_hexin);
-    let rounds = 32;
-    for (let i = 0; i < rounds; i++) {
-        writeFrame(
-        color.r,
-        color.g,
-        color.b);
-    }           
-  }
-}
-
-function hexToRgb(hex) {
-  // Expand shorthand form (e.g. "03F") to full form (e.g. "0033FF")
-  let shorthandRegex = /^#?([a-f\d])([a-f\d])([a-f\d])$/i;
-  hex = hex.replace(shorthandRegex, function(m, r, g, b) {
-      return r + r + g + g + b + b;
-  });
-  let result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-  return result ? {
-      r: parseInt(result[1], 16),
-      g: parseInt(result[2], 16),
-      b: parseInt(result[3], 16)
-  } : null;
-}
-
-// Set all pixels to a given color
-function writeFrame(red, green, blue) {
-  let leds = 512;
-  let packet = new Uint8ClampedArray(4 + leds * 3);
-  if (fcSocket.readyState != 1 /* OPEN */) {
-      // The server connection isn't open. Nothing to do.
-      return;
-  }
-  if (fcSocket.bufferedAmount > packet.length) {
-      // The network is lagging, and we still haven't sent the previous frame.
-      // Don't flood the network, it will just make us laggy.
-      // If fcserver is running on the same computer, it should always be able
-      // to keep up with the frames we send, so we shouldn't reach this point.
-      return;
-  }
-  // Dest position in our packet. Start right after the header.
-  let dest = 4;
-  // Sample the center pixel of each LED
-  for (let i = 0; i < leds; i++) {
-      packet[dest++] = red;
-      packet[dest++] = green;
-      packet[dest++] = blue;
-  }
-  fcSocket.send(packet.buffer);
 }
 
 /// END DYNAMIC WINDOWS ///
 
 function relaxSend(_cmd) {
   sendCmd('main', 'relax', _cmd);
-}
-
-// volume controls
-function sendVol(_cmd) {
-  if (ctlCommand == 'lr' ){
-    sendCmd('main', 'lrxmit', _cmd); // living room system 
-  }
-  if (ctlCommand == 'subs' ){
-    sendCmd('main', 'lrxmit', 'sub' + _cmd); // living room subwoofers
-  }  
-  if (ctlCommand == 'br' ){
-    setAmpVolume(_cmd); // bedroom system
-  }
 }
 
 function isNumeric(value) {
@@ -907,13 +832,31 @@ function mapNumber(num, inMin, inMax, outMin, outMax) {
   return (num - inMin) * (outMax - outMin) / (inMax - inMin) + outMin;
 }
 
-function setAmpVolume(_state) {
-  sendCmd('main', 'brpi', 'vol' + _state).then((data) => { // GET request
+// volume controls
+function sendVol(_cmd) {
+  if (ctlCommand == 'lr' ){
+    setAmpVolume(_cmd, 'lrxmit', 100); // living room system
+  }
+  if (ctlCommand == 'subs' ){
+    sendCmd('main', 'lrxmit', 'sub' + _cmd); // living room subwoofers
+  }  
+  if (ctlCommand == 'br' ){
+    setAmpVolume(_cmd, 'brpi', 192); // bedroom system
+  }
+}
+
+function setAmpVolume(_cmd, _device, _maxvol) {
+  sendCmd('main', _device, 'vol' + _cmd).then((data) => { // GET request
     let amp_vol = cleanString(data);
     if (isNumeric(amp_vol) === true) {
       // re-map volume data to 0-100%, show volume pop-up
-      let display_vol = Math.round(mapNumber(Number(amp_vol),0,192,0,100));
-      showVolumePopup(display_vol); 
+      let display_value;
+      if (_maxvol == 100) {
+        display_value = Number(amp_vol);
+      } else {
+        display_value = Number(Math.round(mapNumber(amp_vol, 0, _maxvol, 0, 100)));
+      }
+      showVolumePopup(display_value); 
     } else {
       if (amp_vol == "") {
         // empty response = power off
@@ -961,7 +904,7 @@ function showVolumePopup(vol) {
     case -1:
       volgrid.style.display = "none";
       voltext.innerHTML = "---";
-      break;
+      break;    
     case 0:
       volgrid.style.display = "none";
       voltext.innerHTML = "Mute";
@@ -1034,7 +977,7 @@ function subMode(_action) {
   addClassToElem(_action, 'voldwnbtn', 'submode_btn');
   addClassToElem(_action, 'volmutebtn', 'submode_btn');
   addClassToElem(_action, 'volupbtn', 'submode_btn');
-  addClassToElem(_action, 'subwooferbtn', 'submode_btn');
+  //addClassToElem(_action, 'subwooferbtn', 'submode_btn');
 }
 
 // controls menu actions
@@ -1068,21 +1011,14 @@ function ctlsMenu(_mode) {
 }
 
 // toggle dropdown menu's
-function showMenu(_menu, _scrolltobtm) {
+function showMenu(_menu) {
   let _elem = document.getElementById(_menu);
   if (_elem.style.display === 'block') {
     _elem.style.display = 'none';
   } else {
-    hideDropdowns(true);
+    hideDropdowns();
     _elem.style.display = 'block';
-    if (_scrolltobtm === true) {
-      scrollToBottom();
-    }
   }
-}
-
-function scrollToBottom() {
-  window.scrollTo(0, document.body.scrollHeight);
 }
 
 //// Bookmarks Menu ////
@@ -1090,7 +1026,7 @@ function scrollToBottom() {
 function showBookmarks() {
   // hide menu if clicked while open
   if (bookmarkState !== BKM_INACTIVE) {
-    hideDropdowns(true);
+    hideDropdowns();
     return;
   }
   // draw bookmarks
@@ -1195,7 +1131,7 @@ function removeBookmarkSearch() {
 function editBookmark() {
   // hide menu if clicked while open
   if (bookmarkState === BKM_EDIT_MODE) {
-    hideDropdowns(true);
+    hideDropdowns();
     return;
   }
   enableEditAddMode();
@@ -1278,6 +1214,7 @@ async function drawBookmarkPrompt(add, url, name, elem){
   let editFavPrompt = document.createElement("div"); 
   editFavPrompt.className = "editFav__win";
   editFavPrompt.id = "editFav__prompt";
+  editFavPrompt.classList.add("prompt_win");
   // Link name edit box
   let editFavName = document.createElement("input"); 
   editFavName.type = "text";
@@ -1375,7 +1312,7 @@ async function drawBookmarkPrompt(add, url, name, elem){
       // cancel button action
       if (btn_event.target === editFavCancelBtn) {
         editFavPrompt.removeEventListener('click', handleButtonClicks);
-        hideDropdowns(true);
+        hideDropdowns();
       }
       // lookup URL action
       if (btn_event.target === editFavLookupBtn) {
@@ -1453,8 +1390,7 @@ function cleanString(data) {
   if (data == null || data == undefined) {
     return null;
   } else {
-    let str = data.toString();
-    let out = str.replace(/(\r\n|\n|\r)/gm, '');
+    let out = data.replace(/(\r\n|\n|\r)/gm, '');
     return out;
   }
 }
@@ -1555,13 +1491,126 @@ function closeBookmarkPrompt() {
   }  
 }
 
-function showAmpInput() {
-  const target = 'brpi';
-  let _elem = document.getElementById("brinpmenu");
+function showHiFiAmpInput() {
+  const offcode = -1;
+  const target = 'lrxmit';
+  const menuname = 'hfinmenu';
+  let _elem = document.getElementById(menuname);
   if (_elem.style.display === 'block') {
     _elem.style.display = 'none';
   } else {
-    hideDropdowns(false);
+    hideDropdowns();
+    _elem.style.display = 'block';
+    // start spinner animation
+    let btnText = document.getElementById(menuname + '-text');
+    let btnSpinner = document.getElementById(menuname + '-spinner');
+    btnText.style.visibility = 'hidden';
+    btnSpinner.classList.add('btn-spinner');
+    sendCmd('main', target, 'curinput').then((data) => { // GET request
+      const resp = cleanString(data); // remove newlines
+      // draw menu items
+      let _menudata = '';
+      if (isNumeric(resp) === true) {
+        if (resp == offcode) {
+          _menudata += menuname + '-offline|blkind|Offline\n';
+        } else { // online
+          // auto input
+          let _indtype = 'blkind'; // indicator type
+          if (resp == '6') { _indtype = 'grnind'; }
+          _menudata += 'cmd~' + target + '~autodac|' + _indtype + '|Auto\n';
+          // PC input
+          _indtype = 'blkind';
+          if (resp == '1') { _indtype = 'grnind'; }
+          _menudata += 'cmd~' + target + '~usb|' + _indtype + '|PC\n';
+          // phono input
+          _indtype = 'blkind';
+          if (resp == '3') { _indtype = 'grnind'; }      
+          _menudata += 'cmd~' + target + '~phono|' + _indtype + '|Phono\n';
+          // optical input
+          _indtype = 'blkind';
+          if (resp == '5') { _indtype = 'grnind'; } 
+          _menudata += 'cmd~' + target + '~opt|' + _indtype + '|Optical\n';
+          // coaxial input
+          _indtype = 'blkind';
+          if (resp == '4') { _indtype = 'grnind'; }
+          _menudata += 'cmd~' + target + '~coax|' + _indtype + '|Coaxial\n';
+          // aux analog input
+          _indtype = 'blkind';
+          if (resp == '2') { _indtype = 'grnind'; }
+          _menudata += 'cmd~' + target + '~aux|' + _indtype + '|Aux\n';
+        }
+      } else {
+        _menudata += menuname + '-error|redind|Error\n';
+      }
+      // stop spinner animation
+      btnText.style.visibility = 'visible';
+      btnSpinner.classList.remove('btn-spinner');
+      // draw menu items
+      drawMenu(_menudata, menuname);
+    });
+  }
+}
+
+function showHiFiMoreMenu() {
+  const offcode = -1;
+  const target = 'lrxmit';
+  const menuname = 'hfmoremenu';
+  let _elem = document.getElementById(menuname);
+  if (_elem.style.display === 'block') {
+    _elem.style.display = 'none';
+  } else {
+    hideDropdowns();
+    _elem.style.display = 'block';
+    // start spinner animation
+    let btnText = document.getElementById(menuname + '-text');
+    let btnSpinner = document.getElementById(menuname + '-spinner');
+    btnText.style.visibility = 'hidden';
+    btnSpinner.classList.add('btn-spinner');
+    sendCmd('main', target, 'curhpfvollim').then((data) => { // GET request
+      const resp = cleanString(data); // remove newlines
+      let _indtype = 'noind'; // indicator type
+      let _menudata = '';
+      if (isNumeric(resp) === true || resp.includes('~')) {
+        if (resp == offcode) {
+          _menudata += menuname + '-offline|blkind|Offline\n';
+        } else if (resp == 0) { 
+          _menudata += menuname + '-muted|noind|Muted\n';
+        } else {
+          const field = resp.split("~"); // volLimitState ~ hpfState
+          const limit_state = field[0]; 
+          const hpf_state = field[1];
+          // subwoofer volume toggle
+          _menudata += 'subsbutton|hfsubs|Subs Gain\n';       
+          // low-cut filter toggle
+          if (hpf_state == '0') { _indtype = 'blkind'; }
+          if (hpf_state == '1') { _indtype = 'grnind'; }
+          _menudata += 'cmd~' + target + '~togglehpf|' + _indtype + '|Low Cut\n';       
+          // volume limiter toggle
+          if (limit_state == '0') { _indtype = 'blkind'; }
+          if (limit_state == '1') { _indtype = 'grnind'; }
+          _menudata += 'cmd~' + target + '~vlimit|' + _indtype + '|vLimiter\n';        
+        }
+      } else {
+        _menudata += menuname + '-error|redind|Error\n';
+      }
+      // stop spinner animation
+      btnText.style.visibility = 'visible';
+      btnSpinner.classList.remove('btn-spinner');
+      // draw menu items
+      drawMenu(_menudata, menuname);
+    });
+  }
+}
+
+function showBedroomAmpInput() {
+  const target = 'brpi';
+  const menuname = 'brinpmenu';
+  const offcode = 0;
+  let _elem = document.getElementById(menuname);
+  if (_elem.style.display === 'block') {
+    _elem.style.display = 'none';
+  } else {
+    hideDropdowns();
     _elem.style.display = 'block';
     // start spinner animation
     let btnText = document.getElementById('ampinp-text');
@@ -1570,40 +1619,55 @@ function showAmpInput() {
     btnSpinner.classList.add('btn-spinner');
     sendCmd('main', target, 'inputstate').then((data) => { // GET request
       const resp = cleanString(data); // remove newlines
-      // draw menu items
-      let _indtype; // indicator type
-      let _menudata = "";
-      // apple TV input 
-      _indtype = 'blkind';
-      if (resp == '2') { _indtype = 'grnind'; }
-      _menudata += 'cmd~' + target + '~opt-a|' + _indtype + '|PC Mode\n';
-      // coaxial input
-      _indtype = 'blkind';
-      if (resp == '3') { _indtype = 'grnind'; }      
-      _menudata += 'cmd~' + target + '~coaxial|' + _indtype + '|Bluetooth\n';
-      // aux optical input
-      _indtype = 'blkind';
-      if (resp == '1') { _indtype = 'grnind'; } 
-      _menudata += 'cmd~' + target + '~opt-b|' + _indtype + '|Optical\n';
-      // aux analog input
-      _indtype = 'blkind';
-      if (resp == '4') { _indtype = 'grnind'; }
-      _menudata += 'cmd~' + target + '~aux|' + _indtype + '|Analog\n';
+      let _menudata = '';
+      if (isNumeric(resp) === true) {
+        if (resp == offcode) {
+          _menudata += menuname + '-offline|blkind|Offline\n';
+        } else { // online
+          // apple TV input 
+          let _indtype = 'blkind';
+          if (resp == '2') { _indtype = 'grnind'; }
+          _menudata += 'cmd~' + target + '~opt-a|' + _indtype + '|PC Mode\n';
+          // coaxial input
+          _indtype = 'blkind';
+          if (resp == '3') { _indtype = 'grnind'; }      
+          _menudata += 'cmd~' + target + '~coaxial|' + _indtype + '|Bluetooth\n';
+          // aux optical input
+          _indtype = 'blkind';
+          if (resp == '1') { _indtype = 'grnind'; } 
+          _menudata += 'cmd~' + target + '~opt-b|' + _indtype + '|Optical\n';
+          // aux analog input
+          _indtype = 'blkind';
+          if (resp == '4') { _indtype = 'grnind'; }
+          _menudata += 'cmd~' + target + '~aux|' + _indtype + '|Analog\n';
+        }
+      } else {
+        _menudata += menuname + '-error|redind|Error\n';
+      }
       // stop spinner animation
       btnText.style.visibility = 'visible';
       btnSpinner.classList.remove('btn-spinner');
       // draw menu items
-      drawMenu(_menudata, "brinpmenu", true);
+      drawMenu(_menudata, menuname);
     });
   }
 }
 
-function showPowerMenu(target, menu, tobtm) {
+function showPowerMenu(target, menu) {
+  let arg1;
+  let arg2;
+  if (target == "") {
+    arg1 = menu;
+    arg2 = "";
+  } else {
+    arg1 = target;
+    arg2 = menu;
+  }
   let _elem = document.getElementById(menu + '-menu');
   if (_elem.style.display === 'block') {
     _elem.style.display = 'none';
   } else {
-    hideDropdowns(false);
+    hideDropdowns();
     // start spinner animation
     let btnText = document.getElementById(menu + '-text');
     let btnSpinner = document.getElementById(menu + '-spinner');
@@ -1611,7 +1675,7 @@ function showPowerMenu(target, menu, tobtm) {
     btnSpinner.classList.add('btn-spinner');
     // show menu
     _elem.style.display = 'block';
-    sendCmd('main', target, menu).then((data) => { // GET request
+    sendCmd('main', arg1, arg2).then((data) => { // GET request
       const resp = cleanString(data); // remove newlines
       const field = resp.split("~");
       const pri_cmd = field[0]; 
@@ -1623,45 +1687,53 @@ function showPowerMenu(target, menu, tobtm) {
       let _menudata = "";
       // status display
       switch(pri_cmd) {
-        case '0':
-          _indtype = 'blkind';
-          _title = "Offline";
-          break;
-        case '1':
-          _indtype = 'grnind';
-          _title = "Online";
-          break;
-        case 'pc_awake':
-          _indtype = 'grnind';
-          _title = "Online";
-          break;
-        default: // error response
-          _indtype = 'redind';
-          _title = "Error";
-          error = true;
+      case '0':
+        _indtype = 'blkind';
+        _title = "Offline";
+        break;
+      case '1':
+        _indtype = 'grnind';
+        _title = "Online";
+        break;
+      case 'pc_awake':
+        _indtype = 'grnind';
+        _title = "Online";
+        break;
+      default: // error response
+        _indtype = 'redind';
+        _title = "Error";
+        error = true;
       }
-      _menudata += target + '|' + _indtype + '|' + _title + '\n';
-      if (error === false) {
-        // power on/off buttons
-        if (pri_cmd == '1') { // online
-          _menudata += 'offcmd~' + target + '~' + menu + 'off|noind|Off\n';
-        }
-        if (pri_cmd == '0') { // offline
-          _menudata += 'oncmd~' + target + '~' + menu + 'on|noind|On\n';
-        }
-        // custom buttons / items
-        if (pri_cmd == 'pc_awake') {
-          _menudata += 'sleepmode~' + target + '~' + menu + 'off|noind|Sleep\n';
-        }
-        if (menu == 'wl_leds') {
-          _menudata += sub_cmd + '~' + target + '~' + menu + '|slider|\n';
-        }
+      // custom menus
+      switch(menu) {
+      case 'fc_leds':
+        // global fadecandy LEDs brightness
+        _menudata += pri_cmd + '~' + menu + '~|slider|\n';
+        break;
+      default: 
+        _menudata += target + '|' + _indtype + '|' + _title + '\n';
+        if (error === false) {
+          // power on/off buttons
+          if (pri_cmd == '1') { // online
+            _menudata += 'offcmd~' + target + '~' + menu + 'off|noind|Off\n';
+          }
+          if (pri_cmd == '0') { // offline
+            _menudata += 'oncmd~' + target + '~' + menu + 'on|noind|On\n';
+          }
+          // custom buttons / items
+          if (pri_cmd == 'pc_awake') {
+            _menudata += 'sleepmode~' + target + '~' + menu + 'off|noind|Sleep\n';
+          }
+          if (menu == 'wl_leds') {
+            _menudata += sub_cmd + '~' + target + '~' + menu + '|slider|\n';
+          }
+        }  
       }
       // stop spinner animation
       btnText.style.visibility = 'visible';
       btnSpinner.classList.remove('btn-spinner');
       // draw menu items
-      drawMenu(_menudata, menu + '-menu', tobtm);
+      drawMenu(_menudata, menu + '-menu');
     });
   }
 }
@@ -1677,7 +1749,7 @@ function showStatusMenu() {
     statIcon.style.visibility = 'visible';
     statSpinner.classList.remove('right-nav-spinner');
   } else {
-    hideDropdowns(false);
+    hideDropdowns();
     // start spinner animation
     statIcon.style.visibility = 'hidden';
     statSpinner.classList.add('right-nav-spinner');
@@ -1685,7 +1757,7 @@ function showStatusMenu() {
     _elem.style.display = 'block';
     sendCmd('main', 'status', '').then((data) => { // GET request
       // draw menu items
-      drawMenu(data, _menu, false);
+      drawMenu(data, _menu);
       // stop spinner animation
       statIcon.style.visibility = 'visible';
       statSpinner.classList.remove('right-nav-spinner');
@@ -1795,12 +1867,12 @@ function savePOST(file, data) {
 
 //// Dynamic Menus ////
 
-function showDynMenu(menu, tobtm) {
+function showDynMenu(menu) {
   let _elem = document.getElementById(menu);
   if (_elem.style.display === 'block') {
     _elem.style.display = 'none';
   } else {
-    hideDropdowns(false);
+    hideDropdowns();
      _elem.style.display = 'block';
     // build URL / append data
     const url = location.protocol+ "//" +location.hostname + "/api/read?file=" + menu;
@@ -1808,7 +1880,7 @@ function showDynMenu(menu, tobtm) {
       if (menu === 'bookmarks') {
         showBookmarkSearch();
       }
-      drawMenu(data, menu, tobtm);
+      drawMenu(data, menu);
     });  
   }
 }
@@ -1826,7 +1898,7 @@ async function loadMenu(url) {
 }
 
 // draws each menu item
-function drawMenu(data, menu, tobtm) {
+function drawMenu(data, menu) {
   // remove any current dynamic menus
   removeDynMenus();
   if (!(data === null || data === "")) {
@@ -1853,10 +1925,6 @@ function drawMenu(data, menu, tobtm) {
     }
     // store menu name at end of array
     fileData.push(menu);
-    // scroll to bottom of page
-    if (tobtm === true) {
-      scrollToBottom();
-    }
   } else {
     showPopup("[drawMenu] no data!");
   }
@@ -1919,7 +1987,7 @@ function createListItem(col0_in, col1, col2, menuid) {
       slider.value = col0;
       slider.step = 1;
       slider.addEventListener('input', function(event) {
-        let cur_value = event.target.value;
+        let cur_value = event.target.value; // value of slider
         sendCmd('main', host, cmd + '_set-' + cur_value);
       });
       _elm.appendChild(slider);
@@ -1935,6 +2003,15 @@ function createListItem(col0_in, col1, col2, menuid) {
       });
       _elm.addEventListener("click", function() {
         clickBookmark(menuid);
+      });
+      break;
+    case 'hfsubs':
+      // subwoofer volume toggle
+      if (ctlCommand == 'subs' ) {
+        _elm.classList.add('submode_btn');
+      }
+      _elm.addEventListener("click", function() {
+        subModeToggle();
       });
       break;
     case 'noind': 
@@ -1976,6 +2053,42 @@ function createListItem(col0_in, col1, col2, menuid) {
   return _elm;
 }
 
+function drawStatusItem(elm, col0, host, cmd) {
+  const _icon = document.createElement('span');
+  if (col0 == 'oncmd') { // power-on remote API call on click
+    _icon.classList.add('fa');
+    _icon.classList.add('fa-toggle-on');
+    _icon.classList.add('leftjfy'); // left-justify icon
+    elm.appendChild(_icon);
+    elm.addEventListener("click", function() {
+      sendCmd('main', host, cmd);
+    });
+  }
+  if (col0 == 'offcmd') { // power-off remote API call on click
+    _icon.classList.add('fa');
+    _icon.classList.add('fa-toggle-off');
+    _icon.classList.add('leftjfy'); // left-justify icon
+    elm.appendChild(_icon);
+    elm.addEventListener("click", function() {
+      sendCmd('main', host, cmd);
+    });
+  }
+  if (col0 == 'sleepmode') { // sleep PC type menu
+    _icon.classList.add('fa');
+    _icon.classList.add('fa-moon');
+    _icon.classList.add('leftjfy'); // left-justify icon
+    elm.appendChild(_icon);
+    elm.addEventListener("click", function() {
+      sendCmd('main', host, cmd);
+    });
+  }
+  if (col0 == 'cmd') { // generic remote API call on click
+    elm.addEventListener("click", function() {
+      sendCmd('main', host, cmd);
+    });
+  }
+}
+
 function drawCheckBoxItem(elm, url, boxid, state) {
   const _cbox = document.createElement('input');
   _cbox.type = "checkbox";
@@ -1992,50 +2105,6 @@ function drawCheckBoxItem(elm, url, boxid, state) {
       boxChanged();
     }
   });
-}
-
-function drawStatusItem(elm, col0, host, cmd) {
-  const _icon = document.createElement('span');
-  let allowhover = false;
-  if (col0 == 'oncmd') { // power-on remote API call on click
-    allowhover = true;
-    _icon.classList.add('fa');
-    _icon.classList.add('fa-toggle-on');
-    _icon.classList.add('leftjfy'); // left-justify icon
-    elm.appendChild(_icon);
-    elm.addEventListener("click", function() {
-      sendCmd('main', host, cmd);
-    });
-  }
-  if (col0 == 'offcmd') { // power-off remote API call on click
-    allowhover = true;
-    _icon.classList.add('fa');
-    _icon.classList.add('fa-toggle-off');
-    _icon.classList.add('leftjfy'); // left-justify icon
-    elm.appendChild(_icon);
-    elm.addEventListener("click", function() {
-      sendCmd('main', host, cmd);
-    });
-  }
-  if (col0 == 'sleepmode') { // sleep PC type menu
-    allowhover = true;
-    _icon.classList.add('fa');
-    _icon.classList.add('fa-moon');
-    _icon.classList.add('leftjfy'); // left-justify icon
-    elm.appendChild(_icon);
-    elm.addEventListener("click", function() {
-      sendCmd('main', host, cmd);
-    });
-  }
-  if (col0 == 'cmd') { // generic remote API call on click
-    allowhover = true;
-    elm.addEventListener("click", function() {
-      sendCmd('main', host, cmd);
-    });
-  }
-  if (allowhover === false){
-    elm.classList.add('no_select');
-  }
 }
 
 function boxChanged() {
@@ -2094,8 +2163,8 @@ function removeDynMenus() {
 // show camera form window
 function openCamWindow() {
   closePopup();
-  document.getElementById("camForm").style.display = "block";
-  document.getElementById("camImage").src = "/cam1";
+  document.getElementById("cam-popup").style.display = "block";
+  document.getElementById("cam-display").src = "/cam1";
 }
 
 function goToContextRoot(_path) {
@@ -2106,8 +2175,8 @@ function goToContextRoot(_path) {
 // close all popup windows
 function closePopup() {
   document.getElementById("logForm").style.display = "none";
-  document.getElementById("camForm").style.display = "none";
-  document.getElementById("camImage").src = "";
+  document.getElementById("cam-popup").style.display = "none";
+  document.getElementById("cam-display").src = "";
   clearPendingCmd();
   closeServerOptions();
 }

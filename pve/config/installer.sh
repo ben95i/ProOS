@@ -92,6 +92,11 @@ cp -f $TMPDIR/fstab /etc/
 chmod 644 /etc/fstab
 chown root:root /etc/fstab
 
+## Restrict Proxmox Web UI Access
+cp -f $TMPDIR/pveproxy /etc/default/
+chmod 644 /etc/default/pveproxy
+chown root:root /etc/default/pveproxy
+
 ## Move Swapfile to Scratch Drive
 if [ ! -e "/dev/zvol/rpool/swap" ]; then
   echo "Swap file already moved."

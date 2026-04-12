@@ -93,7 +93,7 @@ apt-get $APTARGS libgtk2.0-dev libbluetooth-dev libpng-dev libdaemon-dev libpopt
  libtheora-dev libssl-dev libx11-dev libxml2-dev libxslt1-dev zlib1g-dev libdbus-1-dev \
  libva-dev libvdpau-dev libvorbis-dev libxext-dev libxfixes-dev libdbus-glib-1-dev \
  libsoxr-dev libao-dev libreadline-dev libsoup2.4-dev libgcrypt-dev libconfig-dev \
- libjson-glib-dev libsodium-dev
+ libjson-glib-dev libsodium-dev libopencv-dev
 
 ## Install X11
 apt-get $APTARGS xserver-xorg xorg x11-common x11-common xserver-xorg-input-evdev \
@@ -188,6 +188,9 @@ if [ ! -e "/etc/rpi-bootro.done" ]; then
 fi
 cp -fv /boot/firmware/config.txt /boot/firmware/config.bak
 cp -f $BIN/config.txt /boot/firmware/
+
+## Disable Serial Console Redirection
+sed -i 's/console=serial0,115200 //g' /boot/firmware/cmdline.txt
 
 ## Boot to Console
 systemctl set-default multi-user.target
@@ -522,6 +525,26 @@ rm -f /usr/bin/ztermcom
 gcc /opt/rpi/ztermcom.c -o /usr/bin/ztermcom
 chmod 755 /usr/bin/ztermcom 
 chown root:root /usr/bin/ztermcom
+
+LED_EF="/opt/rpi/effects"
+
+## Fadecandy Brightness Proxy Server
+rm -f $LED_EF/fcproxy
+g++ -O3 $LED_EF/fcproxy.cpp -o $LED_EF/fcproxy -lpthread
+chmod 755 $LED_EF/fcproxy
+chown root:root $LED_EF/fcproxy
+
+## Video File to OPC LED Data Stream
+rm -f $LED_EF/mp4toleds
+g++ -O3 $LED_EF/mp4toleds.cpp -o $LED_EF/mp4toleds $(pkg-config --cflags --libs opencv4)
+chmod 755 $LED_EF/mp4toleds
+chown root:root $LED_EF/mp4toleds
+
+## Solid Color to OPC LED Data Stream
+rm -f $LED_EF/writecolor
+g++ -O3 $LED_EF/writecolor.cpp -o $LED_EF/writecolor -std=c++11
+chmod 755 $LED_EF/writecolor
+chown root:root $LED_EF/writecolor
 
 ## Reset Null Device
 rm -f /dev/null

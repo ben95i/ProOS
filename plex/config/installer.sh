@@ -5,9 +5,10 @@
 ###
 
 ## Add Plex Repo
-if [ ! -e /etc/apt/sources.list.d/plexmediaserver.list ]; then
-   echo deb https://downloads.plex.tv/repo/deb public main | tee /etc/apt/sources.list.d/plexmediaserver.list
-   curl "https://downloads.plex.tv/plex-keys/PlexSign.key" | apt-key add -
+if [ ! -e "/etc/apt/sources.list.d/plexmediaserver.list" ]; then
+  rm -f /etc/apt/keyrings/plexmediaserver.v2.gpg
+  curl -L https://downloads.plex.tv/plex-keys/PlexSign.v2.key | gpg --yes --dearmor -o /etc/apt/keyrings/plexmediaserver.v2.gpg
+  echo "deb [signed-by=/etc/apt/keyrings/plexmediaserver.v2.gpg] https://repo.plex.tv/deb/ public main" | tee /etc/apt/sources.list.d/plexmediaserver.list
 fi
 
 ## Update Sources

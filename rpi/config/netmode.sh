@@ -80,7 +80,7 @@ if [ -e "/sys/class/net/wlan0" ] ; then
     ipv6.method disabled
   ## Set Network IP Range
   nmcli con modify RPiHotspot ipv4.addresses "192.168.10.1/24"
-  if [ -e /opt/rpi/openapd.mac ]; then
+  if [ -e "/opt/rpi/openapd.mac" ]; then
     ## Reject all incoming access point traffic
     iptables -I FORWARD -i wlan0 -j REJECT
     iptables -I INPUT -i wlan0 -j REJECT

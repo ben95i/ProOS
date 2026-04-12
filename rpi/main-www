@@ -2,6 +2,7 @@
 ##
 ## Pi Web Terminal System Configuration API 
 ##
+
 EXIT_ROUTINE() {
   TRAILER=$(date)
   TRAILER+=" ("
@@ -13,15 +14,17 @@ EXIT_ROUTINE() {
 }
 
 LOGFILE="/var/www/html/ram/sysout.txt"
+ARG_1="$1"
+ARG_2="$2"
 
-if [ "$1" == "" ]; then
+if [ "$ARG_1" == "" ]; then
   echo "no argument." &>> $LOGFILE  
   EXIT_ROUTINE
 fi
 ## Wi-Fi setup API
-if [ "$1" == "confwpa" ]; then
+if [ "$ARG_1" == "confwpa" ]; then
   ## Decode base64
-  BASE64_IN=$(echo "$2" | sed "s|-|+|g" | sed "s|_|/|g" | sed "s|@|=|g")
+  BASE64_IN=$(echo "$ARG_2" | sed "s|-|+|g" | sed "s|_|/|g" | sed "s|@|=|g")
   WPADATA=$(openssl enc -base64 -d <<< "$BASE64_IN")
   rm -f /tmp/wifidata
   echo -e "$WPADATA" > /tmp/wifidata
@@ -32,26 +35,26 @@ if [ "$1" == "confwpa" ]; then
   EXIT_ROUTINE	
 fi
 ## Server control
-if [ "$1" == "server" ]; then
-	if [ "$2" == "clearlog" ]; then
+if [ "$ARG_1" == "server" ]; then
+	if [ "$ARG_2" == "clearlog" ]; then
 	  truncate -s 0 $LOGFILE
     neofetch | sed 's/\x1B[@A-Z\\\]^_]\|\x1B\[[0-9:;<=>?]*[-!"#$%&'"'"'()*+,.\/]*[][\\@A-Z^_`a-z{|}~]//g' &>> $LOGFILE
     EXIT_ROUTINE
 	fi
-  if [ "$2" == "showwpa" ]; then
+  if [ "$ARG_2" == "showwpa" ]; then
     echo "current Wi-Fi configuration:" &>> $LOGFILE
-    cat /boot/wpa.conf &>> $LOGFILE
+    cat /boot/firmware/wpa.conf &>> $LOGFILE
     echo " " &>> $LOGFILE
     echo "network configuration:" &>> $LOGFILE
     ifconfig &>> $LOGFILE
     EXIT_ROUTINE
   fi
-  echo "sent $2 system command." &>> $LOGFILE
-	/opt/rpi/init "$2" &>> $LOGFILE
+  echo "sent $ARG_2 system command." &>> $LOGFILE
+	/opt/rpi/init "$ARG_2" &>> $LOGFILE
   EXIT_ROUTINE
 else
 ## Application control
-  /opt/rpi/main "$1" "$2" &>> $LOGFILE
+  /opt/rpi/main "$ARG_1" "$ARG_2" &>> $LOGFILE
   EXIT_ROUTINE
 fi
 

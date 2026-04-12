@@ -1,13 +1,96 @@
 #!/bin/bash
-########################################
-# LED Effects Wrapper (ran from PHP-API)
-########################################
+#######################################################
+###### LED Effects Script by Ben Provenzano III #######
+#######################################################
 
-## Read Input Arguments
-VARA=$1
-VARB=$2
+ARG_A="${1//$'\n'/}"
+ARG_B="${2//$'\n'/}"
 
-## Run in background, discard returned output
-nohup /opt/rpi/leds.sh "$VARA" "$VARB" > /dev/null 2>&1 &
+CURL_ARGS="--fail --no-buffer --max-time 3 --silent --retry 3 --retry-all-errors --retry-delay 1"
+LOCALHOST="127.0.0.1"
+BIN_PATH=/opt/rpi
 
+if [[ "$ARG_A" == "" ]]; then
+  echo "no argument, exiting."
+  exit
+fi
+
+if [[ ! -e "$BIN_PATH/ledtype.txt" ]]; then
+  exit
+fi
+LEDTYPE=`cat $BIN_PATH/ledtype.txt`
+
+if [[ "$ARG_A" == "start" ]]; then
+  usbreset 1d50:607a
+  systemctl stop rpi-fcleds
+  systemctl stop rpi-fcserver
+  systemctl stop rpi-fcproxy
+  systemctl set-environment rpi_ledtype=$LEDTYPE
+  systemctl restart rpi-fcserver
+  systemctl restart rpi-fcproxy
+  exit
+fi
+
+if [[ "$ARG_A" == "pause" ]]; then
+  systemctl stop rpi-fcleds
+  exit
+fi
+
+if [[ "$ARG_A" == "fc" ]]; then
+  /usr/bin/curl $CURL_ARGS $LOCALHOST:7892/set?b=$ARG_B
+  exit
+fi
+
+if [[ "$ARG_A" == "level" ]]; then
+  /usr/bin/curl $CURL_ARGS $LOCALHOST:7892/brightness
+  exit
+fi
+
+if [[ "$ARG_A" == "shuffle" ]]; then
+  SHUF_IN="$BIN_PATH/effects/shuffle.txt"
+  SHUF_OUT=$(<$SHUF_IN sort | uniq | sort -R | head -n 1)
+  ARG_A="${SHUF_OUT//$'\r'/}"
+  echo "Picking random effect"
+fi
+
+if [[ "$ARG_A" == "stop" ]]; then
+  echo "Stopping effects"
+  ARG_A="black"
+fi
+
+if [[ -e "$BIN_PATH/effects/videos/$ARG_A.mp4" ]]; then
+  systemctl set-environment rpi_fceffect=mp4-$ARG_A
+  systemctl restart rpi-fcleds
+  echo "Set LEDs to video loop: $ARG_A"
+  exit
+fi
+
+if [[ "$ARG_A" == "rave" ]] || [[ "$ARG_A" == "chase" ]] || \
+   [[ "$ARG_A" == "miami" ]] || [[ "$ARG_A" == "spark" ]] || \
+   [[ "$ARG_A" == "stripes" ]] || [[ "$ARG_A" == "lava" ]]; then
+  systemctl set-environment rpi_fceffect=pyth-$ARG_A
+  systemctl restart rpi-fcleds
+  echo "Set LEDs to python effect: $ARG_A"
+  exit
+fi
+
+if [[ "$ARG_A" == "noise" ]] || \
+   [[ "$ARG_A" == "ripple" ]] || \
+   [[ "$ARG_A" == "random" ]]; then
+  systemctl set-environment rpi_fceffect=perl-$ARG_A
+  systemctl restart rpi-fcleds
+  echo "Set LEDs to perl effect: $ARG_A"
+  exit
+fi
+
+if [[ "$ARG_A" == "hex" ]]; then
+  systemctl set-environment rpi_fceffect=hex-$ARG_B
+  systemctl restart rpi-fcleds
+  echo "Set LEDs to RGB-HEX color: $ARG_B"
+  exit
+fi
+
+systemctl set-environment rpi_fceffect=color-$ARG_A
+systemctl restart rpi-fcleds
+echo "Set LEDs to solid color: $ARG_A"
 exit
