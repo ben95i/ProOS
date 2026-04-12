@@ -14,6 +14,10 @@ if [[ "$ARG" == "" ]]
 then
   ARG="NULL"
 fi
+if [ ! -e "$LOGFILE" ]; then
+  touch "$LOGFILE"
+  chmod 777 "$LOGFILE"
+fi
 ## run-as specific user
 /usr/bin/sudo -u ben /usr/bin/apicmds $CALL $RAMDISK $LOGFILE &>> $LOGFILE
 TRAILER=$(date)
@@ -22,4 +26,5 @@ TRAILER+=$(hostname)
 TRAILER+=")"
 echo "$TRAILER" &>> $LOGFILE
 echo " " &>> $LOGFILE
+chmod 777 $LOGFILE
 exit

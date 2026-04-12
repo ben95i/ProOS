@@ -2,22 +2,23 @@
 ## Runs every 25 seconds on Proxmox
 ################################
 
+WRITE_TRAILER() {
+  TRAILER=$(date)
+  TRAILER+=" ("
+  TRAILER+=$(hostname)
+  TRAILER+=")"
+  echo "$TRAILER"
+  echo " "
+}
+
 ## VM Log File
 TRIGGERS_DIR="/mnt/ramdisk"
-LOG_FILE="$TRIGGERS_DIR/sysout.txt"
-LOCK_FILE="/mnt/ramdisk/locks/actiontrig.lock"
-WRITE_TRL=""
+LOCK_FILE="$TRIGGERS_DIR/actiontrig.lock"
 
 ## Check for lock file
 if [ -e "$LOCK_FILE" ]; then
   echo "process locked! exiting. (pve.home)"
   exit
-fi
-
-## Create log file
-if [ ! -e "$LOG_FILE" ]; then
-  touch "$LOG_FILE"
-  chmod 777 "$LOG_FILE"
 fi
 
 ## Create lock file
@@ -53,7 +54,7 @@ if [ -e "$TRIGGERS_DIR/attach_bkps.txt" ]; then
   if [ -e "$TRIGGERS_DIR/pwd.txt" ]; then
     shred -n 2 -z -u "$TRIGGERS_DIR/pwd.txt"
   fi
-  WRITE_TRL="yes"
+  WRITE_TRAILER
 fi
 
 ### EXPORT ZFS ########################################
@@ -82,7 +83,7 @@ if [ -e "$TRIGGERS_DIR/detach_bkps.txt" ]; then
   zfs unload-key -a
   zpool status
   zfs list
-  WRITE_TRL="yes"
+  WRITE_TRAILER
 fi
 
 ## Toggle Proxmox Web Interface
@@ -96,14 +97,14 @@ if [ -e "$TRIGGERS_DIR/pve_webui_toggle.txt" ]; then
     echo "PVE web interface not running, starting service..." 
     systemctl start pveproxy
   fi
-  WRITE_TRL="yes"
+  WRITE_TRAILER
 fi
 ## List ZFS Snapshots
 if [ -e "$TRIGGERS_DIR/pve_listsnaps.txt" ]; then
   rm -f "$TRIGGERS_DIR/pve_listsnaps.txt"
   echo "Snapshots on ZFS pool (tank/datastore):"
   zfs list -t snapshot tank/datastore | grep -o '^\S*'
-  WRITE_TRL="yes"
+  WRITE_TRAILER
 fi
 ### START VMs #########################################
 #######################################################
@@ -111,52 +112,59 @@ if [ -e "$TRIGGERS_DIR/startxana.txt" ]; then
   rm -f "$TRIGGERS_DIR/startxana.txt"
   echo "starting xana..."
   qm start 105
-  WRITE_TRL="yes"
+  WRITE_TRAILER
 fi
 if [ -e "$TRIGGERS_DIR/stopxana.txt" ]; then
   rm -f "$TRIGGERS_DIR/stopxana.txt"
   echo "shutting down xana..."
   qm stop 105
-  WRITE_TRL="yes"
+  WRITE_TRAILER
 fi
 if [ -e "$TRIGGERS_DIR/restorexana.txt" ]; then
   rm -f "$TRIGGERS_DIR/restorexana.txt"
   echo "restoring xana..."
   qmrestore /opt/xana-restore-image.vma.zst \
     105 -force -storage scratch
-  WRITE_TRL="yes"
+  WRITE_TRAILER
 fi
 #######################################################
 if [ -e "$TRIGGERS_DIR/startunifi.txt" ]; then
   rm -f "$TRIGGERS_DIR/startunifi.txt"
   echo "starting unifi..."
   pct start 107
-  WRITE_TRL="yes"
+  WRITE_TRAILER
 fi
 if [ -e "$TRIGGERS_DIR/stopunifi.txt" ]; then
   rm -f "$TRIGGERS_DIR/stopunifi.txt"
   echo "shutting down unifi..."
   pct stop 107
-  WRITE_TRL="yes"
+  WRITE_TRAILER
 fi
 #######################################################
 if [ -e "$TRIGGERS_DIR/startlegacy.txt" ]; then
   rm -f "$TRIGGERS_DIR/startlegacy.txt"
   echo "starting legacy..."
   qm start 103
-  WRITE_TRL="yes"
+  WRITE_TRAILER
 fi
 if [ -e "$TRIGGERS_DIR/stoplegacy.txt" ]; then
   rm -f "$TRIGGERS_DIR/stoplegacy.txt"
   echo "shutting down legacy..."
   qm stop 103
-  WRITE_TRL="yes"
+  WRITE_TRAILER
+fi
+#######################################################
+if [ -e "$TRIGGERS_DIR/rebootrouter.txt" ]; then
+  rm -f "$TRIGGERS_DIR/rebootrouter.txt"
+  echo "rebooting router, may take up to 5-minutes."
+  qm reboot 100
+  WRITE_TRAILER
 fi
 ### Write Server Log ##################################   
 if [ -e "$TRIGGERS_DIR/syslog.txt" ]; then
   rm -f "$TRIGGERS_DIR/syslog.txt"
   /usr/bin/sys-check
-  WRITE_TRL="yes"
+  WRITE_TRAILER
 fi
   ###### Server VM Backup Script ######################
 if [ -e "$TRIGGERS_DIR/pve_vmsbkp.txt" ]; then
@@ -230,21 +238,8 @@ if [ -e "$TRIGGERS_DIR/pve_vmsbkp.txt" ]; then
   chmod -R 777 /mnt/datastore/data/ProOS/pve/vmbkps/*.conf
   chmod -R 777 /mnt/datastore/data/ProOS/pve/vmbkps/*.log
   echo "Backup Complete."
-  WRITE_TRL="yes"
-fi
-
-if [ "$WRITE_TRL" == "yes" ]; then
-  echo " "
-  TRAILER=$(date)
-  TRAILER+=" ("
-  TRAILER+=$(hostname)
-  TRAILER+=")"
-  echo "$TRAILER"
-  chmod 777 $LOG_FILE
+  WRITE_TRAILER
 fi
 
 rm -f "$LOCK_FILE"
 exit
-
-
-

@@ -4,23 +4,50 @@
 ###
 
 ## DNS domain name
-#DOMAIN=".local"
-#DOMAIN=".home"
-DOMAIN=""
+DOMAIN=".home"
 ## Modules folder
 ROOTDIR="/mnt/ProOS"
 ## SSH keys folder
-KEYS="/mnt/ProOS/mgmt/keys"
+KEYS="$ROOTDIR/mgmt/keys"
 ## Work folder
 WORKDIR="/opt/deploy"
 ## Read arguments
-MODULE=$1
-CMD=$2
-HOST=$3
-## Global variables
-INTMODE=""
-NOHOSTCHK=""
+MODULE=${1}
+CMD=${2}
+HOST=${3}
+## Global constants
+SSH_PORT="22"
+SSH_TIMEOUT="450ms"
+SPACER="*********************"
 SSH_ARGS="ServerAliveInterval=5 -o ServerAliveCountMax=5"
+UPDATE_CMDS="apt update; apt upgrade; apt autoremove"
+## Global variables
+HOST_STATUS="offline"
+INTMODE=""
+
+UPDATE_ALL_SVRS(){
+  ## Find Server Names
+  mapfile -d $'\n' UPD_TARGETS < <( find ${ROOTDIR} -type f \( -name "lxc.conf" -o -name "qemu.conf" \) -printf '%P\n' | sed 's#/[^/]*$##' | sort -u )
+  for TARGET in "${UPD_TARGETS[@]}"
+  do
+    echo " "
+    ## Remove Newline(s)
+    SVR_NAME=$(echo "$TARGET" | sed 's/[[:space:]]//g' )
+    ## Test connection
+    echo "$SPACER Connecting to $SVR_NAME $SPACER"
+    HOST="$SVR_NAME$DOMAIN"
+    HOSTCHK "no"
+    if [ "$HOST_STATUS" == "online" ]; then
+      ## Setup SSH Key ##
+      eval `ssh-agent -s`
+      ssh-add $KEYS/$SVR_NAME.rsa 2>/dev/null
+      ## Update Sequentially
+      echo "$SPACER Running APT on $SVR_NAME $SPACER"
+      ssh -t -o $SSH_ARGS root@$SVR_NAME "${UPDATE_CMDS}"
+    fi
+  done
+  EXIT_PRGM
+}
 
 EXIT_PRGM(){
   ## Discard Keys
@@ -32,22 +59,26 @@ EXIT_PRGM(){
 
 ## Ping check
 HOSTCHK(){
-  echo "Attempting connection..."
-  if ping -c 2 $HOST &> /dev/null
-  then
-    echo "Connection established."
+  EXIT="$1"
+  echo "Testing connection..."
+  if nc -zv -w $SSH_TIMEOUT $HOST $SSH_PORT &> /dev/null; then
+    echo "$HOST's SSH port open, connecting..."
+    HOST_STATUS="online"
   else
-    echo "Host $HOST is down, exiting..."
-    EXIT_PRGM
+    HOST_STATUS="offline"
+    if [ "$EXIT" == "yes" ]; then
+      echo "$HOST's SSH port is unreachable, exiting..."
+      EXIT_PRGM
+    else
+      echo "$HOST's SSH port is unreachable, skipping."
+    fi
   fi
 }
 
 ## Shell Login
 SSH_LOGIN(){
-  if [ "$NOHOSTCHK" == "" ]; then
-    ## Exit if host down
-    HOSTCHK
-  fi
+  ## Exit if host down
+  HOSTCHK "yes"
   ## Login to SSH Pi/Server
   if [ "$MODULE" == "router" ]; then
     ssh -t -o $SSH_ARGS admin@$HOST
@@ -66,6 +97,9 @@ by Ben Provenzano III
 Logon to ProOS Pi / Server
 login "Hostname"
 
+Update Servers
+login updatepve
+
 Sync ProOS (quick run config script) Pi / Server
 login "Hostname" sync
 
@@ -83,6 +117,7 @@ login rmtmp
 \n'
 exit
 fi
+
 ### Exit if matches this hosts
 if [ "$MODULE" == "logon" ] || \
    [ "$MODULE" == "login" ] || \
@@ -93,6 +128,7 @@ if [ "$MODULE" == "logon" ] || \
 echo "Hostname not allowed."
 exit
 fi
+
 if [ "$MODULE" == "cmds" ]; then
 printf \
 '* Linux Command Reference
@@ -112,6 +148,12 @@ qemu-img convert -f raw -O qcow2 /dev/rpool/proxmox/vm-100-disk-0 file.qcow2
 \n'
 exit
 fi
+
+if [ "$MODULE" == "updatepve" ]; then
+## Update Proxmox LXCs/VMs/Host
+UPDATE_ALL_SVRS
+fi
+
 ### Remove temp files argument
 if [ "$MODULE" == "rmtmp" ]; then
 echo "deleting temporary files..."
@@ -121,6 +163,7 @@ if [ -e $WORKDIR ]; then
 else
   rm -rfv /tmp/protmp.*
 fi
+
 exit
 fi
 }
@@ -188,7 +231,7 @@ POST_DEPLOY_MENU(){
 
 ## Raspberry Pi Configurator ##
 DEPLOY_PI(){
-  HOSTCHK
+  HOSTCHK "yes"
   echo ""
   STRIN=$(ssh -t -o $SSH_ARGS root@$HOST "df -h")
   if [[ "$STRIN" == *"overlay"* ]]; then
@@ -213,7 +256,7 @@ DEPLOY_PI(){
         fi
     fi
   else
-    echo "Read/write root filesystem detected."   
+    echo "Read/write root filesystem detected."
   fi
   WAIT_TIME=03 ## seconds
   WAIT_COUNT=${WAIT_TIME}
@@ -229,17 +272,18 @@ DEPLOY_PI(){
   fi
   EXCLUDED="--exclude=photos --exclude=sources"
   RSYNC_ARGS="--stats --human-readable --recursive --times --checksum"
-  echo "Installing base software..."
+  ## install base software
   rsync -e "ssh -o $SSH_ARGS" $RSYNC_ARGS $EXCLUDED $ROOTDIR/rpi root@$HOST:/opt/
-  echo "Installing shared software..."
+  ## install shared software 
   rsync -e "ssh -o $SSH_ARGS" $RSYNC_ARGS $ROOTDIR/automate/config/ztermcom.c root@$HOST:/opt/rpi/
+  rsync -e "ssh -o $SSH_ARGS" $RSYNC_ARGS --mkpath $ROOTDIR/automate/config/nodeapi/ root@$HOST:/opt/nodeapi/
   rsync -e "ssh -o $SSH_ARGS" $RSYNC_ARGS --mkpath $ROOTDIR/automate/config/html/ root@$HOST:/opt/rpi/config/html-base/
-  echo "Installing module-specific software..."
+  ## install module-specific software
   rsync -e "ssh -o $SSH_ARGS" $RSYNC_ARGS $EXCLUDED $ROOTDIR/$MODULE/ root@$HOST:/opt/rpi/
-  echo "Starting installer..."
+  ## run installer on host
   ssh -t -o $SSH_ARGS root@$HOST "cd /opt/rpi/config; echo $MODULE > ./hostname; chmod +x ./installer.sh; ./installer.sh"
-  echo "Installing website menu items..."
-  rsync -e "ssh -o $SSH_ARGS" $RSYNC_ARGS $ROOTDIR/automate/config/menus/*.txt root@$HOST:/var/www/html/ram/
+  ## copy website menu items (last)
+  rsync -e "ssh -o $SSH_ARGS" $RSYNC_ARGS --mkpath $ROOTDIR/automate/config/menus/*.txt root@$HOST:/var/www/html/ram/
   POST_DEPLOY_MENU
 }
 
@@ -274,9 +318,9 @@ PRGM_INIT(){
   ## Process Initial Arguments
   EXTRA_ARGS
   ## Check For Proxmox Configuration
-  if [ -e $ROOTDIR/$MODULE/qemu.conf ] || \
-     [ -e $ROOTDIR/$MODULE/lxc.conf ] || \
-     [ -e $ROOTDIR/$MODULE/pc.conf ] || \
+  if [ -e "$ROOTDIR/$MODULE/qemu.conf" ] || \
+     [ -e "$ROOTDIR/$MODULE/lxc.conf" ] || \
+     [ -e "$ROOTDIR/$MODULE/pc.conf" ] || \
      [ "$MODULE" == "router" ]; then
     INTMODE="nonpi"
   else 
@@ -295,9 +339,6 @@ PRGM_INIT(){
     ssh-add $KEYS/$MODULE.rsa 2>/dev/null
     ## Set hostname
     HOST="$MODULE$DOMAIN"
-    if [ "$MODULE" == "pve" ]; then
-      NOHOSTCHK="yes"
-    fi
     if [ "$CMD" == "sync" ]; then
       DEPLOY_SERVER
     fi

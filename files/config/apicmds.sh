@@ -7,8 +7,8 @@ CMD="$1"
 RAMDISK="$2"
 LOGFILE="$3"
 STATUSFILE="/mnt/extbkps/status.txt"
-NET_RANGE="192.168.1.0"
 
+## Store backup dates in array
 CURBKPDTES=()
 function SAVEBKPDATES () {
   local _POOL="$1"
@@ -18,14 +18,27 @@ function SAVEBKPDATES () {
   CURBKPDTES+=( $_CURBKPLNE )
 }
 
+## Backup running indicator LED
+function BKP_LED_ON () {
+  LEDWALL_LED "whtledon"
+}
+function BKP_LED_OFF () {
+  LEDWALL_LED "whtledoff"
+}
+function LEDWALL_LED () {
+  local _APICMD="$1"
+  /usr/bin/curl --silent --fail --ipv4 --no-buffer --max-time 30 \
+  --retry 3 --retry-all-errors --retry-delay 1 --no-keepalive \
+  --url "http://ledwall.home/exec.php?var=&arg=$_APICMD&action=main" > /dev/null 2>&1 &
+}
+
 ### Only run if specific user
 if [ "$USER" != "ben" ]; then
   echo "incorrect user, exiting..."
   exit
 fi
 
-if [[ $CMD == "last_backup_dates" ]]
-then
+if [[ $CMD == "last_backup_dates" ]]; then
   echo " " 
   echo "last backup dates: "
   readarray -t LSTBKPARR < "$STATUSFILE"
@@ -42,7 +55,7 @@ REGMNTS="/mnt/regmnts"
 ## Regions Data Folder
 REGDATA="/mnt/.regions"
 
-PATHMOUNTED() { findmnt --target "$1" >/dev/null;} 
+PATHMOUNTED() { findmnt --target "$1" >/dev/null; } 
 
 function UMNT_FUSEFS () {
   VOLNME="$1"
@@ -174,37 +187,11 @@ then
   exit
 fi
 
-## Documents Region
-UMOUNT_DOCS(){
-  if [ -e "$REGMNTS/Documents" ]; then
-    echo "detaching documents region..."
-    rm $REGMNTS/Documents
-  else
-    echo "documents not attached." 
-  fi
-}
-if [[ $CMD == "mnt_docs_region" ]]
-then
-  if [ ! -e "$REGMNTS/Documents" ]; then
-    echo "attaching documents region..."
-    ln -s $REGDATA/Documents $REGMNTS/Documents
-  else
-    echo "documents already attached."
-  fi
-  exit
-fi
-if [[ $CMD == "unmnt_docs_region" ]]
-then
-  UMOUNT_DOCS
-  exit
-fi
-
 ## Detach All Regions
 if [[ $CMD == "unmnt_all" ]]
 then
   UMOUNT_RAMDSK
   UMOUNT_EXTREG
-  UMOUNT_DOCS
   UMOUNT_SNAP
   UMOUNT_ALLFUSE
   echo "detached all region(s)."
@@ -213,41 +200,10 @@ fi
 
 ## END REGIONS ##
 
-if [[ $CMD == "scratchcopy" ]]
-then
-  if [ -e "/mnt/media/Downloads" ]; then
-  	rsync -aPv --exclude='*humbs.db' --exclude='*esktop.ini' \
-  	--exclude='.*' --exclude='$RECYCLE.BIN' \
-  	/mnt/scratch/downloads/* /mnt/media/Downloads/
-  else
-    echo "folder not found."  
-  fi
-  exit
-fi
-
-if [[ $CMD == "git_push" ]]
-then
-  TIMESTMP=$(date '+%Y-%m-%d %H:%M')
-  echo "uploading changes to GitHub..."
-  git config --global --add safe.directory /mnt/data/ProOS
-  cd /mnt/data/ProOS
-  git add .
-  git commit -m "$TIMESTMP"
-  git push
-  exit
-fi
-
-if [[ $CMD == "lastlog" ]]
-then
-  lastlog 
-  exit
-fi
-
 if [[ $CMD == "clearlog" ]]
 then
   truncate -s 0 $LOGFILE
-  neofetch --ascii_distro debian | \
-    sed 's/\x1B[@A-Z\\\]^_]\|\x1B\[[0-9:;<=>?]*[-!"#$%&'"'"'()*+,.\/]*[][\\@A-Z^_`a-z{|}~]//g' 
+  neofetch --ascii_distro debian | sed 's/\x1B[@A-Z\\\]^_]\|\x1B\[[0-9:;<=>?]*[-!"#$%&'"'"'()*+,.\/]*[][\\@A-Z^_`a-z{|}~]//g' 
   exit
 fi
 
@@ -255,12 +211,10 @@ fi
 if [[ $CMD == "backupstd" || $CMD == "backupchk" ]]
 then
   ## Standard or Checksum RSYNC
-  if [[ $CMD == "backupstd" ]]
-  then
+  if [[ $CMD == "backupstd" ]]; then
     CHECKSUM=""
   fi
-  if [[ $CMD == "backupchk" ]]
-  then
+  if [[ $CMD == "backupchk" ]]; then
     echo "checksum compare option selected, this backup will take awhile!"
     CHECKSUM="--checksum"
   fi
@@ -277,12 +231,9 @@ then
   echo "****************** starting backup **********************"
   echo " "
   ## Turn on LED
-  /usr/bin/curl --silent --fail --ipv4 --no-buffer --max-time 5 \
-  --retry 3 --retry-all-errors --retry-delay 1 --no-keepalive \
-  --url "http://ledwall.home/exec.php?var=&arg=whtledon&action=main" > /dev/null 2>&1 &
+  BKP_LED_ON
   ## Read Backup Drive Names
   readarray -t ZFSPOOLS < $RAMDISK/drives.txt
-  #######################
   #######################
   ## RSYNC ##############
   for _POOL in "${ZFSPOOLS[@]}"; do
@@ -292,55 +243,57 @@ then
       ## USB Flash Drives
       if [[ ${POOL::3} == "usb" ]]; then
         #################################
-        if [ ! -e /mnt/extbkps/$POOL/Data ]; then
+        if [ ! -e "/mnt/extbkps/$POOL/Data" ]; then
           echo "flash drive not connected $POOL"
         else
           #### Data Share ####
-          if [ ! -e /mnt/data/ProOS ]; then
+          if [ ! -e "/mnt/data/ProOS" ]; then
             echo "Data' share not found!"
           else
             echo "syncing 'Data' share to $POOL drive..."
-            rsync $CHECKSUM -aP \
-            --exclude="**HD.img" --exclude="**HD.7z" --exclude="**HD.zip" \
-            --exclude="**VM.7z" --exclude="**VM.zip" --exclude="Consoles/" \
-            /mnt/data/ /mnt/extbkps/$POOL/Data/ -delete --delete-excluded
+            rsync $CHECKSUM -aP  --exclude="**CDs.zip" --exclude="**CDs.7z" \
+              --exclude="**USB.img" --exclude="**USB.7z" --exclude="**USB.zip" \
+              --exclude="**HD.img" --exclude="**HD.7z" --exclude="**HD.zip" \
+              --exclude="**VM.img" --exclude="**VM.7z" --exclude="**VM.zip" \
+              /mnt/data/ /mnt/extbkps/$POOL/Data/ -delete --delete-excluded
           fi
           #### Regions Share ####
-          if [ ! -e $REGDATA/SFTP ]; then
+          if [ ! -e "$REGDATA/SFTP" ]; then
             echo "'Regions' share not found!"
           else
             echo "syncing 'Regions' share to $POOL drive..."
-            rsync $CHECKSUM -aP --exclude="Archive/ALUTqMiuxVtjfuair7WIgQ/" \
-            $REGDATA/ /mnt/extbkps/$POOL/.Regions/ -delete --delete-excluded
+            rsync $CHECKSUM -aP \
+              --exclude="Archive/ALUTqMiuxVtjfuair7WIgQ/" --exclude="Games/" \
+              $REGDATA/ /mnt/extbkps/$POOL/.Regions/ -delete --delete-excluded
           fi
           ##### END BACKUP #####
           SAVEBKPDATES "$POOL"
-        fi  
+        fi
       fi
       ## Hard Drives
       if [[ ${POOL::3} == "hdd" ]]; then
         #################################
-        if [ ! -e /mnt/extbkps/$POOL/Data ]; then
+        if [ ! -e "/mnt/extbkps/$POOL/Data" ]; then
           echo "hard drive not connected $POOL"
         else      
           #### Data Share ####
-          if [ ! -e /mnt/data/ProOS ]; then
+          if [ ! -e "/mnt/data/ProOS" ]; then
             echo "Data' share not found!"
           else
             echo "syncing 'Data' share to $POOL drive..."
             rsync $CHECKSUM -aP \
-            /mnt/data/ /mnt/extbkps/$POOL/Data/ -delete --delete-excluded
+              /mnt/data/ /mnt/extbkps/$POOL/Data/ -delete --delete-excluded
           fi
           #### Regions Share ####
-          if [ ! -e $REGDATA/SFTP ]; then
+          if [ ! -e "$REGDATA/SFTP" ]; then
             echo "'Regions' share not found!"
           else
             echo "syncing 'Regions' share to $POOL drive..."
             rsync $CHECKSUM -aP \
-            $REGDATA/ /mnt/extbkps/$POOL/.Regions/ -delete --delete-excluded
+              $REGDATA/ /mnt/extbkps/$POOL/.Regions/ -delete --delete-excluded
           fi
           #### Media Share ####
-          if [ ! -e /mnt/media/Music ]; then
+          if [ ! -e "/mnt/media/Music" ]; then
             echo "'Media' share not found!"
           else
             echo "syncing 'Media' share to $POOL drive..."
@@ -412,9 +365,7 @@ then
   ## Wait for drives to detach
   echo "wait $WAIT_TIME second(s) for drives to detach."
   ## Turn off LED
-  /usr/bin/curl --silent --fail --ipv4 --no-buffer --max-time 30 \
-  --retry 3 --retry-all-errors --retry-delay 1 --no-keepalive \
-  --url "http://ledwall.home/exec.php?var=&arg=whtledoff&action=main" > /dev/null 2>&1 &
+  BKP_LED_OFF
   echo "****************** backup complete **********************"
   exit
 fi

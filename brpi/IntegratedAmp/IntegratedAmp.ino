@@ -99,7 +99,7 @@ uint8_t muteButton = 0;
 uint32_t muteButtonMillis;
 // volume encoder resources
 Encoder volumeEncoder(inputEncPinB, inputEncPinA);
-uint16_t oldVolEncPos = 1;
+uint8_t oldVolEncPos = 1;
 
 /// initialization ///
 void setup() {

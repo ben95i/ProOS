@@ -6,22 +6,11 @@
 ## Update Sources
 apt-get --yes update
 
-## Debian Bullseye to Bookworm
-#apt dist-upgrade
-#apt upgrade
-#sed -i 's/bullseye/bookworm/g' /etc/apt/sources.list
-#apt-get --yes update
-#apt dist-upgrade
-#apt upgrade
-#apt autoremove
-#apt autoclean
-#apt clean
-
 ## Install Packages
 apt-get install -y --no-upgrade --ignore-missing dirmngr ca-certificates bpytop \
  apt-transport-https wget unzip gnupg rsync curl screen parallel libdbus-1-dev \
  ethtool libdbus-glib-1-dev locales aptitude sudo gnupg scrub binutils nmap \
- avahi-daemon ffmpeg pip npm python3-ament-xmllint etherwake wakeonlan
+ avahi-daemon ffmpeg pip python3-ament-xmllint etherwake wakeonlan npm nodejs
 
 ## Remove Packages
 apt-get remove -y --purge cron anacron postfix apache2 apache2-data htop
@@ -30,13 +19,13 @@ apt-get remove -y --purge cron anacron postfix apache2 apache2-data htop
 apt-get install -y --no-upgrade --ignore-missing yui-compressor default-jre-headless
 mkdir -p /usr/lib/jvm/java-8-openjdk-amd64
 ln -sf /usr/lib/jvm/default-java /usr/lib/jvm/java-8-openjdk-amd64/jre
-if [ ! -e /usr/local/bin/uglifyjs ]; then
+if [ ! -e "/usr/local/bin/uglifyjs" ]; then
   ## Minify JS
   npm install uglify-js -g
 fi  
 
 ## Process Monitor
-if [ ! -e /usr/local/bin/htop ]; then
+if [ ! -e "/usr/local/bin/htop" ]; then
   apt-get remove -y htop
   apt-get install -y --no-upgrade --ignore-missing libncursesw5-dev \
    autotools-dev autoconf automake build-essential
@@ -81,7 +70,7 @@ ln -sf /opt/system/main /opt/system/xmit
 ln -sf /opt/system /opt/rpi
 
 ## Copy Menu Layouts to RAM Disk
-if [ ! -e /var/www/html/ram/mainmenu.txt ]; then
+if [ ! -e "/var/www/html/ram/mainmenu.txt" ]; then
   cp -v /opt/system/*menu.txt /var/www/html/ram/
   chmod -R 777 /var/www/html/ram/*menu.txt
   chown -R www-data:www-data /var/www/html/ram/*menu.txt
@@ -93,9 +82,12 @@ chmod 755 /usr/bin/singleton
 chown root:root /usr/bin/singleton
 
 ## Install Arduino Support
-if [ ! -e /usr/bin/arduino-cli ]; then
+if [ ! -e "/usr/bin/arduino-cli" ]; then
   curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR=/usr/bin sh
+  arduino-cli version
+  arduino-cli core update-index
   arduino-cli core install arduino:avr
+  arduino-cli lib install Encoder@1.4.4
 fi
 
 ## Arduino Firmware
@@ -111,24 +103,32 @@ gcc /tmp/config/ztermcom.c -o /usr/bin/ztermcom
 chmod 755 /usr/bin/ztermcom 
 chown root:root /usr/bin/ztermcom
 
+## Node.JS API Server
+mkdir -p /opt/nodeapi
+cp -r /tmp/config/nodeapi/* /opt/nodeapi/
+mv -f /opt/nodeapi/nodeapi.service /etc/systemd/system/
+chmod 644 /etc/systemd/system/nodeapi.service
+chown root:root /etc/systemd/system/nodeapi.service
+cd /opt/nodeapi
+npm install
+cd -
+
 ## Light Web Server
-apt-get install -y --no-upgrade lighttpd php-cgi php php-common
+apt-get install -y --no-upgrade lighttpd
 cp -f /tmp/config/lighttpd.conf /etc/lighttpd/
 chmod 644 /etc/lighttpd/lighttpd.conf
 chown root:root /etc/lighttpd/lighttpd.conf
 cp -f /tmp/config/lighttpd.service /lib/systemd/system/
 chmod 644 /lib/systemd/system/lighttpd.service 
-chown root:root /lib/systemd/system/lighttpd.service 
+chown root:root /lib/systemd/system/lighttpd.service
+
+## SSL Certificates
 cp -f /tmp/config/ssl_cert.pem /etc/lighttpd/
 chmod 644 /etc/lighttpd/ssl_cert.pem
 chown root:root /etc/lighttpd/ssl_cert.pem
 cp -f /tmp/config/root_ca.crt /etc/lighttpd/
 chmod 644 /etc/lighttpd/root_ca.crt
 chown root:root /etc/lighttpd/root_ca.crt
-lighttpd-enable-mod fastcgi fastcgi-php
-lighty-enable-mod fastcgi-php
-systemctl disable lighttpd
-systemctl restart lighttpd
 
 ## Base website files
 mkdir -p /var/www/html
@@ -200,9 +200,12 @@ chown root:root /root/.hushlogin
 
 ## Clean-up
 systemctl daemon-reload
-rm -rf /etc/systemd/system/relaxloop.service
 rm -rf /tmp/config
 apt-get autoremove -y
 apt-get clean -y
 apt-get autoclean -y
+
+## Run Boot Script
+/etc/rc.local
+
 exit

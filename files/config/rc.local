@@ -33,4 +33,7 @@ systemctl start cron
 ## SAMBA Server
 systemctl start smbd
 
+## Clear Website Log
+runapi clearlog
+
 exit 0

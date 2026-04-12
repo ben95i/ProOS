@@ -9,7 +9,7 @@
   -webkit-box-sizing: border-box;
   -moz-box-sizing: border-box;
   box-sizing: border-box;
-  font-family: JosefinSans,system-ui;
+  font-family: JosefinSans, system-ui;
   font-size: 24px; /* default font size */
 }
 
@@ -18,35 +18,14 @@ body {
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   touch-action: manipulation;
-  background-color: black;
+  background-color: #000;
   min-height: 100%;  
   height: 100%;
 }
 
-input[type="checkbox"] {
-  accent-color: var(--main-color); 
-}
-
 /*
- *  Main scrollbar style
+ *  Page Body Style
  */
-
-.scroll-bar-style::-webkit-scrollbar-track
-{
-  background-color: #000;
-  border-radius: 6px;
-}
-
-.scroll-bar-style::-webkit-scrollbar-thumb
-{
-  background-color: color-mix(in srgb, var(--main-color) 70%, white);
-  border-radius: 6px;  
-}
-
-.scroll-bar-style::-webkit-scrollbar
-{
-  width: 6px;
-}
 
 .parstd {
 	border: none;
@@ -102,13 +81,6 @@ input[type="checkbox"] {
   display: block;
 }
 
-input.chkbox {
-  margin-left: 16px;
-  float: right;
-  width: 22px;
-  height: 22px;
-}
-
 .leftjfy {
   float: left;
   margin-right: 8px;
@@ -138,50 +110,86 @@ input.chkbox {
   padding-left: 7px;
 }
 
-.popup {
-  bottom: 5px;
-  display: none;
-  position: fixed;
-  right: 5px;
-  border: 6px solid #1f252a; /* popup window border color */
-  z-index: 99;
-}
-
-.log-popup {
-  width: 75%; /* log window width */
-  height: 95%; /* log window height */
-  min-height: 95%;
-}
-
-.msg-popup {
-  width: 60%; /* message window width */
-  height: 60%; /* message window height */
-  min-height: 60%;
-}
-
-/* adjust elements when screen width is LT 900px */
-@media screen and (max-width: 900px) {
-  .column-right {
-    padding-left: 0px;
-  }
-  .grid {
-    flex-direction: column;
-    align-items: center;
-  }
-  .msg-popup {
-    width: 80%; /* message window width */
-  }
-  .log-popup {
-    width: 95%; /* log window width */  
-  }
-}
-
 .banner__text {
   display: none;
   margin-top: 6px;
   text-align: left;
   font-size: 20px;
 }
+
+/*
+ *  Scrollbar Style
+ */
+
+.scroll-bar-style::-webkit-scrollbar-track
+{
+  margin-top: 3px;
+  margin-bottom: 3px;
+  background-color: #000;
+  border-radius: 5px;
+}
+
+.scroll-bar-style::-webkit-scrollbar-thumb
+{
+  background-color: color-mix(in srgb, var(--main-color) 70%, #fff);
+  border-radius: 5px;  
+}
+
+.scroll-bar-style::-webkit-scrollbar
+{
+  width: 6px;
+}
+
+/*
+ *  Checkbox Style
+ */
+
+input[type="checkbox"] {
+  accent-color: var(--main-color); 
+}
+
+input.chkbox {
+  margin-left: 16px;
+  float: right;
+  width: 22px;
+  height: 22px;
+}
+
+/*
+ *  Animations
+ */
+
+@keyframes slide-transparency {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.fade-out {
+  -webkit-animation: fadeOut 1s;
+  animation: fadeOut 1s;
+  animation-fill-mode: forwards;
+}
+
+@-webkit-keyframes fadeOut {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes fadeOut {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/*
+ *  Button Styles
+ */
 
 .button {
   transition: all 0.2s;
@@ -197,42 +205,44 @@ input.chkbox {
   text-align: center;
   color: #fff; /* buttons font color */
   text-shadow: 1px 1px 1px #000;
-  border-radius: 12px;
-  background-color: color-mix(in srgb, var(--main-color),#0000 40%); /* % of transparency */  
+  border-radius: 15px;
+  background-color: var(--main-color);
   background-image: linear-gradient(to top left,
                                     rgba(0, 0, 0, .2),
-                                    rgba(0, 0, 0, .2) 15%,
+                                    rgba(0, 0, 0, .2) 20%,
                                     rgba(0, 0, 0, 0));
   box-shadow: inset 2px 2px 3px rgba(255, 255, 255, .6),
               inset -2px -2px 3px rgba(0, 0, 0, .6);         
 }
+
 .button:hover {
-  background-color: var(--main-color);
   background-image: linear-gradient(to top left,
                                     rgba(0, 0, 0, .2),
-                                    rgba(0, 0, 0, .2) 25%,
+                                    rgba(0, 0, 0, .2) 30%,
                                     rgba(0, 0, 0, 0));
   box-shadow: inset 4px 4px 6px rgba(255, 255, 255, .6),
               inset -4px -4px 6px rgba(0, 0, 0, .6);
 }
+
 .button:active {
   box-shadow: inset -2px -2px 3px rgba(255, 255, 255, .6),
               inset 2px 2px 3px rgba(0, 0, 0, .6);
 }
 
+.grid_btn {
+  background-color: color-mix(in srgb, var(--main-color), transparent 40%);
+}
+
+.dark_grid_btn {
+  background-color: color-mix(in srgb, var(--main-color), transparent 60%); 
+}
+
 .submode_btn {
-  background-color: color-mix(in srgb, #8d2a2a,#0000 30%);
-}
-.submode_btn:hover {
-  background-color: #8d2a2a;
+  background-color: color-mix(in srgb, #8d2a2a, transparent 40%);
 }
 
-.button_dark {
-  background-color: color-mix(in srgb, var(--main-color),#0000 70%); 
-}
-
-.button_alert {
-  background-color: color-mix(in srgb, var(--main-color) 80%, white);
+.alert_btn {
+  background-color: color-mix(in srgb, var(--main-color), #fff 30%) !important;
 }
 
 .button__text {
@@ -258,20 +268,25 @@ input.chkbox {
   width: 312px; /* large button width */
 }
 
+/*
+ *  Top Navigation Bar
+ */
+
 .topnav {
   border: none;
   outline: none;
   margin: 5px;
-  cursor: pointer;
-  line-height: 2.65;
+  line-height: 2.5;
   overflow: hidden;
   background-color: #2d353d; /* nav background color */
+  border-radius: 25px;
+  opacity: 75%;
 }
 
 .topnav a {
+  float: left;
   border: none;
   outline: none;
-  float: left;
   padding: 0px 12px;
   padding-top: 4px;
   text-decoration: none;
@@ -281,20 +296,60 @@ input.chkbox {
 }
 
 .topnav a:hover {
-  background-color: #000;
-  color: white;
+  background-color: color-mix(in srgb, var(--main-color), #000 40%);
+  color: #fff;
+}
+
+/*
+ *  Console Log Window
+ */
+
+.popup-win {
+  border-radius: 15px;
+  display: none;
+  position: fixed; /* Fixes the element relative to the viewport */
+  bottom: 10px;
+  left: 50%; /* Positions the left edge at the horizontal center */
+  transform: translateX(-50%); /* Adjusts for the element's width to truly center it */
+  border: 8px solid #202223;
+  outline: 1px solid #a2a5a9;
+  outline-offset: 0px;
+  z-index: 996;
+}
+
+.log-popup {
+  width: 75%; /* log window width */
+  height: 95%; /* log window height */
+  min-height: 95%;
+}
+
+/* adjust elements when screen width is LT 900px */
+@media screen and (max-width: 900px) {
+  .column-right {
+    padding-left: 0px;
+  }
+  .grid {
+    flex-direction: column;
+    align-items: center;
+  }
+  .log-popup {
+    width: 95%; /* log window width */  
+  }
 }
 
 /* Add styles to the form container */
-.textBoxContainer {
+.log-popup-ctn {
+  padding-bottom: 85px;
+  background-color: #202223;
+  overflow: hidden;
   height: 100%;
   width: 100%;
-  padding-bottom: 103px; /* buttons position */
-  background-color: #2d353d; /* popup window frame color */
 }
 
 /* Full-width textarea */
-.textBoxContainer textarea {
+.log-popup-ctn textarea {
+  border-radius: 7px;
+  margin-bottom: 3px;
   height: 100%;
   width: 100%;
   color: #fff; /* textbox font color */
@@ -303,45 +358,62 @@ input.chkbox {
   font-kerning: none;
   font-family: monospace,system-ui; /* log window font */
   font-size: 15px; /* page default font size */
+  border: 0px;
 }
 
 /* When the textarea gets focus, do something */
-.textBoxContainer textarea:focus {
+.log-popup-ctn textarea:focus {
   background: #000; /* textbox selected background color */
   outline: none;
 }
 
 .button_left_txtwin {
-  height: 80px;
-  width: 80px;
+  margin: 0px;
+  height: 75px;
+  width: 75px;
 }
 
 .button_right_txtwin {
-  position: absolute;
-  height: 80px;
+  margin: 0px;
+  height: 75px;
   width: 120px;
-  right: 5px;
+  float: right;
 }
 
-/* log window top menu */
-.scrollmenu {
-  cursor: pointer;
-  background-color: #2d353d;
+/*
+ *  Camera Window Style
+ */
+
+#camForm {
+  width: 90vw;
+  height: auto;
+}
+
+#camDiv {
+  background-color: #202223;
   overflow: hidden;
-  white-space: nowrap;
+  resize: none;
 }
 
-.scrollmenu a {
-  display: inline-block;
-  color: white;
-  text-align: left;
-  padding: 14px;
-  text-decoration: none;
+#camImage {
+  width: 100%;
+  height: auto;
+  max-height: 80vh;
+  aspect-ratio: 16 / 9;
+  margin-bottom: 3px;
+  border-radius: 7px;
+  overflow: clip;
 }
 
-/* menu hover over color*/
-.scrollmenu a:hover {
-  background-color: #000;
+#camButtonLeft {
+  background-color: var(--main-color);
+  margin: 0px;
+}  
+
+#camButtonRight {
+  background-color: var(--main-color);
+  float: right;
+  margin: 0px;
 }
 
 /*
@@ -354,16 +426,17 @@ input.chkbox {
 }
 
 .nav_dd_left {
+  padding-left: 5px;
   position: absolute;
   display: block;
-  z-index: 999;
+  z-index: 997;
 }
 
 .nav_dd_right {
   right: 165px;
   position: absolute;
   display: block;
-  z-index: 999;
+  z-index: 997;
 }
 
 #nav_right_menu {
@@ -372,7 +445,8 @@ input.chkbox {
 }
 
 .dd-selected {
-  background-color: #000;
+  border-radius: 5px;
+  background-color: var(--main-color);
 }
 
 /* dropdown menu on window */
@@ -385,18 +459,19 @@ input.chkbox {
 .dd-button { 
   position: absolute;
   min-width: 130px;
+  border-radius: 5px;
 }
 
 /* dropdown menu content */
 .dd-content {
-  cursor: pointer;
   display: none;
+  border-radius: 5px;
   background-color: #4d5b69;
   opacity: 0.96;
-  z-index: 999;
+  z-index: 998;
 }
 
-/* Links inside the dropdown */
+/* links inside the dropdown */
 .dd-content a {
   -webkit-user-select: none;
   user-select: none;
@@ -405,17 +480,18 @@ input.chkbox {
   padding: 12px 16px;
   text-align: left;
   display: block;
-  &:not(.no_select):hover {
-    /* apply hover effect here */
-    background-color: #1c1e20;
-    color: #e8e5e5;
-  }   
+}
+
+.dd-content a:hover {
+  border-radius: 5px;
+  background-color: #1c1e20;
+  color: #e8e5e5;
 }
 
 /* Status Menu */
 
 .no_select {
-  cursor: initial !important;
+  pointer-events: none;
 }
 
 .ind_dot {
@@ -449,10 +525,13 @@ input.chkbox {
 /* Theme Menu */
 
 .theme-colorbox {
+  border-radius: 5px;
   margin: 8px;
 }
 
-/* Bookmarks Menu */
+/*
+ *  Bookmarks Style
+ */
 
 .bookmark-buttons {
   display: none;
@@ -469,12 +548,14 @@ input.chkbox {
 }
 
 #bookmarks::-webkit-scrollbar-track {
+  margin-top: 3px;
+  margin-bottom: 3px;
   background-color: #2d353d;
   border-radius: 5px;
 }
 
 #bookmarks::-webkit-scrollbar-thumb {
-  background-color: color-mix(in srgb, var(--main-color) 70%, white);
+  background-color: color-mix(in srgb, var(--main-color) 70%, #fff);
   border-radius: 5px;
 }
 
@@ -494,16 +575,18 @@ input.chkbox {
 
 #bookmark__search_txt {
   width: 100%;
-  color: white;
-  background-color: color-mix(in srgb, var(--main-color) 40%, black);
-  border: 3px solid black;
+  color: #fff;
+  background-color: color-mix(in srgb, var(--main-color) 40%, #000);
+  box-shadow: 0 0 15px color-mix(in srgb, var(--main-color) 40%, #fff);
+  border: 3px solid #000;
 }
+
 #bookmark__search_txt::placeholder {
-  color: rgb(193, 193, 193);
+  color: #c1c1c1;
 }
+
 #bookmark__search_txt:focus {
-  outline: 3px solid color-mix(in srgb, var(--main-color) 50%, white);
-  box-shadow: 0 0 15px color-mix(in srgb, var(--main-color) 50%, white);
+  outline: 3px solid color-mix(in srgb, var(--main-color) 40%, #fff);
 }
 
 #bookmark__search_icon {
@@ -516,19 +599,23 @@ input.chkbox {
  */
 
 #pass__prompt_win {
-  background-color: black;
-  border: 1px solid white;
-  position: fixed;
-  top: 30%;
-  left: 10%;
-  width: 350px;  
+  border-radius: 15px;
+  background-color: #000;
+  border: 1px solid #fff;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  margin-right: -50%;
+  transform: translate(-50%, -50%);
+  width: 350px;
   height: auto;
   padding: 16px; 
   color: #fff;
-  z-index: 998;
+  z-index: 997;
 }
 
 #pass__textbox {
+  border-radius: 15px;
   margin: 15px;
   width: 285px; 
   padding: 5px; 
@@ -552,27 +639,32 @@ input.chkbox {
  */
 
 #pinet__prompt {
-  background-color: black;
-  border: 1px solid white;
-  position: fixed;
-  top: 30%;
-  left: 10%;
+  border-radius: 15px;
+  background-color: #000;
+  border: 1px solid #fff;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  margin-right: -50%;
+  transform: translate(-50%, -50%);
   width: 350px;  
   height: auto;
   padding: 16px; 
   color: #fff;
-  z-index: 998;
+  z-index: 997;
 }
 
 #pinet__ssidbox {
+  border-radius: 15px;
   margin: 15px;
-  width: 285px; 
+  width: 280px; 
   padding: 5px; 
 }
 
 #pinet__passbox {
+  border-radius: 15px;
   margin: 15px;
-  width: 285px; 
+  width: 280px; 
   padding: 5px; 
   padding-bottom: 10px; 
 }
@@ -589,18 +681,21 @@ input.chkbox {
  */
 
 #wifi__prompt {
-  background-color: black;
-  border: 1px solid white;
+  border-radius: 15px;
+  background-color: #000;
+  border: 1px solid #fff;
   text-align: center;
   text-decoration: none;
-  position: fixed;
-  top: 25%;
-  left: 15%;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  margin-right: -50%;
+  transform: translate(-50%, -50%);
   width: auto;  
   height: auto;
   padding: 16px; 
   color: #fff;
-  z-index: 998;
+  z-index: 997;
 }
 
 #wifi__img {
@@ -627,8 +722,9 @@ input.chkbox {
  */
 
 #editFav__prompt {
-  background-color: black;
-  border: 1px solid white;
+  border-radius: 15px;
+  background-color: #000;
+  border: 1px solid #fff;
   text-align: center;
   text-decoration: none;
   position: absolute;
@@ -639,7 +735,7 @@ input.chkbox {
   height: auto;
   width: 360px;
   color: #fff;
-  z-index: 999; 
+  z-index: 997; 
 }
 
 .editFav__button {
@@ -647,23 +743,10 @@ input.chkbox {
   margin-left: 5px;
   margin-right: 5px;
   height: 50px;
-  width: 150px;
+  width: 160px;
 }
 
-.editFav__textbox {
-  margin-bottom: 10px;
-  padding-right: 5px;  
-  padding-left: 5px;    
-  padding-bottom: 10px;  
-  padding-top: 10px;  
-  text-align: left;
-  font-size: 22px;
-  color: black;
-  width: 330px;
-  height: auto;
-}
-
-.editFav__text {
+.editFav__toptext {
   padding-top: 10px;
   padding-bottom: 10px;
   text-align: center;
@@ -672,20 +755,35 @@ input.chkbox {
   font-size: 20px;
 }
 
+.editFav__textbox {
+  border-radius: 15px;
+  margin-bottom: 10px;
+  padding-right: 5px;  
+  padding-left: 5px;    
+  padding-bottom: 10px;  
+  padding-top: 10px;  
+  text-align: left;
+  font-size: 22px;
+  color: #000;
+  width: 330px;
+  height: auto;
+}
+
 /*
  *  About Prompt Style
  */
 
 #about__prompt {
-  background-color: black;
-  border: 1px solid white;
+  border-radius: 15px;
+  background-color: #000;
+  border: 1px solid #fff;
   text-align: center;
   text-decoration: none;
   position: absolute;
   top: 50%;
   left: 50%;
-  margin-left: -130px;
-  margin-top: -180px;
+  margin-right: -50%;
+  transform: translate(-50%, -50%);
   width: 260px;
   height: 340px;
   padding: 15px; 
@@ -718,10 +816,11 @@ input.chkbox {
  */
 
 .svropt__prompt {
+  border-radius: 15px;
   display: none;
   overflow-y: visible;
-  background-color: black;
-  border: 1px solid white;
+  background-color: #000;
+  border: 1px solid #fff;
   position: absolute;
   top: 50%;
   left: 50%;
@@ -730,7 +829,7 @@ input.chkbox {
   width: 455px;
   height: auto;
   padding: 7px; 
-  z-index: 998;
+  z-index: 997;
   color: #fff;
 }
 
@@ -742,7 +841,7 @@ input.chkbox {
 }
 
 .svropt__bkp_frame {
-  border: 1px solid white;
+  border: 1px solid #fff;
   color: #fff;
   padding-top: 7px; 
   padding-bottom: 7px; 
@@ -767,16 +866,19 @@ input.chkbox {
  */
 
 #color__prompt {
-  background-color: black;
-  border: 1px solid white;
-  position: fixed;
-  top: 8%;
-  left: 5%;
+  border-radius: 15px;
+  background-color: #000;
+  border: 1px solid #fff;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  margin-right: -50%;
+  transform: translate(-50%, -50%);
   width: 350px;  
   height: auto;
   padding: 16px; 
   color: #fff;
-  z-index: 998; 
+  z-index: 997; 
 }
 
 #color__text {
@@ -788,7 +890,7 @@ input.chkbox {
 #color__box {
   position: relative;
   padding: 0;
-  border: 1px solid white;
+  border: 1px solid #fff;
   border-radius: 0px;
   background: none;
   margin-top: 10px;
@@ -807,56 +909,12 @@ input.chkbox {
 }
 
 /*
- *  Camera Window Style
- */
-
-#camForm {
-  bottom: 5px;
-  right: 5px;
-  width: auto;
-  height: auto;
-  display: none;
-  position: fixed;
-  border: 6px solid #1f252a; /* popup window border color */
-  z-index: 99;
-}
-
-#camDiv {
-  background-color: #2d353d; /* popup window frame color */
-  overflow: hidden;
-  width: 100%;  
-  height: 100%;   
-  resize: none;
-}
-
-#camImage {
-  width: 90vw;
-  height: auto;
-  max-height: 80vh;
-  aspect-ratio: 16 / 9;
-  margin-bottom: 80px;
-  overflow: clip;
-}
-
-#camButtonLeft {
-  position: absolute;
-  left: 0px;
-  bottom: 0px;
-}  
-
-#camButtonRight {
-  position: absolute;
-  bottom: 0px;
-  right: 5px;
-}
-
-/*
  *  Animated Stars Background
  */
 
 .star-bg {
   top: 0;
-  left: 0;  
+  left: 0;
   width: 100vw;
   height: 100vh;
   position: fixed;
@@ -1003,18 +1061,6 @@ input.chkbox {
   animation-duration: 5s;
 }
 
-@keyframes slide-transparency {
-  0% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0;
-  }
-  100% {
-    opacity: 1;
-  }
-}
-
 /*
  *  Spinner Style
  */
@@ -1055,12 +1101,13 @@ input.chkbox {
 }
 
 /*
- *  Volume Popup
+ *  Popups
  */
 
-#vol-popup {
-  background-color: black;
-  border: 1px solid white;
+.popup-alert {
+  border-radius: 15px;
+  background-color: #000;
+  border: 1px solid #fff;
   position: fixed;
   top: 50px;
   height: auto;
@@ -1068,17 +1115,34 @@ input.chkbox {
   left: 50%;
   margin-left: -85px;
   padding: 8px;
-  z-index: 998;
+  z-index: 999;
   overflow: hidden;
   resize: none;
-  display: none;
 }
+
+/*
+ *  Message Popup
+ */
+
+#msg-text {
+  height: 100%;
+  text-align: center;
+  text-decoration: none;
+  font-size: 25px;
+  color: #fff;
+  margin: 5px;
+}
+
+
+/*
+ *  Volume Popup
+ */
 
 #vol-text {
   text-align: center;
   text-decoration: none;
   font-size: 50px;
-  color: color-mix(in srgb, var(--main-color) 40%, white);
+  color: color-mix(in srgb, var(--main-color) 40%, #fff);
   margin-bottom: 10px;
 }
 
@@ -1092,13 +1156,15 @@ input.chkbox {
   border: 4px solid #2a2a2e;
   border-radius: 20px;
   z-index: 1;
+  display: none;
 }
-.progress_grid .bar_progress {
+
+.bar_progress {
   left: 0px;
   width: 30%;
   height: 100%;
   position: absolute;
-  background: linear-gradient(0deg, var(--main-color) 30%, color-mix(in srgb, var(--main-color) 70%, white) 100%);
+  background: linear-gradient(0deg, var(--main-color) 30%, color-mix(in srgb, var(--main-color) 70%, #fff) 100%);
   border-radius: 25px;
   transition: all 0.2s ease-in-out;
 }
@@ -1108,8 +1174,9 @@ input.chkbox {
  */
 
  #temp__prompt {
-  background-color: black;
-  border: 1px solid white;
+  border-radius: 15px;
+  background-color: #000;
+  border: 1px solid #fff;
   margin-left: -125px;
   text-decoration: none;
   text-align: center;
@@ -1119,13 +1186,6 @@ input.chkbox {
   padding: 15px; 
   color: #fff;
   z-index: 997; 
-}
-
-.temp__btn {
-  width: 100px;
-  height: 60px;
-  margin-right: 5px;
-  margin-left: 5px;
 }
 
 #temp_therm_grid {
@@ -1138,6 +1198,13 @@ input.chkbox {
   margin-top: 15px;
 }
 
+.temp__btn {
+  width: 100px;
+  height: 60px;
+  margin-right: 5px;
+  margin-left: 5px;
+}
+
 .thermometer {
   width: 25px;
   background: #38383f;
@@ -1147,6 +1214,7 @@ input.chkbox {
   border-radius: 20px;
   z-index: 1;
 }
+
 .thermometer:after {
   position: absolute;
   content: "";
@@ -1154,22 +1222,24 @@ input.chkbox {
   transform: translateX(-50%);
   width: 45px;
   height: 45px;
-  background-color: rgb(101, 157, 241);
+  background-color: #659df1;
   bottom: -40px;
   border: 9px solid #2a2a2e;
   z-index: -3;
   left: 50%;
 }
+
 .thermometer .temperature {
   height: 0px;
   bottom: 0px;
   position: absolute;
-  background: linear-gradient(#e83535, rgb(101, 157, 241)) no-repeat bottom;
+  background: linear-gradient(#e83535, #659df1) no-repeat bottom;
   width: 100%;
   border-radius: 20px;
   background-size: 100% 240px;
   transition: all 0.2s ease-in-out;
 }
+
 .thermometer .temperature:before {
   min-width: 40px;
   position: absolute;
@@ -1181,12 +1251,44 @@ input.chkbox {
   transform: translate(-50%, 50%);
   background: var(--main-color);
   opacity: 85%;
-  color: white;
+  color: #fff;
 }
+
 .thermometer #thermo__1:before {
   content: attr(data-value);
 }
+
 .thermometer #thermo__2:before {
   content: attr(data-value);
 }
 
+.slider-wide {
+  left: -2px;
+  bottom: -2px;
+  width: 160px;
+  -webkit-appearance: none;
+  position: absolute;
+  overflow: hidden;
+  cursor: pointer;
+  border-radius: 5px;
+}
+
+.slider-wide::-webkit-slider-runnable-track {
+  -webkit-appearance: none;
+  background: #212121;
+}
+
+.slider-wide::-webkit-slider-thumb {
+  border-radius: 0px;
+  -webkit-appearance: none;
+  width: 30px;
+  height: 60px;
+  background: #fff;
+  box-shadow: -160px 0 0 160px color-mix(in srgb, var(--main-color) 50%, #fff);
+  border: 2px solid #999;
+}
+
+.slider-wide_container {
+  width: 160px;
+  height: 60px;
+}

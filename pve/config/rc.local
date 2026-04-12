@@ -18,6 +18,7 @@
 #pve-firewall stop || :
 
 ## Unprivileged LXC TTY Passthrough
+sleep 10
 LXC_DEV="USB-Xmit0" ## new device name
 if [ ! -e "/dev/$LXC_DEV" ]; then
   ## Execute: (ls -la /dev/ttyUSB0)
@@ -34,19 +35,15 @@ modprobe nct6775 || :
 modprobe coretemp || :
 
 ## Enable Swapfile
-sleep 5.25
-if [ ! -e /mnt/pve/scratch/swapfile ]; then
+sleep 10
+SWAPFILE="/mnt/pve/scratch/swapfile"
+if [ ! -e "$SWAPFILE" ]; then
   echo "Swap file not found."
 else
-  swapon /mnt/pve/scratch/swapfile || :
+  swapon "$SWAPFILE" || :
   ## Use virtual memory less
   sysctl vm.swappiness=10
 fi
-
-## Allow all users to R/W
-mkdir -p /mnt/ramdisk
-touch /mnt/ramdisk/sysout.txt
-chmod -R 777 /mnt/ramdisk
 
 ## Power mode for CPU
 echo "performance" | tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
@@ -57,7 +54,7 @@ echo " by Ben Provenzano III"
 echo "*"
 
 ## Disable Web Interface on Boot
-sleep 15
+sleep 20
 systemctl stop spiceproxy pveproxy
 
 exit 0

@@ -1,2 +1,2 @@
-Downloads     -fstype=cifs,rw,gid=1000,uid=1000,credentials=/etc/auto.creds ://files.home/Downloads
-Media         -fstype=cifs,rw,gid=1000,uid=1000,credentials=/etc/auto.creds ://files.home/Media
+Scratch    -fstype=cifs,rw,gid=1000,uid=1000,credentials=/etc/auto.creds ://192.168.1.4/Scratch
+Media      -fstype=cifs,rw,gid=1000,uid=1000,credentials=/etc/auto.creds ://192.168.1.4/Media

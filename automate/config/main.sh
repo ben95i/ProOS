@@ -16,47 +16,39 @@ DESK_IP="192.168.1.14" ## Desktop PC
 BRPI_IP="192.168.1.15" ## Bedroom Pi
 BRPC_IP="192.168.1.17" ## Bedroom PC
 BRPC_MAC="90:2e:16:46:86:43" ## Bedroom PC MAC
+DELIMITER="|"
 
 ## Curl Command Line Arguments
 CURLARGS="--silent --fail --ipv4 --no-buffer --max-time 3 --retry 1 --retry-delay 1 --no-keepalive"
 
 function CALLAPI(){
-  ## PHP API call
   local TARGET="${1}"
   local API_ARG1="${2}"
   local API_ARG2="${3}"
   if [[ "$API_ARG1" == "" ]]; then
     return
   fi
-  DATA="var=$API_ARG2&arg=$API_ARG1&action=main"
-  SERVER="http://$TARGET:80/exec.php"
-  ## API GET request wait then read response
-  DELIM="|"
-  APIRESP="$(/usr/bin/curl $CURLARGS --data $DATA $SERVER)"
-  TMPSTR="${APIRESP#*$DELIM}"
-  RESPOUT="${TMPSTR%$DELIM*}"
+  SERVER="http://$TARGET:80/api?var=$API_ARG2&arg=$API_ARG1&action=main"
+  APIRESP=$(/usr/bin/curl $CURLARGS $SERVER)
+  TMPSTR="${APIRESP#*$DELIMITER}"
+  RESPOUT="${TMPSTR%$DELIMITER*}"
   echo "$RESPOUT"
 }
 
 function CALLPICO(){
-  ## Pi Pico HTTP API call
-  local PICO_IP="${1}"
-  local PICO_ARG="${2}"
-  if [[ "$PICO_ARG" == "" ]]; then
+  local TARGET="${1}"
+  local API_ARG1="${2}"
+  local API_ARG2="${3}"
+  if [[ "$API_ARG1" == "" ]]; then
     return
   fi
-  SERVER="http://$PICO_IP:80/api/$PICO_ARG"
-  ## API GET request wait then read response
-  DELIM="|"
-  APIRESP="$(/usr/bin/curl $CURLARGS $SERVER)"
-  TMPSTR="${APIRESP#*$DELIM}"
-  RESPOUT="${TMPSTR%$DELIM*}"
+  SERVER="http://$TARGET:4000/api?$API_ARG1,,$API_ARG2~"
+  RESPOUT=$(/usr/bin/curl $CURLARGS $SERVER)
   echo "$RESPOUT"
 }
 
 function LOCAL_PING(){
-  local LOCAL_PING_ADR="${1}"
-  if ping -4 -A -c 1 -i "$MAX_PING_WAIT" -W "$MAX_PING_WAIT" "$LOCAL_PING_ADR" > /dev/null 2> /dev/null
+  if /usr/bin/ping -4 -A -c 1 -i "$MAX_PING_WAIT" -W "$MAX_PING_WAIT" "${1}" > /dev/null 2> /dev/null
   then
     echo "1" ## Online
   else
@@ -79,7 +71,7 @@ function WAKE_BRPC() {
   then
     echo "bedroom PC already online."
   else
-    wakeonlan "$BRPC_MAC"
+    /usr/bin/wakeonlan "$BRPC_MAC"
   fi
 }
 
@@ -215,8 +207,39 @@ function LOCALCOM_RESP(){
 }
 
 function LRXMIT(){
-local CMD_IN="$1"
-case "$CMD_IN" in
+local CMD_SEP="-"
+local CMD_IN="${1}"
+local CMD_1=${CMD_IN%$CMD_SEP*}
+local CMD_2=${CMD_IN#*$CMD_SEP}
+case "$CMD_1" in
+  ## Window Lamp
+  "wl_leds")
+    CALLPICO "$PICOLAMP1_IP" "4" "0"
+    ;; 
+  "wl_ledsoff")
+    CALLPICO "$PICOLAMP1_IP" "1" "2"
+    ;;
+  "wl_ledson")
+    CALLPICO "$PICOLAMP1_IP" "1" "3"
+    ;;  
+  "wl_leds_set")
+    CALLPICO "$PICOLAMP1_IP" "3" "$CMD_2"
+    ;;
+  "wl_led1off")
+    CALLPICO "$PICOLAMP1_IP" "1" "2"
+    ;;
+  "wl_led1on")
+    CALLPICO "$PICOLAMP1_IP" "1" "3"
+    ;; 
+  "wl_led2off")
+    CALLPICO "$PICOLAMP1_IP" "2" "0"
+    ;;
+  "wl_led2on")
+    CALLPICO "$PICOLAMP1_IP" "2" "1"
+    ;;
+  "wl_led2")
+    CALLPICO "$PICOLAMP1_IP" "2" "2"
+    ;;
   ### Desktop PC ###
   "wkststate")
     if [[ "$(LOCAL_PING "$DESK_IP")" == "1" ]]
@@ -253,7 +276,7 @@ case "$CMD_IN" in
     ;;
   "hifistateoff")
     CALLAPI "$LRXMIT_IP" "extcom" "02122" ## Subwoofer Amp Off
-    sleep 0.5
+    sleep 1.0
     CALLAPI "$LRXMIT_IP" "extcom" "02103" ## Preamp Off
     ;;
   "hifistateon")
@@ -273,21 +296,25 @@ case "$CMD_IN" in
   ## DAC USB Input
   "usb")
     CALLAPI "$LRXMIT_IP" "extcom" "02107" ## Preamp Digital
+    sleep 0.5
     CALLAPI "$LRXMIT_IP" "extcom" "02130" ## DAC USB
     ;;
   ## Coaxial Input 
   "coax")
     CALLAPI "$LRXMIT_IP" "extcom" "02110" ## Preamp Digital (AirPlay Label)
+    sleep 0.5
     CALLAPI "$LRXMIT_IP" "extcom" "02131" ## DAC Coax
     ;;
   ## Optical Input 
   "opt")
     CALLAPI "$LRXMIT_IP" "extcom" "02112" ## Preamp Digital (Optical Label) 
+    sleep 0.5
     CALLAPI "$LRXMIT_IP" "extcom" "02132" ## DAC Optical
     ;;
   ## Auto Input
   "autodac")
     CALLAPI "$LRXMIT_IP" "extcom" "02107" ## Preamp Digital
+    sleep 0.5
     CALLAPI "$LRXMIT_IP" "extcom" "02133" ## DAC Auto Select
     ;;
   ## Volume Limit Mode
@@ -348,26 +375,6 @@ SECOND_ARG="${2//$'\n'/}"
 
 case "$FIRST_ARG" in
 
-## All Lights ##
-
-lightson)
-## Window Lamp
-CALLPICO "$PICOLAMP1_IP" "wl_led1on"
-## Dresser Lamp
-BRXMIT "brlamp1on"
-exit
-;;
-
-lightsoff)
-## Window Lamp
-CALLPICO "$PICOLAMP1_IP" "wl_led1off"
-## Dresser Lamp
-BRXMIT "brlamp1off"
-## Blank LEDwalls
-/opt/system/leds stop
-exit
-;;
-
 ## Bedroom Power ##
 
 bron)
@@ -379,7 +386,7 @@ BRXMIT "retropion"
 BRXMIT "brmacson"
 ## Bedroom Audio
 CALLAPI "$BRPI_IP" "ampstateon" ""
-## Bedroom TV & PC
+## Bedroom TV & PC 
 BRXMIT "brtvon"
 exit
 ;;
@@ -400,11 +407,48 @@ CALLAPI "$BRPC_IP" "sleep" ""
 exit
 ;;
 
+## All Lights ##
+
+lightson)
+## Window Lamp
+LRXMIT "wl_led1on"
+LRXMIT "wl_led2on"
+## Dresser Lamp
+BRXMIT "brlamp1on"
+exit
+;;
+
+lightsoff)
+## Window Lamp
+LRXMIT "wl_led1off"
+LRXMIT "wl_led2off"
+## Dresser Lamp
+BRXMIT "brlamp1off"
+## Blank LEDwalls
+/opt/system/leds stop
+exit
+;;
+
+## PC Keyboard F1/F2
+
+lrlightson)
+## Window Lamp #1
+LRXMIT "wl_led1on"
+exit
+;;
+
+lrlightsoff)
+## Window Lamp
+LRXMIT "wl_led1off"
+exit
+;;
+
 ## Living Room ##
 
 lron)
 ## Window Lamp
-CALLPICO "$PICOLAMP1_IP" "wl_led1on"
+LRXMIT "wl_led1on"
+LRXMIT "wl_led2on"
 ## LEDwalls
 LED_PRESET "abstract"
 ## PC Power On
@@ -416,27 +460,14 @@ exit
 
 lroff)
 ## Window Lamp
-CALLPICO "$PICOLAMP1_IP" "wl_led1off"
+LRXMIT "wl_led1off"
+LRXMIT "wl_led2off"
 ## Blank LEDwalls
 /opt/system/leds stop
 ## PC Power Off
 LRXMIT "wkststateoff"
 ## Main Room Audio
 LRXMIT "hifistateoff"
-exit
-;;
-
-lrlightson)
-## Window Lamp
-CALLPICO "$PICOLAMP1_IP" "wl_led1on"
-exit
-;;
-
-lrlightsoff)
-## Window Lamp
-CALLPICO "$PICOLAMP1_IP" "wl_led1off"
-## Blank LEDwalls
-/opt/system/leds stop
 exit
 ;;
 
@@ -458,16 +489,8 @@ CALLAPI "$BRPI_IP" "$SECOND_ARG" ""
 exit
 ;;
 
-## Forward to Window Lamp Pi
-wlpi)
-CALLPICO "$PICOLAMP1_IP" "$SECOND_ARG"
-exit
-;;
-
 ## Sleep Sounds
 relax)
-## Bedroom Audio (Coaxial Mode)
-CALLAPI "$BRPI_IP" "ampon-coax" ""
 ## Relax Sounds on Bedroom Pi
 CALLAPI "$BRPI_IP" "relax" "$SECOND_ARG"
 ## Send Sleep Command
@@ -496,20 +519,29 @@ exit
 
 ## Lookup Website Title from URL
 sitelookup)
-if [ "$SECOND_ARG" != "" ]; then
-  BASE64_IN=$(echo "$SECOND_ARG" | sed "s|-|+|g" | sed "s|_|/|g" | sed "s|@|=|g")
-  DECODED_URL=$(openssl enc -base64 -d <<< "$BASE64_IN")
-  LINKTITLE=$(curl -s -X GET "$DECODED_URL" | xmllint -html -xpath "//head/title/text()" - 2>/dev/null)
-  if [[ "$LINKTITLE" != "" ]] && [[ "$LINKTITLE" != "\n" ]]; then
-    echo "$LINKTITLE"
-  else
-    echo "Site lookup error!"
-  fi
-fi
+BASE64_IN=$(echo "$SECOND_ARG" | sed "s|-|+|g" | sed "s|_|/|g" | sed "s|@|=|g")
+DECODED_URL=$(openssl enc -base64 -d <<< "$BASE64_IN")
+URL_DOMAIN=$(echo "$DECODED_URL" | awk -F/ '{print $3}')
+case "$URL_DOMAIN" in
+  "www.ups.com" | "ups.com")
+    echo "UPS Tracking"
+    ;;
+  "tools.usps.com")
+    echo "USPS Tracking"
+    ;;
+  *)
+    LINKTITLE=$(curl -s -X GET "$DECODED_URL" | xmllint -html -xpath "//head/title/text()" - 2>/dev/null)
+    if [[ "$LINKTITLE" == "" ]] || [[ "$LINKTITLE" == "\n" ]]; then
+      echo "Site Lookup Error!"
+    else
+      echo "$LINKTITLE"
+    fi
+  ;;
+esac
 exit
 ;;
 
-## Server Controls
+## Server Functions
 server)
 SERVERARG="$SECOND_ARG"
 if [[ "${SERVERARG}" == "" ]]
@@ -526,31 +558,8 @@ then
 fi
 echo " " 
 echo "$SERVERARG sent." &>> $LOGFILE
+## Write Trigger File
 touch $RAMDISK/$SERVERARG.txt
-exit
-;;
-
-active)
-echo "Active services."
-systemctl list-units --type=service --state=active &>> $LOGFILE
-exit
-;;
-
-running)
-echo "Running services."
-systemctl list-units --type=service --state=running &>> $LOGFILE
-exit
-;;
-
-timers)
-## List Active Timers
-systemctl list-timers --all &>> $LOGFILE
-exit
-;;
-
-loadtimes)
-## Display list of system daemons and startup times
-systemd-analyze blame &>> $LOGFILE
 exit
 ;;
 
@@ -573,8 +582,8 @@ exit
 ###############################
 
 *)
-  ## command not matched above
-  echo "invalid command!"
+  ## command not matched above forward command
+  echo "invalid command !"
   exit
 ;;
 esac

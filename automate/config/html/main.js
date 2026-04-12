@@ -4,23 +4,23 @@
 // global variables //
 let ctlMode;
 let ctlCommand;
-let selectedVM = "";
+let fileData = [];
+let serverCmdData;
+let fcSocket = null;
+let resizeState = false;
+let messagePopupTimer;
 let dynMenuActive = 0;
 let bookmarkState = 0;
-let resizeState = false;
-let serverCmdData;
-let socket = null;
-let fileData = [];
-var timeStamp;
+let volPopupTimer;
+let timeStamp;
 let sysModel;
 
 // global constants
+const serverSite = "Automate";
 const BKM_INACTIVE = 0;
 const BKM_OPEN_MODE = 1;
 const BKM_EDIT_MODE = 2;
 const resizeTimeout = 750; // in ms
-const serverSite = "Automate";
-const siteVersion = "10.5.8";
 
 //////////////////////
 
@@ -43,23 +43,23 @@ function handleClicks(event) {
     return;
   }
   // don't hide menus when clicking these elements
-  if (!(event.target.classList.contains('button') || // button click
-        event.target.classList.contains('button__text') || // button text click
-        event.target.classList.contains('nohide__click') || // no-hide click class
-        event.target.classList.contains('bookmarked__item') || // bookmark menu click
-        event.target.classList.contains('fas') || // solid icon clicks
+  if (!(event.target.classList.contains('button') || // button clicks
+        event.target.classList.contains('button__text') || // button text clicks
+        event.target.classList.contains('nohide__click') || // no-hide clicks
+        event.target.classList.contains('bookmarked__item') || // bookmark menu clicks
+        event.target.classList.contains('chkbox') || // checkbox clicks
         event.target.classList.contains('fad') || // duotone icon clicks
         event.target.classList.contains('fab') || // brand icon clicks
-        event.target.classList.contains('chkbox'))) { // checkbox click
+        event.target.classList.contains('fas'))) { // solid icon clicks
     hideDropdowns(true); // hide all dropdown menus
   }
 }
 
 function hideDropdowns(eraseDynMenus) {
   // hide all dropdown menus
-  classDisplay("dd-content","none");
+  classDisplay("dd-content", "none");
   // hide / reset bookmarks menu
-  classDisplay("bookmark-buttons","none");
+  classDisplay("bookmark-buttons", "none");
   const elem = document.getElementById("bookmarks");
   if (elem) {
     elem.classList.remove("bookmark-editmode");
@@ -94,14 +94,57 @@ function checkElemIsVisibleByID(id){
   return _elmvis;
 }
 
+// remove element by ID
+function removeWindow(id) {
+  let win = document.getElementById(id);
+  if (win) { // window exists
+    document.body.removeChild(win);
+  }
+}
+
+function showPopup(message) {
+  let msgtext;
+  let win_name = "msg-popup";
+  let text_name = "msg-text";
+  let msgpopwin = document.getElementById(win_name);
+  if (!msgpopwin) { // window does not exist
+    // draw window
+    msgpopwin = document.createElement("div");
+    msgpopwin.classList.add("popup-alert");
+    msgpopwin.id = win_name;
+    // volume text box
+    msgtext = document.createElement("div");
+    msgtext.id = text_name;
+    msgpopwin.appendChild(msgtext);
+    // add to page
+    document.body.appendChild(msgpopwin);
+  } else {
+    // select elements in existing window
+    msgtext = document.getElementById(text_name);
+  }
+  // set error text
+  msgtext.innerHTML = message;
+  // reset hide window timeout
+  clearTimeout(messagePopupTimer);
+  // hide window after delay
+  messagePopupTimer = setTimeout(() => {
+    if (msgpopwin) { // window exists
+      // fade out window
+      msgpopwin.classList.add('fade-out');
+      // wait for the transition to end before removing window
+      msgpopwin.addEventListener("animationend", function (event) {
+        if (event && msgpopwin) {
+          document.body.removeChild(msgpopwin);
+        }
+      });
+    }
+  }, 4000); // hide delay in (ms)
+}
+
 // open URL in new tab
 function GoToExtPage(_path) {
   let url = "https://" + _path;   
   window.open(url, "_blank");
-}
-
-function mapNumber(num, inMin, inMax, outMin, outMax) {
-  return (num - inMin) * (outMax - outMin) / (inMax - inMin) + outMin;
 }
 
 // back to home page 
@@ -110,14 +153,14 @@ function GoToHomePage() {
     hidePages();
     loadPage();
   } else {
-    window.location = 'https://'+serverSite+'.home';   
+    window.location = 'https://' + serverSite + '.home';   
   }
 }
 
 function hidePages() {
-  classDisplay('pi-grid','none'); 
-  classDisplay('ledpi-grid','none'); 
-  classDisplay('server-grid','none');
+  classDisplay('pi-grid', 'none'); 
+  classDisplay('ledpi-grid', 'none'); 
+  classDisplay('server-grid', 'none');
 }
 
 // runs on page load
@@ -125,7 +168,7 @@ function loadPage() {
   // read device type
   sysModel = deviceType(); 
   if (sysModel === serverSite) {
-    // load control menu
+    // load control menu saved state
     let _mode = localStorage.getItem("ctls-mode")
     if (_mode === null || _mode === undefined || _mode === "") {
       ctlMode = 'lr'; // living room 
@@ -134,14 +177,11 @@ function loadPage() {
     }
     ctlsMenu(ctlMode);
     // server home page
-    classDisplay('server-grid','block');
-  } else { // pi's
-    if (sysModel === 'Pi') {
-      classDisplay('pi-grid','block');
-    }
-    if (sysModel === 'LEDpi') {
-      classDisplay('ledpi-grid','block');
-    }    
+    classDisplay('server-grid', 'block');
+  } else if (sysModel === 'Pi') {
+    classDisplay('pi-grid', 'block');
+  } else if (sysModel === 'LEDpi') {
+    classDisplay('ledpi-grid', 'block');
   }
   // set theme
   let currentTheme;
@@ -225,52 +265,20 @@ function resizeDone() {
     resizeState = false;
     // re-enable stars animation
     starsAnimation(true);
-  }               
+  }
 }
 
 function starsAnimation(_state) {
   // animated stars background
   let _itr;
-  console.log('stars state: ' + _state);
   for (_itr = 1; _itr <= 12; _itr++) {
     let _elm = "star-" + _itr;
     let _class = "star-a-" + _itr;
     if (_state === true) {
-      elemToClass('show',_elm,_class);
+      addClassToElem('add', _elm, _class);
     } else {
-      elemToClass('hide',_elm,_class);
+      addClassToElem('remove', _elm, _class);
     }
-  }
-}
-
-// returns (true) if object is empty
-function isObjEmpty(obj) {
-  var isEmpty = true;
-  for (keys in obj) {
-     isEmpty = false;
-     break;
-  }
-  return isEmpty;
-}
-
-// transmit a command
-async function sendCmd(act, arg1, arg2) {
-  // construct API URL
-  const url = location.protocol+"//"+location.hostname+"/exec.php?var="+arg2+"&arg="+arg1+"&action="+act;
-  // send request 
-  const response = await fetch(url, {
-    method: 'GET'
-  });
-  try {
-    const obj = await response.json();
-    var out = null;
-    var empty = isObjEmpty(obj);
-    if (empty === false) {
-      out = obj.toString();
-    } 
-    return out; // return data
-  } catch (err) {
-    console.log('sendCmd: ' + err);
   }
 }
 
@@ -289,24 +297,23 @@ async function serverSend() {
       sendCmd('main-www','server',serverCmdData);
     }
     // display command sent
-    document.getElementById("logTextBox").value += "\n"+ serverCmdData + " command sent.";
+    document.getElementById("logTextBox").value += "\n" + serverCmdData + " command sent.";
     // scroll to bottom of page
     let txtArea = document.getElementById("logTextBox");
     txtArea.scrollTop = txtArea.scrollHeight;
   }
   sendBtnAlert("off");
   serverCmdData = null;
-  closeServerOptions();
 }
 
 function sendBtnAlert(state) {
-  let _class = "button_alert";
+  let _class = "alert_btn";
   let _elem = "sendButton";
-  if (state === 'off') {
-    elemToClass('hide',_elem,_class);
-  }
   if (state === 'on') {
-    elemToClass('show',_elem,_class);
+    addClassToElem('add', _elem, _class);
+  }
+  if (state === 'off') {
+    addClassToElem('remove', _elem, _class);
   }
 }
 
@@ -318,29 +325,29 @@ function clearPendingCmd() {
 
 function openServerOptions(){
   closeServerOptions();
-  classDisplay("svropt__prompt","block");
-  classDisplay("svropt__main","block");
+  classDisplay("svropt__prompt", "block");
+  classDisplay("svropt__main", "block");
 }
 
 function openRegionsOptions(){
   closeServerOptions();
-  classDisplay("svropt__prompt","block");
-  classDisplay("svropt__regions","block");
+  classDisplay("svropt__prompt", "block");
+  classDisplay("svropt__regions", "block");
 }
 
 function openBackupOptions(){
   closeServerOptions();
-  classDisplay("svropt__prompt","block");
-  classDisplay("svropt__backup","block");
+  classDisplay("svropt__prompt", "block");
+  classDisplay("svropt__backup", "block");
 }
 
 function closeServerOptions(){
   hideDropdowns(true);
   clearPendingCmd();
-  classDisplay("svropt__prompt","none");
-  classDisplay("svropt__main","none");
-  classDisplay("svropt__regions","none");
-  classDisplay("svropt__backup","none");
+  classDisplay("svropt__prompt", "none");
+  classDisplay("svropt__main", "none");
+  classDisplay("svropt__regions", "none");
+  classDisplay("svropt__backup", "none");
 }
 
 /// END- text popup window ///
@@ -364,17 +371,18 @@ async function aboutPrompt(){
   img.id = "about__img";
   aboutprompt.appendChild(img);
   // version details
-  let currentDate = new Date();
-  let currentYear = currentDate.getFullYear();
   let aboutdets2 = document.createElement("div"); 
-  aboutdets2.innerHTML = "Version " + siteVersion;
+  aboutdets2.innerHTML = "by Ben Provenzano III";
   aboutdets2.className = "about__text";
   aboutprompt.appendChild(aboutdets2);
-  // author details
-  let aboutdets1 = document.createElement("div"); 
-  aboutdets1.innerHTML = currentYear + " - Ben Provenzano III";
+  let aboutdets1 = document.createElement("div");
+  const curDate = new Date();
+  const curYear = curDate.getFullYear();
+  const curMonth = curDate.getMonth() + 1;
+  const curQtr = Math.ceil(curMonth / 3); // round up to the nearest integer
+  aboutdets1.innerHTML = curYear + '.' + curQtr + " Release";
   aboutdets1.className = "about__text";
-  aboutprompt.appendChild(aboutdets1); 
+  aboutprompt.appendChild(aboutdets1);
   // cancel button
   let aboutcancelb = document.createElement("button");
   aboutcancelb.type = "button"; 
@@ -384,8 +392,8 @@ async function aboutPrompt(){
   aboutprompt.appendChild(aboutcancelb); //append cancel-button
   document.body.appendChild(aboutprompt); //append the password-prompt so it gets visible
   new Promise(function() {
-    aboutprompt.addEventListener('click', function handleButtonClicks(e) { //lets handle the buttons
-      if (e.target.tagName !== 'BUTTON') { return; } //nothing to do - user clicked somewhere else
+    aboutprompt.addEventListener('click', function handleButtonClicks(btn_evnt) { //lets handle the buttons
+      if (btn_evnt.target.tagName !== 'BUTTON') { return; } //nothing to do - user clicked somewhere else
       aboutprompt.removeEventListener('click', handleButtonClicks); //removes eventhandler on cancel or ok
       document.body.removeChild(aboutprompt);  //as we are done clean up by removing the password-prompt
     });
@@ -457,15 +465,15 @@ async function showTempHumidity(){
   getTemperatureData();
   // button actions
   new Promise(function() {
-    tempprompt.addEventListener('click', function handleButtonClicks(e) {
-      if (e.target.tagName !== 'BUTTON') { return; } 
+    tempprompt.addEventListener('click', function handleButtonClicks(btn_evnt) {
+      if (btn_evnt.target.tagName !== 'BUTTON') { return; } 
         // close button
-        if (e.target === tempcancelb) {
+        if (btn_evnt.target === tempcancelb) {
           tempprompt.removeEventListener('click', handleButtonClicks); 
           document.body.removeChild(tempprompt);  
         }
         // refresh button
-        if (e.target === temprefreshb) {
+        if (btn_evnt.target === temprefreshb) {
           getTemperatureData();
         }
     });
@@ -473,39 +481,40 @@ async function showTempHumidity(){
 }
 
 function getTemperatureData() {
-  sendCmd('main','brxmit','roomth').then((data) => {
-    const resp = data.replace(/(\r\n|\n|\r)/gm, "");
+  sendCmd('main', 'brxmit', 'roomth').then((data) => {
+    const resp = cleanString(data);
+    // extract numerics
     const resp_arr = resp.split("~");
     let temp_elm = document.getElementById("thermo__1");
     let humd_elm = document.getElementById("thermo__2");
     if (resp_arr.length == 2) {
       // valid response
-      pushTempDataToThermos(resp_arr,temp_elm,humd_elm);
+      pushTempDataToThermos(resp_arr, temp_elm, humd_elm);
     } else {
       // retry request
       setTimeout(function(){
-        retryGetTempData(temp_elm,humd_elm);
+        retryGetTempData(temp_elm, humd_elm);
       }, 500); // in ms
     }
   });
 }
 
-function retryGetTempData(temp_elm,humd_elm) {
+function retryGetTempData(temp_elm, humd_elm) {
   console.log("re-trying DHT data refresh...");
-  sendCmd('main','brxmit','roomth').then((data) => {
-    const resp = data.replace(/(\r\n|\n|\r)/gm, "");
+  sendCmd('main', 'brxmit', 'roomth').then((data) => {
+    const resp = cleanString(data);
     // extract numerics
     const resp_arr = resp.split("~");
     // validate response
     if (resp_arr.length == 2) {
-      pushTempDataToThermos(resp_arr,temp_elm,humd_elm);
+      pushTempDataToThermos(resp_arr, temp_elm, humd_elm);
     } else {
-      pushTempErrorThermos(temp_elm,humd_elm);
+      pushTempErrorThermos(temp_elm, humd_elm);
     }
   });
 }
 
-function pushTempDataToThermos(resp_arr,temp_elm,humd_elm) {
+function pushTempDataToThermos(resp_arr, temp_elm, humd_elm) {
   // thermometer limits
   const minTemp = 25;
   const maxTemp = 100;
@@ -530,11 +539,11 @@ function pushTempDataToThermos(resp_arr,temp_elm,humd_elm) {
     if (hvalue <= minHumidity) { hvalue = minHumidity; }
     humd_elm.style.height = (hvalue - minHumidity) / (maxHumitidy - minHumidity) * 100 + "%";
   } else {
-    pushTempErrorThermos(temp_elm,humd_elm);
+    pushTempErrorThermos(temp_elm, humd_elm);
   }
 }
 
-function pushTempErrorThermos(temp_elm,humd_elm) {
+function pushTempErrorThermos(temp_elm, humd_elm) {
   // verify elements exist
   if (!(temp_elm && humd_elm)) {
     return;
@@ -553,19 +562,13 @@ async function showPiWiFiPrompt() {
   if (document.getElementById(winid)) {
     return;
   }
-  let result;
-  try {
-    hideDropdowns(true);
-    result = await piWiFiPrompt(winid);
-    if (result !== null) {  
-      if (result !== '') {  
-        sendCmd('main-www','confwpa',result);
-        document.getElementById("logTextBox").value = "Wi-Fi configuration updated, select client mode to apply changes.";
-      }
-    } 
-    result = "";
-  } catch(e){
-    result = "";
+  hideDropdowns(true);
+  let result = await piWiFiPrompt(winid);
+  if (result !== null) {  
+    if (result !== '') {  
+      sendCmd('main-www','confwpa',result);
+      document.getElementById("logTextBox").value = "Wi-Fi configuration updated, select client mode to apply changes.";
+    }
   }
 }
 
@@ -620,7 +623,7 @@ async function piWiFiPrompt(_winid){
 	        pinettext1.innerHTML = "enter password!";
 	      } else {
 	      	// concat and convert to base64
-	        let _wifidata = btoa(pinetssidbox.value + "|$|" + pinetpassbox.value);
+          let _wifidata = base64URLSafeEncode(pinetssidbox.value + "|$|" + pinetpassbox.value);
 	        resolve(_wifidata);
 	        cancelWiFi();
 	      }
@@ -637,18 +640,18 @@ async function piWiFiPrompt(_winid){
         }        
     });
     // key focused on SSID box
-    pinetssidbox.addEventListener('keyup',function handleSSID(e){ 
-        if(e.keyCode == 13){ //if user enters "enter"-key on password-field
+    pinetssidbox.addEventListener('keyup', function handleSSID(ssid_evnt){ 
+        if(ssid_evnt.key === 'Enter'){ //if user enters "enter"-key on password-field
           pinetpassbox.focus(); // focus on password field
-        }else if(e.keyCode==27){ //user enters "Escape" on password-field
+        } else if (ssid_evnt.key === 'Escape'){ //user enters "Escape" on password-field
           cancelWiFi();
         }
     });
     // key focused on password box
-    pinetpassbox.addEventListener('keyup',function handlePass(e){ 
-        if(e.keyCode == 13){ //if user enters "enter"-key on password-field
+    pinetpassbox.addEventListener('keyup', function handlePass(pass_evnt){ 
+        if(pass_evnt.key === 'Enter'){ //if user enters "enter"-key on password-field
           sendWiFiData();
-        }else if(e.keyCode==27){ //user enters "Escape" on password-field
+        } else if (pass_evnt.key === 'Escape'){ //user enters "Escape" on password-field
           cancelWiFi();
         }
     });
@@ -682,11 +685,11 @@ async function wifiPrompt(){
   wifiprompt.appendChild(wificancelb);
   document.body.appendChild(wifiprompt);
   new Promise(function() {
-      wifiprompt.addEventListener('click', function handleButtonClicks(e) {
-        if (e.target.tagName !== 'BUTTON') { return; }
-          wifiprompt.removeEventListener('click', handleButtonClicks);
-          document.body.removeChild(wifiprompt);
-      });
+    wifiprompt.addEventListener('click', function handleButtonClicks(btn_evnt) {
+      if (btn_evnt.target.tagName !== 'BUTTON') { return; }
+        wifiprompt.removeEventListener('click', handleButtonClicks);
+        document.body.removeChild(wifiprompt);
+    });
   });   
 }
 
@@ -697,7 +700,7 @@ async function getPassword(_type){
     result = await passwordPrompt();
     if (result !== null) {  
       if (result !== '') {
-        savePOST(_type,[result]);
+        savePOST(_type, [result]);
       }
     }
     result = "";
@@ -739,21 +742,21 @@ function passwordPrompt(){
   document.body.appendChild(pwprompt); 
   pwinput.focus(); //focus on the password-input-field so user does not need to click
   return new Promise(function(resolve, reject) {
-      pwprompt.addEventListener('click', function handleButtonClicks(e) { //lets handle the buttons
-        if (e.target.tagName !== 'BUTTON') { return; } //nothing to do - user clicked somewhere else
+      pwprompt.addEventListener('click', function handleButtonClicks(click_evnt) { //lets handle the buttons
+        if (click_evnt.target.tagName !== 'BUTTON') { return; } //nothing to do - user clicked somewhere else
         pwprompt.removeEventListener('click', handleButtonClicks); //removes eventhandler on cancel or ok
-        if (e.target === pwokbutton) { //click on ok-button
+        if (click_evnt.target === pwokbutton) { //click on ok-button
           resolve(pwinput.value); //return the value of the password
         } else {
           reject(new Error('User cancelled')); //return an error
         }
         document.body.removeChild(pwprompt);  //as we are done clean up by removing the password-prompt
       });
-      pwinput.addEventListener('keyup',function handleEnter(e){ //users dont like to click on buttons
-          if(e.keyCode == 13){ //if user enters "enter"-key on password-field
+      pwinput.addEventListener('keyup',function handleEnter(up_events){ //users dont like to click on buttons
+          if(up_events.key === 'Enter') { //if user enters "enter"-key on password-field
               resolve(pwinput.value); //return password-value
               document.body.removeChild(pwprompt); //clean up by removing the password-prompt
-          }else if(e.keyCode==27){ //user enters "Escape" on password-field
+          } else if (up_events.key === 'Escape') { //user enters "Escape" on password-field
               document.body.removeChild(pwprompt); //clean up the password-prompt
               reject(new Error("User cancelled")); //return an error
           }
@@ -797,15 +800,15 @@ async function colorPrompt(){
   document.body.appendChild(colorprompt); 
   let _colorval;
   new Promise(function() {
-      colorinput.addEventListener('input', function colorEventListener() {
+      colorinput.addEventListener('input', function colorEventListener(inp_evnt) {
         _colorval = colorinput.value; // save color values
         // cleanup listener
-        if (e.target.tagName !== 'INPUT') { return; }
+        if (inp_evnt.target.tagName !== 'INPUT') { return; }
         colorinput.removeEventListener('click', colorEventListener); 
       });
-      colorprompt.addEventListener('click', function handleButtonClicks(e) { //lets handle the buttons
-        if (e.target.tagName !== 'BUTTON') { return; } //nothing to do - user clicked somewhere else
-        if (e.target === colorsetb) { 
+      colorprompt.addEventListener('click', function handleButtonClicks(btn_evnt) {
+        if (btn_evnt.target.tagName !== 'BUTTON') { return; } //nothing to do - user clicked somewhere else
+        if (btn_evnt.target === colorsetb) { 
           // set button action
           updateColor(_colorval);
         } else { // close button
@@ -824,8 +827,8 @@ function updateColor(_hexin) {
   }
   _host = _proto + location.hostname + ":7890";
   // Connect to a Fadecandy server
-  socket = new WebSocket(_host);
-  socket.onopen = function(event) {
+  fcSocket = new WebSocket(_host);
+  fcSocket.onopen = function() {
     color = hexToRgb(_hexin);
     let rounds = 32;
     for (let i = 0; i < rounds; i++) {
@@ -855,11 +858,11 @@ function hexToRgb(hex) {
 function writeFrame(red, green, blue) {
   let leds = 512;
   let packet = new Uint8ClampedArray(4 + leds * 3);
-  if (socket.readyState != 1 /* OPEN */) {
+  if (fcSocket.readyState != 1 /* OPEN */) {
       // The server connection isn't open. Nothing to do.
       return;
   }
-  if (socket.bufferedAmount > packet.length) {
+  if (fcSocket.bufferedAmount > packet.length) {
       // The network is lagging, and we still haven't sent the previous frame.
       // Don't flood the network, it will just make us laggy.
       // If fcserver is running on the same computer, it should always be able
@@ -874,84 +877,127 @@ function writeFrame(red, green, blue) {
       packet[dest++] = green;
       packet[dest++] = blue;
   }
-  socket.send(packet.buffer);
+  fcSocket.send(packet.buffer);
 }
 
 /// END DYNAMIC WINDOWS ///
 
 function relaxSend(_cmd) {
-  sendCmd('main','relax',_cmd);
+  sendCmd('main', 'relax', _cmd);
 }
 
 // volume controls
 function sendVol(_cmd) {
-  // volume mode
   if (ctlCommand == 'lr' ){
-    sendCmd('main','lrxmit',_cmd); // living room system 
+    sendCmd('main', 'lrxmit', _cmd); // living room system 
   }
   if (ctlCommand == 'subs' ){
-    sendCmd('main','lrxmit','sub'+_cmd); // living room subwoofers
+    sendCmd('main', 'lrxmit', 'sub' + _cmd); // living room subwoofers
   }  
   if (ctlCommand == 'br' ){
     setAmpVolume(_cmd); // bedroom system
   }
 }
 
-async function setAmpVolume(_state) {
-  sendCmd('main','brpi','vol'+_state).then((data) => { // GET request
-    let vol = -1;
-    const maxAmpLevel = 192;
-    let amp_data = data.replace(/(\r\n|\n|\r)/gm, "");
-    if (!(amp_data == "" || amp_data == null)) {
+function isNumeric(value) {
+  return /^-?\d+$/.test(value);
+}
+
+function mapNumber(num, inMin, inMax, outMin, outMax) {
+  return (num - inMin) * (outMax - outMin) / (inMax - inMin) + outMin;
+}
+
+function setAmpVolume(_state) {
+  sendCmd('main', 'brpi', 'vol' + _state).then((data) => { // GET request
+    let amp_vol = cleanString(data);
+    if (isNumeric(amp_vol) === true) {
       // re-map volume data to 0-100%, show volume pop-up
-      vol = Math.round(mapNumber(Number(amp_data), 0 , maxAmpLevel, 0, 100));
+      let display_vol = Math.round(mapNumber(Number(amp_vol),0,192,0,100));
+      showVolumePopup(display_vol); 
+    } else {
+      if (amp_vol == "") {
+        // empty response = power off
+        showVolumePopup(-1);
+      }
     }
-    showVolumePopup(vol); 
   });
 }
 
 function showVolumePopup(vol) {
-  let elem = document.getElementById('vol-popup');
-  let vol_text = document.getElementById('vol-text');
-  let vol_bar = document.getElementById('vol-bar');
-  let vol_cont = document.getElementById('vol-grid');
-  vol_cont.style.display = "none";
-  // set volume pop-up text
+  let win_name = "vol-popup";
+  let text_name = "vol-text";
+  let grid_name = "vol-grid";
+  let bar_name = "vol-bar";
+  let voltext, volgrid, volbar;
+  let volpopwin = document.getElementById(win_name);
+  if (!volpopwin) { // window does not exist
+    // draw window
+    volpopwin = document.createElement("div");
+    volpopwin.classList.add("popup-alert");
+    volpopwin.id = win_name;
+    // volume text box
+    voltext = document.createElement("div");
+    voltext.id = text_name;
+    volpopwin.appendChild(voltext);
+    // progress bar
+    volgrid = document.createElement("div");
+    volgrid.classList.add("progress_grid");
+    volgrid.id = grid_name;
+    volbar = document.createElement("div");
+    volbar.classList.add("bar_progress");
+    volbar.id = bar_name;
+    volgrid.appendChild(volbar);
+    volpopwin.appendChild(volgrid);
+    // add to page
+    document.body.appendChild(volpopwin);
+  } else {
+    // select elements in existing window
+    volbar = document.getElementById(bar_name);
+    volgrid = document.getElementById(grid_name);
+    voltext = document.getElementById(text_name);
+  }
+  // set volume display
   switch(vol) {
     case -1:
-      vol_text.innerHTML = "---"
+      volgrid.style.display = "none";
+      voltext.innerHTML = "---";
       break;
     case 0:
-      vol_text.innerHTML = "Mute";
+      volgrid.style.display = "none";
+      voltext.innerHTML = "Mute";
       break;     
     default:
-      vol_text.innerHTML = vol + "%";
-      // show volume bar
-      vol_bar.style.width = vol + "%";
-      vol_cont.style.display = "block";
+      volgrid.style.display = "block";
+      let volstr = vol + "%";
+      voltext.innerHTML = volstr;
+      volbar.style.width = volstr;
   }
-  // allow only one window
-  if (elem.style.display === 'block') { 
-    return; 
-  } else {
-    // make window visible
-    elem.style.display = "block";
-  }
-  // hide after 3 seconds
-  setTimeout(function(){
-    elem.style.display = "none";
-  }, 3000);
+  // reset hide window timeout
+  clearTimeout(volPopupTimer);
+  // hide window after delay
+  volPopupTimer = setTimeout(() => {
+    if (volpopwin) { // window exists
+      // fade out window
+      volpopwin.classList.add('fade-out');
+      // wait for the transition to end before removing window
+      volpopwin.addEventListener("animationend", function (event) {
+        if (event && volpopwin) {
+          document.body.removeChild(volpopwin);
+        }
+      });
+    }
+  }, 3000); // hide delay in (ms)
 }
 
 function roomOnOff(action) {
   if (ctlCommand == 'lr') {
     // living room
-    sendCmd('main','lr' + action,'');
+    sendCmd('main', 'lr' + action, '');
     return;
   }
   if (ctlCommand == 'br') {
     // bedroom
-    sendCmd('main','br' + action,'');
+    sendCmd('main', 'br' + action, '');
     return;
   }
 }
@@ -969,14 +1015,14 @@ function subModeToggle() {
 }
 
 // add / remove a class from a element
-function elemToClass(_action,_elmid,_class) {
+function addClassToElem(_action, _elmid, _class) {
   let _elm = document.getElementById(_elmid);
-  if (_action === 'show') {
+  if (_action === 'add') {
     if (!(_elm.classList.contains(_class))) {
       _elm.classList.add(_class);
     }
   }
-  if (_action === 'hide') {
+  if (_action === 'remove') {
     if (_elm.classList.contains(_class)) {
       _elm.classList.remove(_class);
     } 
@@ -985,10 +1031,10 @@ function elemToClass(_action,_elmid,_class) {
 
 function subMode(_action) {
   // hide subwoofer mode indicator
-  elemToClass(_action,'voldwnbtn','submode_btn');
-  elemToClass(_action,'volmutebtn','submode_btn');
-  elemToClass(_action,'volupbtn','submode_btn');
-  elemToClass(_action,'subwooferbtn','submode_btn');
+  addClassToElem(_action, 'voldwnbtn', 'submode_btn');
+  addClassToElem(_action, 'volmutebtn', 'submode_btn');
+  addClassToElem(_action, 'volupbtn', 'submode_btn');
+  addClassToElem(_action, 'subwooferbtn', 'submode_btn');
 }
 
 // controls menu actions
@@ -997,32 +1043,32 @@ function ctlsMenu(_mode) {
   // living room controls
   if ((_mode === 'lr') || (_mode === 'subs')) {
     // disable bedroom grid
-    classDisplay('bedroom-grid','none');
+    classDisplay('bedroom-grid', 'none');
     // enable hifi grid
-    classDisplay('hifi-grid','block');
+    classDisplay('hifi-grid', 'block');
     if (_mode === 'lr') {
       // hide subwoofer controls 
-      subMode('hide');
+      subMode('remove');
     } else {
       // subwoofer controls
-      subMode('show');
+      subMode('add');
     }
   } 
   // bedroom controls
   if (_mode === 'br') { 
     // disable hifi grid
-    classDisplay('hifi-grid','none');
+    classDisplay('hifi-grid', 'none');
     // hide subwoofer controls 
-    subMode('hide');
+    subMode('remove');
     // enable bedroom grid
-    classDisplay('bedroom-grid','block');
+    classDisplay('bedroom-grid', 'block');
   }
   // save state 
   localStorage.setItem("ctls-mode", _mode);
 }
 
 // toggle dropdown menu's
-function showMenu(_menu,_scrolltobtm) {
+function showMenu(_menu, _scrolltobtm) {
   let _elem = document.getElementById(_menu);
   if (_elem.style.display === 'block') {
     _elem.style.display = 'none';
@@ -1036,7 +1082,7 @@ function showMenu(_menu,_scrolltobtm) {
 }
 
 function scrollToBottom() {
-  window.scrollTo(0,document.body.scrollHeight);
+  window.scrollTo(0, document.body.scrollHeight);
 }
 
 //// Bookmarks Menu ////
@@ -1050,7 +1096,7 @@ function showBookmarks() {
   // draw bookmarks
   showDynMenu('bookmarks');
   // show add / edit buttons
-  classDisplay("bookmark-buttons","block");
+  classDisplay("bookmark-buttons", "block");
   // link open mode
   bookmarkState = BKM_OPEN_MODE;
 }
@@ -1082,20 +1128,20 @@ function showBookmarkSearch() {
     searchBox.focus();
     new Promise(function() {
       // add input listener
-      searchMenuItem.addEventListener('input', function searchInputListener(a) {
+      searchMenuItem.addEventListener('input', function searchInputListener(int_evnt) {
         filterBookmarkItems(searchBox.value);
         // cleanup listener
-        if (a.target.tagName !== 'INPUT') { return; }
+        if (int_evnt.target.tagName !== 'INPUT') { return; }
         searchMenuItem.removeEventListener('click', searchInputListener); 
       });
       // search icon button listener
-      searchMenuItem.addEventListener('click', function handleSearchButtonClick(b) {
+      searchMenuItem.addEventListener('click', function handleSearchButtonClick(btn_evnt) {
         // reset search
         filterBookmarkItems("");
         searchBox.value = "";
         searchBox.focus();
         // cleanup listener
-        if (b.target.tagName !== 'BUTTON') { return; }
+        if (btn_evnt.target.tagName !== 'BUTTON') { return; }
         searchMenuItem.removeEventListener('click', handleSearchButtonClick);
       });
     });
@@ -1184,7 +1230,7 @@ function addBookmark() {
     value: "about:blank"
   });
   // define click action
-  _elm.addEventListener("click", function(event) {
+  _elm.addEventListener("click", function() {
     clickBookmark(_newid);
   });
   // highlight selected item
@@ -1192,7 +1238,7 @@ function addBookmark() {
   // insert item below 
   navElement.insertBefore(_elm,navElement.firstChild);
   // add new window
-  drawBookmarkPrompt(true,null,null,_elm);
+  drawBookmarkPrompt(true, null, null, _elm);
 }
 
 function enableEditAddMode() {
@@ -1207,7 +1253,7 @@ function enableEditAddMode() {
 }
 
 function clickBookmark(id) {
-  const elmid = "menu-" + id.toString();
+  const elmid = "menu-" + id;
   const elem = document.getElementById(elmid);
   const url = Object.values(elem.url).join("");
   const name = elem.innerText;
@@ -1222,12 +1268,12 @@ function clickBookmark(id) {
       // edit bookmark item
       closeBookmarkPrompt();
       elem.classList.add("dd-selected"); // highlight selected item
-      drawBookmarkPrompt(false,url,name,elem);
+      drawBookmarkPrompt(false, url, name, elem);
     }
   }
 }
 
-async function drawBookmarkPrompt(add,url,name,elem){
+async function drawBookmarkPrompt(add, url, name, elem){
   // create empty window
   let editFavPrompt = document.createElement("div"); 
   editFavPrompt.className = "editFav__win";
@@ -1258,7 +1304,7 @@ async function drawBookmarkPrompt(add,url,name,elem){
   }
   // window banner text
   let editFavText = document.createElement("div");
-  editFavText.classList.add("editFav__text");
+  editFavText.classList.add("editFav__toptext");
   editFavText.innerHTML = bannerText; 
   // cancel button
   let editFavCancelBtn = document.createElement("button");
@@ -1316,27 +1362,27 @@ async function drawBookmarkPrompt(add,url,name,elem){
   document.body.appendChild(editFavPrompt);
   // handle button actions
   new Promise(function() {
-    editFavPrompt.addEventListener('click', function handleButtonClicks(e) { 
-    if (e.target.tagName !== 'BUTTON') { return; }
+    editFavPrompt.addEventListener('click', function handleButtonClicks(btn_event) { 
+    if (btn_event.target.tagName !== 'BUTTON') { return; }
       // move up button action
-      if (e.target === editFavUpBtn) {
+      if (btn_event.target === editFavUpBtn) {
         shiftMenuUp(elem);
       }
       // move down button action
-      if (e.target === editFavDownBtn) {
+      if (btn_event.target === editFavDownBtn) {
         shiftMenuDown(elem);
       }         
       // cancel button action
-      if (e.target === editFavCancelBtn) {
+      if (btn_event.target === editFavCancelBtn) {
         editFavPrompt.removeEventListener('click', handleButtonClicks);
         hideDropdowns(true);
       }
       // lookup URL action
-      if (e.target === editFavLookupBtn) {
+      if (btn_event.target === editFavLookupBtn) {
         lookupURL();
       }
       // save button action
-      if (e.target === editFavSaveBtn) {
+      if (btn_event.target === editFavSaveBtn) {
         // do not allow empty URL or name
         var stopsave = false;
         if (editFavName.value == null || editFavName.value == "") {
@@ -1374,7 +1420,7 @@ async function drawBookmarkPrompt(add,url,name,elem){
         closeBookmarkPrompt();
       }
       // delete button action
-      if (e.target === editFavDeleteBtn) {
+      if (btn_event.target === editFavDeleteBtn) {
         elem.remove();
         // save to file
         saveBookmarks();
@@ -1402,8 +1448,18 @@ function addHTTPtoURL(linkin) {
   return linkout;
 }
 
-function base64URLSafeEncode(buffer) 
-{
+// remove newlines
+function cleanString(data) {
+  if (data == null || data == undefined) {
+    return null;
+  } else {
+    let str = data.toString();
+    let out = str.replace(/(\r\n|\n|\r)/gm, '');
+    return out;
+  }
+}
+
+function base64URLSafeEncode(buffer) {
   return btoa(buffer)
     .replace(/\+/g, '-')  // Convert '+' to '-'
     .replace(/\//g, '_')  // Convert '/' to '_'
@@ -1417,7 +1473,7 @@ async function lookupURL() {
     nameBoxElem.value = "Processing...";
     // read URL box
     let urlin = urlBoxElem.value;
-    if (urlin === null || urlin === "") {
+    if (urlin == null || urlin == "") {
       // read from clipboard if URL empty
       urlin = await navigator.clipboard.readText();
     }
@@ -1426,8 +1482,8 @@ async function lookupURL() {
     urlBoxElem.value = url;
     let encoded_url = base64URLSafeEncode(url);
     // search for URLs title
-    sendCmd('main','sitelookup',encoded_url).then((data) => {
-      if (data === null || data === "") {
+    sendCmd('main', 'sitelookup', encoded_url).then((data) => {
+      if (data == null || data == "") {
         // URL lookup failed actions
         nameBoxElem.value = "Not Found";
         setTimeout(function() {
@@ -1438,7 +1494,7 @@ async function lookupURL() {
         }, 2000);
       } else { 
         // remove invalid characters, write to name box
-        nameBoxElem.value = data.replace(/(\r\n|\n|\r)/gm, '');
+        nameBoxElem.value = cleanString(data);
       }
     });
   }
@@ -1474,22 +1530,22 @@ function saveBookmarks() {
     }
   });
   // transmit file
-  savePOST('bookmarks',[_file]);
+  savePOST('bookmarks', [_file]);
 }
 
 // close add / edit window
 function closeBookmarkPrompt() {
   // re-enable click outside of window
-  document.querySelectorAll("*:not(#editFav__prompt)").forEach(e => {
-    e.style.pointerEvents = "";
+  document.querySelectorAll("*:not(#editFav__prompt)").forEach(elem1 => {
+    elem1.style.pointerEvents = "";
   }); 
   // un-highlight selected item
   for (var idx = 0; idx <= fileData.length; idx++) {
-    const _menuid = "menu-" + idx.toString();
-    const elem = document.getElementById(_menuid);
-    if (elem) {
-      if(elem.classList.contains('dd-selected')) {
-        elem.classList.remove("dd-selected");
+    const _menuid = "menu-" + idx;
+    const elem2 = document.getElementById(_menuid);
+    if (elem2) {
+      if(elem2.classList.contains('dd-selected')) {
+        elem2.classList.remove("dd-selected");
       }
     }
   }
@@ -1499,13 +1555,6 @@ function closeBookmarkPrompt() {
   }  
 }
 
-// concat and add delimiters to dynamic menu data
-function buildRemoteAPIMenu(_menubtn,_host,_cmd,_indtype,_title) {
-  return _menubtn + '~' + _host + '~' + _cmd
-                  + '|' + _indtype 
-                  + '|' + _title + '\n';
-}
-
 function showAmpInput() {
   const target = 'brpi';
   let _elem = document.getElementById("brinpmenu");
@@ -1513,66 +1562,43 @@ function showAmpInput() {
     _elem.style.display = 'none';
   } else {
     hideDropdowns(false);
+    _elem.style.display = 'block';
     // start spinner animation
     let btnText = document.getElementById('ampinp-text');
     let btnSpinner = document.getElementById('ampinp-spinner');
     btnText.style.visibility = 'hidden';
     btnSpinner.classList.add('btn-spinner');
-    _elem.style.display = 'block';
-    sendCmd('main',target,'inputstate').then((data) => { // GET request
-      const resp = data.replace(/(\r\n|\n|\r)/gm, ""); // remove newlines
+    sendCmd('main', target, 'inputstate').then((data) => { // GET request
+      const resp = cleanString(data); // remove newlines
       // draw menu items
-      let _menubtn; // menu type
-      let _cmd;     // remote host command 
       let _indtype; // indicator type
-      let _title;   // menu button title
       let _menudata = "";
       // apple TV input 
-      _menubtn = "cmd";
-      _title = "PC Mode"  
-      _cmd = "opt-a";
       _indtype = 'blkind';
-      if (resp == '2'){
-        _indtype = 'grnind';
-      }
-      _menudata += buildRemoteAPIMenu(_menubtn,target,_cmd,_indtype,_title);
+      if (resp == '2') { _indtype = 'grnind'; }
+      _menudata += 'cmd~' + target + '~opt-a|' + _indtype + '|PC Mode\n';
       // coaxial input
-      _menubtn = "cmd";
-      _title = "Bluetooth"  
-      _cmd = "coaxial";  
       _indtype = 'blkind';
-      if (resp == '3'){ 
-        _indtype = 'grnind';
-      }      
-      _menudata += buildRemoteAPIMenu(_menubtn,target,_cmd,_indtype,_title);
+      if (resp == '3') { _indtype = 'grnind'; }      
+      _menudata += 'cmd~' + target + '~coaxial|' + _indtype + '|Bluetooth\n';
       // aux optical input
-      _menubtn = "cmd";
-      _title = "Optical"  
-      _cmd = "opt-b";
       _indtype = 'blkind';
-      if (resp == '1'){
-        _indtype = 'grnind';
-      } 
-      _menudata += buildRemoteAPIMenu(_menubtn,target,_cmd,_indtype,_title);
+      if (resp == '1') { _indtype = 'grnind'; } 
+      _menudata += 'cmd~' + target + '~opt-b|' + _indtype + '|Optical\n';
       // aux analog input
-      _menubtn = "cmd";
-      _title = "Analog"  
-      _cmd = "aux";
       _indtype = 'blkind';
-      if (resp == '4'){
-        _indtype = 'grnind';
-      }
-      _menudata += buildRemoteAPIMenu(_menubtn,target,_cmd,_indtype,_title);
+      if (resp == '4') { _indtype = 'grnind'; }
+      _menudata += 'cmd~' + target + '~aux|' + _indtype + '|Analog\n';
       // stop spinner animation
       btnText.style.visibility = 'visible';
       btnSpinner.classList.remove('btn-spinner');
       // draw menu items
-      drawMenu(_menudata.split("\n"),"brinpmenu",true);
+      drawMenu(_menudata, "brinpmenu", true);
     });
   }
 }
 
-function showPowerMenu(target,menu,tobtm) {
+function showPowerMenu(target, menu, tobtm) {
   let _elem = document.getElementById(menu + '-menu');
   if (_elem.style.display === 'block') {
     _elem.style.display = 'none';
@@ -1585,16 +1611,18 @@ function showPowerMenu(target,menu,tobtm) {
     btnSpinner.classList.add('btn-spinner');
     // show menu
     _elem.style.display = 'block';
-    sendCmd('main',target,menu).then((data) => { // GET request
-      const resp = data.replace(/(\r\n|\n|\r)/gm, ''); // remove newlines
+    sendCmd('main', target, menu).then((data) => { // GET request
+      const resp = cleanString(data); // remove newlines
+      const field = resp.split("~");
+      const pri_cmd = field[0]; 
+      const sub_cmd = field[1];
+      let error = false;
       // draw menu items
-      let _menubtn; // menu type
-      let _cmd;     // remote host command 
       let _indtype; // indicator type
       let _title;   // menu button title
       let _menudata = "";
-      // status display (I)
-      switch(resp) {
+      // status display
+      switch(pri_cmd) {
         case '0':
           _indtype = 'blkind';
           _title = "Offline";
@@ -1606,28 +1634,34 @@ function showPowerMenu(target,menu,tobtm) {
         case 'pc_awake':
           _indtype = 'grnind';
           _title = "Online";
-          break;        
-        default:
+          break;
+        default: // error response
           _indtype = 'redind';
           _title = "Error";
+          error = true;
       }
-      _menudata += buildRemoteAPIMenu(_menubtn,target,_cmd,_indtype,_title);
-      // power on/off buttons (II)
-      if (resp == '1') { // online
-        _menudata += buildRemoteAPIMenu('offcmd',target,menu + 'off','noind','Off');
-      }
-      if (resp == '0') { // offline
-        _menudata += buildRemoteAPIMenu('oncmd',target,menu + 'on','noind','On');
-      }
-      /// custom menus ///
-      if (resp == 'pc_awake') {
-        _menudata += buildRemoteAPIMenu('sleepmode',target,menu + 'off','noind','Sleep');
+      _menudata += target + '|' + _indtype + '|' + _title + '\n';
+      if (error === false) {
+        // power on/off buttons
+        if (pri_cmd == '1') { // online
+          _menudata += 'offcmd~' + target + '~' + menu + 'off|noind|Off\n';
+        }
+        if (pri_cmd == '0') { // offline
+          _menudata += 'oncmd~' + target + '~' + menu + 'on|noind|On\n';
+        }
+        // custom buttons / items
+        if (pri_cmd == 'pc_awake') {
+          _menudata += 'sleepmode~' + target + '~' + menu + 'off|noind|Sleep\n';
+        }
+        if (menu == 'wl_leds') {
+          _menudata += sub_cmd + '~' + target + '~' + menu + '|slider|\n';
+        }
       }
       // stop spinner animation
       btnText.style.visibility = 'visible';
       btnSpinner.classList.remove('btn-spinner');
       // draw menu items
-      drawMenu(_menudata.split("\n"),menu + '-menu',tobtm);
+      drawMenu(_menudata, menu + '-menu', tobtm);
     });
   }
 }
@@ -1649,291 +1683,14 @@ function showStatusMenu() {
     statSpinner.classList.add('right-nav-spinner');
     // show menu
     _elem.style.display = 'block';
-    sendCmd('main','status','').then((data) => { // GET request
+    sendCmd('main', 'status', '').then((data) => { // GET request
       // draw menu items
-      drawMenu(data.split("\n"),_menu,false);
+      drawMenu(data, _menu, false);
       // stop spinner animation
       statIcon.style.visibility = 'visible';
       statSpinner.classList.remove('right-nav-spinner');
     });
   }   
-}
-
-//// Dynamic Menus ////
-
-function showDynMenu(menu,tobtm) {
-  let _elem = document.getElementById(menu);
-  if (_elem.style.display === 'block') {
-    _elem.style.display = 'none';
-  } else {
-    hideDropdowns(false);
-     _elem.style.display = 'block';
-    // build URL / append data
-    const url = location.protocol+"//"+location.hostname+"/exec.php?var=&arg="+menu+"&action=read";
-    menuDataGET(url).then((data) => { // wait for response
-      if (menu === 'bookmarks') {
-        showBookmarkSearch();
-      }
-      drawMenu(data,menu,tobtm);
-    });  
-    async function menuDataGET(url) {
-      const response = await fetch(url, {
-        method: "GET"
-      });
-      try {
-        const obj = await response.json();
-        return obj;
-      } catch (err) {
-        console.log("readMenuData: " + err);
-      }
-    }
-  }
-}
-
-// draws each menu item
-function drawMenu(data,menu,tobtm) {
-  // remove any current dynamic menus
-  removeDynMenus();
-  if (!(data === null || data === "")) {
-    // erase global data
-    while (fileData.length) { 
-      fileData.pop(); 
-    } 
-    for (var idx in data) {
-      let line = data[idx].toString();
-      if (line != "") {
-        fileData.push(line); // write to array
-        const navElement = document.getElementById(menu);
-        const linearr = line.split("|");
-        // 0=Host, 1=Type, 2=Name
-        const col0 = linearr[0];
-        const col1 = linearr[1];
-        const col2 = linearr[2].trim();
-        // draw menu item
-        navElement.appendChild(createListItem(col0,col1,col2,idx));
-        dynMenuActive = 1;
-      }
-    }
-    // store menu name at end of array
-    fileData.push(menu);
-    // scroll to bottom of page
-    if (tobtm === true) {
-      scrollToBottom();
-    }
-  } else {
-    console.log("drawMenu: no data");
-  }
-}
-
-function createListItem(_col0,_col1,_col2,_id) {
-  const _elm = document.createElement('a');
-  // assign menu ID
-  _elm.id = "menu-" + _id.toString();
-  // set menu text
-  _elm.innerText = _col2;
-  // checkbox menu
-  if (_col1 == 'chkon' || _col1 == 'chkoff') {
-    const _cbox = document.createElement('input');
-    _cbox.type = "checkbox";
-    _cbox.className = "chkbox";
-    _cbox.id = "chkbox-" + _col2;
-    // read checkbox state from file
-    if (_col1 == 'chkoff') {
-      _cbox.checked = false;
-    }
-    if (_col1 == 'chkon') {
-      _cbox.checked = true;
-    }
-    _elm.appendChild(_cbox);
-    // URL on click
-    _elm.href = _col0;
-    // a checkbox was clicked
-    _elm.addEventListener('click', function(event) {
-      if (event.target.classList.contains('chkbox')) {
-        boxChanged();
-      }
-    });
-  }
-  // API call menu
-  if (_col1 == 'ledmenu') {
-    _elm.addEventListener("click", function(event) {
-      sendCmd('leds',_col0,'');
-    });
-  }
-  if (_col1 == 'relaxmenu') {
-    _elm.addEventListener("click", function(event) {
-      relaxSend(_col0);
-    });
-  } 
-  // link only menu
-  if (_col1 == 'link') {
-    _elm.href = _col0;
-  }
-  // status menus
-  if (_col1.includes('ind')) { // indicators
-    // power toggle type
-    const _icon = document.createElement('span');
-    const field = _col0.split("~");
-    const menutype = field[0]; // menu button type
-    const target   = field[1]; // target server 
-    const cmd      = field[2]; // target command
-    let hoverOff = true;
-    if (menutype == 'oncmd') { // power-on remote API call on click
-      hoverOff = false;
-      _icon.classList.add('fa');
-      _icon.classList.add('fa-toggle-on');
-      _icon.classList.add('leftjfy'); // left-justify icon
-      _elm.appendChild(_icon);
-      _elm.addEventListener("click", function(event) {
-        sendCmd('main',target,cmd);
-      });
-    }
-    if (menutype == 'offcmd') { // power-off remote API call on click
-      hoverOff = false;
-      _icon.classList.add('fa');
-      _icon.classList.add('fa-toggle-off');
-      _icon.classList.add('leftjfy'); // left-justify icon
-      _elm.appendChild(_icon);
-      _elm.addEventListener("click", function(event) {
-        sendCmd('main',target,cmd);
-      });
-    }
-    if (menutype == 'sleepmode') { // sleep PC type menu
-      hoverOff = false;
-      _icon.classList.add('fa');
-      _icon.classList.add('fa-moon');
-      _icon.classList.add('leftjfy'); // left-justify icon
-      _elm.appendChild(_icon);
-      _elm.addEventListener("click", function(event) {
-        sendCmd('main',target,cmd);
-      });
-    }
-    if (menutype == 'cmd') { // generic remote API call on click
-      hoverOff = false;
-      _elm.addEventListener("click", function(event) {
-        sendCmd('main',target,cmd);
-      });
-    }
-    const _dot = document.createElement('span');
-    if (_col1 == 'blkind'){
-      _dot.classList.add('ind_dot');
-    }
-    if (_col1 == 'grnind'){
-      _dot.classList.add('ind_dot');
-      _dot.classList.add('ind_dot_green');
-    }
-    if (_col1 == 'redind'){
-      _dot.classList.add('ind_dot');
-      _dot.classList.add('ind_dot_red');
-    }
-    if (_col1 == 'ylwind'){
-      _dot.classList.add('ind_dot');
-      _dot.classList.add('ind_dot_yellow');
-    }
-    // disable hover/click on non-clickable menus
-    if (hoverOff === true){
-      _elm.classList.add('no_select');
-    }
-    _dot.id = "ind-" + _col2;
-    _elm.appendChild(_dot);
-  }
-  // theme menu  
-  if (_col1 == 'thm') {
-    const _color = _col0;
-    _elm.classList.add('theme-colorbox');
-    _elm.style.setProperty('background-color', _color);
-    _elm.addEventListener("click", function(event) {
-      setTheme(_color);
-    });
-  }
-  // bookmarks menu  
-  if (_col1 == 'bkmrk') {
-    _elm.classList.add('bookmarked__item');
-    // store URL
-    Object.defineProperty(_elm, "url", {
-      enumerable: false,
-      writable: true,
-      value: _col0
-    });
-    // define click action
-    _elm.addEventListener("click", function(event) {
-      clickBookmark(_id);
-    });
-  }
-  return _elm;
-}
-
-function boxChanged() {
-  // loop through checkbox's state
-  for (var i = 0; i < (fileData.length - 1); i++) {
-    let line = fileData[i].toString();
-    // split up into array (host,state,name)
-    const linearr = line.split("|");
-    // only write box state on 0/1 state items
-    if (linearr[1] == 'chkon' || linearr[1] == 'chkoff') {
-      // read elements checkbox then write state
-      const box = "chkbox-" + linearr[2].toString();
-      var boxelm = document.getElementById(box);
-      if (boxelm.checked === true) {
-        linearr[1] = 'chkon';
-      } else {
-        linearr[1] = 'chkoff';
-      }
-      // build new data
-      let _outstr = linearr.join('|');
-      console.log(_outstr);
-      // replace existing data
-      fileData[i] = _outstr;
-    }
-  }
-  // write checkbox changes to file (III)
-  let menuid = fileData[fileData.length - 1]; // extract menu ID
-  // remove last element of array
-  fileData.pop();
-  // update file
-  savePOST(menuid,fileData);
-  // add menu ID back to array
-  fileData.push(menuid);
-}
-
-function removeDynMenus() {
-  // only if menu is on-screen 
-  if (dynMenuActive == 1) {
-    // remove dynamic menu elements (II)
-    for (var idx = 0; idx <= fileData.length; idx++) {
-      const _menuid = "menu-" + idx.toString();
-      const menuRemove = document.getElementById(_menuid);
-      if (menuRemove != null) {
-        menuRemove.remove();
-      }
-    }
-    dynMenuActive = 0;
-  }
-}
-
-//// End Dynamic Menus ////
-
-// save file API POST call
-function savePOST(file,data) {
-  const url = location.protocol+"//"+location.hostname+"/exec.php?var=&arg="+file+"&action=update";
-  // convert data to JSON object
-  let _json = JSON.stringify(data);
-  // submit request
-  const xhr = new XMLHttpRequest();
-  xhr.open("POST", url);
-  xhr.setRequestHeader("Content-Type", "text/plain");
-  xhr.onreadystatechange = function() {
-    if (xhr.readyState === XMLHttpRequest.DONE) {
-      if (xhr.status == 200) {
-        // action on successful transmit
-        afterPOSTActions(file);
-      }
-      if (xhr.status !== 200) {
-        console.log("failed to send POST: savePOST("+file+")");
-      }
-    }
-  }
-  xhr.send(_json);
 }
 
 function afterPOSTActions(action) {
@@ -1949,44 +1706,6 @@ function afterPOSTActions(action) {
   if (_send === true) {
     serverSend(0);
   }
-}
-
-// load entire text file
-async function loadLog(file) {
-  try {
-    // build URL / append data
-    let _textData = " ";
-    const url = location.protocol+"//"+location.hostname+"/exec.php?var=&arg="+file+"&action=read";
-    // read file action
-    fetch(url, {
-      method: 'GET'
-    })
-    .then(res => {
-      return res.json()
-    })
-    .then((response) => {
-      // load JSON to text buffer
-      for(var i in response) {
-        let _line = response[i].toString();
-        // ignore empty lines
-        if (_line) {
-          if (_line !== "") {
-             _textData += _line; 
-             _textData += '\n'; 
-          }
-        }
-      }
-      // display text on page
-      const elmid = "logTextBox";
-      document.getElementById(elmid).value = _textData;
-      // scroll to bottom of page
-      let txtArea = document.getElementById(elmid);
-      txtArea.scrollTop = txtArea.scrollHeight;
-    })
-  } catch (err) {
-    console.log(err);
-  }
-  serverCmdData = null;
 }
 
 // load server action 
@@ -2005,6 +1724,373 @@ function openLogWindow() {
   loadLog('sysout');
 }
 
+// load entire text file
+async function loadLog(file) {
+  // build URL / append data
+  const url = location.protocol + "//" + location.hostname + "/api/read?file=" + file;
+  // read file action
+  fetch(url, {
+    method: 'GET'
+  })
+  .then((response) => {
+    // check for HTTP errors
+    if (!response.ok) {
+      // trigger the catch block
+      throw new Error;
+    }
+    // proceed to the next then if successful
+    return response.json(); 
+  })
+  .then(data => {
+    // display text on page
+    const elmid = "logTextBox";
+    document.getElementById(elmid).value = data;
+    // scroll to bottom of page
+    let txtArea = document.getElementById(elmid);
+    txtArea.scrollTop = txtArea.scrollHeight;
+  })
+  .catch(error => {
+    // This catches both the thrown HTTP error and any network errors
+    showPopup("[loadLog] " + error.message);
+  });
+  serverCmdData = null;
+}
+
+// transmit a command
+async function sendCmd(act, arg1, arg2) {
+  // construct API URL
+  const url = location.protocol + "//"+ location.hostname + "/api?var=" + arg2 + "&arg=" + arg1 + "&action=" + act;
+  // send request
+  try {
+    const response = await fetch(url, {
+      method: 'GET'
+    });
+    // return response
+    let out = await response.json();
+    return out;
+  } catch (error) {
+    showPopup("[sendCmd] " + error);
+  }
+}
+
+// save file API POST call
+function savePOST(file, data) {
+  const url = location.protocol + "//" + location.hostname + "/api/write?file=" + file;
+  // submit request
+  const xhr = new XMLHttpRequest();
+  xhr.open("POST", url);
+  xhr.setRequestHeader("Content-Type", "text/plain");
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState === XMLHttpRequest.DONE) {
+      if (xhr.status == 200) {
+        // action on successful transmit
+        afterPOSTActions(file);
+      } else {
+        showPopup("[savePOST] failed! " + file);
+      }
+    }
+  }
+  xhr.send(data);
+}
+
+//// Dynamic Menus ////
+
+function showDynMenu(menu, tobtm) {
+  let _elem = document.getElementById(menu);
+  if (_elem.style.display === 'block') {
+    _elem.style.display = 'none';
+  } else {
+    hideDropdowns(false);
+     _elem.style.display = 'block';
+    // build URL / append data
+    const url = location.protocol+ "//" +location.hostname + "/api/read?file=" + menu;
+    loadMenu(url).then((data) => { // wait for response
+      if (menu === 'bookmarks') {
+        showBookmarkSearch();
+      }
+      drawMenu(data, menu, tobtm);
+    });  
+  }
+}
+
+async function loadMenu(url) {
+  try {
+    const response = await fetch(url, {
+      method: "GET"
+    });
+    // return response
+    return out = await response.json();
+  } catch (error) {
+    showPopup("[loadMenu] " + error);
+  }
+}
+
+// draws each menu item
+function drawMenu(data, menu, tobtm) {
+  // remove any current dynamic menus
+  removeDynMenus();
+  if (!(data === null || data === "")) {
+    // erase global data
+    while (fileData.length) { 
+      fileData.pop(); 
+    }
+    let splitdat = data.split("\n");
+    let rows = splitdat.length;
+    for (let row = 0; row < rows; row++) {
+      let line = splitdat[row];
+      if (line != "") {
+        fileData.push(line); // write to array
+        const navElement = document.getElementById(menu);
+        const linearr = line.split("|");
+        // 0=Host, 1=Type, 2=Name
+        const col0 = linearr[0];
+        const col1 = linearr[1];
+        const col2 = linearr[2].trim();
+        // draw menu item
+        navElement.appendChild(createListItem(col0, col1, col2, row));
+        dynMenuActive = 1;
+      }
+    }
+    // store menu name at end of array
+    fileData.push(menu);
+    // scroll to bottom of page
+    if (tobtm === true) {
+      scrollToBottom();
+    }
+  } else {
+    showPopup("[drawMenu] no data!");
+  }
+}
+
+function createListItem(col0_in, col1, col2, menuid) {
+  //console.log(col0_in, col1, col2);
+  let _elm = document.createElement('a');
+  let _dot = document.createElement('span');
+  let field = col0_in.split("~");
+  let col0 = field[0];
+  let host = field[1];
+  let cmd = field[2];
+  // assign menu ID
+  _elm.id = "menu-" + menuid;
+  // set menu text
+  _elm.innerText = col2;
+  // configure menu item
+  switch (col1) {
+    case 'chkon': 
+      // check-box checked
+      drawCheckBoxItem(_elm, col0, col2, true);
+      break;
+    case 'chkoff': 
+      // check-box unchecked
+      drawCheckBoxItem(_elm, col0, col2, false);
+      break;
+    case 'ledmenu': 
+      // LEDs menu
+      _elm.addEventListener("click", function() {
+        sendCmd('leds',col0,'');
+      });
+      break;
+    case 'relaxmenu': 
+      // relax menu
+      _elm.addEventListener("click", function() {
+        relaxSend(col0);
+      });
+      break;
+    case 'link': 
+      // URL menu
+      _elm.href = col0;
+      break;
+    case 'thm': 
+      // theme menu 
+      _elm.classList.add('theme-colorbox');
+      _elm.style.setProperty('background-color', col0);
+      _elm.addEventListener("click", function() {
+        setTheme(col0);
+      });
+      break;
+    case 'slider':
+      // horizontal slider menu
+      const maxRange = 255;
+      const slider = document.createElement('input');
+      slider.classList.add("slider-wide");
+      slider.type = 'range';
+      slider.min = 0;
+      slider.max = maxRange;
+      slider.value = col0;
+      slider.step = 1;
+      slider.addEventListener('input', function(event) {
+        let cur_value = event.target.value;
+        sendCmd('main', host, cmd + '_set-' + cur_value);
+      });
+      _elm.appendChild(slider);
+      _elm.classList.add('slider-wide_container');
+      break;
+    case 'bkmrk': 
+      // bookmarks menu 
+      _elm.classList.add('bookmarked__item');
+      Object.defineProperty(_elm, "url", {
+        enumerable: false,
+        writable: true,
+        value: col0
+      });
+      _elm.addEventListener("click", function() {
+        clickBookmark(menuid);
+      });
+      break;
+    case 'noind': 
+      // no indicator type status menu
+      drawStatusItem(_elm, col0, host, cmd);
+      break;
+    case 'blkind': 
+      // black indicator type status menu
+      _dot.classList.add('ind_dot');
+      _dot.id = "ind-" + col2;
+      drawStatusItem(_elm, col0, host, cmd);
+      _elm.appendChild(_dot);
+      break;
+    case 'grnind': 
+      // green indicator type status menu
+      _dot.classList.add('ind_dot');
+      _dot.classList.add('ind_dot_green');
+      _dot.id = "ind-" + col2;
+      drawStatusItem(_elm, col0, host, cmd);
+      _elm.appendChild(_dot);
+      break;
+    case 'redind': 
+      // red indicator type status menu
+      _dot.classList.add('ind_dot');
+      _dot.classList.add('ind_dot_red');
+      _dot.id = "ind-" + col2;
+      drawStatusItem(_elm, col0, host, cmd);
+      _elm.appendChild(_dot);
+      break;
+    case 'ylwind': 
+      // yellow indicator type status menu
+      _dot.classList.add('ind_dot');
+      _dot.classList.add('ind_dot_yellow');
+      _dot.id = "ind-" + col2;
+      drawStatusItem(_elm, col0, host, cmd);
+      _elm.appendChild(_dot);
+      break;
+  }
+  return _elm;
+}
+
+function drawCheckBoxItem(elm, url, boxid, state) {
+  const _cbox = document.createElement('input');
+  _cbox.type = "checkbox";
+  _cbox.className = "chkbox";
+  _cbox.id = "chkbox-" + boxid;
+  // read checkbox state from file
+  _cbox.checked = state;
+  elm.appendChild(_cbox);
+  // URL on click
+  elm.href = url;
+  // a checkbox was clicked
+  elm.addEventListener('click', function(event) {
+    if (event.target.classList.contains('chkbox')) {
+      boxChanged();
+    }
+  });
+}
+
+function drawStatusItem(elm, col0, host, cmd) {
+  const _icon = document.createElement('span');
+  let allowhover = false;
+  if (col0 == 'oncmd') { // power-on remote API call on click
+    allowhover = true;
+    _icon.classList.add('fa');
+    _icon.classList.add('fa-toggle-on');
+    _icon.classList.add('leftjfy'); // left-justify icon
+    elm.appendChild(_icon);
+    elm.addEventListener("click", function() {
+      sendCmd('main', host, cmd);
+    });
+  }
+  if (col0 == 'offcmd') { // power-off remote API call on click
+    allowhover = true;
+    _icon.classList.add('fa');
+    _icon.classList.add('fa-toggle-off');
+    _icon.classList.add('leftjfy'); // left-justify icon
+    elm.appendChild(_icon);
+    elm.addEventListener("click", function() {
+      sendCmd('main', host, cmd);
+    });
+  }
+  if (col0 == 'sleepmode') { // sleep PC type menu
+    allowhover = true;
+    _icon.classList.add('fa');
+    _icon.classList.add('fa-moon');
+    _icon.classList.add('leftjfy'); // left-justify icon
+    elm.appendChild(_icon);
+    elm.addEventListener("click", function() {
+      sendCmd('main', host, cmd);
+    });
+  }
+  if (col0 == 'cmd') { // generic remote API call on click
+    allowhover = true;
+    elm.addEventListener("click", function() {
+      sendCmd('main', host, cmd);
+    });
+  }
+  if (allowhover === false){
+    elm.classList.add('no_select');
+  }
+}
+
+function boxChanged() {
+  // loop through checkbox's state
+  for (var i = 0; i < (fileData.length - 1); i++) {
+    let line = fileData[i];
+    // split up into array (host,state,name)
+    const linearr = line.split("|");
+    // only write box state on 0/1 state items
+    if (linearr[1] == 'chkon' || linearr[1] == 'chkoff') {
+      // read elements checkbox then write state
+      const box = "chkbox-" + linearr[2];
+      var boxelm = document.getElementById(box);
+      if (boxelm.checked === true) {
+        linearr[1] = 'chkon';
+      } else {
+        linearr[1] = 'chkoff';
+      }
+      // build new data
+      let _outstr = linearr.join('|');
+      // replace existing data
+      fileData[i] = _outstr;
+    }
+  }
+  // write checkbox changes to file (III)
+  let menuid = fileData[fileData.length - 1]; // extract menu ID
+  // remove last element of array
+  fileData.pop();
+  // update file
+  let fileout = "";
+  for (var row = 0; row < fileData.length; row++) {
+    fileout += fileData[row] + '\n';
+  }
+  savePOST(menuid, fileout);
+  // add menu ID back to array
+  fileData.push(menuid);
+}
+
+function removeDynMenus() {
+  // only if menu is on-screen 
+  if (dynMenuActive == 1) {
+    // remove dynamic menu elements (II)
+    for (var idx = 0; idx <= fileData.length; idx++) {
+      const _menuid = "menu-" + idx;
+      const menuRemove = document.getElementById(_menuid);
+      if (menuRemove != null) {
+        menuRemove.remove();
+      }
+    }
+    dynMenuActive = 0;
+  }
+}
+
+//// End Dynamic Menus ////
+
 // show camera form window
 function openCamWindow() {
   closePopup();
@@ -2014,7 +2100,7 @@ function openCamWindow() {
 
 function goToContextRoot(_path) {
   closePopup();
-  window.location = location.protocol+"//"+location.hostname+"/"+_path;
+  window.location = location.protocol + "//" + location.hostname + "/" + _path;
 }
 
 // close all popup windows
