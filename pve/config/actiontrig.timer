@@ -1,0 +1,9 @@
+[Unit]
+Description=Triggers script every 25 seconds.
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=25
+
+[Install]
+WantedBy=timers.target
