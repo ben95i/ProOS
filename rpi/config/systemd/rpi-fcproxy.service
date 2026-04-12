@@ -1,0 +1,12 @@
+[Unit]
+Description=Fadecandy Brightness Proxy
+Conflicts=shutdown.target
+
+[Service]
+User=root
+Type=simple
+ExecStart=/bin/bash -c "/opt/rpi/effects/fcproxy"
+WorkingDirectory=/opt/rpi/effects
+KillSignal=SIGKILL
+Restart=always
+RestartSec=5
