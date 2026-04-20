@@ -39,16 +39,18 @@ function handleClicks(event) {
     return;
   }
   // don't hide menus when clicking these elements
-  if (!(event.target.classList.contains('button') || // button clicks
-        event.target.classList.contains('button__text') || // button text clicks
-        event.target.classList.contains('nohide__click') || // no-hide clicks
-        event.target.classList.contains('bookmarked__item') || // bookmark menu clicks
-        event.target.classList.contains('chkbox') || // checkbox clicks
-        event.target.classList.contains('fad') || // duotone icon clicks
-        event.target.classList.contains('fab') || // brand icon clicks
-        event.target.classList.contains('fas'))) { // solid icon clicks
-    hideDropdowns(); // hide all dropdown menus
+  if (event.target.classList.contains('button') || // button clicks
+      event.target.classList.contains('button__text') || // button text clicks
+      event.target.classList.contains('nohide__click') || // no-hide clicks
+      event.target.classList.contains('bookmarked__item') || // bookmark menu clicks
+      event.target.classList.contains('chkbox') || // checkbox clicks
+      event.target.classList.contains('fad') || // duotone icon clicks
+      event.target.classList.contains('far') || // regular icon clicks
+      event.target.classList.contains('fab') || // brand icon clicks
+      event.target.classList.contains('fas')) { // solid icon clicks
+    return;
   }
+  hideDropdowns();
 }
 
 function hideDropdowns() {
@@ -134,18 +136,6 @@ function showPopup(message) {
   }, 4000); // hide delay in (ms)
 }
 
-// execute only if limit has passed since the last call
-function throttle(func, limit) {
-  let lastCall = 0;
-  return function(...args) {
-    const now = Date.now();
-    if (now - lastCall >= limit) {
-      lastCall = now;
-      return func.apply(this, args);
-    }
-  };
-}
-
 // open URL in new tab
 function GoToExtPage(_path) {
   let url = "https://" + _path;   
@@ -195,94 +185,13 @@ function loadPage() {
     currentTheme = localStorage.getItem("main-color");
   }  
   setTheme(currentTheme);
-  enableAnimatedStars();
-}
-
-function detectOS() {
-	let userAgent = window.navigator.userAgent,
-  platform = window.navigator.platform,
-  macosPlatforms = ['Macintosh', 'MacIntel', 'MacPPC', 'Mac68K'],
-  windowsPlatforms = ['Win32', 'Win64', 'Windows', 'WinCE'],
-  iosPlatforms = ['iPhone', 'iPad', 'iPod'],
-  os = null;
-	if (macosPlatforms.indexOf(platform) !== -1) {
-		os = 'MacOS';
-	} else if (iosPlatforms.indexOf(platform) !== -1) {
-		os = 'iOS';
-	} else if (windowsPlatforms.indexOf(platform) !== -1) {
-		os = 'Windows';
-	} else if (/Android/.test(userAgent)) {
-		os = 'Android';
-	} else if (!os && /Linux/.test(platform)) {
-		os = 'Linux';
-	}
-	return os;
-}
-
-function enableAnimatedStars() {
-  const avalRAM = navigator.deviceMemory;
-  if (avalRAM >= 2 ) { // more than 2GB of RAM
-    const deviceOS = detectOS();
-    if (deviceOS === 'Windows' || deviceOS === 'MacOS') {
-      setTimeout(function() {
-        // start stars animation 
-        starsAnimation(true);
-        // pause stars animation on window resize
-        window.addEventListener("resize", function() {
-          resizeEvent(); // on window resize
-        });
-      }, resizeTimeout);
-    } else {
-      console.log('stars disabled on iOS and Linux');
-    }
-  } else {
-    console.log('stars disabled, less than 2GB of RAM');
-  }
+  animatedBackground();
 }
 
 function setTheme(newTheme) {
   let body = document.getElementsByTagName("html")[0];
   body.style.setProperty('--main-color', newTheme);
   localStorage.setItem("main-color", newTheme);
-}
-
-/// stars animation ///
-
-function resizeEvent() {
-  timeStamp = new Date();
-  if (resizeState === false) {
-    // resize event started
-    resizeState = true;
-    setTimeout(resizeDone, resizeTimeout);
-    // disable stars animation 
-    starsAnimation(false);
-  }
-}
-
-function resizeDone() {
-  // detect when resize event completes
-  if (+new Date() - +timeStamp < resizeTimeout) {
-    setTimeout(resizeDone, resizeTimeout);
-  } else {
-    // resize event completed
-    resizeState = false;
-    // re-enable stars animation
-    starsAnimation(true);
-  }
-}
-
-function starsAnimation(_state) {
-  // animated stars background
-  let _itr;
-  for (_itr = 1; _itr <= 12; _itr++) {
-    let _elm = "star-" + _itr;
-    let _class = "star-a-" + _itr;
-    if (_state === true) {
-      addClassToElem('add', _elm, _class);
-    } else {
-      addClassToElem('remove', _elm, _class);
-    }
-  }
 }
 
 /// text popup window ///
@@ -1491,66 +1400,6 @@ function closeBookmarkPrompt() {
   }  
 }
 
-function showHiFiAmpInput() {
-  const offcode = -1;
-  const target = 'lrxmit';
-  const menuname = 'hfinmenu';
-  let _elem = document.getElementById(menuname);
-  if (_elem.style.display === 'block') {
-    _elem.style.display = 'none';
-  } else {
-    hideDropdowns();
-    _elem.style.display = 'block';
-    // start spinner animation
-    let btnText = document.getElementById(menuname + '-text');
-    let btnSpinner = document.getElementById(menuname + '-spinner');
-    btnText.style.visibility = 'hidden';
-    btnSpinner.classList.add('btn-spinner');
-    sendCmd('main', target, 'curinput').then((data) => { // GET request
-      const resp = cleanString(data); // remove newlines
-      // draw menu items
-      let _menudata = '';
-      if (isNumeric(resp) === true) {
-        if (resp == offcode) {
-          _menudata += menuname + '-offline|blkind|Offline\n';
-        } else { // online
-          // auto input
-          let _indtype = 'blkind'; // indicator type
-          if (resp == '6') { _indtype = 'grnind'; }
-          _menudata += 'cmd~' + target + '~autodac|' + _indtype + '|Auto\n';
-          // PC input
-          _indtype = 'blkind';
-          if (resp == '1') { _indtype = 'grnind'; }
-          _menudata += 'cmd~' + target + '~usb|' + _indtype + '|PC\n';
-          // phono input
-          _indtype = 'blkind';
-          if (resp == '3') { _indtype = 'grnind'; }      
-          _menudata += 'cmd~' + target + '~phono|' + _indtype + '|Phono\n';
-          // optical input
-          _indtype = 'blkind';
-          if (resp == '5') { _indtype = 'grnind'; } 
-          _menudata += 'cmd~' + target + '~opt|' + _indtype + '|Optical\n';
-          // coaxial input
-          _indtype = 'blkind';
-          if (resp == '4') { _indtype = 'grnind'; }
-          _menudata += 'cmd~' + target + '~coax|' + _indtype + '|Coaxial\n';
-          // aux analog input
-          _indtype = 'blkind';
-          if (resp == '2') { _indtype = 'grnind'; }
-          _menudata += 'cmd~' + target + '~aux|' + _indtype + '|Aux\n';
-        }
-      } else {
-        _menudata += menuname + '-error|redind|Error\n';
-      }
-      // stop spinner animation
-      btnText.style.visibility = 'visible';
-      btnSpinner.classList.remove('btn-spinner');
-      // draw menu items
-      drawMenu(_menudata, menuname);
-    });
-  }
-}
-
 function showHiFiMoreMenu() {
   const offcode = -1;
   const target = 'lrxmit';
@@ -1602,6 +1451,66 @@ function showHiFiMoreMenu() {
   }
 }
 
+function showHiFiAmpInput() {
+  const offcode = -1;
+  const target = 'lrxmit';
+  const menuname = 'hfinmenu';
+  let _elem = document.getElementById(menuname);
+  if (_elem.style.display === 'block') {
+    _elem.style.display = 'none';
+  } else {
+    hideDropdowns();
+    _elem.style.display = 'block';
+    // start spinner animation
+    let btnText = document.getElementById(menuname + '-text');
+    let btnSpinner = document.getElementById(menuname + '-spinner');
+    btnText.style.visibility = 'hidden';
+    btnSpinner.classList.add('btn-spinner');
+    sendCmd('main', target, 'curinput').then((data) => { // GET request
+      const resp = cleanString(data); // remove newlines
+      // draw menu items
+      let _menudata = '';
+      if (isNumeric(resp) === true) {
+        if (resp == offcode) {
+          _menudata += menuname + '-offline|blkind|Offline\n';
+        } else { // online
+          // auto input
+          let _indtype = 'blkind'; // indicator type
+          if (resp == '6') { _indtype = 'grnind'; }
+          _menudata += 'cmd~' + target + '~autodac|' + _indtype + '|Auto\n';
+          // PC input
+          _indtype = 'blkind';
+          if (resp == '1') { _indtype = 'grnind'; }
+          _menudata += 'cmd~' + target + '~usb|' + _indtype + '|PC In\n';
+          // phono input
+          _indtype = 'blkind';
+          if (resp == '3') { _indtype = 'grnind'; }      
+          _menudata += 'cmd~' + target + '~phono|' + _indtype + '|Phono\n';
+          // optical input
+          _indtype = 'blkind';
+          if (resp == '5') { _indtype = 'grnind'; } 
+          _menudata += 'cmd~' + target + '~opt|' + _indtype + '|Optical\n';
+          // coaxial input
+          _indtype = 'blkind';
+          if (resp == '4') { _indtype = 'grnind'; }
+          _menudata += 'cmd~' + target + '~coax|' + _indtype + '|Coaxial\n';
+          // aux analog input
+          _indtype = 'blkind';
+          if (resp == '2') { _indtype = 'grnind'; }
+          _menudata += 'cmd~' + target + '~aux|' + _indtype + '|Aux\n';
+        }
+      } else {
+        _menudata += menuname + '-error|redind|Error\n';
+      }
+      // stop spinner animation
+      btnText.style.visibility = 'visible';
+      btnSpinner.classList.remove('btn-spinner');
+      // draw menu items
+      drawMenu(_menudata, menuname);
+    });
+  }
+}
+
 function showBedroomAmpInput() {
   const target = 'brpi';
   const menuname = 'brinpmenu';
@@ -1627,11 +1536,11 @@ function showBedroomAmpInput() {
           // apple TV input 
           let _indtype = 'blkind';
           if (resp == '2') { _indtype = 'grnind'; }
-          _menudata += 'cmd~' + target + '~opt-a|' + _indtype + '|PC Mode\n';
+          _menudata += 'cmd~' + target + '~opt-a|' + _indtype + '|PC In\n';
           // coaxial input
           _indtype = 'blkind';
           if (resp == '3') { _indtype = 'grnind'; }      
-          _menudata += 'cmd~' + target + '~coaxial|' + _indtype + '|Bluetooth\n';
+          _menudata += 'cmd~' + target + '~coaxial|' + _indtype + '|Coaxial\n';
           // aux optical input
           _indtype = 'blkind';
           if (resp == '1') { _indtype = 'grnind'; } 
@@ -1639,7 +1548,7 @@ function showBedroomAmpInput() {
           // aux analog input
           _indtype = 'blkind';
           if (resp == '4') { _indtype = 'grnind'; }
-          _menudata += 'cmd~' + target + '~aux|' + _indtype + '|Analog\n';
+          _menudata += 'cmd~' + target + '~aux|' + _indtype + '|Aux\n';
         }
       } else {
         _menudata += menuname + '-error|redind|Error\n';
@@ -2181,3 +2090,167 @@ function closePopup() {
   closeServerOptions();
 }
 
+function animatedBackground() {
+  // ==========================================
+  // CONFIGURATION CONSTANTS
+  // ==========================================
+  
+  // General Canvas
+  const BG_COLOR = '#030303';
+  
+  // Background Stars
+  const BG_STAR_DENSITY = 2500; // Lower number = more stars
+  const BG_STAR_MAX_RADIUS = 1.3;
+  const BG_STAR_MIN_ALPHA = 0.15;
+  const BG_STAR_MAX_ALPHA = 0.75;
+  const BG_STAR_FLICKER_BASE_SPEED = 0.005;
+  const BG_STAR_FLICKER_VARIANCE = 0.001;
+  
+  // Shooting Stars
+  const MAX_SH_STARS = 5;
+  const SH_STAR_MIN_SPEED = 12;
+  const SH_STAR_SPEED_VARIANCE = 15;
+  const SH_STAR_MIN_LENGTH = 80;
+  const SH_STAR_LENGTH_VARIANCE = 150;
+  const SH_STAR_MIN_THICKNESS = 0.3;
+  const SH_STAR_THICKNESS_VARIANCE = 1.2;
+  const SH_STAR_BASE_ANGLE = Math.PI / 4; // 45 degrees
+  const SH_STAR_ANGLE_VARIANCE = 0.05;
+  const SH_STAR_START_Y_OFFSET = -200;
+
+  // ==========================================
+  // ANIMATION LOGIC
+  // ==========================================
+
+  const canvas = document.getElementById('star-canvas');
+  const ctx = canvas.getContext('2d');
+
+  let backgroundStars = [];
+  let shootingStars = [];
+
+  function resizeCanvas() {
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = window.innerWidth * dpr;
+    canvas.height = window.innerHeight * dpr;
+    canvas.style.width = `${window.innerWidth}px`;
+    canvas.style.height = `${window.innerHeight}px`;
+    ctx.scale(dpr, dpr);
+    initBackgroundStars();
+  }
+
+  class BackgroundStar {
+    constructor() {
+      this.x = Math.random() * window.innerWidth;
+      this.y = Math.random() * window.innerHeight;
+      this.radius = Math.random() * BG_STAR_MAX_RADIUS;
+      this.alpha = Math.random();
+      // the speed of the stars flicker
+      this.alphaChange = (Math.random() * BG_STAR_FLICKER_VARIANCE) + BG_STAR_FLICKER_BASE_SPEED;
+    }
+    
+    draw() {
+      ctx.fillStyle = `white`;
+      ctx.globalAlpha = this.alpha;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    update() {
+      this.alpha += this.alphaChange;
+      // boundary check to prevent blinking or harsh white flashes
+      if (this.alpha <= BG_STAR_MIN_ALPHA || this.alpha >= BG_STAR_MAX_ALPHA) {
+        this.alphaChange = -this.alphaChange;
+      }  
+      this.draw();
+    }
+  }
+
+  class ShootingStar {
+    constructor() {
+      this.reset();
+      // Give the very first spawn on page load a wider random delay (0 to 300 frames)
+      // This ensures they don't all drop at the exact same time when the page opens
+      this.delay = Math.random() * 300; 
+    }
+    reset() {
+      // Spawn logic: Start off-screen to the LEFT or at the TOP-LEFT
+      this.x = Math.random() * window.innerWidth * 0.5 - (window.innerWidth * 0.2); 
+      this.y = Math.random() * SH_STAR_START_Y_OFFSET; 
+      
+      this.speed = (Math.random() * SH_STAR_SPEED_VARIANCE) + SH_STAR_MIN_SPEED; 
+      this.length = (Math.random() * SH_STAR_LENGTH_VARIANCE) + SH_STAR_MIN_LENGTH;
+      this.thickness = (Math.random() * SH_STAR_THICKNESS_VARIANCE) + SH_STAR_MIN_THICKNESS;
+      
+      // Angle: point toward bottom-right with slight variation
+      this.angle = SH_STAR_BASE_ANGLE + (Math.random() * (SH_STAR_ANGLE_VARIANCE * 2) - SH_STAR_ANGLE_VARIANCE); 
+      
+      // Add a random delay (in frames) before the star is allowed to fall again
+      // ~60 frames = 1 second. This creates natural pauses between shooting stars.
+      this.delay = Math.random() * 200 + 50; 
+    }
+    draw() {
+      ctx.save();
+      ctx.translate(this.x, this.y);
+      ctx.rotate(this.angle);
+      
+      const gradient = ctx.createLinearGradient(0, 0, -this.length, 0);
+      gradient.addColorStop(0, 'white');
+      gradient.addColorStop(1, 'transparent');
+      
+      ctx.strokeStyle = gradient;
+      ctx.lineWidth = this.thickness;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(-this.length, 0);
+      ctx.stroke();
+      ctx.restore();
+    }
+    update() {
+      // If the star has a delay, count down and stop the rest of the update
+      if (this.delay > 0) {
+        this.delay--;
+        return; 
+      }
+      // MOVE: Increase both X and Y to move top-left to bottom-right
+      this.x += this.speed * Math.cos(this.angle);
+      this.y += this.speed * Math.sin(this.angle);
+      // Reset if it goes off-screen (Right or Bottom)
+      if (this.x > window.innerWidth + this.length || 
+          this.y > window.innerHeight + this.length) {
+        this.reset();
+      } else {
+        this.draw();
+      }
+    }
+  }
+
+  function initBackgroundStars() {
+    backgroundStars = [];
+    shootingStars = [];
+    
+    const numStars = Math.floor((window.innerWidth * window.innerHeight) / BG_STAR_DENSITY);
+    for (let i = 0; i < numStars; i++) {
+      backgroundStars.push(new BackgroundStar());
+    }
+    for (let i = 0; i < MAX_SH_STARS; i++) {
+      shootingStars.push(new ShootingStar());
+    }
+  }
+
+  function animateCanvas() {
+    ctx.globalAlpha = 1; 
+    ctx.fillStyle = BG_COLOR;
+    ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
+    
+    backgroundStars.forEach(star => star.update());
+    shootingStars.forEach(star => star.update());
+    
+    requestAnimationFrame(animateCanvas);
+  }
+
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
+  animateCanvas();
+}

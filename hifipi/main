@@ -12,8 +12,6 @@ systemctl start hciuart
 systemctl start bluetooth
 systemctl start bt-agent@hci0
 systemctl start bluealsa-aplay
-## Auto Hotspot
-systemctl start rpi-netdetect
 exit
 ;;
 

@@ -148,12 +148,12 @@ case "$1" in
 
 boot)
 ## REQUIRED TO START NETWORKING!!
-if [ ! -e "/boot/firmware/apd.enable" ]; then
-  echo "Client network mode"
-  CLIENT_MODE
-else
+if [ -e "/boot/firmware/apd.enable" ]; then
   echo "Hotspot network mode"
   APD_MODE
+else
+  echo "Client network mode"
+  CLIENT_MODE
 fi
 ## Run Boot Script
 /etc/preinit.sh
@@ -190,13 +190,12 @@ NETDETECT
 exit
 ;;
 
-
-        *)
-        echo "RPi Network Startup v4"
-	      echo "by Ben Provenzano III"
-	      echo " "
-	      echo "Enter Valid Arguments."
-        echo " "
-        exit 1
-        ;;
-    esac   
+*)
+echo "RPi Network Startup v4"
+echo "by Ben Provenzano III"
+echo " "
+echo "Enter Valid Arguments."
+echo " "
+exit 1
+;;
+esac   

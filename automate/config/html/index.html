@@ -13,6 +13,8 @@
 </head>
 <body class="scroll-bar-style" ontouchstart="">
 
+<canvas id="star-canvas"></canvas>
+
 <!-- homepage navigation bar -->
 <div class="topnav">
   <!-- hamburger button -->
@@ -223,9 +225,9 @@
         <!---->
         <p class="parstd"></p>
         <!---->
-        <button type="button" class="button" onclick="sendCmd('main','lrxmit','autodac')">
-          <span class="button__text"><i class="fad fa-waveform"></i> Auto In</span>
-        </button>       
+        <button type="button" class="button" onclick="sendVol('display')">
+            <span class="button__text"><i class="far fa-volume-off fa-lg"></i> Volume</span>
+        </button>     
         <div class="dropdown">
           <button type="button" class="button btm-padding" onclick="showHiFiAmpInput()">
             <span class="button__text" id="hfinmenu-text"><i class="fad fa-sliders-v"></i> Inputs</span>
@@ -235,7 +237,7 @@
         </div>
         <div class="dropdown">
           <button type="button" class="button btm-padding" onclick="showHiFiMoreMenu()">
-            <span class="button__text" id="hfmoremenu-text"><i class="fas fa-music"></i> More...</span>
+            <span class="button__text" id="hfmoremenu-text"><i class="fad fa-list-music"></i> More...</span>
             <span class="button__text" id="hfmoremenu-spinner"></span>
           </button>
           <div class="dd-content ind-button" id="hfmoremenu"></div>
@@ -362,7 +364,7 @@
           <span class="button__text"><i class="fad fa-router"></i> UniFi</span>
         </button>  
         <div class="dd-content dd-button" id="unifi-menu">
-          <a onclick="GoToExtPage('unifi.home:11443')"><i class="fad fa-link"></i> Open</a>
+          <a onclick="GoToExtPage('unifi:11443/network/ff7gqlig/dashboard')"><i class="fad fa-link"></i> Open</a>
           <a onclick="serverAction('startunifi')"><i class="fad fa-play"></i> Start</a> 
           <a onclick="serverAction('stopunifi')"><i class="fad fa-stop"></i> Stop</a>
         </div>
@@ -372,7 +374,7 @@
           <span class="button__text"><i class="fad fa-microchip"></i> Server</span>
         </button>  
         <div class="dd-content dd-button" id="svr-menu">
-          <a onclick="GoToExtPage('pve.home:8006')"><i class="fad fa-link"></i> Open PVE-UI</a>
+          <a onclick="GoToExtPage('pve:8006')"><i class="fad fa-link"></i> Open PVE-UI</a>
           <a onclick="serverAction('syslog')"></i> Status Report</a>
         </div>
       </div>
@@ -387,7 +389,7 @@
       </div>
       <div class="dropdown">
         <button type="button" class="button svropt_button" onclick="showMenu('netwrk-menu')">
-          <span class="button__text"><i class="fad fa-sitemap"></i> Network</span>
+          <span class="button__text"></i> Network</span>
         </button>
         <div class="dd-content dd-button" id="netwrk-menu">
           <a onclick="wifiPrompt()"><i class="fad fa-wifi"></i> Access</a>  
@@ -550,23 +552,6 @@
       </button>
     </div>
   </div>
-</div>
-
-<!-- animated background -->
-
-<div class="star-bg">
-  <div id="star-1" class="star-tile"></div>
-  <div id="star-2" class="star-tile"></div>
-  <div id="star-3" class="star-tile"></div>
-  <div id="star-4" class="star-tile"></div>
-  <div id="star-5" class="star-tile"></div>
-  <div id="star-6" class="star-tile"></div>
-  <div id="star-7" class="star-tile"></div>
-  <div id="star-8" class="star-tile"></div>
-  <div id="star-9" class="star-tile"></div>
-  <div id="star-10" class="star-tile"></div>
-  <div id="star-11" class="star-tile"></div>
-  <div id="star-12" class="star-tile"></div>
 </div>
 
 <p class="pg-bottom"></p>

@@ -20,10 +20,6 @@ arm_boost=1
 #-------GPU memory-------
 gpu_mem=64
 
-#-------Max CPU Speed-------
-arm_freq=1200
-arm_freq_max=1200
-
 #-------Disable Ram temp refresh every 500ms---------
 disable_pvt=1
 

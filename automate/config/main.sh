@@ -223,6 +223,10 @@ case "$CMD_1" in
   "curhpfvollim")
     CALLAPI "$LRXMIT_IP" "extcom" "15020"   
     ;;
+  ## Display Volume
+  "voldisplay")
+    READ_COM_RESP "lrxmit" "15013" ""
+    ;;
   ## Mute Toggle
   "volmute")
     READ_COM_RESP "lrxmit" "15012" ""

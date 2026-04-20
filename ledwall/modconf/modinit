@@ -17,7 +17,8 @@ echo "Starting $MODNAME configuration..."
 
 ## Copy Boot Config
 mount -o remount,rw /boot/firmware
-touch /boot/firmware/autohotspot.off ## Disable Auto Hotspot
+## Disable Wi-Fi
+touch /boot/firmware/disable.wifi
 cp -f $BIN/modconf/config.txt /boot/firmware/
 mount -o remount,ro /boot/firmware
 

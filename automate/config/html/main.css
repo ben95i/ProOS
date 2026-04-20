@@ -16,13 +16,24 @@
 }
 
 body {
-  margin: 0px;
-  overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   touch-action: manipulation;
-  background-color: #000;
-  min-height: 100%;  
+  margin: 0;
+  padding: 0;
+  width: 100%;
   height: 100%;
+  overflow: hidden;
+  background-color: #000;
+}
+
+#star-canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1; /* Keeps the background behind your content */
+  display: block;
 }
 
 /*
@@ -293,9 +304,9 @@ input.chkbox {
   margin: 5px;
   line-height: 2.5;
   overflow: hidden;
-  background-color: var(--secondary-color); /* nav background color */
+  background-color: color-mix(in srgb, var(--secondary-color), #000 20%); /* nav background color */
   border-radius: 25px;
-  opacity: 75%;
+  opacity: 65%;
 }
 
 .topnav a {
@@ -312,6 +323,7 @@ input.chkbox {
 
 .topnav a:hover {
   background-color: color-mix(in srgb, var(--main-color), #000 40%);
+  opacity: 100%;
   color: #fff;
 }
 
@@ -866,159 +878,6 @@ input.chkbox {
 #color__box::-webkit-color-swatch {
   border: solid 1px #000; /*change color of the swatch border here*/
   border-radius: 0px;
-}
-
-/*
- *  Animated Stars Background
- */
-
-.star-bg {
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  position: fixed;
-  background: #000;
-  z-index: -999;
-}
-
-.star-tile {
-  overflow: hidden;
-  position: absolute;
-  opacity: 1;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-repeat: repeat;
-  background-size: 512px 512px;
-}
-
-#star-1 {
-  background-image: url("./img/topleft.png");
-}
-
-#star-2 {
-  background-image: url("./img/topright.png");
-}
-
-#star-3 {
-  background-image: url("./img/bottomleft.png");
-}
-
-#star-4 {
-  background-image: url("./img/bottomright.png");
-}
-
-#star-5 {
-  background-image: url("./img/topleft.png");
-}
-
-#star-6 {
-  background-image: url("./img/topright.png");
-}
-
-#star-7 {
-  background-image: url("./img/bottomleft.png");
-}
-
-#star-8 {
-  background-image: url("./img/bottomright.png");
-}
-
-#star-9 {
-  background-image: url("./img/topleft.png");
-}
-
-#star-10 {
-  background-image: url("./img/topright.png");
-}
-
-#star-11 {
-  background-image: url("./img/bottomleft.png");
-}
-
-#star-12 {
-  background-image: url("./img/bottomright.png");
-}
-
-.star-a-1 {
-  animation-name: slide-transparency;
-  animation-iteration-count: infinite;
-  animation-duration: 5s;
-}
-
-.star-a-2 {
-  animation-name: slide-transparency;
-  animation-iteration-count: infinite;
-  animation-duration: 9s;
-}
-
-.star-a-3 {
-  animation-name: slide-transparency;
-  animation-iteration-count: infinite;
-  animation-duration: 7s;
-}
-
-.star-a-4 {
-  animation-name: slide-transparency;
-  animation-iteration-count: infinite;
-  animation-duration: 10.17s;
-}
-
-.star-a-5 {
-  animation-name: slide-transparency;
-  animation-iteration-count: infinite;
-  animation-duration: 9s;
-  animation-delay: 1.33s;
-}
-
-.star-a-6 {
-  animation-name: slide-transparency;
-  animation-iteration-count: infinite;
-  animation-duration: 5s;
-  animation-delay: 1.33s;
-}
-
-.star-a-7 {
-  animation-name: slide-transparency;
-  animation-iteration-count: infinite;
-  animation-duration: 6.33s;
-  animation-delay: 2.11s;
-}
-
-.star-a-8 {
-  animation-name: slide-transparency;
-  animation-iteration-count: infinite;
-  animation-duration: 10.17s;
-  animation-delay: 2.11s;
-}
-
-.star-a-9 {
-  animation-name: slide-transparency;
-  animation-iteration-count: infinite;
-  animation-duration: 7s;
-  animation-delay: 1.33s;
-}
-
-.star-a-10 {
-  animation-name: slide-transparency;
-  animation-iteration-count: infinite;
-  animation-duration: 5s;
-  animation-delay: 2.11s;
-}
-
-.star-a-11 {
-  animation-name: slide-transparency;
-  animation-iteration-count: infinite;
-  animation-duration: 9s;
-  animation-delay: 1.33s;
-}
-
-.star-a-12 {
-  animation-name: slide-transparency;
-  animation-iteration-count: infinite;
-  animation-duration: 5s;
 }
 
 /*

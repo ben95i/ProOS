@@ -18,6 +18,7 @@ echo "Starting $MODNAME configuration..."
 ## Copy Boot Config
 mount -o remount,rw /boot/firmware
 cp -fv $BIN/modconf/config.txt /boot/firmware/
+## Disable Wi-Fi
 touch /boot/firmware/disable.wifi
 mount -o remount,ro /boot/firmware
 
