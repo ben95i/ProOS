@@ -143,7 +143,7 @@ echo temp = $tf\'F \($tc\'C\)
 exit
 ;;
 
-rebroken)
+rmbroken)
 echo "Removing broken APT packages..."
 dpkg -l | grep ^iU | awk '{print $2}' | xargs sudo dpkg --purge 
 exit
@@ -236,7 +236,7 @@ read -p "Are you sure? " -n 1 -r
 echo # (optional) move to a new line
 if [[ ! $REPLY =~ ^[Yy]$ ]]
 then
-    exit 1
+  exit
 fi
 mount -o remount,rw /boot/firmware
 systemctl daemon-reload
@@ -254,9 +254,9 @@ read -p "Reboot now? " -n 1 -r
 echo # (optional) move to a new line
 if [[ ! $REPLY =~ ^[Yy]$ ]]
 then
-    exit 1
+  exit
 else
-    reboot  
+  reboot  
 fi
 exit
 ;;
@@ -271,7 +271,7 @@ read -p "Are you sure? " -n 1 -r
 echo    # (optional) move to a new line
 if [[ ! $REPLY =~ ^[Yy]$ ]]
 then
-    exit 1
+  exit
 fi
 mount -o remount,rw /boot/firmware
 systemctl daemon-reload
@@ -283,9 +283,9 @@ read -p "Reboot now? " -n 1 -r
 echo # (optional) move to a new line
 if [[ ! $REPLY =~ ^[Yy]$ ]]
 then
-    exit 1
+  exit
 else
-    reboot  
+  reboot  
 fi
 exit
 ;;
@@ -300,7 +300,7 @@ exit
 
 apdonboot)
 mount -o remount,rw /boot/firmware
-if [ -e /boot/firmware/apd.enable ]; then
+if [ -e "/boot/firmware/apd.enable" ]; then
   echo 'Disabling hotspot mode on startup...'
   rm -f /boot/firmware/apd.enable
 else
@@ -349,15 +349,18 @@ fi
 exit
 ;;
 
+enablewifi)
+mount -o remount,rw /boot/firmware
+echo 'Enabling Wi-Fi on startup...'
+rm -f /boot/firmware/disable.wifi
+mount -o remount,ro /boot/firmware
+exit
+;;
+
 disablewifi)
 mount -o remount,rw /boot/firmware
-if [ -e /boot/firmware/apd.enable ]; then
-  echo 'Re-enabling Wi-Fi on startup...'
-  rm -f /boot/firmware/disable.wifi
-else
-  echo 'Disabling Wi-Fi on startup...'
-  touch /boot/firmware/disable.wifi
-fi
+echo 'Disabling Wi-Fi on startup...'
+touch /boot/firmware/disable.wifi
 mount -o remount,ro /boot/firmware
 exit
 ;;
@@ -370,58 +373,33 @@ done
 exit
 ;;
 
-id)
-## Capture current LED status
-LEDSTATUS=$( cat /sys/class/leds/led0/trigger | grep -oP '\[\K[^][]*(?=])' )
-## Flash activity LED until key is pressed
-echo "Flashing activity LED... [q] to stop"
-stty -echo -icanon time 0 min 0 # Don't wait when read the input
-IDLOOP=1
-while [ 1 ]; do
-   echo -ne "$IDLOOP\r"
-   ((IDLOOP+=1))
-   read key
-   if [ "$key" == "q" ]
-   then 
-      break
-   fi # if [q] is hit, break the loop
-   echo default-on | tee /sys/class/leds/led0/trigger &>/dev/null
-   sleep 0.5
-   echo none | tee /sys/class/leds/led0/trigger &>/dev/null
-   sleep 0.5
-done
-stty sane # Come back to the classic behavior
-echo "$LEDSTATUS" | tee /sys/class/leds/led0/trigger &>/dev/null
+*)
+echo "RPi Init Script v15"
+echo "by Ben Provenzano III"
+echo " "
+echo "Enter Valid Arguments."
+echo " "
+echo "ro - Enable read/only mode"
+echo "rw - Enable read/write mode"
+echo "update - Update/upgrade system"
+echo "loadtimes - Startup services"
+echo "running - Running services"
+echo "active - Active services"
+echo "timers - Active timers"
+echo "net - Network connections"
+echo "rmbroken - Remove Broken Packages"
+echo "wifistats - Wi-Fi statistics"
+echo "wifiscan - Wi-Fi network scanner"
+echo "restart-alsa - Restart audio subsystem"
+echo "netdetect - Switch to hotspot if network down"
+echo "apdonboot - Toggle hotspot mode on startup"
+echo "togglenet - Toggle hotspot/client network"
+echo "resetbt - Clear active bluetooth connections"
+echo "ftp - List file transfer command"
+echo "gpu - GPU usage statistics"
+echo "temp - System temperature"
+echo "mon - Resource monitor"
+echo " "
 exit
 ;;
-
-        *)
-          echo "RPi Init Script v15"
-	        echo "by Ben Provenzano III"
-	        echo " "
-	        echo "Enter Valid Arguments."
-          echo " "
-          echo "ro - Enable read/only mode"
-          echo "rw - Enable read/write mode"
-          echo "update - Update/upgrade system"
-          echo "loadtimes - Startup services"
-          echo "running - Running services"
-          echo "active - Active services"
-          echo "timers - Active timers"
-          echo "net - Network connections"
-          echo "wifistats - Wi-Fi statistics"
-          echo "wifiscan - Wi-Fi network scanner"
-          echo "restart-alsa - Restart audio subsystem"
-          echo "netdetect - Switch to hotspot if network down"
-          echo "apdonboot - Toggle hotspot mode on startup"
-          echo "togglenet - Toggle hotspot/client network"
-          echo "resetbt - Clear active bluetooth connections"
-          echo "ftp - List file transfer command"
-          echo "gpu - GPU usage statistics"
-          echo "temp - System temperature"
-          echo "id - Flash activity LED"
-          echo "mon - Resource monitor"
-          echo " "
-          exit 1
-          ;;
-    esac   
+esac

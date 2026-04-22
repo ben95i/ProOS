@@ -22,8 +22,6 @@ if [ -e "/sys/class/net/wlan0" ] ; then
   nmcli radio wifi on
   ## Disable WiFi Power Management
   iw dev wlan0 set power_save off
-  ## Turn off hotspot LED if exists
-  /opt/rpi/main apdled-off || :
 fi
 sleep 2.5
 }
@@ -180,7 +178,6 @@ exit
 apd)
 ## Switch to access point mode
 APD_MODE
-/opt/rpi/main apdled-on || :
 exit
 ;;
 

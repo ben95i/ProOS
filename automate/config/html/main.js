@@ -2091,15 +2091,10 @@ function closePopup() {
 }
 
 function animatedBackground() {
-  // ==========================================
-  // CONFIGURATION CONSTANTS
-  // ==========================================
-  
-  // General Canvas
-  const BG_COLOR = '#030303';
+  const BG_COLOR = '#000';
   
   // Background Stars
-  const BG_STAR_DENSITY = 2500; // Lower number = more stars
+  const BG_STAR_DENSITY = 2500; 
   const BG_STAR_MAX_RADIUS = 1.3;
   const BG_STAR_MIN_ALPHA = 0.15;
   const BG_STAR_MAX_ALPHA = 0.75;
@@ -2114,13 +2109,9 @@ function animatedBackground() {
   const SH_STAR_LENGTH_VARIANCE = 150;
   const SH_STAR_MIN_THICKNESS = 0.3;
   const SH_STAR_THICKNESS_VARIANCE = 1.2;
-  const SH_STAR_BASE_ANGLE = Math.PI / 4; // 45 degrees
+  const SH_STAR_BASE_ANGLE = Math.PI / 4; 
   const SH_STAR_ANGLE_VARIANCE = 0.05;
-  const SH_STAR_START_Y_OFFSET = -200;
-
-  // ==========================================
-  // ANIMATION LOGIC
-  // ==========================================
+  const SH_STAR_START_Y_OFFSET = -150;
 
   const canvas = document.getElementById('star-canvas');
   const ctx = canvas.getContext('2d');
@@ -2129,7 +2120,10 @@ function animatedBackground() {
   let shootingStars = [];
 
   function resizeCanvas() {
-    const dpr = window.devicePixelRatio || 1;
+    // OPTIMIZATION: Cap the Device Pixel Ratio to 1.5 on low-end devices 
+    // to prevent mobile phones from rendering at 3x or 4x resolution unnecessarily.
+    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    
     canvas.width = window.innerWidth * dpr;
     canvas.height = window.innerHeight * dpr;
     canvas.style.width = `${window.innerWidth}px`;
@@ -2142,86 +2136,78 @@ function animatedBackground() {
     constructor() {
       this.x = Math.random() * window.innerWidth;
       this.y = Math.random() * window.innerHeight;
-      this.radius = Math.random() * BG_STAR_MAX_RADIUS;
+      // OPTIMIZATION: Calculate size once. (Radius * 2)
+      this.size = (Math.random() * BG_STAR_MAX_RADIUS) * 2;
       this.alpha = Math.random();
-      // the speed of the stars flicker
       this.alphaChange = (Math.random() * BG_STAR_FLICKER_VARIANCE) + BG_STAR_FLICKER_BASE_SPEED;
     }
-    
-    draw() {
-      ctx.fillStyle = `white`;
-      ctx.globalAlpha = this.alpha;
-      ctx.beginPath();
-      ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    
     update() {
       this.alpha += this.alphaChange;
-      // boundary check to prevent blinking or harsh white flashes
       if (this.alpha <= BG_STAR_MIN_ALPHA || this.alpha >= BG_STAR_MAX_ALPHA) {
         this.alphaChange = -this.alphaChange;
       }  
-      this.draw();
+      
+      ctx.globalAlpha = this.alpha;
+      // OPTIMIZATION: Replaced arc() with fillRect(). Drawing tiny squares is 
+      // drastically faster than drawing tiny circles, and visually indistinguishable.
+      ctx.fillRect(this.x, this.y, this.size, this.size);
     }
   }
 
   class ShootingStar {
     constructor() {
       this.reset();
-      // Give the very first spawn on page load a wider random delay (0 to 300 frames)
-      // This ensures they don't all drop at the exact same time when the page opens
       this.delay = Math.random() * 300; 
     }
     reset() {
-      // Spawn logic: Start off-screen to the LEFT or at the TOP-LEFT
       this.x = Math.random() * window.innerWidth * 0.5 - (window.innerWidth * 0.2); 
       this.y = Math.random() * SH_STAR_START_Y_OFFSET; 
       
-      this.speed = (Math.random() * SH_STAR_SPEED_VARIANCE) + SH_STAR_MIN_SPEED; 
+      const speed = (Math.random() * SH_STAR_SPEED_VARIANCE) + SH_STAR_MIN_SPEED; 
       this.length = (Math.random() * SH_STAR_LENGTH_VARIANCE) + SH_STAR_MIN_LENGTH;
       this.thickness = (Math.random() * SH_STAR_THICKNESS_VARIANCE) + SH_STAR_MIN_THICKNESS;
-      
-      // Angle: point toward bottom-right with slight variation
       this.angle = SH_STAR_BASE_ANGLE + (Math.random() * (SH_STAR_ANGLE_VARIANCE * 2) - SH_STAR_ANGLE_VARIANCE); 
       
-      // Add a random delay (in frames) before the star is allowed to fall again
-      // ~60 frames = 1 second. This creates natural pauses between shooting stars.
+      // OPTIMIZATION: Pre-calculate velocity vectors here so we don't 
+      // compute Math.sin() and Math.cos() 60 times a second per star.
+      this.vx = speed * Math.cos(this.angle);
+      this.vy = speed * Math.sin(this.angle);
+      
+      // OPTIMIZATION: Cache the gradient. Instead of creating a new linear 
+      // gradient every frame, we create it once per star lifespan.
+      this.gradient = ctx.createLinearGradient(0, 0, -this.length, 0);
+      this.gradient.addColorStop(0, '#fff');
+      this.gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      
       this.delay = Math.random() * 200 + 50; 
     }
-    draw() {
-      ctx.save();
-      ctx.translate(this.x, this.y);
-      ctx.rotate(this.angle);
-      
-      const gradient = ctx.createLinearGradient(0, 0, -this.length, 0);
-      gradient.addColorStop(0, 'white');
-      gradient.addColorStop(1, 'transparent');
-      
-      ctx.strokeStyle = gradient;
-      ctx.lineWidth = this.thickness;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.lineTo(-this.length, 0);
-      ctx.stroke();
-      ctx.restore();
-    }
     update() {
-      // If the star has a delay, count down and stop the rest of the update
       if (this.delay > 0) {
         this.delay--;
         return; 
       }
-      // MOVE: Increase both X and Y to move top-left to bottom-right
-      this.x += this.speed * Math.cos(this.angle);
-      this.y += this.speed * Math.sin(this.angle);
-      // Reset if it goes off-screen (Right or Bottom)
+      
+      // Use pre-calculated velocities
+      this.x += this.vx;
+      this.y += this.vy;
+      
       if (this.x > window.innerWidth + this.length || 
           this.y > window.innerHeight + this.length) {
         this.reset();
       } else {
-        this.draw();
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.angle);
+        
+        ctx.strokeStyle = this.gradient;
+        ctx.lineWidth = this.thickness;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(-this.length, 0);
+        ctx.stroke();
+        
+        ctx.restore();
       }
     }
   }
@@ -2229,8 +2215,9 @@ function animatedBackground() {
   function initBackgroundStars() {
     backgroundStars = [];
     shootingStars = [];
+    // Slight optimization using bitwise NOT for faster flooring
+    const numStars = ~~((window.innerWidth * window.innerHeight) / BG_STAR_DENSITY);
     
-    const numStars = Math.floor((window.innerWidth * window.innerHeight) / BG_STAR_DENSITY);
     for (let i = 0; i < numStars; i++) {
       backgroundStars.push(new BackgroundStar());
     }
@@ -2244,8 +2231,20 @@ function animatedBackground() {
     ctx.fillStyle = BG_COLOR;
     ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
     
-    backgroundStars.forEach(star => star.update());
-    shootingStars.forEach(star => star.update());
+    // OPTIMIZATION: Set fillStyle ONCE for all background stars, rather 
+    // than setting it individually inside the class method on every loop.
+    ctx.fillStyle = '#fff';
+    
+    // OPTIMIZATION: Standard for-loops are traditionally faster than .forEach
+    for (let i = 0; i < backgroundStars.length; i++) {
+      backgroundStars[i].update();
+    }
+    
+    // Reset alpha for shooting stars
+    ctx.globalAlpha = 1; 
+    for (let i = 0; i < shootingStars.length; i++) {
+      shootingStars[i].update();
+    }
     
     requestAnimationFrame(animateCanvas);
   }
