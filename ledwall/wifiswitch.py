@@ -14,10 +14,8 @@ held_for=0.0
 
 def rls():
         global held_for
-        if (held_for > 6.0):
-                subprocess.call("/bin/bash /opt/rpi/init togglenet </dev/null &>/dev/null &", shell=True)
-        elif (held_for > 2.0):
-                subprocess.call("/bin/bash /opt/rpi/leds stop </dev/null &>/dev/null &", shell=True)
+        if (held_for > 1.0):
+                subprocess.call("/bin/bash /opt/rpi/init togglenet", shell=True)
         else:
                 held_for = 0.0
 

@@ -203,7 +203,7 @@ fi
 if [[ $CMD == "clearlog" ]]
 then
   truncate -s 0 $LOGFILE
-  neofetch --ascii_distro debian | sed 's/\x1B[@A-Z\\\]^_]\|\x1B\[[0-9:;<=>?]*[-!"#$%&'"'"'()*+,.\/]*[][\\@A-Z^_`a-z{|}~]//g' 
+  fastfetch --pipe | sed 's/\x1B[@A-Z\\\]^_]\|\x1B\[[0-9:;<=>?]*[-!"#$%&'"'"'()*+,.\/]*[][\\@A-Z^_`a-z{|}~]//g' 
   exit
 fi
 

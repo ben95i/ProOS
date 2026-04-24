@@ -9,7 +9,7 @@ apt-get --yes update
 ## Install Packages
 apt-get install -y --no-upgrade --ignore-missing dirmngr ca-certificates bpytop \
  apt-transport-https wget unzip gnupg rsync curl screen parallel libdbus-1-dev \
- ethtool libdbus-glib-1-dev locales aptitude sudo gnupg scrub binutils nmap \
+ ethtool libdbus-glib-1-dev locales aptitude sudo gnupg scrub binutils nmap fastfetch \
  avahi-daemon ffmpeg pip python3-ament-xmllint etherwake wakeonlan npm nodejs
 
 ## Remove Packages

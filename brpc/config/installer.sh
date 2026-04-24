@@ -16,7 +16,7 @@ apt-get --yes update
 apt-get install -y --no-upgrade --ignore-missing dirmngr ca-certificates htop \
  apt-transport-https wget unzip gnupg rsync curl screen ethtool libdbus-1-dev \
  libdbus-glib-1-dev locales gnupg scrub binutils avahi-daemon kodi autofs \
- cifs-utils playerctl triggerhappy google-chrome-stable
+ cifs-utils playerctl triggerhappy google-chrome-stable fastfetch
 
 ## SSH Configuration
 cp -f /tmp/config/sshd_config /etc/ssh/

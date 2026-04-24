@@ -15,8 +15,12 @@ apt-get --yes update
 apt-get install -y --no-upgrade --ignore-missing unzip wget \
  rsync curl screen scrub ethtool aptitude sudo samba sshpass \
  libdbus-1-dev libdbus-glib-1-dev bc git locales mailutils \
- neofetch apt-transport-https nmap bpytop binutils iperf3 cron \
+ fastfetch apt-transport-https nmap bpytop binutils iperf3 cron \
  cron-daemon-common fuse gocryptfs inotify-tools
+
+## NeoFetch Alias
+apt-get remove -y neofetch
+ln -sf /usr/bin/fastfetch /usr/bin/neofetch
 
 ## Process Monitor
 if [ ! -e /usr/local/bin/htop ]; then

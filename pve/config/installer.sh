@@ -19,7 +19,7 @@ apt-get --yes update
 ## Support Packages
 apt-get install -y --no-upgrade --ignore-missing rsync cron zip screen \
  libsasl2-modules intel-microcode postfix ethtool htop apt-transport-https \
- lm-sensors zfs-auto-snapshot smartmontools apcupsd chrony mailutils
+ lm-sensors zfs-auto-snapshot smartmontools apcupsd chrony mailutils fastfetch
 
 ## Ethernet Interface Pinning
 cp -fvR $TMPDIR/50-pve-*.link /usr/local/lib/systemd/network/

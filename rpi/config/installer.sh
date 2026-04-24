@@ -76,7 +76,7 @@ apt-get $APTARGS locales console-setup aptitude libnss-mdns libnss3-tools usbuti
  wireless-tools overlayroot iw wpasupplicant dirmngr triggerhappy default-jre-headless sed \
  build-essential autoconf make libtool binutils i2c-tools cmake yasm minicom rclone unzip \
  cryptsetup cryptsetup-bin texi2html nmap autoconf gnucobol4 avrdude libao-common sox npm \
- automake cifs-utils neofetch fuse apt-utils sqlite3 shairport-sync socat libexpat1 lame \
+ automake cifs-utils fuse apt-utils sqlite3 shairport-sync socat libexpat1 lame fastfetch \
  bluetooth pi-bluetooth bluez bluez-tools bluez-alsa-utils libbluetooth3 mpg321 samba \
  samba-common-bin samba-libs libimage-exiftool-perl libjson-glib-1.0-0 mpv libupnp6 \
  alsa-base alsa-utils nodejs perl perl-modules raspi-utils arduino ffmpeg v4l-utils \
@@ -146,7 +146,7 @@ apt-get remove --purge -y cron anacron logrotate fake-hwclock ntp udhcpd usbmuxd
  tracker-extract tracker-miner-fs cloud-guest-utils cloud-init rpi-cloud-init-mods rpi-connect-lite \
  iptables-persistent bridge-utils ntfs-3g lxlock xscreensaver xscreensaver-data gvfs gvfs-backends \
  rpi-systemd-config rpi-swap systemd-zram-generator apparmor busybox-syslogd piwiz php-common \
- php-cgi php php-mysql mesa-vulkan-drivers dphys-swapfile
+ php-cgi php php-mysql mesa-vulkan-drivers dphys-swapfile neofetch
 dpkg -l | grep unattended-upgrades
 dpkg -r unattended-upgrades
 rm -rf /etc/cron.*
@@ -259,6 +259,10 @@ chown root:root /etc/netmode.sh
 cp -f $BIN/preinit.sh /etc/
 chmod 755 /etc/preinit.sh
 chown root:root /etc/preinit.sh
+
+## NeoFetch Alias
+rm -f /usr/bin/neofetch
+ln -sf /usr/bin/fastfetch /usr/bin/neofetch
 
 ## ShairPort AirPlay Support
 rm -f /etc/init.d/shairport-sync

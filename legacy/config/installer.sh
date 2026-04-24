@@ -16,7 +16,7 @@ apt-get --yes update
 apt-get install -y --no-upgrade --ignore-missing unzip wget \
   rsync curl screen scrub ethtool aptitude sudo samba sshpass \
   libdbus-1-dev libdbus-glib-1-dev bc git locales mailutils \
-  apt-transport-https nmap bpytop binutils iperf3 cron \
+  apt-transport-https nmap bpytop binutils iperf3 cron fastfetch \
   cron-daemon-common autofs cifs-utils avahi-daemon htop
 
 ## AutoFS Configuration

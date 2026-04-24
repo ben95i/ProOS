@@ -12,9 +12,13 @@ apt-get --yes update
 ## Install Packages
 apt-get install -y --no-upgrade --ignore-missing dirmngr ca-certificates \
  apt-transport-https wget unzip gnupg bpytop htop rsync curl screen parallel \
- neofetch libdbus-1-dev libdbus-glib-1-dev locales cifs-utils iptables aptitude \
+ fastfetch libdbus-1-dev libdbus-glib-1-dev locales cifs-utils iptables aptitude \
  sudo gnupg mailutils scrub seahorse avahi-daemon avahi-utils ethtool \
  firejail firejail-profiles autofs binutils
+
+## NeoFetch Alias
+apt-get remove -y neofetch
+ln -sf /usr/bin/fastfetch /usr/bin/neofetch
 
 ## X11 Packages
 systemctl set-default graphical.target
