@@ -1,0 +1,12 @@
+[Unit]
+Description=Input Pin Monitor #1
+Conflicts=shutdown.target
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=5
+StartLimitInterval=30
+StartLimitBurst=20
+User=root
+ExecStart=/bin/bash -c "/opt/rpi/pinmon ${rpi_gpipin_1} ${rpi_gpicmd_1}"

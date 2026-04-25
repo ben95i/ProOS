@@ -14,8 +14,11 @@ auto_initramfs=1
 # Use the kernel's default instead.
 disable_fw_kms_setup=1
 
-# Run as fast as firmware / board allows
-arm_boost=1
+#-------Disable WiFi-------
+dtoverlay=disable-wifi
+
+#-------Disable Bluetooth-------
+dtoverlay=disable-bt
 
 #-------GPU memory-------
 gpu_mem=64
@@ -27,7 +30,7 @@ disable_pvt=1
 disable_splash=1
 
 #-------Audio support-------
-dtparam=audio=on
+dtparam=audio=off
 
 #-------Remove dedicated pll for PWM audio-------
 avoid_pwm_pll=1
@@ -38,9 +41,6 @@ dtparam=i2c_arm=off
 dtparam=i2c1=off
 i2c_arm_baudrate=100000
 dtparam=spi=off
-
-#------Disable Bluetooth-----
-dtoverlay=pi3-disable-bt
 
 #------Camera (disabled)------
 start_x=0

@@ -4,19 +4,20 @@
 ########################################################
 ########################################################
 
-## Arduino's Serial Port
-ARDUINO_PORT="ttyAMA0"
-
 CURL_ARGS="--fail --no-buffer --max-time 3 --silent --retry 3 --retry-all-errors --retry-delay 1"
+ARDUINO_PORT="ttyAMA0"
 LOCALHOST="127.0.0.1"
+WHITE_LED_PIN="12"
+FRONT_BTN_PIN="13"
+FRONT_LED_PIN="26"
+PC_POWER_PIN="16"
 
 ## Read Command-Line Arguments
 ARG_1="${1//$'\n'/}"
 ARG_2="${2//$'\n'/}"
 
 ZTERM_COM() {
-  local CMD_DATA="$1"
-  /usr/bin/ztermcom $CMD_DATA
+  /usr/bin/ztermcom "$1"
 }
 
 FADECANDY_API() {
@@ -41,130 +42,47 @@ boot)
 ## External Serial COM
 ln -sf /dev/$ARDUINO_PORT /dev/zterm-tty
 ZTERM_COM "i"
-## WiFi Toggle Switch
-systemctl start rpi-wifiswitch
+## GPIO Services
+systemctl set-environment rpi_gpipin_1=$FRONT_BTN_PIN
+systemctl set-environment rpi_gpicmd_1=front_btn
+systemctl start rpi-pinmon-1
+systemctl start rpi-gposerver
 ## LED Controller
 /opt/rpi/leds start
-## Flash LED
-/usr/bin/python3 - <<END
-import time
-import RPi.GPIO as GPIO
-GPIO.setwarnings(False)
-GPIO.setmode(GPIO.BCM)
-GPIO_PIN = 12
-GPIO.setup(GPIO_PIN, GPIO.OUT)
-GPIO.output(GPIO_PIN, True)
-time.sleep(0.5)
-GPIO.output(GPIO_PIN, False)
-GPIO.cleanup()
-quit()
-END
 exit
 ;;
 
-apdled-on)
-## Turn WiFi LED On
-/usr/bin/python3 - <<END
-import RPi.GPIO as GPIO
-GPIO.setwarnings(False)
-GPIO.setmode(GPIO.BCM)
-GPIO_PIN = 26
-GPIO.setup(GPIO_PIN, GPIO.OUT)
-GPIO.output(GPIO_PIN, True)
-quit()
-END
-exit
-;;
-
-apdled-off)
-## Turn WiFi LED Off
-/usr/bin/python3 - <<END
-import RPi.GPIO as GPIO
-GPIO.setwarnings(False)
-GPIO.setmode(GPIO.BCM)
-GPIO_PIN = 26
-GPIO.setup(GPIO_PIN, GPIO.OUT)
-GPIO.output(GPIO_PIN, False)
-GPIO.cleanup()
-quit()
-END
+front_btn)
+## Front Panel Button Press
+/usr/bin/curl $CURL_ARGS "$LOCALHOST:8770/gpio?pin=$FRONT_LED_PIN&state=HIGH"
+/opt/rpi/leds shuffle
+/usr/bin/curl $CURL_ARGS "$LOCALHOST:8770/gpio?pin=$FRONT_LED_PIN&state=LOW"
 exit
 ;;
 
 whtledon)
 ## White Front LED On
-touch /tmp/whtled.save
-/usr/bin/python3 - <<END
-import RPi.GPIO as GPIO
-GPIO.setwarnings(False)
-GPIO.setmode(GPIO.BCM)
-GPIO_PIN = 12
-GPIO.setup(GPIO_PIN, GPIO.OUT)
-GPIO.output(GPIO_PIN, True)
-quit()
-END
+/usr/bin/curl $CURL_ARGS "$LOCALHOST:8770/gpio?pin=$WHITE_LED_PIN&state=HIGH"
 exit
 ;;
 
 whtledoff)
 ## White Front LED Off
-rm -f /tmp/whtled.save
-/usr/bin/python3 - <<END
-import RPi.GPIO as GPIO
-GPIO.setwarnings(False)
-GPIO.setmode(GPIO.BCM)
-GPIO_PIN = 12
-GPIO.setup(GPIO_PIN, GPIO.OUT)
-GPIO.output(GPIO_PIN, False)
-GPIO.cleanup()
-quit()
-END
+/usr/bin/curl $CURL_ARGS "$LOCALHOST:8770/gpio?pin=$WHITE_LED_PIN&state=LOW"
 exit
 ;;
 
 whtled)
 ## White Front LED Toggle
-if [ -e /tmp/whtled.save ]; then
-rm -f /tmp/whtled.save
-/usr/bin/python3 - <<END
-import RPi.GPIO as GPIO
-GPIO.setwarnings(False)
-GPIO.setmode(GPIO.BCM)
-GPIO_PIN = 12
-GPIO.setup(GPIO_PIN, GPIO.OUT)
-GPIO.output(GPIO_PIN, False)
-GPIO.cleanup()
-quit()
-END
-else
-/usr/bin/python3 - <<END
-import RPi.GPIO as GPIO
-GPIO.setwarnings(False)
-GPIO.setmode(GPIO.BCM)
-GPIO_PIN = 12
-GPIO.setup(GPIO_PIN, GPIO.OUT)
-GPIO.output(GPIO_PIN, True)
-quit()
-END
-fi
+/usr/bin/curl $CURL_ARGS "$LOCALHOST:8770/gpio?pin=$WHITE_LED_PIN&state=TOGGLE"
 exit
 ;;
 
 pc_power)
 ## PC Power Trigger
-/usr/bin/python3 - <<END
-import time
-import RPi.GPIO as GPIO
-GPIO.setwarnings(False)
-GPIO.setmode(GPIO.BCM)
-GPIO_PIN = 16
-GPIO.setup(GPIO_PIN, GPIO.OUT)
-GPIO.output(GPIO_PIN, True)
-time.sleep(0.3)
-GPIO.output(GPIO_PIN, False)
-GPIO.cleanup()
-quit()
-END
+/usr/bin/curl $CURL_ARGS "$LOCALHOST:8770/gpio?pin=$PC_POWER_PIN&state=HIGH"
+sleep 0.30
+/usr/bin/curl $CURL_ARGS "$LOCALHOST:8770/gpio?pin=$PC_POWER_PIN&state=LOW"
 exit
 ;;
 
@@ -193,12 +111,12 @@ exit
 ;;
 
 *)
-  if [ "$ARG_1" == "" ]; then
-    echo "Enter valid command."
-    exit
-  fi
-  FADECANDY_API
+if [ "$ARG_1" == "" ]; then
+  echo "Enter valid command."
   exit
-  ;;
+fi
+FADECANDY_API
+exit
+;;
 esac
 

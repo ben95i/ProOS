@@ -14,11 +14,11 @@ auto_initramfs=1
 # Use the kernel's default instead.
 disable_fw_kms_setup=1
 
+#-------Disable WiFi-------
+dtoverlay=disable-wifi
+
 #-------GPU memory-------
 gpu_mem=64
-
-#-------Max USB Current-------
-##max_usb_current=1
 
 #-------Disable Ram temp refresh every 500ms---------------
 disable_pvt=1

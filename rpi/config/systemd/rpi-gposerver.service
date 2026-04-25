@@ -1,0 +1,12 @@
+[Unit]
+Description=Output Pin Control Server
+Conflicts=shutdown.target
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=5
+StartLimitInterval=30
+StartLimitBurst=20
+User=root
+ExecStart=/opt/rpi/gposerver

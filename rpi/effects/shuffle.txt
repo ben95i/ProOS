@@ -7,3 +7,4 @@ spark
 prism
 rays
 clouds
+spectrum

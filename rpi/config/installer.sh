@@ -70,19 +70,19 @@ chsh -s /bin/bash pi
 apt-get -y update --allow-releaseinfo-change
 
 ## Essential Packages
-apt-get $APTARGS locales console-setup aptitude libnss-mdns libnss3-tools usbutils xmltoman \
- zsync libpq5 htop lsb-release avahi-daemon avahi-utils hostapd dnsmasq-base pkg-config xxd \
- wget bc uuid-runtime iptables jq rsync screen parallel sudo nano curl wireless-regdb autofs \
- wireless-tools overlayroot iw wpasupplicant dirmngr triggerhappy default-jre-headless sed \
- build-essential autoconf make libtool binutils i2c-tools cmake yasm minicom rclone unzip \
+apt-get $APTARGS locales console-setup aptitude libnss-mdns libnss3-tools xxd autofs \
+ wget bc uuid-runtime iptables jq rsync screen parallel sudo nano curl wireless-regdb \
+ zsync libpq5 htop lsb-release avahi-daemon avahi-utils hostapd dnsmasq-base pkg-config \
  cryptsetup cryptsetup-bin texi2html nmap autoconf gnucobol4 avrdude libao-common sox npm \
- automake cifs-utils fuse apt-utils sqlite3 shairport-sync socat libexpat1 lame fastfetch \
- bluetooth pi-bluetooth bluez bluez-tools bluez-alsa-utils libbluetooth3 mpg321 samba \
- samba-common-bin samba-libs libimage-exiftool-perl libjson-glib-1.0-0 mpv libupnp6 \
- alsa-base alsa-utils nodejs perl perl-modules raspi-utils arduino ffmpeg v4l-utils \
- gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-ugly \
- gstreamer1.0-tools gstreamer1.0-libav libgstreamer-plugins-base1.0-0 x264 \
- gstreamer1.0-alsa rng-tools5
+ wireless-tools overlayroot iw wpasupplicant dirmngr triggerhappy default-jre-headless sed \
+ automake cifs-utils fuse apt-utils sqlite3 shairport-sync socat libexpat1 fastfetch ffmpeg \
+ lame gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-ugly usbutils \
+ gstreamer1.0-alsa rng-tools5 gpiod net-tools python3 python3-pip python3-venv v4l-utils mpv \
+ gstreamer1.0-tools gstreamer1.0-libav libgstreamer-plugins-base1.0-0 x264 xmltoman samba \
+ build-essential autoconf make libtool binutils i2c-tools cmake yasm minicom rclone unzip \
+ bluetooth pi-bluetooth bluez bluez-tools bluez-alsa-utils libbluetooth3 mpg321 arduino \
+ samba-common-bin samba-libs libimage-exiftool-perl libjson-glib-1.0-0 libupnp6 \
+ alsa-base alsa-utils nodejs perl perl-modules raspi-utils
 
 ## Development Support
 apt-get $APTARGS libgtk2.0-dev libbluetooth-dev libpng-dev libdaemon-dev libpopt-dev \
@@ -93,15 +93,12 @@ apt-get $APTARGS libgtk2.0-dev libbluetooth-dev libpng-dev libdaemon-dev libpopt
  libtheora-dev libssl-dev libx11-dev libxml2-dev libxslt1-dev zlib1g-dev libdbus-1-dev \
  libva-dev libvdpau-dev libvorbis-dev libxext-dev libxfixes-dev libdbus-glib-1-dev \
  libsoxr-dev libao-dev libreadline-dev libsoup2.4-dev libgcrypt-dev libconfig-dev \
- libjson-glib-dev libsodium-dev libopencv-dev
+ libjson-glib-dev libsodium-dev libopencv-dev libgpiod-dev
 
 ## Install X11
 apt-get $APTARGS xserver-xorg xorg x11-common x11-common xserver-xorg-input-evdev \
  xserver-xorg-legacy xvfb libxext6 libxtst6 xprintidle xdotool wmctrl openbox gpicview \
  lxde-common lxsession pcmanfm lxterminal xfce4-panel xfce4-whiskermenu-plugin
-
-## Python Libraries
-apt-get $APTARGS net-tools python3 python3-pip python3-venv python3-rpi.gpio python3-gpiozero
 
 if [ ! -e "/usr/bin/arduino-cli" ]; then
   echo "Installing Arduino command line..."
@@ -143,10 +140,10 @@ apt-get remove --purge -y cron anacron logrotate fake-hwclock ntp udhcpd usbmuxd
  cups-ipp-utils cups-ppdc cups-server-common upower exim4 exim4-base exim4-config exim4-daemon-light \
  libudisks2-0 dnsmasq wolfram-engine libssl-doc libatasmart4 libavahi-glib1 rng-tools rng-tools-debian \
  plymouth plymouth-label plymouth-themes pulseaudio pulseaudio-utils pavucontrol pipewire pipewire-bin \
+ iptables-persistent bridge-utils ntfs-3g lxlock xscreensaver xscreensaver-data gvfs gvfs-backends piwiz \
  tracker-extract tracker-miner-fs cloud-guest-utils cloud-init rpi-cloud-init-mods rpi-connect-lite \
- iptables-persistent bridge-utils ntfs-3g lxlock xscreensaver xscreensaver-data gvfs gvfs-backends \
- rpi-systemd-config rpi-swap systemd-zram-generator apparmor busybox-syslogd piwiz php-common \
- php-cgi php php-mysql mesa-vulkan-drivers dphys-swapfile neofetch
+ rpi-systemd-config rpi-swap systemd-zram-generator apparmor busybox-syslogd php-common php-cgi php \
+ php-mysql mesa-vulkan-drivers dphys-swapfile neofetch python3-rpi.gpio python3-gpiozero
 dpkg -l | grep unattended-upgrades
 dpkg -r unattended-upgrades
 rm -rf /etc/cron.*
@@ -477,9 +474,6 @@ chown root:root /etc/motion/motion.conf
 ln -sf /opt/rpi/init /usr/bin/rpi
 ln -sf /opt/rpi/leds /usr/bin/leds
 
-## Compile COBOL Programs
-cobc -x --free /opt/rpi/effects/colorscan.cbl -o /opt/rpi/effects/colorscan
-
 ## Services Configuration
 cp -f $BIN/timesyncd.conf /etc/systemd/
 chmod 644 /etc/systemd/timesyncd.conf
@@ -502,9 +496,9 @@ if [ ! -e "/etc/rpi-conf.done" ]; then
     sysstat-summary.timer triggerhappy.socket man-db.timer
   systemctl disable apt-daily-upgrade.service apt-daily.service autofs \
     e2scrub_all.service e2scrub_reap.service hostapd keyboard-setup sysstat \
-    lighttpd wifiswitch motion serial-getty@ttyS0.service man-db.service \
+    lighttpd motion serial-getty@ttyS0.service man-db.service nfs-blkmap \
     serial-getty@ttyAMA0.service winbind hciuart bluetooth bthelper@hci0 \
-    bluealsa-aplay nmbd smbd samba-ad-dc triggerhappy sshswitch nfs-blkmap
+    bluealsa-aplay nmbd smbd samba-ad-dc triggerhappy sshswitch
   echo "Initial setup (phase II) complete."
   touch /etc/rpi-conf.done
 else
@@ -524,31 +518,53 @@ fi
 ## Regenerate Update Database
 systemctl start man-db.service
 
-## Z-Term Communication
-rm -f /usr/bin/ztermcom
-gcc /opt/rpi/ztermcom.c -o /usr/bin/ztermcom
-chmod 755 /usr/bin/ztermcom 
-chown root:root /usr/bin/ztermcom
+##### Compiled from Source #####
 
 LED_EF="/opt/rpi/effects"
 
 ## Fadecandy Brightness Proxy Server
 rm -f $LED_EF/fcproxy
-g++ -O3 $LED_EF/fcproxy.cpp -o $LED_EF/fcproxy -lpthread
+g++ -v -O3 $LED_EF/fcproxy.cpp -o $LED_EF/fcproxy -lpthread
 chmod 755 $LED_EF/fcproxy
 chown root:root $LED_EF/fcproxy
 
 ## Video File to OPC LED Data Stream
 rm -f $LED_EF/mp4toleds
-g++ -O3 $LED_EF/mp4toleds.cpp -o $LED_EF/mp4toleds $(pkg-config --cflags --libs opencv4)
+g++ -v -O3 $LED_EF/mp4toleds.cpp -o $LED_EF/mp4toleds $(pkg-config --cflags --libs opencv4)
 chmod 755 $LED_EF/mp4toleds
 chown root:root $LED_EF/mp4toleds
 
 ## Solid Color to OPC LED Data Stream
 rm -f $LED_EF/writecolor
-g++ -O3 $LED_EF/writecolor.cpp -o $LED_EF/writecolor -std=c++11
+g++ -v -O3 $LED_EF/writecolor.cpp -o $LED_EF/writecolor -std=c++11
 chmod 755 $LED_EF/writecolor
 chown root:root $LED_EF/writecolor
+
+## Color Lookup COBOL Program
+rm -f $LED_EF/colorscan
+cobc -x --free $LED_EF/colorscan.cbl -o $LED_EF/colorscan
+chmod 755 $LED_EF/colorscan
+chown root:root $LED_EF/colorscan
+
+## GPO Pin Control Server
+rm -f /opt/rpi/gposerver
+g++ -v /opt/rpi/gposerver.cpp -o /opt/rpi/gposerver -lgpiodcxx
+chmod 755 /opt/rpi/gposerver
+chown root:root /opt/rpi/gposerver
+
+## GPI Pin Monitor Server
+rm -f /opt/rpi/pinmon
+g++ -v -Wall -O3 /opt/rpi/pinmon.cpp -o /opt/rpi/pinmon -lgpiodcxx
+chmod 755 /opt/rpi/pinmon
+chown root:root /opt/rpi/pinmon
+
+## Z-Term RS232 Communication
+rm -f /usr/bin/ztermcom
+gcc -v /opt/rpi/ztermcom.c -o /usr/bin/ztermcom
+chmod 755 /usr/bin/ztermcom 
+chown root:root /usr/bin/ztermcom
+
+################################
 
 ## Reset Null Device
 rm -f /dev/null
