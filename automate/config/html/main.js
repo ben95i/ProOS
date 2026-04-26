@@ -2094,18 +2094,18 @@ function animatedBackground() {
   const BG_COLOR = '#000';
   
   // Background Stars
-  const BG_STAR_DENSITY = 2500; 
+  const BG_STAR_DENSITY = 2000; 
   const BG_STAR_MAX_RADIUS = 1.3;
-  const BG_STAR_MIN_ALPHA = 0.15;
-  const BG_STAR_MAX_ALPHA = 0.75;
+  const BG_STAR_MIN_ALPHA = 0.1;
+  const BG_STAR_MAX_ALPHA = 0.8;
   const BG_STAR_FLICKER_BASE_SPEED = 0.005;
   const BG_STAR_FLICKER_VARIANCE = 0.001;
   
   // Shooting Stars
-  const MAX_SH_STARS = 5;
-  const SH_STAR_MIN_SPEED = 12;
-  const SH_STAR_SPEED_VARIANCE = 15;
-  const SH_STAR_MIN_LENGTH = 80;
+  const MAX_SH_STARS = 6;
+  const SH_STAR_MIN_SPEED = 5;
+  const SH_STAR_SPEED_VARIANCE = 10;
+  const SH_STAR_MIN_LENGTH = 50;
   const SH_STAR_LENGTH_VARIANCE = 150;
   const SH_STAR_MIN_THICKNESS = 0.3;
   const SH_STAR_THICKNESS_VARIANCE = 1.2;
