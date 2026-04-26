@@ -57,11 +57,6 @@ chown root:root /etc/sudoers.d/010_pi-nopasswd
 chmod u=rwx,g=rx,o=rx /etc/sudoers.d/010_pi-nopasswd
 chmod u=r,g=r,o= /etc/sudoers.d/010_pi-nopasswd
 
-## Camera IR Control
-cp -f $BIN/modconf/rpi-ldr.service /etc/systemd/system/
-chmod -f 644 /etc/systemd/system/rpi-ldr.service
-chown -f root:root /etc/systemd/system/rpi-ldr.service
-
 ## AutoFS Configuration
 cp -f $BIN/modconf/auto.master /etc/
 chmod 644 /etc/auto.master

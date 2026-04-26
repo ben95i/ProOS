@@ -1,118 +1,26 @@
 #!/bin/bash
-##
-## CameraPi by Ben Provenzano III v1.5 #############
-####################################################
+########################################################
+## CameraPi by Ben Provenzano III  #####################
+########################################################
+########################################################
 
-## Manual Camera Control Function
-CAMCTL () {
-clear
-REPLY=""
-echo "(Manual Camera Control Menu)"
-echo "(1) - disable IR filter shutter"
-echo "(2) - enable IR filter shutter"
-echo "(3) - disable IR LEDs"
-echo "(4) - enable IR LEDs"
-echo "(5) - disable power LED"
-echo "(6) - enable power LED"
-echo "(enter) exit manual control"
-echo " "
-read -p "select mode: " -n 1 -r
-echo
-############
-if [[ $REPLY =~ ^[1]$ ]]
-then
-## Disable IR Filter (GPIO #17)
-/usr/bin/python3 - <<END
-import RPi.GPIO as GPIO
-GPIO.setwarnings(False)
-GPIO.setmode(GPIO.BCM)
-GPIO_PIN = 17
-GPIO.setup(GPIO_PIN, GPIO.OUT)
-GPIO.output(GPIO_PIN, True)
-quit()
-END
-CAMCTL
-fi
-############
-if [[ $REPLY =~ ^[2]$ ]]
-then
-## Enable IR Filter (GPIO #17)
-/usr/bin/python3 - <<END
-import RPi.GPIO as GPIO
-GPIO.setwarnings(False)
-GPIO.setmode(GPIO.BCM)
-GPIO_PIN = 17
-GPIO.setup(GPIO_PIN, GPIO.OUT)
-GPIO.output(GPIO_PIN, False)
-quit()
-END
-CAMCTL
-fi
-############
-if [[ $REPLY =~ ^[3]$ ]]
-then
-## Disable IR LEDs (GPIO #27)
-/usr/bin/python3 - <<END
-import RPi.GPIO as GPIO
-GPIO.setwarnings(False)
-GPIO.setmode(GPIO.BCM)
-GPIO_PIN = 27
-GPIO.setup(GPIO_PIN, GPIO.OUT)
-GPIO.output(GPIO_PIN, False)
-quit()
-END
-CAMCTL
-fi
-############
-if [[ $REPLY =~ ^[4]$ ]]
-then
-## Enable IR LEDs (GPIO #27)
-/usr/bin/python3 - <<END
-import RPi.GPIO as GPIO
-GPIO.setwarnings(False)
-GPIO.setmode(GPIO.BCM)
-GPIO_PIN = 27
-GPIO.setup(GPIO_PIN, GPIO.OUT)
-GPIO.output(GPIO_PIN, True)
-quit()
-END
-CAMCTL
-fi
-############
-if [[ $REPLY =~ ^[5]$ ]]
-then
-## Disable Red LED
-echo 1 | tee /sys/class/leds/led1/brightness > /dev/null 2> /dev/null
-CAMCTL
-fi
-############
-if [[ $REPLY =~ ^[6]$ ]]
-then
-## Enable Red LED
-echo 0 | tee /sys/class/leds/led1/brightness > /dev/null 2> /dev/null
-CAMCTL
-fi
-############
-echo "restarting auto IR Control..."
-/usr/bin/python3 - <<END
-import RPi.GPIO as GPIO
-GPIO.setwarnings(False)
-GPIO.setmode(GPIO.BCM)
-GPIO.setup(27, GPIO.OUT)
-GPIO.setup(17, GPIO.OUT)
-GPIO.cleanup()
-quit()
-END
-systemctl start rpi-ldr.service
-echo 1 | tee /sys/class/leds/led1/brightness > /dev/null 2> /dev/null
-exit
-}
+CURL_ARGS="--fail --no-buffer --max-time 3 --silent --retry 3 --retry-all-errors --retry-delay 1"
+LOCALHOST="127.0.0.1"
+FILES_IP="192.168.1.4"
+LDR_SENSOR_PIN="22"
+IR_FILTER_PIN="17"
+IR_LEDS_PIN="27"
 
-##################################
+## Read Command-Line Argument
+ARG_1="${1//$'\n'/}"
 
-case "$1" in
+case "$ARG_1" in
 
 boot)
+## GPIO Services
+systemctl set-environment rpi_ldrpin=$LDR_SENSOR_PIN
+systemctl start rpi-ldrdetect
+systemctl start rpi-gposerver
 ## Video RAM disk
 mkdir -p /mnt/ramdisk
 chmod 777 /mnt/ramdisk
@@ -122,52 +30,38 @@ mkdir -p /media/usb0
 mount /dev/sda1 /media/usb0
 sleep 5
 ## Attach server SMB share
-if ping -c 1 files.home > /dev/null 2> /dev/null
+if ping -c 1 $FILES_IP > /dev/null 2> /dev/null
 then
-  systemctl restart autofs
+  systemctl start autofs
   sleep 5
 fi
 ## Google Drive
 if [ ! -e "/media/usb0/rclone" ]; then
   echo "flash drive not connected, not starting rclone."
 else
-  systemctl restart rpi-rclone
+  systemctl start rpi-rclone
   sleep 5
 fi
 ## Motion Server
-systemctl restart rpi-motion.service
+systemctl start rpi-motion.service
 ## Cameras Cleanup Timer
-systemctl restart rpi-camcleanup.timer
-## Automatic Infrared LED
-systemctl restart rpi-ldr.service
+systemctl start rpi-camcleanup.timer
 exit
 ;;
 
-camctl)
-echo "stopping auto IR control..."
-systemctl stop rpi-ldr.service
-sleep 1.25
-CAMCTL
+ir_on)
+## IR LEDs Enable Command 
+/usr/bin/curl $CURL_ARGS "$LOCALHOST:8770/gpio?pin=$IR_LEDS_PIN&state=HIGH"
+sleep 2.5
+/usr/bin/curl $CURL_ARGS "$LOCALHOST:8770/gpio?pin=$IR_FILTER_PIN&state=HIGH"
 exit
 ;;
 
-redoff)
-## Disable Red Status LED
-echo 1 | tee /sys/class/leds/led1/brightness > /dev/null 2> /dev/null
-exit
-;;
-
-redon)
-## Enable Red Status LED
-echo 0 | tee /sys/class/leds/led1/brightness > /dev/null 2> /dev/null
-exit
-;;
-
-redpulse)
-## Pulse Red Status LED
-echo 0 | tee /sys/class/leds/led1/brightness > /dev/null 2> /dev/null
-sleep 7.5
-echo 1 | tee /sys/class/leds/led1/brightness > /dev/null 2> /dev/null
+ir_off)
+## IR LEDs Disable Command 
+/usr/bin/curl $CURL_ARGS "$LOCALHOST:8770/gpio?pin=$IR_LEDS_PIN&state=LOW"
+sleep 2.5
+/usr/bin/curl $CURL_ARGS "$LOCALHOST:8770/gpio?pin=$IR_FILTER_PIN&state=LOW"
 exit
 ;;
 
@@ -186,17 +80,14 @@ then
 fi
 exit
 ;;
-
-##################################
     
-        *)
-	      echo "CameraPi v1"
-	      echo " by Ben Provenzano III"
-	      echo " "
-	      echo "camctl - manual camera control menu"
-	      echo "cpusb - copy videos on USB drive to server"
-	      echo " "
-	      echo "enter a valid command argument."
-        exit 1
-        ;;
-    esac   
+*)
+echo "CameraPi"
+echo " by Ben Provenzano III"
+echo " "
+echo "cpusb - copy videos on USB drive to server"
+echo " "
+echo "enter a valid command argument."
+exit 1
+;;
+esac   

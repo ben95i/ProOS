@@ -558,6 +558,12 @@ g++ -v -Wall -O3 /opt/rpi/pinmon.cpp -o /opt/rpi/pinmon -lgpiodcxx
 chmod 755 /opt/rpi/pinmon
 chown root:root /opt/rpi/pinmon
 
+## LDR Detector Server
+rm -f /opt/rpi/ldrdetect
+g++ -v /opt/rpi/ldrdetect.cpp -o /opt/rpi/ldrdetect -lgpiodcxx
+chmod 755 /opt/rpi/ldrdetect
+chown root:root /opt/rpi/ldrdetect
+
 ## Z-Term RS232 Communication
 rm -f /usr/bin/ztermcom
 gcc -v /opt/rpi/ztermcom.c -o /usr/bin/ztermcom
