@@ -78,21 +78,6 @@ chown $B_USER:shared $B_HOMEDIR/SFTP
 mkdir -p /mnt/regmnts
 chown $B_USER:shared /mnt/regmnts
 
-## Github configuration
-rm -f $B_HOMEDIR/.gitconfig
-mkdir -p $B_HOMEDIR/.config
-mkdir -p $B_HOMEDIR/.config/git
-cp /tmp/config/git.config $B_HOMEDIR/.config/git/config
-chmod 644 $B_HOMEDIR/.config/git/config
-chown -R $B_USER:shared $B_HOMEDIR/.config
-## Github SSH keys
-mkdir -p $B_HOMEDIR/.ssh
-chmod 700 $B_HOMEDIR/.ssh
-cp -f /tmp/config/github.pub $B_HOMEDIR/.ssh/id_rsa.pub
-cp -f /tmp/config/github.rsa $B_HOMEDIR/.ssh/id_rsa
-chmod 600 $B_HOMEDIR/.ssh/id_rsa
-chown -R $B_USER:shared $B_HOMEDIR/.ssh
-
 ## Permissions allow running scripts as elevated (ben) user
 rm -f /etc/sudoers.d/www-perms
 sh -c "touch /etc/sudoers.d/www-perms"

@@ -113,7 +113,6 @@ fi
 ## Light Web Server
 apt-get $APTARGS lighttpd
 chown www-data:www-data /var/www
-chmod 775 /var/www
 usermod -a -G www-data pi
 mkdir -p /var/www/html
 chmod -R 777 /var/www/html
@@ -212,10 +211,10 @@ chown root:root /root/.ssh/authorized_keys
 
 ## Copy Bash Login Script
 cp -f $BIN/bashrc /root/.bashrc
-chmod 755 /root/.bashrc
+chmod +x /root/.bashrc
 chown root:root /root/.bashrc
 cp -f $BIN/bashrc /home/pi/.bashrc
-chmod 755 /home/pi/.bashrc
+chmod +x /home/pi/.bashrc
 chown pi:pi /home/pi/.bashrc
 
 ## Remove Root Password
@@ -251,10 +250,10 @@ chown -fR root:root /etc/systemd/system/*.service
 
 ## Startup Scripts
 cp -f $BIN/netmode.sh /etc/
-chmod 755 /etc/netmode.sh
+chmod +x /etc/netmode.sh
 chown root:root /etc/netmode.sh
 cp -f $BIN/preinit.sh /etc/
-chmod 755 /etc/preinit.sh
+chmod +x /etc/preinit.sh
 chown root:root /etc/preinit.sh
 
 ## NeoFetch Alias
@@ -291,7 +290,7 @@ mv -f $BIN/html-base/* /var/www/html
 mv -f $BIN/html/* /var/www/html
 mkdir -p /var/www/html/ram
 touch /var/www/html/ram/sysout.txt
-chmod -R 775 /var/www/html
+chmod -R +x /var/www/html
 chown -R www-data:www-data /var/www/html
 mkdir -p /var/www/sessions
 chmod -R g+rx /var/www/sessions
@@ -355,7 +354,7 @@ cp -f $BIN/xdesktop.conf /home/pi/.config/lxsession/LXDE/desktop.conf
 chmod 644 /home/pi/.config/lxsession/LXDE/desktop.conf
 chown pi:pi /home/pi/.config/lxsession/LXDE/desktop.conf
 cp -f $BIN/xautostart /home/pi/.config/lxsession/LXDE/autostart
-chmod 755 /home/pi/.config/lxsession/LXDE/autostart
+chmod +x /home/pi/.config/lxsession/LXDE/autostart
 chown pi:pi /home/pi/.config/lxsession/LXDE/autostart
 
 ## Bluetooth Configuration
@@ -389,7 +388,7 @@ chmod 644 /etc/systemd/system/bluealsa.service.d/override.conf
 # Bluetooth UDEV Script
 cp -f $BIN/bluetooth-udev /usr/local/bin/bluetooth-udev
 chown root:root /usr/local/bin/bluetooth-udev
-chmod 755 /usr/local/bin/bluetooth-udev
+chmod +x /usr/local/bin/bluetooth-udev
 cp -f $BIN/bluetooth-udev.rules /etc/udev/rules.d/99-bluetooth-udev.rules
 chown root:root /etc/udev/rules.d/99-bluetooth-udev.rules
 chmod 644 /etc/udev/rules.d/99-bluetooth-udev.rules
@@ -474,6 +473,44 @@ chown root:root /etc/motion/motion.conf
 ln -sf /opt/rpi/init /usr/bin/rpi
 ln -sf /opt/rpi/leds /usr/bin/leds
 
+##### Compiled from Source #####
+
+LED_EF="/opt/rpi/effects"
+
+## Fadecandy Brightness Proxy Server
+rm -f $LED_EF/fcproxy
+g++ -v -O3 $LED_EF/fcproxy.cpp -o $LED_EF/fcproxy -lpthread
+
+## Video File to OPC LED Data Stream
+rm -f $LED_EF/mp4toleds
+g++ -v -O3 $LED_EF/mp4toleds.cpp -o $LED_EF/mp4toleds $(pkg-config --cflags --libs opencv4)
+
+## Solid Color to OPC LED Data Stream
+rm -f $LED_EF/writecolor
+g++ -v -O3 $LED_EF/writecolor.cpp -o $LED_EF/writecolor -std=c++11
+
+## Color Lookup COBOL Program
+rm -f $LED_EF/colorscan
+cobc -x --free $LED_EF/colorscan.cbl -o $LED_EF/colorscan
+
+## GPO Pin Control Server
+rm -f /opt/rpi/gposerver
+g++ -v /opt/rpi/gposerver.cpp -o /opt/rpi/gposerver -lgpiodcxx
+
+## GPI Pin Monitor Server
+rm -f /opt/rpi/pinmon
+g++ -v -Wall -O3 /opt/rpi/pinmon.cpp -o /opt/rpi/pinmon -lgpiodcxx
+
+## LDR Detector Server
+rm -f /opt/rpi/ldrdetect
+g++ -v /opt/rpi/ldrdetect.cpp -o /opt/rpi/ldrdetect -lgpiodcxx
+
+## Z-Term RS232 Communication
+rm -f /usr/bin/ztermcom
+gcc -v /opt/rpi/ztermcom.c -o /usr/bin/ztermcom
+
+################################
+
 ## Services Configuration
 cp -f $BIN/timesyncd.conf /etc/systemd/
 chmod 644 /etc/systemd/timesyncd.conf
@@ -510,7 +547,7 @@ if [ ! -e "/opt/rpi/modconf/modinit" ]; then
   echo "Module script not found."
 else
   echo "Running Module Script..."
-  chmod 755 /opt/rpi/modconf/modinit
+  chmod +x /opt/rpi/modconf/modinit
   sh /opt/rpi/modconf/modinit
   rm -rf /opt/rpi/modconf
 fi
@@ -518,83 +555,34 @@ fi
 ## Regenerate Update Database
 systemctl start man-db.service
 
-##### Compiled from Source #####
-
-LED_EF="/opt/rpi/effects"
-
-## Fadecandy Brightness Proxy Server
-rm -f $LED_EF/fcproxy
-g++ -v -O3 $LED_EF/fcproxy.cpp -o $LED_EF/fcproxy -lpthread
-chmod 755 $LED_EF/fcproxy
-chown root:root $LED_EF/fcproxy
-
-## Video File to OPC LED Data Stream
-rm -f $LED_EF/mp4toleds
-g++ -v -O3 $LED_EF/mp4toleds.cpp -o $LED_EF/mp4toleds $(pkg-config --cflags --libs opencv4)
-chmod 755 $LED_EF/mp4toleds
-chown root:root $LED_EF/mp4toleds
-
-## Solid Color to OPC LED Data Stream
-rm -f $LED_EF/writecolor
-g++ -v -O3 $LED_EF/writecolor.cpp -o $LED_EF/writecolor -std=c++11
-chmod 755 $LED_EF/writecolor
-chown root:root $LED_EF/writecolor
-
-## Color Lookup COBOL Program
-rm -f $LED_EF/colorscan
-cobc -x --free $LED_EF/colorscan.cbl -o $LED_EF/colorscan
-chmod 755 $LED_EF/colorscan
-chown root:root $LED_EF/colorscan
-
-## GPO Pin Control Server
-rm -f /opt/rpi/gposerver
-g++ -v /opt/rpi/gposerver.cpp -o /opt/rpi/gposerver -lgpiodcxx
-chmod 755 /opt/rpi/gposerver
-chown root:root /opt/rpi/gposerver
-
-## GPI Pin Monitor Server
-rm -f /opt/rpi/pinmon
-g++ -v -Wall -O3 /opt/rpi/pinmon.cpp -o /opt/rpi/pinmon -lgpiodcxx
-chmod 755 /opt/rpi/pinmon
-chown root:root /opt/rpi/pinmon
-
-## LDR Detector Server
-rm -f /opt/rpi/ldrdetect
-g++ -v /opt/rpi/ldrdetect.cpp -o /opt/rpi/ldrdetect -lgpiodcxx
-chmod 755 /opt/rpi/ldrdetect
-chown root:root /opt/rpi/ldrdetect
-
-## Z-Term RS232 Communication
-rm -f /usr/bin/ztermcom
-gcc -v /opt/rpi/ztermcom.c -o /usr/bin/ztermcom
-chmod 755 /usr/bin/ztermcom 
-chown root:root /usr/bin/ztermcom
-
-################################
-
 ## Reset Null Device
 rm -f /dev/null
 mknod /dev/null c 1 3
 chmod 666 /dev/null
 
 ## Reset Log Files
-rm -f /var/log/lastlog; touch /var/log/lastlog
-rm -f /var/log/faillog; touch /var/log/faillog
-rm -f /var/log/btmp; touch /var/log/btmp
-rm -f /var/log/wtmp; touch /var/log/wtmp
-rm -f /root/.xsession-errors; touch /root/.xsession-errors
-chmod -R 644 /var/log/wtmp /var/log/btmp /var/log/lastlog /var/log/faillog /root/.xsession-errors
+rm -f /var/log/lastlog
+touch /var/log/lastlog
+rm -f /var/log/faillog
+touch /var/log/faillog
+rm -f /var/log/btmp
+touch /var/log/btmp
+rm -f /var/log/wtmp
+touch /var/log/wtmp
+chmod -R 644 /var/log/wtmp /var/log/btmp /var/log/lastlog /var/log/faillog
 chown -R root:utmp /var/log/wtmp /var/log/btmp /var/log/lastlog /var/log/faillog
-chown -R root:root /root/.xsession-errors
-rm -f /home/pi/.xsession-errors; touch /home/pi/.xsession-errors
-rm -f /var/log/Xorg.0.log.old; touch /var/log/Xorg.0.log.old
-rm -f /var/log/Xorg.0.log; touch /var/log/Xorg.0.log
+rm -f /home/pi/.xsession-errors
+touch /home/pi/.xsession-errors
+rm -f /var/log/Xorg.0.log.old
+touch /var/log/Xorg.0.log.old
+rm -f /var/log/Xorg.0.log
+touch /var/log/Xorg.0.log
 chmod -R 777 /var/log/Xorg.0.log /var/log/Xorg.0.log.old
 chmod -R 644 /home/pi/.xsession-errors
 chown -R pi:pi /var/log/Xorg.0.log /var/log/Xorg.0.log.old /home/pi/.xsession-errors
 
 ## Execute Permissions
-chmod -R 755 /opt/rpi
+chmod -R +x /opt/rpi
 chown -R root:root /opt/rpi
 
 ## Remove Installer Files

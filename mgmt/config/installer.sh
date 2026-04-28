@@ -14,7 +14,7 @@ apt-get install -y --no-upgrade --ignore-missing unzip wget \
  apt-transport-https nmap bpytop binutils iperf3 
 
 ## Set Locale
-if [ ! -e /etc/locales.generated ]; then
+if [ ! -e "/etc/locales.generated" ]; then
   dpkg-reconfigure locales
   touch /etc/locales.generated
 fi
@@ -61,7 +61,7 @@ chown ben:ben /home/ben/.profile
 chmod +x /home/ben/.profile
 
 ## System Configuration
-cp /tmp/config/sysctl.conf /etc
+cp /tmp/config/sysctl.conf /etc/
 chmod 644 /etc/sysctl.conf
 chown root:root /etc/sysctl.conf
 

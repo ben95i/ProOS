@@ -1,4 +1,4 @@
 ## Files Mountpoints Configuration
 
-/mnt/.regions/SFTP   /home/ben/SFTP      auto defaults,nofail,nobootwait,bind 0 2
-
+/mnt/.regions/DB        /home/ben/DB              auto defaults,nofail,nobootwait,bind 0 2
+/mnt/data/Electronics   /home/ben/Electronics     auto defaults,nofail,nobootwait,bind 0 2
