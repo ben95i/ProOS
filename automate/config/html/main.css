@@ -12,7 +12,6 @@
   font-family: JosefinSans, system-ui;
   font-size: 24px; /* default font size */
   --secondary-color: #36363d; /* nav bar, menus, and border color */
-  --menu-hover-color: #1c1e20; 
 }
 
 body {
@@ -32,7 +31,7 @@ body {
   left: 0;
   width: 100%;
   height: 100%;
-  z-index: -1; /* Keeps the background behind your content */
+  z-index: -1;
   display: block;
 }
 
@@ -211,6 +210,7 @@ input.chkbox {
 /*
  *  Button Styles
  */
+ 
 .button {
   /* layout & spacing */
   width: 150px;
@@ -222,8 +222,7 @@ input.chkbox {
   -webkit-user-select: none;
   text-align: center;
   color: #fff; 
-  text-shadow: 0 1px 1px rgba(0,0,0,0.5), 0 0 2px color-mix(in srgb, var(--main-color), #fff 20%);
-  font-weight: 600;
+  text-shadow: 0 2px 2px rgba(0, 0, 0, 0.5);
   /* shape & transition */
   border: none;
   outline: none;
@@ -232,9 +231,9 @@ input.chkbox {
   transition: all 0.15s cubic-bezier(0.23, 1, 0.32, 1);
   cursor: pointer;
   /* glass material */
-  background-color: color-mix(in srgb, var(--main-color), transparent 60%);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background-color: color-mix(in srgb, var(--main-color), transparent 35%);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
   background-image: linear-gradient(
     165deg, 
     rgba(255, 255, 255, 0.15) 0%, 
@@ -243,9 +242,8 @@ input.chkbox {
     rgba(0, 0, 0, 0.15) 100%
   );
   /* side walls */
-  box-shadow: 
-    inset 0 1px 0 rgba(255, 255, 255, 0.3), 
-    inset 0 -1px 2px rgba(0, 0, 0, 0.3),    
+  box-shadow:
+    inset 0 0 2px rgba(255, 255, 255, 0.3),  
     inset 0 0 10px color-mix(in srgb, var(--main-color), transparent 50%), 
     /* 3 Layers of "Wall" for thickness */
     1px 1px 0 color-mix(in srgb, var(--main-color), #000 30%),
@@ -255,7 +253,6 @@ input.chkbox {
     5px 5px 0 1px rgba(255, 255, 255, 0.1), 
     6px 6px 3px rgba(0, 0, 0, 0.4),          
     10px 10px 20px rgba(0, 0, 0, 0.3);       
-  /* Changed from -3px to -5px to account for new thickness */
   transform: translate(-5px, -5px);
   backface-visibility: hidden;
 }
@@ -273,11 +270,11 @@ input.chkbox {
 }
 
 .submode_btn {
-  background-color: color-mix(in srgb, #a52b2b, transparent 60%);
+  background-color: color-mix(in srgb, #a52b2b, transparent 35%);
 }
 
 .dark_btn {
-  background-color: color-mix(in srgb, var(--main-color), transparent 80%); 
+  background-color: color-mix(in srgb, var(--main-color), transparent 65%); 
 }
 
 .alert_btn {
@@ -485,7 +482,7 @@ input.chkbox {
   z-index: 998;
 }
 
-/* links inside the dropdown */
+/* links inside the dropdown menu */
 .dd-content a {
   -webkit-user-select: none;
   user-select: none;
@@ -498,8 +495,8 @@ input.chkbox {
 
 .dd-content a:hover {
   border-radius: 5px;
-  background-color: var(--menu-hover-color);
-  color: #e8e5e5;
+  background-color: color-mix(in srgb, var(--main-color), #fff 50%);
+  color: #000;
 }
 
 /* Status Menu */
@@ -1025,7 +1022,7 @@ input.chkbox {
 
 .thermometer {
   width: 25px;
-  background: var(--menu-hover-color);
+  background: #0f0f0f;
   height: 240px;
   position: relative;
   border: 9px solid var(--secondary-color);
@@ -1042,7 +1039,7 @@ input.chkbox {
   height: 45px;
   background-color: #659df1;
   bottom: -40px;
-  border: 9px solid color-mix(in srgb, var(--secondary-color) 70%, #fff);
+  border: 9px solid var(--secondary-color);
   z-index: -3;
   left: 50%;
 }
@@ -1081,19 +1078,20 @@ input.chkbox {
 }
 
 .slider-wide {
-  -webkit-appearance: none;
+  position: absolute;
+  width: 160px;
   left: -2px;
   bottom: -2px;
-  width: 160px;
-  position: absolute;
+  border-radius: 3px;
+  border: 1px solid #323030;
+  -webkit-appearance: none;
   overflow: hidden;
   cursor: pointer;
-  border-radius: 5px;
 }
 
 .slider-wide::-webkit-slider-runnable-track {
   -webkit-appearance: none;
-  background: var(--menu-hover-color);
+  background: color-mix(in srgb, var(--secondary-color) 75%, #000);
 }
 
 .slider-wide::-webkit-slider-thumb {
@@ -1101,9 +1099,9 @@ input.chkbox {
   border-radius: 0px;
   width: 30px;
   height: 60px;
-  background: #fff;
-  box-shadow: -160px 0 0 160px color-mix(in srgb, var(--main-color) 50%, #fff);
-  border: 2px solid #999;
+  background: #e6e6e6;
+  box-shadow: -160px 0 0 160px var(--main-color);
+  border: 2px solid #4a4848;
 }
 
 .slider-wide_container {
