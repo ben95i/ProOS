@@ -2,23 +2,40 @@
 // by Ben Provenzano III
 
 // global variables //
+const MAIN_SITE = "Automate";
+const BKM_INACTIVE = 0;
+const BKM_OPEN_MODE = 1;
+const BKM_EDIT_MODE = 2;
 let ctlCommand;
 let fileData = [];
 let serverCmdData;
-let resizeState = false;
 let messagePopupTimer;
 let dynMenuActive = 0;
 let bookmarkState = 0;
 let volPopupTimer;
-let timeStamp;
 let sysModel;
 
-// global constants
-const serverSite = "Automate";
-const BKM_INACTIVE = 0;
-const BKM_OPEN_MODE = 1;
-const BKM_EDIT_MODE = 2;
-const resizeTimeout = 750; // in ms
+// request rate limiter
+function throttle(func, limit) {
+  let lastFunc;
+  let lastRan;
+  return function() {
+    const context = this;
+    const args = arguments;
+    if (!lastRan) {
+      func.apply(context, args);
+      lastRan = Date.now();
+    } else {
+      clearTimeout(lastFunc);
+      lastFunc = setTimeout(function() {
+        if ((Date.now() - lastRan) >= limit) {
+          func.apply(context, args);
+          lastRan = Date.now();
+        }
+      }, limit - (Date.now() - lastRan));
+    }
+  };
+}
 
 // runs after DOM finishes loading
 window.addEventListener("DOMContentLoaded", () => {
@@ -144,11 +161,11 @@ function GoToExtPage(_path) {
 
 // back to home page 
 function GoToHomePage() {
-  if (sysModel === serverSite) {
+  if (sysModel === MAIN_SITE) {
     hidePages();
     loadPage();
   } else {
-    window.location = 'https://' + serverSite + '.home';   
+    window.location = 'https://' + MAIN_SITE + '.home';   
   }
 }
 
@@ -162,7 +179,7 @@ function hidePages() {
 function loadPage() {
   // read device type
   sysModel = deviceType(); 
-  if (sysModel === serverSite) {
+  if (sysModel === MAIN_SITE) {
     // load control menu saved state
     let _mode = localStorage.getItem("ctls-mode")
     if (_mode === null || _mode === undefined || _mode === "") { 
@@ -203,7 +220,7 @@ async function serverSend() {
     document.getElementById("logTextBox").value = "select an option.";
   } else {
     // send command
-    if (sysModel === serverSite) {
+    if (sysModel === MAIN_SITE) {
       sendCmd('main','server',serverCmdData);
     } else {
       sendCmd('main-www','server',serverCmdData);
@@ -1198,12 +1215,12 @@ async function drawBookmarkPrompt(add, url, name, elem){
   editFavPrompt.appendChild(editFavText);      // window title text
   editFavPrompt.appendChild(editFavName);      // name text box
   editFavPrompt.appendChild(editFavURL);       // URL text box
-  editFavPrompt.appendChild(editFavUpBtn);     // button row #1
-  editFavPrompt.appendChild(editFavLookupBtn); // button row #1 
-  editFavPrompt.appendChild(editFavDownBtn);   // button row #2
-  editFavPrompt.appendChild(editFavSaveBtn);   // button row #2
-  editFavPrompt.appendChild(editFavCancelBtn); // button row #3
-  editFavPrompt.appendChild(editFavDeleteBtn); // button row #3
+  editFavPrompt.appendChild(editFavUpBtn);     // row #1
+  editFavPrompt.appendChild(editFavLookupBtn); // row #1 
+  editFavPrompt.appendChild(editFavDownBtn);   // row #2
+  editFavPrompt.appendChild(editFavSaveBtn);   // row #2
+  editFavPrompt.appendChild(editFavCancelBtn); // row #3
+  editFavPrompt.appendChild(editFavDeleteBtn); // row #3
   // display window on page
   document.body.appendChild(editFavPrompt);
   // handle button actions
@@ -1895,9 +1912,8 @@ function createListItem(col0_in, col1, col2, menuid) {
       slider.max = maxRange;
       slider.value = col0;
       slider.step = 1;
-      slider.addEventListener('input', function(event) {
-        let cur_value = event.target.value; // value of slider
-        sendCmd('main', host, cmd + '_set-' + cur_value);
+      slider.addEventListener('input', (event) => {
+        throttledSliderSend(host, cmd, event.target.value);
       });
       _elm.appendChild(slider);
       _elm.classList.add('slider-wide_container');
@@ -1962,12 +1978,16 @@ function createListItem(col0_in, col1, col2, menuid) {
   return _elm;
 }
 
+const throttledSliderSend = throttle((host, cmd, val) => {
+  sendCmd('main', host, cmd + '_set-' + val);
+}, 60); // in (ms)
+
 function drawStatusItem(elm, col0, host, cmd) {
   const _icon = document.createElement('span');
   if (col0 == 'oncmd') { // power-on remote API call on click
     _icon.classList.add('fa');
     _icon.classList.add('fa-toggle-on');
-    _icon.classList.add('leftjfy'); // left-justify icon
+    _icon.classList.add('left-jfy'); // left-justify icon
     elm.appendChild(_icon);
     elm.addEventListener("click", function() {
       sendCmd('main', host, cmd);
@@ -1976,7 +1996,7 @@ function drawStatusItem(elm, col0, host, cmd) {
   if (col0 == 'offcmd') { // power-off remote API call on click
     _icon.classList.add('fa');
     _icon.classList.add('fa-toggle-off');
-    _icon.classList.add('leftjfy'); // left-justify icon
+    _icon.classList.add('left-jfy'); // left-justify icon
     elm.appendChild(_icon);
     elm.addEventListener("click", function() {
       sendCmd('main', host, cmd);
@@ -1985,7 +2005,7 @@ function drawStatusItem(elm, col0, host, cmd) {
   if (col0 == 'sleepmode') { // sleep PC type menu
     _icon.classList.add('fa');
     _icon.classList.add('fa-moon');
-    _icon.classList.add('leftjfy'); // left-justify icon
+    _icon.classList.add('left-jfy'); // left-justify icon
     elm.appendChild(_icon);
     elm.addEventListener("click", function() {
       sendCmd('main', host, cmd);

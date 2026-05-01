@@ -73,29 +73,32 @@ body {
   display: none;
 }
 
+.dynamic-menus {
+  display: block;
+}
+
+.left-jfy {
+  margin-right: 8px;
+  float: left;
+}
+
 .server-grid {
   display: none;
 }
 
 .svropt__main {
+  margin-top: 7px;
   display: none;
 }
 
 .svropt__regions {
+  margin-top: 7px;
   display: none;
 }
 
 .svropt__backup {
+  margin-top: 7px;
   display: none;
-}
-
-.dynamic-menus {
-  display: block;
-}
-
-.leftjfy {
-  float: left;
-  margin-right: 8px;
 }
 
 .grid {
@@ -144,7 +147,7 @@ body {
 .scroll-bar-style::-webkit-scrollbar-thumb
 {
   background-color: color-mix(in srgb, var(--main-color) 70%, #fff);
-  border-radius: 5px;  
+  border-radius: 5px;
 }
 
 .scroll-bar-style::-webkit-scrollbar
@@ -229,7 +232,7 @@ input.chkbox {
   border-radius: 10px;
   position: relative;
   transition: all 0.15s cubic-bezier(0.23, 1, 0.32, 1);
-  cursor: pointer;
+  cursor: default;
   /* glass material */
   background-color: color-mix(in srgb, var(--main-color), transparent 35%);
   backdrop-filter: blur(2px);
@@ -1086,7 +1089,7 @@ input.chkbox {
   border: 1px solid #323030;
   -webkit-appearance: none;
   overflow: hidden;
-  cursor: pointer;
+  cursor: default;
 }
 
 .slider-wide::-webkit-slider-runnable-track {
@@ -1100,7 +1103,7 @@ input.chkbox {
   width: 30px;
   height: 60px;
   background: #e6e6e6;
-  box-shadow: -160px 0 0 160px var(--main-color);
+  box-shadow: -160px 0 0 160px color-mix(in srgb, var(--main-color) 70%, #fff);
   border: 2px solid #4a4848;
 }
 
