@@ -58,16 +58,9 @@ chown root:root /etc/sysctl.conf
 ## System Resources
 rm -rf /opt/system
 mkdir -p /opt/system
-cp -v /tmp/config/atv.sh /opt/system/atv
-cp -v /tmp/config/leds.sh /opt/system/leds
-cp -v /tmp/config/main.sh /opt/system/main
-cp -v /tmp/config/status.sh /opt/system/status
-ln -sf /opt/system/status /usr/bin/update-status
 cp -vr /tmp/config/menus/*.txt /opt/system/
 chmod -R 755 /opt/system
 chown -R root:root /opt/system
-ln -sf /opt/system/main /opt/system/xmit
-ln -sf /opt/system /opt/rpi
 
 ## Copy Menu Layouts to RAM Disk
 if [ ! -e "/var/www/html/ram/mainmenu.txt" ]; then
@@ -102,6 +95,8 @@ rm -f /usr/bin/ztermcom
 gcc /tmp/config/ztermcom.c -o /usr/bin/ztermcom
 chmod 755 /usr/bin/ztermcom 
 chown root:root /usr/bin/ztermcom
+usermod -a -G dialout www-data
+usermod -a -G tty www-data
 
 ## Node.JS API Server
 mkdir -p /opt/nodeapi
@@ -155,20 +150,6 @@ chmod 644 /var/www/html/main.js
 rm -f /var/www/html/main.min.css
 rm -f /var/www/html/main.min.js
 
-## WWW Permissions (Network Web UI)
-rm -f /etc/sudoers.d/www-perms
-rm -f /etc/sudoers.d/www-nopasswd
-rm -f /etc/sudoers.d/www-mod-nopasswd
-rm -f /etc/sudoers.d/nobody-perms
-sh -c "touch /etc/sudoers.d/www-perms"
-sh -c "echo \"www-data ALL=(ALL) NOPASSWD:/opt/rpi/main\" >> /etc/sudoers.d/www-perms"
-sh -c "echo \"www-data ALL=(ALL) NOPASSWD:/opt/system/main\" >> /etc/sudoers.d/www-perms"
-sh -c "echo \"www-data ALL=(ALL) NOPASSWD:/opt/system/leds\" >> /etc/sudoers.d/www-perms"
-sh -c "echo \"www-data ALL=(ALL) NOPASSWD:/opt/system/xmit\" >> /etc/sudoers.d/www-perms"
-chown root:root /etc/sudoers.d/www-perms
-chmod u=rwx,g=rx,o=rx /etc/sudoers.d/www-perms
-chmod u=r,g=r,o= /etc/sudoers.d/www-perms
-
 ## Boot Service
 cp -f /tmp/config/rc.local /etc/
 chmod 755 /etc/rc.local
@@ -199,6 +180,10 @@ chmod 644 /root/.hushlogin
 chown root:root /root/.hushlogin
 
 ## Clean-up
+rm -f /etc/sudoers.d/www-perms
+rm -f /etc/sudoers.d/www-nopasswd
+rm -f /etc/sudoers.d/www-mod-nopasswd
+rm -f /etc/sudoers.d/nobody-perms
 systemctl daemon-reload
 rm -rf /tmp/config
 apt-get autoremove -y
