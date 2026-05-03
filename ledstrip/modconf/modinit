@@ -8,7 +8,7 @@ BIN=/opt/rpi
 # Import Brand name
 MODNAME=`cat $BIN/modconf/brand.txt`
 
-if [ ! -e "/opt/rpi/init" ]; then
+if [ ! -e "/opt/rpi/rpi.sh" ]; then
   echo "Core components missing or corrupted."
   echo "Exiting..."
   exit
@@ -24,12 +24,9 @@ mount -o remount,ro /boot/firmware
 rm -f /opt/rpi/ledtype.txt
 echo "8x60strips" > /opt/rpi/ledtype.txt
 
-## Shortcut to main script
-ln -sf /opt/rpi/leds /usr/bin/leds
-
-## Web Interface
-cp -v /opt/rpi/device.js /var/www/html/
-chmod -R 777 /var/www/html/device.js
-chown -R www-data:www-data /var/www/html/device.js
+## Web Interface ID
+cp -v $BIN/modconf/device.js /var/www/html/
+chmod 644 /var/www/html/device.js
+chown www-data:www-data /var/www/html/device.js
 
 exit

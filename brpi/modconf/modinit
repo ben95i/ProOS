@@ -8,7 +8,7 @@ BIN=/opt/rpi
 # Import Brand name
 MODNAME=`cat $BIN/modconf/brand.txt`
 
-if [ ! -e "/opt/rpi/init" ]; then
+if [ ! -e "/opt/rpi/rpi.sh" ]; then
   echo "Core components missing or corrupted."
   echo "Exiting..."
   exit
@@ -39,7 +39,9 @@ chmod 400 /etc/auto.creds
 chown root:root /etc/auto.creds
 mkdir -p /mnt/smb
 
-## Link main script
-ln -sf /opt/rpi/main /usr/bin/main
+## Custom Node API
+cp -v $BIN/modconf/custom.js /opt/nodeapi/
+chmod 644 /opt/nodeapi/custom.js
+chown www-data:www-data /opt/nodeapi/custom.js
 
 exit

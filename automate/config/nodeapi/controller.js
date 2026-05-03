@@ -1,8 +1,8 @@
 const { execFile, exec } = require('child_process');
 const fsPromises = require('fs/promises');
 const util = require('util');
-const { executeLeds } = require('./ledparser');
-const { runStatusUpdate } = require('./status_upd');
+const { OPCLEDparser } = require('./ledparser');
+const { runStatusUpdate } = require('./statusupd');
 
 const execFileAsync = util.promisify(execFile);
 const execAsync = util.promisify(exec);
@@ -18,7 +18,6 @@ const IPs = {
     picolamp1: "192.168.1.18"
 };
 const BRPC_MAC = "90:2e:16:46:86:43";
-const CMD_SEP = "-";
 
 function extractBashPipe(str) {
     const delimiter = "|";
@@ -51,7 +50,7 @@ async function localCom(cmd) {
         const { stdout } = await execFileAsync('/usr/bin/ztermcom', [cmd]);
         return stdout;
     } catch (error) {
-        return error.message;
+        return error.stderr || error.message;
     }
 }
 
@@ -76,7 +75,8 @@ async function callApi(target, arg1, arg2 = "") {
             return "invalid response";
         }
         const apiResp = await response.text();
-        return extractBashPipe(apiResp);
+        const respClean = apiResp.replace(/[\\"]/g, '');
+        return(extractBashPipe(respClean));
     } catch (error) {
         return "callApi exception: " + error.message;
     }
@@ -92,8 +92,8 @@ async function callPico(target, arg1, arg2 = "") {
         if (!response.ok) {
             return "invalid response";
         }
-        const text = await response.text();
-        return text;
+        const piResp = await response.text();
+        return piResp.replace(/[\\"]/g, '')
     } catch (error) {
         return "callPico exception: " + error.message;
     }
@@ -111,23 +111,11 @@ async function readComResp(xmit, respCmd, respPos = "") {
     if (respPos === "") {
         return ttyOut;
     }
-    const ttyChrCnt = ttyOut.length;
-    if (ttyChrCnt === 3) {
-        const posInt = parseInt(respPos);
-        const ttyChr = ttyOut.charAt(posInt);
-        if (ttyChr === "9") {
-            return "1";
-        } else {
-            return "0";
-        }
+    if (ttyOut.length === 3) {
+        return ttyOut[parseInt(respPos)] === "9" ? "1" : "0";
     }
-    if (ttyChrCnt === 1) {
-        const ttyChr = ttyOut.charAt(0);
-        if (ttyChr === "1") {
-            return "1";
-        } else {
-            return "0";
-        }
+    if (ttyOut.length === 1) {
+        return ttyOut[0] === "1" ? "1" : "0";
     }
     return "X";
 }
@@ -148,18 +136,12 @@ async function brXmit(cmd) {
         
         case "roomth":     return await readComResp("local", "01005", "");
         
-        case "brtv": {
-            const resp = await readComResp("local", "01003", "0");
-            if (resp === "1") { return "1"; }
-            if (resp === "0") { return "0"; }
-            return "X";
-        }
+        case "brtv":       return await readComResp("local", "01003", "0");
         case "brtvon":
             await localCom("01001");
             await wakeBrpc();
             return "";
-        case "brtvoff":
-            return await localCom("01002");
+        case "brtvoff":    return await localCom("01002");
 
         case "brpc": {
             const ping = await localPing(IPs.brpc);
@@ -190,6 +172,7 @@ async function brXmit(cmd) {
 }
 
 async function lrXmit(cmdIn) {
+    const CMD_SEP = "-";
     let cmd1 = cmdIn;
     let cmd2 = "";
     const sepIndex = cmdIn.indexOf(CMD_SEP);
@@ -253,38 +236,14 @@ async function lrXmit(cmdIn) {
         case "subup_fast":    return await callApi(IPs.lrxmit, "extcom", "17004");
         case "subdwn_fast":   return await callApi(IPs.lrxmit, "extcom", "17005");
 
-        default:              return "invalid Xmit command!";
+        default:              return "invalid lrXmit command!";
     }
 }
 
-async function executeMain(firstArg, secondArg, ramDisk) {
+async function executeMain(ramDisk, firstArg, secondArg) {
     const cmd = firstArg.replace(/\n/g, "");
     const subCmd = secondArg.replace(/\n/g, "");
     switch (cmd) {
-        case "fc_leds": {
-            // Split the subCmd to find the level or preset
-            let levelIn = subCmd;
-            const sepIdx = subCmd.indexOf(CMD_SEP);
-            if (sepIdx !== -1) {
-                levelIn = subCmd.substring(sepIdx + 1);
-            }
-            if (levelIn === "") {
-                // List current brightness level from the last host in mainmenu.txt
-                try {
-                    const result = await executeLeds(ramDisk, "level");
-                    if (result) {
-                        return result.replace(/"/g, "").trim();
-                    }
-                    return "";
-                } catch (err) {
-                    return "leds exception: " + err.message;
-                }
-            } else {
-                // Set brightness level or preset across all active hosts
-                await executeLeds(ramDisk, "fc", levelIn);
-                return "";
-            }
-        }
         case "bron":
             await brXmit("brlamp1on");
             await brXmit("retropion");
@@ -309,7 +268,7 @@ async function executeMain(firstArg, secondArg, ramDisk) {
             await lrXmit("wl_led1off");
             await lrXmit("wl_led2off");
             await brXmit("brlamp1off");
-            await executeLeds(ramDisk, "stop", "");
+            await OPCLEDparser(ramDisk, "stop", "");
             return "";
         case "lrlightson":
             await lrXmit("wl_led1on");
@@ -320,14 +279,14 @@ async function executeMain(firstArg, secondArg, ramDisk) {
         case "lron":
             await lrXmit("wl_led1on");
             await lrXmit("wl_led2on");
-            await executeLeds(ramDisk, "abstract", "");
+            await OPCLEDparser(ramDisk, "abstract", "");
             await lrXmit("wkststateon");
             await lrXmit("hifistateon");
             return "";
         case "lroff":
             await lrXmit("wl_led1off");
             await lrXmit("wl_led2off");
-            await executeLeds(ramDisk, "stop", "");
+            await OPCLEDparser(ramDisk, "stop", "");
             await lrXmit("wkststateoff");
             await lrXmit("hifistateoff");
             return "";
@@ -386,18 +345,6 @@ async function executeMain(firstArg, secondArg, ramDisk) {
             await fsPromises.appendFile(logFile, `\n${subCmd} sent.\n`);
             await execAsync(`touch ${ramDisk}/${subCmd}.txt`);
             return " ";
-        }
-        case "update-fw": {
-            try {
-                await execAsync('rm -rf /opt/fw-build');
-                await execAsync('mkdir -p /opt/fw-build');
-                await execAsync('arduino-cli -v compile --fqbn arduino:avr:uno /opt/AutomateHub_1/AutomateHub_1.ino --build-path /opt/fw-build');
-                await execAsync('arduino-cli -v upload -p /dev/USB-Xmit0 --fqbn arduino:avr:uno --input-dir /opt/fw-build');
-                await localCom("i");
-                return "";
-            } catch (e) {
-                return "fw update error";
-            }
         }
         default:
             return "invalid command !";

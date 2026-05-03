@@ -220,11 +220,7 @@ async function serverSend() {
     document.getElementById("logTextBox").value = "select an option.";
   } else {
     // send command
-    if (sysModel === MAIN_SITE) {
-      sendCmd('main','server',serverCmdData);
-    } else {
-      sendCmd('main-www','server',serverCmdData);
-    }
+    sendCmd('main','server',serverCmdData);
     // display command sent
     document.getElementById("logTextBox").value += "\n" + serverCmdData + " command sent.";
     // scroll to bottom of page
@@ -497,7 +493,7 @@ async function showPiWiFiPrompt() {
   let result = await piWiFiPrompt(winid);
   if (result !== null) {  
     if (result !== '') {  
-      sendCmd('main-www','confwpa',result);
+      sendCmd('main','confwpa',result);
       document.getElementById("logTextBox").value = "Wi-Fi configuration updated, select client mode to apply changes.";
     }
   }
@@ -1601,7 +1597,12 @@ function showPowerMenu(target, menu) {
     btnSpinner.classList.add('btn-spinner');
     // show menu
     _elem.style.display = 'block';
-    sendCmd('main', arg1, arg2).then((data) => { // GET request
+    // custom actions
+    let action = 'main';
+    if (menu == 'fc_leds') {
+      action = 'leds'
+    }
+    sendCmd(action, arg1, arg2).then((data) => { // GET request
       const resp = cleanString(data); // remove newlines
       const field = resp.split("~");
       const pri_cmd = field[0]; 
@@ -1634,7 +1635,7 @@ function showPowerMenu(target, menu) {
       switch(menu) {
       case 'fc_leds':
         // global fadecandy LEDs brightness
-        _menudata += pri_cmd + '~' + menu + '~|slider|\n';
+        _menudata += pri_cmd + '~leds~fc|slider|\n';
         break;
       default: 
         _menudata += target + '|' + _indtype + '|' + _title + '\n';
@@ -1651,7 +1652,7 @@ function showPowerMenu(target, menu) {
             _menudata += 'sleepmode~' + target + '~' + menu + 'off|noind|Sleep\n';
           }
           if (menu == 'wl_leds') {
-            _menudata += sub_cmd + '~' + target + '~' + menu + '|slider|\n';
+            _menudata += sub_cmd + '~' + target + '~wl_leds_set|slider|\n';
           }
         }  
       }
@@ -1979,7 +1980,7 @@ function createListItem(col0_in, col1, col2, menuid) {
 }
 
 const throttledSliderSend = throttle((host, cmd, val) => {
-  sendCmd('main', host, cmd + '_set-' + val);
+  sendCmd(host, cmd, val);
 }, 60); // in (ms)
 
 function drawStatusItem(elm, col0, host, cmd) {

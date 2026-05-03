@@ -4,5 +4,5 @@ Description=12hr Clean-up Script
 [Service]
 Type=oneshot
 RemainAfterExit=no
-ExecStart=-/opt/rpi/cleanup
+ExecStart=-/opt/rpi/cleanup.sh
 IOSchedulingClass=idle

@@ -186,7 +186,7 @@ POST_DEPLOY_MENU(){
   if [[ $REPLY =~ ^[Rr]$ ]]
   then
     if [ "$INTMODE" == "pi" ]; then
-      ssh -t -o $SSH_ARGS root@$HOST "/opt/rpi/init ro"
+      ssh -t -o $SSH_ARGS root@$HOST "rpi ro"
       EXIT_PRGM
     else
       echo "Rebooting $HOST..."
@@ -217,7 +217,7 @@ POST_DEPLOY_MENU(){
     if [ "$INTMODE" == "nonpi" ]; then
       ssh -t -o $SSH_ARGS root@$HOST "apt-get update; apt-get upgrade"
     else
-      ssh -t -o $SSH_ARGS root@$HOST "/opt/rpi/init update"
+      ssh -t -o $SSH_ARGS root@$HOST "rpi update"
     fi
     EXIT_PRGM
   fi       
@@ -231,7 +231,7 @@ DEPLOY_PI(){
   STRIN=$(ssh -t -o $SSH_ARGS root@$HOST "df -h")
   if [[ "$STRIN" == *"overlay"* ]]; then
     echo "Read/only root filesystem detected."
-    ssh -t -o $SSH_ARGS root@$HOST "/opt/rpi/init rw"
+    ssh -t -o $SSH_ARGS root@$HOST "rpi rw"
     echo "Waiting 30 seconds..."
     sleep 30
     if ping -c 1 $HOST &> /dev/null ; then
@@ -354,7 +354,7 @@ PRGM_INIT(){
       else
         if [ "$CMD" != "" ]; then
           ## Send command to Pi
-          ssh -t -o $SSH_ARGS root@$HOST "/opt/rpi/init $CMD"
+          ssh -t -o $SSH_ARGS root@$HOST "rpi $CMD"
           EXIT_PRGM
         fi
       fi

@@ -1,10 +1,6 @@
 #!/bin/bash
 ###########################################################
 
-## Read the 1st Argument
-case "$1" in
-
-boot)
 ## AirPlay Support
 systemctl start rpi-airplay
 ## Bluetooth Audio
@@ -12,13 +8,5 @@ systemctl start hciuart
 systemctl start bluetooth
 systemctl start bt-agent@hci0
 systemctl start bluealsa-aplay
+
 exit
-;;
-
-
-*)
-echo "Hi-Fi System"
-echo "by Ben Provenzano III "
-exit 1
-;;
-esac   

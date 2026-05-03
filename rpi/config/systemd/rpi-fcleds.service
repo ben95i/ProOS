@@ -5,7 +5,7 @@ Conflicts=shutdown.target
 [Service]
 User=root
 Type=simple
-ExecStart=/bin/bash -c "/opt/rpi/leds.sysd"
+ExecStart=/bin/bash -c "/opt/rpi/ledsrun.sh"
 Restart=always
 KillSignal=SIGKILL
 RestartSec=5

@@ -8,7 +8,7 @@ BIN=/opt/rpi
 # Import Brand name
 MODNAME=`cat $BIN/modconf/brand.txt`
 
-if [ ! -e /opt/rpi/init ]; then
+if [ ! -e "/opt/rpi/rpi.sh" ]; then
 echo "Core components missing or corrupted."
 echo "Exiting..."
 sleep 1
@@ -34,9 +34,6 @@ fi
 cp -f $BIN/modconf/asound.conf /etc
 chmod 644 /etc/asound.conf
 chown root:root /etc/asound.conf
-
-## Link RPi to global commands library
-ln -sf /opt/rpi/main /usr/bin/main
 
 ## Routed Hotspot Configuration
 #cp -f /etc/dnsmasq.routed /etc/dnsmasq.conf

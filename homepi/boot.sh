@@ -1,10 +1,7 @@
 #!/bin/bash
 ##
 ## Home Cameras by Ben Provenzano III v1.5 ########
-###################################################
-case "$1" in
 
-boot)
 ## Video RAM Disk
 mkdir -p /mnt/ramdisk
 chmod 777 /mnt/ramdisk
@@ -28,14 +25,3 @@ systemctl start rpi-rebootpi.timer
 ## Disable HDMI (saves 30mA)
 tvservice -o
 exit
-;;
-
-    
-        *)
-	      echo "  Cameras v1"
-	      echo "  by Ben Provenzano III"
-	      echo " "
-	      echo "Enter a valid command line argument."
-        exit 1
-        ;;
-    esac   

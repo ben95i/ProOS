@@ -1,6 +1,6 @@
 #!/bin/bash
 ##
-## Pi Web Terminal System Configuration API 
+## Pi Web Server System Configuration API 
 ##
 
 EXIT_ROUTINE() {
@@ -29,33 +29,25 @@ if [ "$ARG_1" == "confwpa" ]; then
   rm -f /tmp/wifidata
   echo -e "$WPADATA" > /tmp/wifidata
   ## Copy configuration to boot partition
-  /opt/rpi/init cpwifi
+  /opt/rpi/rpi.sh cpwifi
   echo "set Wi-Fi configuration." &>> $LOGFILE
   echo " " &>> $LOGFILE
   EXIT_ROUTINE	
 fi
 ## Server control
-if [ "$ARG_1" == "server" ]; then
-	if [ "$ARG_2" == "clearlog" ]; then
-	  truncate -s 0 $LOGFILE
-    fastfetch --pipe | sed 's/\x1B[@A-Z\\\]^_]\|\x1B\[[0-9:;<=>?]*[-!"#$%&'"'"'()*+,.\/]*[][\\@A-Z^_`a-z{|}~]//g' &>> $LOGFILE
-    EXIT_ROUTINE
-	fi
-  if [ "$ARG_2" == "showwpa" ]; then
-    echo "current Wi-Fi configuration:" &>> $LOGFILE
-    cat /boot/firmware/wpa.conf &>> $LOGFILE
-    echo " " &>> $LOGFILE
-    echo "network configuration:" &>> $LOGFILE
-    ifconfig &>> $LOGFILE
-    EXIT_ROUTINE
-  fi
-  echo "sent $ARG_2 system command." &>> $LOGFILE
-	/opt/rpi/init "$ARG_2" &>> $LOGFILE
-  EXIT_ROUTINE
-else
-## Application control
-  /opt/rpi/main "$ARG_1" "$ARG_2" &>> $LOGFILE
+if [ "$ARG_1" == "clearlog" ]; then
+  truncate -s 0 $LOGFILE
+  fastfetch --pipe | sed 's/\x1B[@A-Z\\\]^_]\|\x1B\[[0-9:;<=>?]*[-!"#$%&'"'"'()*+,.\/]*[][\\@A-Z^_`a-z{|}~]//g' &>> $LOGFILE
   EXIT_ROUTINE
 fi
-
-exit
+if [ "$ARG_1" == "showwpa" ]; then
+  echo "current Wi-Fi configuration:" &>> $LOGFILE
+  cat /boot/firmware/wpa.conf &>> $LOGFILE
+  echo " " &>> $LOGFILE
+  echo "network configuration:" &>> $LOGFILE
+  ifconfig &>> $LOGFILE
+  EXIT_ROUTINE
+fi
+echo "sent $ARG_1 system command." &>> $LOGFILE
+/opt/rpi/rpi.sh "$ARG_1" &>> $LOGFILE
+EXIT_ROUTINE

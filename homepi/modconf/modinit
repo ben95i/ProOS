@@ -8,7 +8,7 @@ BIN=/opt/rpi
 # Import Module Name
 MODNAME=`cat $BIN/modconf/brand.txt`
 
-if [ ! -e "/opt/rpi/init" ]; then
+if [ ! -e "/opt/rpi/rpi.sh" ]; then
   echo "Core components missing or corrupted."
   echo "Exiting..."
   exit
@@ -57,9 +57,5 @@ cp -f $BIN/modconf/auto.creds /etc/
 chmod 400 /etc/auto.creds
 chown root:root /etc/auto.creds
 mkdir -p /mnt/smb
-
-## Link RPi to global commands library
-ln -sf /opt/rpi/main /usr/bin/main
-ln -sf /opt/rpi/camcleanup /usr/bin/camcleanup
 
 exit

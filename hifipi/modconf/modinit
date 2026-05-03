@@ -8,7 +8,7 @@ BIN=/opt/rpi
 # Import Brand name
 MODNAME=`cat $BIN/modconf/brand.txt`
 
-if [ ! -e "/opt/rpi/init" ]; then
+if [ ! -e "/opt/rpi/rpi.sh" ]; then
   echo "Core components missing or corrupted."
   echo "Exiting..."
   exit

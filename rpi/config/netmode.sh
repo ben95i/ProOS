@@ -1,6 +1,6 @@
 #!/bin/bash
 ## ProOS for RPi, Network Script by Ben Provenzano III
-#### RUN FROM '/opt/rpi/init CMD'
+#### RUN FROM '/opt/rpi/rpi.sh CMD'
 
 STOP_NET() {
 ## Clear Firewall Tables

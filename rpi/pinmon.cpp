@@ -51,7 +51,7 @@ int main(int argc, char* argv[]) {
                         
                         // 2. Build the shell command string
                         // We wrap the argument in quotes to handle spaces safely
-                        std::string full_command = "/opt/rpi/main '" + script_arg + "'";
+                        std::string full_command = "/opt/rpi/'" + script_arg + "'.sh";
                         
                         std::cout << "Executing: " << full_command << std::endl;
                         

@@ -7,4 +7,4 @@ StandardOutput=append:/tmp/motionping.log
 StandardError=append:/tmp/motionping.log
 Type=oneshot
 RemainAfterExit=no
-ExecStart=/opt/rpi/motionping
+ExecStart=/opt/rpi/motionping.sh

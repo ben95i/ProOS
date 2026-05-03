@@ -15,8 +15,8 @@ const std::set<int> VALID_BCM_PINS = {
 };
 
 const std::string chip_path = "/dev/gpiochip0";
-const std::string SCRIPT_ON  = "/opt/rpi/main ir_on";
-const std::string SCRIPT_OFF = "/opt/rpi/main ir_off";
+const std::string SCRIPT_ON  = "/opt/rpi/ldrcmd.sh ir_on";
+const std::string SCRIPT_OFF = "/opt/rpi/ldrcmd.sh ir_off";
 
 constexpr int DISCHARGE_MS       = 150; // 150ms to prevent the 25uS "half-charge" oscillation
 constexpr int TIMEOUT_US         = 600000; 

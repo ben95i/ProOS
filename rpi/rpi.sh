@@ -149,31 +149,6 @@ dpkg -l | grep ^iU | awk '{print $2}' | xargs sudo dpkg --purge
 exit
 ;;
 
-overtemp)
-## Over temperature action #######################
-##################################################
-if [ -e /tmp/pitemp.log ]; then
-  rm -f /tmp/pitemp.log
-fi
-echo "Recording system temperature."
-cpuTemp0=$(cat /sys/class/thermal/thermal_zone0/temp)
-cpuTemp1=$(($cpuTemp0/1000))
-cpuTemp2=$(($cpuTemp0/100))
-cpuTempM=$(($cpuTemp2 % $cpuTemp1))
-function writeToLog() {
- file="/tmp/pitemp.log"
- if [ ! -f "$file" ] ; then
-   touch "$file"
- fi
-   echo "$1" >> "$file"
-}
-writeToLog "$(date): CPU temp - $cpuTemp1.$cpuTempM'C;"
-if [ "$cpuTemp1" -gt  "75" ] ## Temp Limit
-  then writeToLog "Limiting Max Temperature..;"; `/opt/rpi/main overtemp`
-fi
-exit
-;;
-
 rw)
 ## Enable read/write mode
 STRIN=$(df -h)

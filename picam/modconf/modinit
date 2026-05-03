@@ -8,7 +8,7 @@ BIN=/opt/rpi
 # Import Module Name
 MODNAME=`cat $BIN/modconf/brand.txt`
 
-if [ ! -e "/opt/rpi/init" ]; then
+if [ ! -e "/opt/rpi/rpi.sh" ]; then
   echo "Core components missing or corrupted."
   echo "Exiting..."
   exit
@@ -38,8 +38,5 @@ chmod u=r,g=r,o= /etc/sudoers.d/010_pi-nopasswd
 cp -fv $BIN/modconf/sshd_config /etc/ssh/
 chown root:root /etc/ssh/sshd_config
 chmod 644 /etc/ssh/sshd_config
-
-## Link RPi to global commands library
-ln -sf /opt/rpi/main /usr/bin/main
 
 exit

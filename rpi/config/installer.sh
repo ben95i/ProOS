@@ -1,5 +1,5 @@
 #!/bin/bash
-## Raspberry Pi ProOS Server Setup Script v13 
+## Raspberry Pi ProOS Server Setup Script v15
 ## run this 1st, then module installer
 
 # Core Path
@@ -14,7 +14,7 @@ APTARGS="install -y --no-upgrade --ignore-missing"
 echo "Installing on $NEWHOST..." 
 
 ## Pre-installation checks
-if [ ! -e "/opt/rpi/init" ]; then
+if [ ! -e "/opt/rpi/rpi.sh" ]; then
   echo "Core components missing."
   exit
 else
@@ -275,6 +275,11 @@ cp -f $BIN/lighttpd.conf /etc/lighttpd/
 chmod 644 /etc/lighttpd/lighttpd.conf
 chown root:root /etc/lighttpd/lighttpd.conf
 
+## Node.JS Overrides
+mv -fv /opt/rpi/custom.js /opt/nodeapi/
+mv -fv /opt/rpi/controller.js /opt/nodeapi/
+mv -fv /opt/rpi/ledparser.js /opt/nodeapi/
+
 ## Node.JS API Server
 mv -f /opt/nodeapi/nodeapi.service /etc/systemd/system/
 chmod 644 /etc/systemd/system/nodeapi.service
@@ -311,24 +316,14 @@ fi
 rm -f /etc/sudoers.d/www-perms
 rm -f /etc/sudoers.d/www-nopasswd
 rm -f /etc/sudoers.d/www-mod-nopasswd
+rm -f /etc/sudoers.d/nobody-perms
 sh -c "touch /etc/sudoers.d/www-perms"
-sh -c "echo \"www-data ALL=(ALL) NOPASSWD:/opt/rpi/main-www\" >> /etc/sudoers.d/www-perms"
-sh -c "echo \"www-data ALL=(ALL) NOPASSWD:/opt/rpi/main\" >> /etc/sudoers.d/www-perms"
-sh -c "echo \"www-data ALL=(ALL) NOPASSWD:/opt/rpi/leds\" >> /etc/sudoers.d/www-perms"
-sh -c "echo \"www-data ALL=(ALL) NOPASSWD:/opt/rpi/xmit\" >> /etc/sudoers.d/www-perms"
+sh -c "echo \"www-data ALL=(ALL) NOPASSWD:/opt/rpi/effects/set_leds.sh\" >> /etc/sudoers.d/www-perms"
+sh -c "echo \"www-data ALL=(ALL) NOPASSWD:/opt/rpi/servercmds.sh\" >> /etc/sudoers.d/www-perms"
+sh -c "echo \"www-data ALL=(ALL) NOPASSWD:/opt/rpi/relaxrun.sh\" >> /etc/sudoers.d/www-perms"
 chown root:root /etc/sudoers.d/www-perms
 chmod u=rwx,g=rx,o=rx /etc/sudoers.d/www-perms
 chmod u=r,g=r,o= /etc/sudoers.d/www-perms
-
-## Nobody User Permissions (THD Hotkeys)
-rm -f /etc/sudoers.d/nobody-perms
-sh -c "touch /etc/sudoers.d/nobody-perms"
-sh -c "echo \"nobody ALL=(ALL) NOPASSWD:/opt/rpi/main\" >> /etc/sudoers.d/nobody-perms"
-sh -c "echo \"nobody ALL=(ALL) NOPASSWD:/opt/rpi/leds\" >> /etc/sudoers.d/nobody-perms"
-sh -c "echo \"nobody ALL=(ALL) NOPASSWD:/opt/rpi/xmit\" >> /etc/sudoers.d/nobody-perms"
-chown root:root /etc/sudoers.d/nobody-perms
-chmod u=rwx,g=rx,o=rx /etc/sudoers.d/nobody-perms
-chmod u=r,g=r,o= /etc/sudoers.d/nobody-perms
 
 ## Unrestricted Pi Permissions
 rm -f /etc/sudoers.d/010_pi-perms
@@ -469,25 +464,21 @@ cp -f $BIN/motion.conf /etc/motion/motion.conf
 chmod 644 /etc/motion/motion.conf
 chown root:root /etc/motion/motion.conf
 
-## Link init script to global commands library
-ln -sf /opt/rpi/init /usr/bin/rpi
-ln -sf /opt/rpi/leds /usr/bin/leds
-
 ##### Compiled from Source #####
 
 LED_EF="/opt/rpi/effects"
 
 ## Fadecandy Brightness Proxy Server
 rm -f $LED_EF/fcproxy
-g++ -v -O3 $LED_EF/fcproxy.cpp -o $LED_EF/fcproxy -lpthread
+g++ -O3 $LED_EF/fcproxy.cpp -o $LED_EF/fcproxy -lpthread
 
 ## Video File to OPC LED Data Stream
 rm -f $LED_EF/mp4toleds
-g++ -v -O3 $LED_EF/mp4toleds.cpp -o $LED_EF/mp4toleds $(pkg-config --cflags --libs opencv4)
+g++ -O3 $LED_EF/mp4toleds.cpp -o $LED_EF/mp4toleds $(pkg-config --cflags --libs opencv4)
 
 ## Solid Color to OPC LED Data Stream
 rm -f $LED_EF/writecolor
-g++ -v -O3 $LED_EF/writecolor.cpp -o $LED_EF/writecolor -std=c++11
+g++ -O3 $LED_EF/writecolor.cpp -o $LED_EF/writecolor -std=c++11
 
 ## Color Lookup COBOL Program
 rm -f $LED_EF/colorscan
@@ -495,19 +486,21 @@ cobc -x --free $LED_EF/colorscan.cbl -o $LED_EF/colorscan
 
 ## GPO Pin Control Server
 rm -f /opt/rpi/gposerver
-g++ -v /opt/rpi/gposerver.cpp -o /opt/rpi/gposerver -lgpiodcxx
+g++ /opt/rpi/gposerver.cpp -o /opt/rpi/gposerver -lgpiodcxx
 
 ## GPI Pin Monitor Server
 rm -f /opt/rpi/pinmon
-g++ -v -Wall -O3 /opt/rpi/pinmon.cpp -o /opt/rpi/pinmon -lgpiodcxx
+g++ -Wall -O3 /opt/rpi/pinmon.cpp -o /opt/rpi/pinmon -lgpiodcxx
 
 ## LDR Detector Server
 rm -f /opt/rpi/ldrdetect
-g++ -v /opt/rpi/ldrdetect.cpp -o /opt/rpi/ldrdetect -lgpiodcxx
+g++ /opt/rpi/ldrdetect.cpp -o /opt/rpi/ldrdetect -lgpiodcxx
 
 ## Z-Term RS232 Communication
 rm -f /usr/bin/ztermcom
-gcc -v /opt/rpi/ztermcom.c -o /usr/bin/ztermcom
+gcc /opt/rpi/ztermcom.c -o /usr/bin/ztermcom
+usermod -a -G dialout www-data
+usermod -a -G tty www-data
 
 ################################
 
@@ -555,6 +548,10 @@ fi
 ## Regenerate Update Database
 systemctl start man-db.service
 
+## Restart Web Server
+systemctl restart lighttpd
+systemctl restart nodeapi
+
 ## Reset Null Device
 rm -f /dev/null
 mknod /dev/null c 1 3
@@ -586,6 +583,7 @@ chmod -R +x /opt/rpi
 chown -R root:root /opt/rpi
 
 ## Remove Installer Files
+rm -f /usr/bin/leds
 rm -rf /opt/rpi/RetroPie-Setup
 rm -rf /opt/rpi/config
 rm -rf /opt/rpi/pkgs
@@ -595,6 +593,9 @@ apt clean
 ## Clean systemd logs
 journalctl --flush --rotate
 journalctl -m --vacuum-time=300s
+
+## Aliases
+ln -sf /opt/rpi/rpi.sh /usr/bin/rpi
 
 echo ""
 echo "Configuration Complete."

@@ -1,9 +1,6 @@
 #!/bin/bash
 ###########################################################
 
-case "$1" in
-
-boot)
 ## AirPlay Support
 systemctl start nqptp
 systemctl start rpi-airplay
@@ -20,11 +17,3 @@ echo none | tee /sys/class/leds/led0/trigger
 ## Disable HDMI (saves 30mA)
 tvservice -o
 exit
-;;
-	    
-    *)
-      echo "Bluetooth Audio Server for Raspberry Pi"
-	  echo "  by Ben Provenzano III"
-      exit 1
-      ;;
-    esac

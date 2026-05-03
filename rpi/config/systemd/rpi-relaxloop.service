@@ -6,6 +6,6 @@ Wants=time-sync.target
 
 [Service]
 User=root
-ExecStart=/opt/rpi/relaxloop
+ExecStart=/opt/rpi/relaxloop.sh
 Restart=on-failure
 RestartSec=5

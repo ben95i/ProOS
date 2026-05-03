@@ -97,8 +97,14 @@ int main(int argc, char** argv) {
     else if (mode == "8x8grid") init_grid(8, 8);
     else { std::cerr << "Unknown mode." << std::endl; return 1; }
 
-    cv::VideoCapture cap(argv[2]);
-    if (!cap.isOpened()) return 1;
+    // Force FFMPEG backend and enable hardware acceleration
+    cv::VideoCapture cap(argv[2], cv::CAP_FFMPEG, {
+        cv::CAP_PROP_HW_ACCELERATION, cv::VIDEO_ACCELERATION_ANY
+    });
+    if (!cap.isOpened()) {
+        std::cerr << "Failed to open video file with FFMPEG." << std::endl;
+        return 1;
+    }
 
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     int opt = 1;

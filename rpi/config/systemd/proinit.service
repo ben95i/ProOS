@@ -6,7 +6,7 @@ After=network-online.target
 [Service]
 Type=forking
 ExecStartPre=-/etc/netmode.sh boot
-ExecStart=-/opt/rpi/main boot
+ExecStart=-/opt/rpi/boot.sh
 TimeoutSec=240
 
 [Install]

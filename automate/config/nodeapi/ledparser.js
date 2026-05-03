@@ -3,11 +3,12 @@ const fsPromises = require('fs/promises');
 /**
  * Parses mainmenu.txt and dispatches commands to LED hosts
  * 
+ * @param {string} ramDisk - RAM disk path
  * @param {string} varA - The primary command argument (e.g., 'level', 'preset_name')
  * @param {string} varB - The secondary variable argument
  * @returns {Promise<string|void>} - Returns the level string if varA is 'level', otherwise void.
  */
-async function executeLeds(ramDisk, varA, varB = "") {
+async function OPCLEDparser(ramDisk, varA, varB = "") {
     let levelHost = "";
     try {
         // Read file into array equivalent
@@ -24,17 +25,17 @@ async function executeLeds(ramDisk, varA, varB = "") {
             hosts.push(host); // Append active hosts to array
         }
 
-        if (varA === "level") {
+        if (varA === "fc_leds") {
             // Show brightness of last in list
             if (levelHost !== "") {
-                const url = `${levelHost}/api?var=&arg=level&action=leds`; //
+                const url = `${levelHost}/api?var=&arg=fc_leds&action=leds`; //
                 try {
                     const response = await fetch(url, {
                         signal: AbortSignal.timeout(5000) // Mimics --max-time 5
                     });
                     if (response.ok) {
                         const result = await response.text();
-                        return result;
+                        return result.replace(/[\\"]/g, "");
                     }
                 } catch (error) {
                   return error.message;
@@ -69,4 +70,4 @@ async function executeLeds(ramDisk, varA, varB = "") {
     }
 }
 
-module.exports = { executeLeds };
+module.exports = { OPCLEDparser };

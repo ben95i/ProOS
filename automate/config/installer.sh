@@ -69,11 +69,6 @@ if [ ! -e "/var/www/html/ram/mainmenu.txt" ]; then
   chown -R www-data:www-data /var/www/html/ram/*menu.txt
 fi
 
-## Single Instance with Automic File Lock
-cp -v /tmp/config/singleton.sh /usr/bin/singleton
-chmod 755 /usr/bin/singleton
-chown root:root /usr/bin/singleton
-
 ## Install Arduino Support
 if [ ! -e "/usr/bin/arduino-cli" ]; then
   curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR=/usr/bin sh
@@ -89,6 +84,9 @@ mkdir -p /opt/AutomateHub_1
 cp -rv /tmp/config/firmware/AutomateHub_1/* /opt/AutomateHub_1/
 chmod -R 644 /opt/AutomateHub_1/*
 chown -R root:root /opt/AutomateHub_1/*
+cp -f /tmp/config/update-fw.sh /usr/bin/update-fw
+chmod 755 /usr/bin/update-fw
+chown root:root /usr/bin/update-fw
 
 ## Xmit Serial COM
 rm -f /usr/bin/ztermcom
