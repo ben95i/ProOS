@@ -16,7 +16,6 @@
 // --- CONFIGURATION CONSTANTS ---
 #define OPC_IP "127.0.0.1"
 #define OPC_PORT 7890
-#define MAX_OPC_PIXELS 21845 
 constexpr int TARGET_FPS = 25; // Set your desired frame rate here
 
 struct PixelMap {
@@ -84,7 +83,7 @@ void init_93_ring() {
 
 int main(int argc, char** argv) {
     if (argc < 3) {
-        std::cout << "Usage: ./video_leds <mode> <video_path>" << std::endl;
+        std::cout << "Usage: ./mp4toleds <mode> <video_path>" << std::endl;
         return 1;
     }
 
@@ -97,14 +96,18 @@ int main(int argc, char** argv) {
     else if (mode == "8x8grid") init_grid(8, 8);
     else { std::cerr << "Unknown mode." << std::endl; return 1; }
 
-    // Force FFMPEG backend and enable hardware acceleration
+    std::string video_path = argv[2];
     cv::VideoCapture cap(argv[2], cv::CAP_FFMPEG, {
         cv::CAP_PROP_HW_ACCELERATION, cv::VIDEO_ACCELERATION_ANY
     });
+    
     if (!cap.isOpened()) {
-        std::cerr << "Failed to open video file with FFMPEG." << std::endl;
+        std::cerr << "Failed to open video file with GStreamer hardware pipeline." << std::endl;
         return 1;
     }
+
+    // Reduce internal buffering to speed up the first frame grab
+    cap.set(cv::CAP_PROP_BUFFERSIZE, 1);
 
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     int opt = 1;
@@ -131,7 +134,7 @@ int main(int argc, char** argv) {
     int last_w = -1, last_h = -1;
     cv::Mat frame;
 
-    std::cout << "Streaming at " << TARGET_FPS << " FPS constant." << std::endl;
+    std::cout << "Streaming at " << TARGET_FPS << " FPS." << std::endl;
 
     while (g_keep_running) {
         auto frame_start = std::chrono::steady_clock::now();
@@ -174,7 +177,6 @@ int main(int argc, char** argv) {
 
         if (send(sock, packet.data(), packet.size(), MSG_NOSIGNAL) < 0) break;
 
-        // Force exactly TARGET_FPS
         std::this_thread::sleep_until(frame_start + target_duration);
     }
 

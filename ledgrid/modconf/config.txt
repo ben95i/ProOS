@@ -1,0 +1,44 @@
+## Created by Ben Provenzano III for LEDgrid Servers
+
+# Automatically load overlays for detected DSI displays
+display_auto_detect=1
+
+# Automatically load initramfs files, if found
+auto_initramfs=1
+
+# Enable DRM VC4 V3D driver
+#dtoverlay=vc4-kms-v3d
+#max_framebuffers=2
+
+# Don't have the firmware create an initial video= setting in cmdline.txt.
+# Use the kernel's default instead.
+disable_fw_kms_setup=1
+
+#-------Disable Bluetooth-------
+dtoverlay=disable-bt
+
+#-------GPU memory-------
+gpu_mem=64
+
+#-------Disable Ram temp refresh every 500ms---------
+disable_pvt=1
+
+#-------Disable Pi Splash screen on boot-------------
+disable_splash=1
+
+#-------Audio support-------
+dtparam=audio=off
+
+#-------Remove dedicated pll for PWM audio-------
+avoid_pwm_pll=1
+
+#-------Hardware interfaces-------
+dtparam=i2c_arm=off
+dtparam=i2c1=off
+
+#------Camera (disabled)------
+start_x=0
+
+#------Reboot when exceeds-----
+temp_limit=75
+

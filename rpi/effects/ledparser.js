@@ -11,7 +11,7 @@ const BIN_PATH = "/opt/rpi";
 const { exec } = require('child_process');
 const fsPromises = require('fs/promises');
 const util = require('util');
-const setleds_cmd = '/usr/bin/sudo ' + BIN_PATH + '/effects/set_leds.sh';
+const setleds_cmd = '/usr/bin/sudo ' + BIN_PATH + '/effects/setleds.sh';
 
 const execAsync = util.promisify(exec);
 
@@ -86,7 +86,7 @@ async function OPCLEDparser(ramDisk, effect = "", subArg = "") {
 
     // Hex and solid colors
     if (effect === "hex") {
-        await execAsync(`${setleds_cmd} hex-${effect}`); 
+        await execAsync(`${setleds_cmd} hex-${subArg}`); 
         return(`Set LEDs to RGB-HEX color: ${subArg}`); 
     }
 

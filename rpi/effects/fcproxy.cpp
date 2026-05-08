@@ -23,7 +23,7 @@
 const int INITIAL_BRIGHTNESS = 178; 
 const float MIN_BRIGHTNESS_FLOOR = 0.1f; 
 const size_t OPC_HEADER_LEN = 4;
-const float GLOBAL_GAMMA = 2.5f;
+const float GLOBAL_GAMMA = 2.2f;
 
 constexpr std::chrono::milliseconds HTTP_RATE_LIMIT{100};
 

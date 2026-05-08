@@ -76,13 +76,13 @@ apt-get $APTARGS locales console-setup aptitude libnss-mdns libnss3-tools xxd au
  cryptsetup cryptsetup-bin texi2html nmap autoconf gnucobol4 avrdude libao-common sox npm \
  wireless-tools overlayroot iw wpasupplicant dirmngr triggerhappy default-jre-headless sed \
  automake cifs-utils fuse apt-utils sqlite3 shairport-sync socat libexpat1 fastfetch ffmpeg \
- lame gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-ugly usbutils \
- gstreamer1.0-alsa rng-tools5 gpiod net-tools python3 python3-pip python3-venv v4l-utils mpv \
- gstreamer1.0-tools gstreamer1.0-libav libgstreamer-plugins-base1.0-0 x264 xmltoman samba \
+ gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-ugly \
+ gstreamer1.0-plugins-bad gstreamer1.0-alsa gstreamer1.0-libav libgstreamer-plugins-base1.0-0 \
+ rng-tools5 gpiod net-tools python3 python3-pip python3-venv v4l-utils x264 xmltoman samba \
  build-essential autoconf make libtool binutils i2c-tools cmake yasm minicom rclone unzip \
  bluetooth pi-bluetooth bluez bluez-tools bluez-alsa-utils libbluetooth3 mpg321 arduino \
- samba-common-bin samba-libs libimage-exiftool-perl libjson-glib-1.0-0 libupnp6 \
- alsa-base alsa-utils nodejs perl perl-modules raspi-utils
+ samba-common-bin samba-libs libimage-exiftool-perl libjson-glib-1.0-0 libupnp6 mpv \
+ alsa-base alsa-utils nodejs perl perl-modules raspi-utils lame usbutils
 
 ## Development Support
 apt-get $APTARGS libgtk2.0-dev libbluetooth-dev libpng-dev libdaemon-dev libpopt-dev \
@@ -275,10 +275,10 @@ cp -f $BIN/lighttpd.conf /etc/lighttpd/
 chmod 644 /etc/lighttpd/lighttpd.conf
 chown root:root /etc/lighttpd/lighttpd.conf
 
-## Node.JS Overrides
-mv -fv /opt/rpi/custom.js /opt/nodeapi/
-mv -fv /opt/rpi/controller.js /opt/nodeapi/
-mv -fv /opt/rpi/ledparser.js /opt/nodeapi/
+## Node.JS API Pi Specific Overrides
+mv -f /opt/rpi/custom.js /opt/nodeapi/
+mv -f /opt/rpi/controller.js /opt/nodeapi/
+mv -f /opt/rpi/effects/ledparser.js /opt/nodeapi/
 
 ## Node.JS API Server
 mv -f /opt/nodeapi/nodeapi.service /etc/systemd/system/
@@ -286,9 +286,9 @@ chmod 644 /etc/systemd/system/nodeapi.service
 chown root:root /etc/systemd/system/nodeapi.service
 cd /opt/nodeapi
 npm install
-cd -
+cd $BIN
 
-## LightTPD base website files
+## Lighttpd base website files
 rm -r /var/www/html
 mkdir -p /var/www/html
 mv -f $BIN/html-base/* /var/www/html
@@ -318,7 +318,7 @@ rm -f /etc/sudoers.d/www-nopasswd
 rm -f /etc/sudoers.d/www-mod-nopasswd
 rm -f /etc/sudoers.d/nobody-perms
 sh -c "touch /etc/sudoers.d/www-perms"
-sh -c "echo \"www-data ALL=(ALL) NOPASSWD:/opt/rpi/effects/set_leds.sh\" >> /etc/sudoers.d/www-perms"
+sh -c "echo \"www-data ALL=(ALL) NOPASSWD:/opt/rpi/effects/setleds.sh\" >> /etc/sudoers.d/www-perms"
 sh -c "echo \"www-data ALL=(ALL) NOPASSWD:/opt/rpi/servercmds.sh\" >> /etc/sudoers.d/www-perms"
 sh -c "echo \"www-data ALL=(ALL) NOPASSWD:/opt/rpi/relaxrun.sh\" >> /etc/sudoers.d/www-perms"
 chown root:root /etc/sudoers.d/www-perms
@@ -465,43 +465,116 @@ chmod 644 /etc/motion/motion.conf
 chown root:root /etc/motion/motion.conf
 
 ##### Compiled from Source #####
-
 LED_EF="/opt/rpi/effects"
+SRC_BIN="/opt/rpi"
+SRC_BKP="/opt/source-backup"
+mkdir -p $SRC_BKP
 
-## Fadecandy Brightness Proxy Server
-rm -f $LED_EF/fcproxy
-g++ -O3 $LED_EF/fcproxy.cpp -o $LED_EF/fcproxy -lpthread
+## WS2812B DMA Library
+if [ ! -e "/usr/local/include/ws2811/ws2811.h" ]; then
+  cd $LED_EF/ws281x
+  mkdir build
+  cd build
+  cmake ..
+  make
+  make install
+  ldconfig
+  cd $BIN
+fi
+
+## OPC to WS2812B Server
+if cmp -s $LED_EF/opcserver.cpp $SRC_BKP/opcserver.cpp; then
+    echo "Skipping OPC to WS2812B Server Source Not Changed"
+else
+    echo "Compiling OPC to WS2812B Server"
+    rm -f $LED_EF/opcserver
+    g++ -O3 -Wall -Wextra $LED_EF/opcserver.cpp -o $LED_EF/opcserver -lws2811
+fi
+mv -f $LED_EF/opcserver.cpp $SRC_BKP/
+
+## OPC Brightness Proxy Server
+if cmp -s $LED_EF/fcproxy.cpp $SRC_BKP/fcproxy.cpp; then
+    echo "Skipping Brightness Proxy Server Source Not Changed"
+else
+    echo "Compiling Brightness Proxy Server"
+    rm -f $LED_EF/fcproxy
+    g++ -O3 $LED_EF/fcproxy.cpp -o $LED_EF/fcproxy -lpthread
+fi
+mv -f $LED_EF/fcproxy.cpp $SRC_BKP/
 
 ## Video File to OPC LED Data Stream
-rm -f $LED_EF/mp4toleds
-g++ -O3 $LED_EF/mp4toleds.cpp -o $LED_EF/mp4toleds $(pkg-config --cflags --libs opencv4)
+if cmp -s $LED_EF/mp4toleds.cpp $SRC_BKP/mp4toleds.cpp; then
+    echo "Skipping Video File to OPC LED Data Stream Source Not Changed"
+else
+    echo "Compiling Video File to OPC LED Data Stream"
+    rm -f $LED_EF/mp4toleds
+    g++ -O3 $LED_EF/mp4toleds.cpp -o $LED_EF/mp4toleds $(pkg-config --cflags --libs opencv4)
+fi
+mv -f $LED_EF/mp4toleds.cpp $SRC_BKP/
 
 ## Solid Color to OPC LED Data Stream
-rm -f $LED_EF/writecolor
-g++ -O3 $LED_EF/writecolor.cpp -o $LED_EF/writecolor -std=c++11
+if cmp -s $LED_EF/writecolor.cpp $SRC_BKP/writecolor.cpp; then
+    echo "Skipping Solid Color to OPC LED Data Stream Source Not Changed"
+else
+    echo "Compiling Solid Color to OPC LED Data Stream"
+    rm -f $LED_EF/writecolor
+    g++ -O3 $LED_EF/writecolor.cpp -o $LED_EF/writecolor -std=c++11
+fi
+mv -f $LED_EF/writecolor.cpp $SRC_BKP/
 
 ## Color Lookup COBOL Program
-rm -f $LED_EF/colorscan
-cobc -x --free $LED_EF/colorscan.cbl -o $LED_EF/colorscan
+if cmp -s $LED_EF/colorscan.cbl $SRC_BKP/colorscan.cbl; then
+    echo "Skipping Color Lookup COBOL Program Source Not Changed"
+else
+    echo "Compiling Color Lookup COBOL Program"
+    rm -f $LED_EF/colorscan
+    cobc -x --free $LED_EF/colorscan.cbl -o $LED_EF/colorscan
+fi
+mv -f $LED_EF/colorscan.cbl $SRC_BKP/
 
 ## GPO Pin Control Server
-rm -f /opt/rpi/gposerver
-g++ /opt/rpi/gposerver.cpp -o /opt/rpi/gposerver -lgpiodcxx
+if cmp -s $SRC_BIN/gposerver.cpp $SRC_BKP/gposerver.cpp; then
+    echo "Skipping GPO Pin Control Server Source Not Changed"
+else
+    echo "Compiling GPO Pin Control Server"
+    rm -f $SRC_BIN/gposerver
+    g++ $SRC_BIN/gposerver.cpp -o $SRC_BIN/gposerver -lgpiodcxx
+fi
+mv -f $SRC_BIN/gposerver.cpp $SRC_BKP/
 
 ## GPI Pin Monitor Server
-rm -f /opt/rpi/pinmon
-g++ -Wall -O3 /opt/rpi/pinmon.cpp -o /opt/rpi/pinmon -lgpiodcxx
+if cmp -s $SRC_BIN/pinmon.cpp $SRC_BKP/pinmon.cpp; then
+    echo "Skipping GPI Pin Monitor Server Source Not Changed"
+else
+    echo "Compiling GPI Pin Monitor Server"
+    rm -f $SRC_BIN/pinmon
+    g++ -Wall -O3 $SRC_BIN/pinmon.cpp -o $SRC_BIN/pinmon -lgpiodcxx
+fi
+mv -f $SRC_BIN/pinmon.cpp $SRC_BKP/
 
 ## LDR Detector Server
-rm -f /opt/rpi/ldrdetect
-g++ /opt/rpi/ldrdetect.cpp -o /opt/rpi/ldrdetect -lgpiodcxx
+if cmp -s $SRC_BIN/ldrdetect.cpp $SRC_BKP/ldrdetect.cpp; then
+    echo "Skipping LDR Detector Server"
+else
+    echo "Compiling LDR Detector Server"
+    rm -f $SRC_BIN/ldrdetect
+    g++ $SRC_BIN/ldrdetect.cpp -o $SRC_BIN/ldrdetect -lgpiodcxx
+fi
+mv -f $SRC_BIN/ldrdetect.cpp $SRC_BKP/
 
 ## Z-Term RS232 Communication
-rm -f /usr/bin/ztermcom
-gcc /opt/rpi/ztermcom.c -o /usr/bin/ztermcom
+if cmp -s $SRC_BIN/ztermcom.c $SRC_BKP/ztermcom.c; then
+    echo "Skipping Z-Term RS232 Communication Source Not Changed"
+else
+    echo "Compiling Z-Term RS232 Communication"
+    rm -f /usr/bin/ztermcom
+    gcc $SRC_BIN/ztermcom.c -o /usr/bin/ztermcom
+fi
+mv -f $SRC_BIN/ztermcom.c $SRC_BKP/
 usermod -a -G dialout www-data
 usermod -a -G tty www-data
 
+echo "Compilation completed."
 ################################
 
 ## Services Configuration
@@ -583,10 +656,10 @@ chmod -R +x /opt/rpi
 chown -R root:root /opt/rpi
 
 ## Remove Installer Files
-rm -f /usr/bin/leds
 rm -rf /opt/rpi/RetroPie-Setup
 rm -rf /opt/rpi/config
 rm -rf /opt/rpi/pkgs
+rm -f /usr/bin/leds
 apt autoclean
 apt clean
 

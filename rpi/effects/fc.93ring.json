@@ -2,8 +2,8 @@
         "listen": [null, 7891],
         "verbose": false,
         "color": {
-            "gamma": 2.5,
-            "whitepoint": [0.98, 0.98, 0.98]
+            "gamma": 2.2,
+            "whitepoint": [0.97, 0.97, 0.97]
         },
         "devices": [
                 {
