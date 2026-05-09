@@ -5,13 +5,15 @@
 ### (triggered by systemd) ################################
 
 ## Main Path
-BIN_PATH=/opt/rpi/effects
+BIN_PATH="/opt/rpi/effects"
 
 ## Split up input variable
 LEDTYPE=${rpi_ledtype}
-PRGM_TYPE=${rpi_fceffect%-*}
-EFFECT=${rpi_fceffect#*-}
-#echo "Set LEDs to $PRGM_TYPE program $EFFECT"
+RPI_EFFECT=${rpi_fceffect}
+PRGM_TYPE=${RPI_EFFECT%-*}
+EFFECT=${RPI_EFFECT#*-}
+
+cd $BIN_PATH
 
 ## Solid Color
 if [ "$PRGM_TYPE" == "color" ]; then
@@ -30,16 +32,23 @@ if [ "$PRGM_TYPE" == "mp4" ]; then
   exit
 fi
 
-## Perl Effects
-if [ "$PRGM_TYPE" == "perl" ]; then
-  export PERL5LIB=$BIN_PATH
-  /usr/bin/perl $BIN_PATH/$EFFECT.pl
+## C / C++ Effects
+if [ "$PRGM_TYPE" == "c" ]; then
+  if [ "$EFFECT" == "spectro" ]; then
+    MIC_GAIN="40"
+    MIN_FREQ="350" ## in Hz
+    MAX_FREQ="4500" ## in Hz
+    $BIN_PATH/spectro $LEDTYPE $MIC_GAIN $MIN_FREQ $MAX_FREQ 
+  else
+    $BIN_PATH/$EFFECT $LEDTYPE
+  fi
   exit
 fi
 
 ## Python Effects
 if [ "$PRGM_TYPE" == "pyth" ]; then
-  if [ "$EFFECT" == "rave"  ] || [ "$EFFECT" == "chase" ]; then
+  if [ "$EFFECT" == "rave"  ] || \\
+     [ "$EFFECT" == "chase" ]; then
     /usr/bin/python3 $BIN_PATH/$EFFECT.py
     exit
   else

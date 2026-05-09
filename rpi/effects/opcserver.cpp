@@ -1,4 +1,3 @@
-
 #include <iostream>
 #include <vector>
 #include <string>
@@ -19,10 +18,10 @@
 #include <ws2811/ws2811.h> 
 
 // --- Hardware & System Configuration ---
-constexpr int   DEFAULT_GPIO_PIN    = 18;       // BCM PWM0
+constexpr int   DEFAULT_GPIO_PIN    = 18;       // RPi PWM0
 constexpr int   DEFAULT_DMA_CH      = 10;
 constexpr int   STRIP_TYPE          = WS2811_STRIP_GRB;
-constexpr float FIXED_GAMMA         = 2.8f;     // Expands the low-brightness range
+constexpr float PERCEPTUAL_GAMMA    = 2.8f;     // Expands the low-brightness range
 constexpr const char* RUNAS_USER    = "nobody";
 
 // --- Network Configuration ---
@@ -34,16 +33,17 @@ constexpr const char* BIND_IP       = "127.0.0.1";
 constexpr int   OPC_HEADER_SIZE     = 4;
 constexpr int   OPC_CMD_SET_PIXELS  = 0;
 constexpr int   RGB_CHANNELS        = 3;
-constexpr float MAX_FPS             = 60.0f; // in Hz
-constexpr auto  FRAME_BUDGET        = std::chrono::microseconds(static_cast<long long>(1000000 / MAX_FPS));
+constexpr float TARGET_FPS          = 60.0f;
+constexpr auto  FRAME_BUDGET        = std::chrono::microseconds(static_cast<long long>(1000000 / TARGET_FPS));
 constexpr auto  HTTP_MIN_INTERVAL   = std::chrono::milliseconds(50);
-constexpr uint16_t INVALID_COMMAND  = 0xFFFF;
+constexpr uint16_t SENTINEL_INVALID = 0xFFFF;
 
 // --- Global Dynamic State ---
-int g_width             = 16;
+int g_width             = 16;  
 int g_height            = 16;
 int g_num_leds          = 256;
-int g_hw_master_limit   = 100; // default max brightness max=255
+int g_hw_master_limit   = 255; // Set by argv[2], mapped to hardware brightness
+int g_rotation          = 0;   // Set by argv[3] (0, 90, 180, 270)
 
 std::atomic<bool> g_running{true};
 ws2811_t g_ledstring; 
@@ -71,23 +71,56 @@ void drop_privileges() {
  * Maps the 0-255 API input to the 0-255 color output.
  */
 void update_gamma_table(int software_level) {
-    float max = 255.0f;
-    float intensity = static_cast<float>(software_level) / max;
+    float intensity = static_cast<float>(software_level) / 255.0f;
     for (int i = 0; i < 256; ++i) {
-        float normalized = static_cast<float>(i) / max;
+        float normalized = static_cast<float>(i) / 255.0f;
         // Apply Gamma 2.8 and scale by the current software brightness level
-        float val = std::pow(normalized, FIXED_GAMMA) * intensity * max;
-        g_gamma_table[i] = static_cast<uint8_t>(std::clamp(std::round(val), 0.0f, max));
+        float val = std::pow(normalized, PERCEPTUAL_GAMMA) * intensity * 255.0f;
+        g_gamma_table[i] = static_cast<uint8_t>(std::clamp(std::round(val), 0.0f, 255.0f));
     }
 }
 
+/**
+ * Maps the incoming linear OPC index to the physical Zig-Zag layout,
+ * factoring in the user-defined rotation.
+ */
 uint16_t map_pixel(uint16_t idx) {
-    if (idx >= (uint16_t)g_num_leds) return INVALID_COMMAND;
-    uint16_t y = idx / g_width;
-    uint16_t x = idx % g_width;
-    // Zig-Zag Mapping
-    uint16_t phys_x = (y % 2 == 0) ? ((g_width - 1) - x) : x;
-    return (y * g_width) + phys_x;
+    if (idx >= (uint16_t)g_num_leds) return SENTINEL_INVALID;
+
+    // 1. Calculate incoming logical source dimensions based on rotation
+    uint16_t src_w = (g_rotation == 90 || g_rotation == 270) ? g_height : g_width;
+    
+    // 2. Find the logical X/Y of the incoming pixel
+    uint16_t src_x = idx % src_w;
+    uint16_t src_y = idx / src_w;
+
+    uint16_t px, py;
+
+    // 3. Rotate logical coordinates to physical matrix coordinates
+    switch(g_rotation) {
+        case 90:
+            px = (g_width - 1) - src_y;
+            py = src_x;
+            break;
+        case 180:
+            px = (g_width - 1) - src_x;
+            py = (g_height - 1) - src_y;
+            break;
+        case 270:
+            px = src_y;
+            py = (g_height - 1) - src_x;
+            break;
+        case 0:
+        default:
+            px = src_x;
+            py = src_y;
+            break;
+    }
+
+    // 4. Map the physical coordinates to the hardwired Zig-Zag string
+    // Top-Right origin means row 0 goes Right to Left.
+    uint16_t phys_x = (py % 2 == 0) ? ((g_width - 1) - px) : px;
+    return (py * g_width) + phys_x;
 }
 
 // --- HTTP Control Server ---
@@ -146,7 +179,7 @@ void web_listener() {
                     // Immediate re-render of current pixels with new curve
                     for (int i = 0; i < g_cache_count; ++i) {
                         uint16_t p = map_pixel(i);
-                        if (p == INVALID_COMMAND) continue;
+                        if (p == SENTINEL_INVALID) continue;
                         g_ledstring.channel[0].leds[p] = 
                             (g_gamma_table[g_pixel_cache[i*3]] << 16) |
                             (g_gamma_table[g_pixel_cache[i*3+1]] << 8) |
@@ -166,14 +199,32 @@ void web_listener() {
 
 // --- Main OPC Server ---
 int main(int argc, char* argv[]) {
+    // 1. Grid Size Parse
     if (argc > 1) {
         if (sscanf(argv[1], "%dx%dgrid", &g_width, &g_height) == 2) {
             g_num_leds = g_width * g_height;
         }
     }
+    // 2. Max Brightness Parse
     if (argc > 2) {
         g_hw_master_limit = std::clamp(std::stoi(argv[2]), 1, 255);
     }
+    // 3. Rotation Parse
+    if (argc > 3) {
+        try {
+            int rot = std::stoi(argv[3]);
+            if (rot == 0 || rot == 90 || rot == 180 || rot == 270) {
+                g_rotation = rot;
+            } else {
+                std::cerr << "Warning: Invalid rotation. Defaulting to 0.\n";
+            }
+        } catch (...) { std::cerr << "Warning: Invalid rotation argument. Defaulting to 0.\n"; }
+    }
+
+    std::cout << "Starting OPC Server...\n"
+              << "Grid: " << g_width << "x" << g_height << " (" << g_num_leds << " LEDs)\n"
+              << "Max Hardware Limit: " << g_hw_master_limit << "/255\n"
+              << "Rotation Map: " << g_rotation << " Degrees\n";
 
     g_pixel_cache.resize(g_num_leds * RGB_CHANNELS, 0);
     update_gamma_table(255); // Initialize full software scale
@@ -189,7 +240,7 @@ int main(int argc, char* argv[]) {
     g_ledstring.channel[0].gpionum = DEFAULT_GPIO_PIN;
     g_ledstring.channel[0].count = g_num_leds;
     g_ledstring.channel[0].strip_type = STRIP_TYPE;
-    g_ledstring.channel[0].brightness = g_hw_master_limit;
+    g_ledstring.channel[0].brightness = g_hw_master_limit; // Hybrid Master
 
     if (ws2811_init(&g_ledstring) != WS2811_SUCCESS) return 1;
 
@@ -248,7 +299,7 @@ int main(int argc, char* argv[]) {
 
                 for (int i = 0; i < pixels; ++i) {
                     uint16_t p = map_pixel(i);
-                    if (p == INVALID_COMMAND) continue;
+                    if (p == SENTINEL_INVALID) continue;
                     g_ledstring.channel[0].leds[p] = 
                         (g_gamma_table[rx_buf[i*3]] << 16) | 
                         (g_gamma_table[rx_buf[i*3+1]] << 8) | 

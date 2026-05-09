@@ -77,11 +77,11 @@ async function OPCLEDparser(ramDisk, effect = "", subArg = "") {
         return(`Set LEDs to python effect: ${effect}`); 
     }
 
-    // Perl effects
-    const perlEffects = ["noise", "ripple", "random"]; 
-    if (perlEffects.includes(effect)) {
-        await execAsync(`${setleds_cmd} perl-${effect}`); 
-        return(`Set LEDs to perl effect: ${effect}`); 
+    // C / C++ effects
+    const cEffects = ["spectro"]; 
+    if (cEffects.includes(effect)) {
+        await execAsync(`${setleds_cmd} c-${effect}`); 
+        return(`Set LEDs to C / C++ effect: ${effect}`); 
     }
 
     // Hex and solid colors

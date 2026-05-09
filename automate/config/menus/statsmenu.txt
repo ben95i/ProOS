@@ -6,4 +6,5 @@ xana.home|Xana|ping
 unifi.home|UniFi|ping
 legacy.home|Legacy|ping
 ledstrip.home|LEDstrip|ping
+ledgrid.home|LEDgrid|ping
 ledwall.home|LEDwall|ping

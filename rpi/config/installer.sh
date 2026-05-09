@@ -81,8 +81,8 @@ apt-get $APTARGS locales console-setup aptitude libnss-mdns libnss3-tools xxd au
  rng-tools5 gpiod net-tools python3 python3-pip python3-venv v4l-utils x264 xmltoman samba \
  build-essential autoconf make libtool binutils i2c-tools cmake yasm minicom rclone unzip \
  bluetooth pi-bluetooth bluez bluez-tools bluez-alsa-utils libbluetooth3 mpg321 arduino \
- samba-common-bin samba-libs libimage-exiftool-perl libjson-glib-1.0-0 libupnp6 mpv \
- alsa-base alsa-utils nodejs perl perl-modules raspi-utils lame usbutils
+ samba-common-bin samba-libs libjson-glib-1.0-0 libupnp6 mpv  alsa-base alsa-utils \
+ nodejs raspi-utils lame usbutils
 
 ## Development Support
 apt-get $APTARGS libgtk2.0-dev libbluetooth-dev libpng-dev libdaemon-dev libpopt-dev \
@@ -182,7 +182,7 @@ if [ ! -e "/etc/rpi-bootro.done" ]; then
   raspi-config nonint enable_bootro
   touch /etc/rpi-bootro.done
 fi
-cp -fv /boot/firmware/config.txt /boot/firmware/config.bak
+cp -f /boot/firmware/config.txt /boot/firmware/config.bak
 cp -f $BIN/config.txt /boot/firmware/
 
 ## Disable Serial Console Redirection
@@ -465,6 +465,7 @@ chmod 644 /etc/motion/motion.conf
 chown root:root /etc/motion/motion.conf
 
 ##### Compiled from Source #####
+NC_MSG="(Source Not Changed)"
 LED_EF="/opt/rpi/effects"
 SRC_BIN="/opt/rpi"
 SRC_BKP="/opt/source-backup"
@@ -472,6 +473,7 @@ mkdir -p $SRC_BKP
 
 ## WS2812B DMA Library
 if [ ! -e "/usr/local/include/ws2811/ws2811.h" ]; then
+  echo "Compiling WS28xx Library for Raspberry Pi..."
   cd $LED_EF/ws281x
   mkdir build
   cd build
@@ -484,9 +486,9 @@ fi
 
 ## OPC to WS2812B Server
 if cmp -s $LED_EF/opcserver.cpp $SRC_BKP/opcserver.cpp; then
-    echo "Skipping OPC to WS2812B Server Source Not Changed"
+    echo "Skipping OPC to WS2812B Program $NC_MSG"
 else
-    echo "Compiling OPC to WS2812B Server"
+    echo "Compiling OPC to WS2812B Program..."
     rm -f $LED_EF/opcserver
     g++ -O3 -Wall -Wextra $LED_EF/opcserver.cpp -o $LED_EF/opcserver -lws2811
 fi
@@ -494,9 +496,9 @@ mv -f $LED_EF/opcserver.cpp $SRC_BKP/
 
 ## OPC Brightness Proxy Server
 if cmp -s $LED_EF/fcproxy.cpp $SRC_BKP/fcproxy.cpp; then
-    echo "Skipping Brightness Proxy Server Source Not Changed"
+    echo "Skipping Brightness Proxy Program $NC_MSG"
 else
-    echo "Compiling Brightness Proxy Server"
+    echo "Compiling Brightness Proxy Program..."
     rm -f $LED_EF/fcproxy
     g++ -O3 $LED_EF/fcproxy.cpp -o $LED_EF/fcproxy -lpthread
 fi
@@ -504,19 +506,29 @@ mv -f $LED_EF/fcproxy.cpp $SRC_BKP/
 
 ## Video File to OPC LED Data Stream
 if cmp -s $LED_EF/mp4toleds.cpp $SRC_BKP/mp4toleds.cpp; then
-    echo "Skipping Video File to OPC LED Data Stream Source Not Changed"
+    echo "Skipping Video File to OPC Program $NC_MSG"
 else
-    echo "Compiling Video File to OPC LED Data Stream"
+    echo "Compiling Video File to OPC Program..."
     rm -f $LED_EF/mp4toleds
     g++ -O3 $LED_EF/mp4toleds.cpp -o $LED_EF/mp4toleds $(pkg-config --cflags --libs opencv4)
 fi
 mv -f $LED_EF/mp4toleds.cpp $SRC_BKP/
 
-## Solid Color to OPC LED Data Stream
-if cmp -s $LED_EF/writecolor.cpp $SRC_BKP/writecolor.cpp; then
-    echo "Skipping Solid Color to OPC LED Data Stream Source Not Changed"
+## Spectrogram LED Program 
+if cmp -s $LED_EF/spectro.cpp $SRC_BKP/spectro.cpp; then
+    echo "Skipping Spectrogram LED Program  $NC_MSG"
 else
-    echo "Compiling Solid Color to OPC LED Data Stream"
+    echo "Compiling Spectrogram LED Program..."
+    rm -f $LED_EF/spectro
+    g++ -O3 $LED_EF/spectro.cpp -o $LED_EF/spectro -lasound -pthread
+fi
+mv -f $LED_EF/spectro.cpp $SRC_BKP/
+
+## Color to OPC LED Program
+if cmp -s $LED_EF/writecolor.cpp $SRC_BKP/writecolor.cpp; then
+    echo "Skipping Color to OPC LED Program $NC_MSG"
+else
+    echo "Compiling Color to OPC LED Program..."
     rm -f $LED_EF/writecolor
     g++ -O3 $LED_EF/writecolor.cpp -o $LED_EF/writecolor -std=c++11
 fi
@@ -524,39 +536,39 @@ mv -f $LED_EF/writecolor.cpp $SRC_BKP/
 
 ## Color Lookup COBOL Program
 if cmp -s $LED_EF/colorscan.cbl $SRC_BKP/colorscan.cbl; then
-    echo "Skipping Color Lookup COBOL Program Source Not Changed"
+    echo "Skipping Color Lookup COBOL Program $NC_MSG"
 else
-    echo "Compiling Color Lookup COBOL Program"
+    echo "Compiling Color Lookup COBOL Program..."
     rm -f $LED_EF/colorscan
     cobc -x --free $LED_EF/colorscan.cbl -o $LED_EF/colorscan
 fi
 mv -f $LED_EF/colorscan.cbl $SRC_BKP/
 
-## GPO Pin Control Server
+## GPO Pin Control Program
 if cmp -s $SRC_BIN/gposerver.cpp $SRC_BKP/gposerver.cpp; then
-    echo "Skipping GPO Pin Control Server Source Not Changed"
+    echo "Skipping GPO Pin Control Program $NC_MSG"
 else
-    echo "Compiling GPO Pin Control Server"
+    echo "Compiling GPO Pin Control Program..."
     rm -f $SRC_BIN/gposerver
     g++ $SRC_BIN/gposerver.cpp -o $SRC_BIN/gposerver -lgpiodcxx
 fi
 mv -f $SRC_BIN/gposerver.cpp $SRC_BKP/
 
-## GPI Pin Monitor Server
+## GPI Pin Monitor Program
 if cmp -s $SRC_BIN/pinmon.cpp $SRC_BKP/pinmon.cpp; then
-    echo "Skipping GPI Pin Monitor Server Source Not Changed"
+    echo "Skipping GPI Pin Monitor Program $NC_MSG"
 else
-    echo "Compiling GPI Pin Monitor Server"
+    echo "Compiling GPI Pin Monitor Program..."
     rm -f $SRC_BIN/pinmon
     g++ -Wall -O3 $SRC_BIN/pinmon.cpp -o $SRC_BIN/pinmon -lgpiodcxx
 fi
 mv -f $SRC_BIN/pinmon.cpp $SRC_BKP/
 
-## LDR Detector Server
+## LDR Detector Program
 if cmp -s $SRC_BIN/ldrdetect.cpp $SRC_BKP/ldrdetect.cpp; then
-    echo "Skipping LDR Detector Server"
+    echo "Skipping LDR Detector Program $NC_MSG"
 else
-    echo "Compiling LDR Detector Server"
+    echo "Compiling LDR Detector Program..."
     rm -f $SRC_BIN/ldrdetect
     g++ $SRC_BIN/ldrdetect.cpp -o $SRC_BIN/ldrdetect -lgpiodcxx
 fi
@@ -564,9 +576,9 @@ mv -f $SRC_BIN/ldrdetect.cpp $SRC_BKP/
 
 ## Z-Term RS232 Communication
 if cmp -s $SRC_BIN/ztermcom.c $SRC_BKP/ztermcom.c; then
-    echo "Skipping Z-Term RS232 Communication Source Not Changed"
+    echo "Skipping Z-Term RS232 Communication Program $NC_MSG"
 else
-    echo "Compiling Z-Term RS232 Communication"
+    echo "Compiling Z-Term RS232 Communication Program..."
     rm -f /usr/bin/ztermcom
     gcc $SRC_BIN/ztermcom.c -o /usr/bin/ztermcom
 fi

@@ -5,7 +5,7 @@ Conflicts=shutdown.target
 [Service]
 User=root
 Type=simple
-ExecStart=/bin/bash -c "/opt/rpi/effects/opcserver $rpi_ledtype $rpi_ledmaxbright"
+ExecStart=/bin/bash -c "/opt/rpi/effects/opcserver $rpi_ledtype $rpi_ledmaxbright $rpi_ledgridrotate"
 WorkingDirectory=/opt/rpi/effects
 KillSignal=SIGKILL
 Restart=always

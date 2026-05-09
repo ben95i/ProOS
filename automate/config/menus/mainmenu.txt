@@ -1,2 +1,3 @@
 http://ledstrip.home:80|link|LEDstrip
+http://ledgrid.home:80|link|LEDgrid
 http://ledwall.home:80|link|LEDwall

@@ -15,7 +15,8 @@ plasma|ledmenu|Plasma
 prism|ledmenu|Prism
 paint|ledmenu|Paint
 clouds|ledmenu|Clouds
-noise|ledmenu|Noise
+spectro|ledmenu|Spectro
+mario|ledmenu|Mario
 lumin|ledmenu|Lumin
 ink|ledmenu|Ink
 gas|ledmenu|Gas
@@ -29,4 +30,3 @@ gold|ledmenu|Gold
 rave|ledmenu|Rave
 chase|ledmenu|Chase
 flash|ledmenu|Flash
-ripple|ledmenu|Ripple
