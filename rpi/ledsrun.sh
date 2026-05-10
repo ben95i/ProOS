@@ -37,7 +37,7 @@ if [ "$PRGM_TYPE" == "c" ]; then
   if [ "$EFFECT" == "spectro" ]; then
     MIC_GAIN="40"
     MIN_FREQ="350" ## in Hz
-    MAX_FREQ="4500" ## in Hz
+    MAX_FREQ="3500" ## in Hz
     $BIN_PATH/spectro $LEDTYPE $MIC_GAIN $MIN_FREQ $MAX_FREQ 
   else
     $BIN_PATH/$EFFECT $LEDTYPE

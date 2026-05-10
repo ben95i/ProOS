@@ -33,13 +33,13 @@ async function OPCLEDparser(ramDisk, effect = "", subArg = "") {
     }
 
     if (effect === "fc") { // set brightness level 
-        await fetch(`${LED_PROXY}/set?b=${subArg}`, { signal: AbortSignal.timeout(500) }).catch(() => {}); 
+        await fetch(`${LED_PROXY}/set?b=${subArg}`, { signal: AbortSignal.timeout(1000) }).catch(() => {}); 
         return("fc ok");
     }
 
     if (effect === "fc_leds") { // show brightness level
         try {
-            const resp = await fetch(`${LED_PROXY}/brightness`, { signal: AbortSignal.timeout(500) }); 
+            const resp = await fetch(`${LED_PROXY}/brightness`, { signal: AbortSignal.timeout(1000) }); 
             const data = await resp.text();
             return data;
         } catch (e) {
@@ -70,15 +70,8 @@ async function OPCLEDparser(ramDisk, effect = "", subArg = "") {
         // continue to other categories
     }
 
-    // Python effects
-    const pythEffects = ["rave", "chase", "miami", "spark", "stripes", "lava"]; 
-    if (pythEffects.includes(effect)) {
-        await execAsync(`${setleds_cmd} pyth-${effect}`); 
-        return(`Set LEDs to python effect: ${effect}`); 
-    }
-
     // C / C++ effects
-    const cEffects = ["spectro"]; 
+    const cEffects = ["spectro", "orbits", "noise", "rave", "chase", "miami", "spark", "stripes", "lava"]; 
     if (cEffects.includes(effect)) {
         await execAsync(`${setleds_cmd} c-${effect}`); 
         return(`Set LEDs to C / C++ effect: ${effect}`); 

@@ -471,9 +471,9 @@ SRC_BIN="/opt/rpi"
 SRC_BKP="/opt/source-backup"
 mkdir -p $SRC_BKP
 
-## WS2812B DMA Library
+## WS2812B DMA Library ################################
 if [ ! -e "/usr/local/include/ws2811/ws2811.h" ]; then
-  echo "Compiling WS28xx Library for Raspberry Pi..."
+  echo "Compiling WS28xx DMA Library..."
   cd $LED_EF/ws281x
   mkdir build
   cd build
@@ -483,8 +483,7 @@ if [ ! -e "/usr/local/include/ws2811/ws2811.h" ]; then
   ldconfig
   cd $BIN
 fi
-
-## OPC to WS2812B Server
+#######################################################
 if cmp -s $LED_EF/opcserver.cpp $SRC_BKP/opcserver.cpp; then
     echo "Skipping OPC to WS2812B Program $NC_MSG"
 else
@@ -493,8 +492,7 @@ else
     g++ -O3 -Wall -Wextra $LED_EF/opcserver.cpp -o $LED_EF/opcserver -lws2811
 fi
 mv -f $LED_EF/opcserver.cpp $SRC_BKP/
-
-## OPC Brightness Proxy Server
+#######################################################
 if cmp -s $LED_EF/fcproxy.cpp $SRC_BKP/fcproxy.cpp; then
     echo "Skipping Brightness Proxy Program $NC_MSG"
 else
@@ -503,38 +501,106 @@ else
     g++ -O3 $LED_EF/fcproxy.cpp -o $LED_EF/fcproxy -lpthread
 fi
 mv -f $LED_EF/fcproxy.cpp $SRC_BKP/
-
-## Video File to OPC LED Data Stream
+#######################################################
 if cmp -s $LED_EF/mp4toleds.cpp $SRC_BKP/mp4toleds.cpp; then
     echo "Skipping Video File to OPC Program $NC_MSG"
 else
     echo "Compiling Video File to OPC Program..."
     rm -f $LED_EF/mp4toleds
-    g++ -O3 $LED_EF/mp4toleds.cpp -o $LED_EF/mp4toleds $(pkg-config --cflags --libs opencv4)
+    g++ -O3 $LED_EF/mp4toleds.cpp $LED_EF/LEDLayout.cpp $LED_EF/OPCClient.cpp -o $LED_EF/mp4toleds $(pkg-config --cflags --libs opencv4)
 fi
 mv -f $LED_EF/mp4toleds.cpp $SRC_BKP/
-
-## Spectrogram LED Program 
+#######################################################
 if cmp -s $LED_EF/spectro.cpp $SRC_BKP/spectro.cpp; then
-    echo "Skipping Spectrogram LED Program  $NC_MSG"
+    echo "Skipping Spectrogram LED Program $NC_MSG"
 else
     echo "Compiling Spectrogram LED Program..."
     rm -f $LED_EF/spectro
-    g++ -O3 $LED_EF/spectro.cpp -o $LED_EF/spectro -lasound -pthread
+    g++ -O3 $LED_EF/spectro.cpp $LED_EF/LEDLayout.cpp $LED_EF/OPCClient.cpp -o $LED_EF/spectro -lasound -pthread
 fi
 mv -f $LED_EF/spectro.cpp $SRC_BKP/
-
-## Color to OPC LED Program
+#######################################################
+if cmp -s $LED_EF/noise.cpp $SRC_BKP/noise.cpp; then
+    echo "Skipping Noise LED Program $NC_MSG"
+else
+    echo "Compiling Noise LED Program..."
+    rm -f $LED_EF/noise
+    g++ -O3 $LED_EF/noise.cpp $LED_EF/LEDLayout.cpp $LED_EF/OPCClient.cpp -o $LED_EF/noise -lm
+fi
+mv -f $LED_EF/noise.cpp $SRC_BKP/
+#######################################################
+if cmp -s $LED_EF/orbits.cpp $SRC_BKP/orbits.cpp; then
+    echo "Skipping Orbits LED Program $NC_MSG"
+else
+    echo "Compiling Orbits LED Program..."
+    rm -f $LED_EF/orbits
+    g++ -O3 $LED_EF/orbits.cpp $LED_EF/LEDLayout.cpp $LED_EF/OPCClient.cpp -o $LED_EF/orbits -lm
+fi
+mv -f $LED_EF/orbits.cpp $SRC_BKP/
+#######################################################
+if cmp -s $LED_EF/miami.cpp $SRC_BKP/miami.cpp; then
+    echo "Skipping Miami LED Program $NC_MSG"
+else
+    echo "Compiling Miami LED Program..."
+    rm -f $LED_EF/miami
+    g++ -O3 $LED_EF/miami.cpp $LED_EF/LEDLayout.cpp $LED_EF/OPCClient.cpp -o $LED_EF/miami -lm
+fi
+mv -f $LED_EF/miami.cpp $SRC_BKP/
+#######################################################
+if cmp -s $LED_EF/spark.cpp $SRC_BKP/spark.cpp; then
+    echo "Skipping Spark LED Program $NC_MSG"
+else
+    echo "Compiling Spark LED Program..."
+    rm -f $LED_EF/spark
+    g++ -O3 $LED_EF/spark.cpp $LED_EF/LEDLayout.cpp $LED_EF/OPCClient.cpp -o $LED_EF/spark -lm
+fi
+mv -f $LED_EF/spark.cpp $SRC_BKP/
+#######################################################
+if cmp -s $LED_EF/lava.cpp $SRC_BKP/lava.cpp; then
+    echo "Skipping Lava LED Program $NC_MSG"
+else
+    echo "Compiling Lava LED Program..."
+    rm -f $LED_EF/lava
+    g++ -O3 $LED_EF/lava.cpp $LED_EF/LEDLayout.cpp $LED_EF/OPCClient.cpp -o $LED_EF/lava -lm
+fi
+mv -f $LED_EF/lava.cpp $SRC_BKP/
+#######################################################
+if cmp -s $LED_EF/stripes.cpp $SRC_BKP/stripes.cpp; then
+    echo "Skipping Stripes LED Program $NC_MSG"
+else
+    echo "Compiling Stripes LED Program..."
+    rm -f $LED_EF/stripes
+    g++ -O3 $LED_EF/stripes.cpp $LED_EF/LEDLayout.cpp $LED_EF/OPCClient.cpp -o $LED_EF/stripes -lm
+fi
+mv -f $LED_EF/stripes.cpp $SRC_BKP/
+#######################################################
+if cmp -s $LED_EF/rave.cpp $SRC_BKP/rave.cpp; then
+    echo "Skipping Rave LED Program $NC_MSG"
+else
+    echo "Compiling Rave LED Program..."
+    rm -f $LED_EF/rave
+    g++ -O3 $LED_EF/rave.cpp $LED_EF/LEDLayout.cpp $LED_EF/OPCClient.cpp -o $LED_EF/rave -lm
+fi
+mv -f $LED_EF/rave.cpp $SRC_BKP/
+#######################################################
+if cmp -s $LED_EF/chase.cpp $SRC_BKP/chase.cpp; then
+    echo "Skipping Chase LED Program $NC_MSG"
+else
+    echo "Compiling Chase LED Program..."
+    rm -f $LED_EF/chase
+    g++ -O3 $LED_EF/chase.cpp $LED_EF/LEDLayout.cpp $LED_EF/OPCClient.cpp -o $LED_EF/chase -pthread
+fi
+mv -f $LED_EF/chase.cpp $SRC_BKP/
+#######################################################
 if cmp -s $LED_EF/writecolor.cpp $SRC_BKP/writecolor.cpp; then
     echo "Skipping Color to OPC LED Program $NC_MSG"
 else
     echo "Compiling Color to OPC LED Program..."
     rm -f $LED_EF/writecolor
-    g++ -O3 $LED_EF/writecolor.cpp -o $LED_EF/writecolor -std=c++11
+    g++ -O3 $LED_EF/writecolor.cpp $LED_EF/OPCClient.cpp -o $LED_EF/writecolor
 fi
 mv -f $LED_EF/writecolor.cpp $SRC_BKP/
-
-## Color Lookup COBOL Program
+#######################################################
 if cmp -s $LED_EF/colorscan.cbl $SRC_BKP/colorscan.cbl; then
     echo "Skipping Color Lookup COBOL Program $NC_MSG"
 else
@@ -543,8 +609,7 @@ else
     cobc -x --free $LED_EF/colorscan.cbl -o $LED_EF/colorscan
 fi
 mv -f $LED_EF/colorscan.cbl $SRC_BKP/
-
-## GPO Pin Control Program
+#######################################################
 if cmp -s $SRC_BIN/gposerver.cpp $SRC_BKP/gposerver.cpp; then
     echo "Skipping GPO Pin Control Program $NC_MSG"
 else
@@ -553,8 +618,7 @@ else
     g++ $SRC_BIN/gposerver.cpp -o $SRC_BIN/gposerver -lgpiodcxx
 fi
 mv -f $SRC_BIN/gposerver.cpp $SRC_BKP/
-
-## GPI Pin Monitor Program
+#######################################################
 if cmp -s $SRC_BIN/pinmon.cpp $SRC_BKP/pinmon.cpp; then
     echo "Skipping GPI Pin Monitor Program $NC_MSG"
 else
@@ -563,8 +627,7 @@ else
     g++ -Wall -O3 $SRC_BIN/pinmon.cpp -o $SRC_BIN/pinmon -lgpiodcxx
 fi
 mv -f $SRC_BIN/pinmon.cpp $SRC_BKP/
-
-## LDR Detector Program
+#######################################################
 if cmp -s $SRC_BIN/ldrdetect.cpp $SRC_BKP/ldrdetect.cpp; then
     echo "Skipping LDR Detector Program $NC_MSG"
 else
@@ -573,8 +636,7 @@ else
     g++ $SRC_BIN/ldrdetect.cpp -o $SRC_BIN/ldrdetect -lgpiodcxx
 fi
 mv -f $SRC_BIN/ldrdetect.cpp $SRC_BKP/
-
-## Z-Term RS232 Communication
+#######################################################
 if cmp -s $SRC_BIN/ztermcom.c $SRC_BKP/ztermcom.c; then
     echo "Skipping Z-Term RS232 Communication Program $NC_MSG"
 else
@@ -585,9 +647,9 @@ fi
 mv -f $SRC_BIN/ztermcom.c $SRC_BKP/
 usermod -a -G dialout www-data
 usermod -a -G tty www-data
-
+#######################################################
 echo "Compilation completed."
-################################
+#######################################################
 
 ## Services Configuration
 cp -f $BIN/timesyncd.conf /etc/systemd/

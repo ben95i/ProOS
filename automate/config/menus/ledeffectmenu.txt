@@ -4,6 +4,8 @@ tunnel|ledmenu|Tunnel
 warp|ledmenu|Warp
 rays|ledmenu|Rays
 lava|ledmenu|Lava
+noise|ledmenu|Noise
+orbits|ledmenu|Orbits
 spotlight|ledmenu|Spotlight
 beachball|ledmenu|Beachball
 spectrum|ledmenu|Spectrum
