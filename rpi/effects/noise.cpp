@@ -1,5 +1,5 @@
-#include "LEDLayout.h"
-#include "OPCClient.h"
+#include "ledlayout.h"
+#include "opcclient.h"
 
 #include <iostream>
 #include <string>

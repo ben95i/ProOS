@@ -14,6 +14,7 @@ EXIT_ROUTINE() {
 }
 
 LOGFILE="/var/www/html/ram/sysout.txt"
+
 ARG_1="$1"
 ARG_2="$2"
 
@@ -21,6 +22,7 @@ if [ "$ARG_1" == "" ]; then
   echo "no argument." &>> $LOGFILE  
   EXIT_ROUTINE
 fi
+
 ## Wi-Fi setup API
 if [ "$ARG_1" == "confwpa" ]; then
   ## Decode base64
@@ -34,6 +36,7 @@ if [ "$ARG_1" == "confwpa" ]; then
   echo " " &>> $LOGFILE
   EXIT_ROUTINE	
 fi
+
 ## Server control
 if [ "$ARG_1" == "clearlog" ]; then
   truncate -s 0 $LOGFILE
@@ -48,6 +51,7 @@ if [ "$ARG_1" == "showwpa" ]; then
   ifconfig &>> $LOGFILE
   EXIT_ROUTINE
 fi
+
 echo "sent $ARG_1 system command." &>> $LOGFILE
 /opt/rpi/rpi.sh "$ARG_1" &>> $LOGFILE
 EXIT_ROUTINE

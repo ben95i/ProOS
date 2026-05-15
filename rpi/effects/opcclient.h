@@ -13,11 +13,13 @@ private:
     std::vector<uint8_t> networkPacketBuffer;
 
     void connectToServer();
-    void disconnectFromServer();
 
 public:
     OPCClient(const std::string& hostAddress = "127.0.0.1", int portNumber = 7890);
     ~OPCClient();
+
+    // Moved to public to allow manual resource release
+    void disconnectFromServer();
 
     // Transmits a raw RGB payload [red, green, blue, red, green, blue...] 
     // automatically wrapping it in the 4-byte OPC protocol header.

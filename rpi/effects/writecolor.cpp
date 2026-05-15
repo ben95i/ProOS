@@ -1,23 +1,24 @@
-#include "OPCClient.h"
+#include "opcclient.h"
+#include "ledlayout.h"
 #include <iostream>
 #include <vector>
 #include <string>
 #include <stdexcept>
+#include <thread>
+#include <chrono>
 
 // Configuration
-constexpr int TOTAL_PIXELS_COUNT = 1024;
-constexpr int PAYLOAD_BYTE_SIZE = TOTAL_PIXELS_COUNT * 3;
 constexpr const char* TARGET_OPC_HOST = "127.0.0.1";
 constexpr int TARGET_OPC_PORT = 7890;
 
 struct RGBColor {
-    uint8_t redIntensity, greenIntensity, blueIntensity;
+    uint8_t r, g, b;
 };
 
-// Converts hex string (0000FF) to RGB components
+// Converts hex string (e.g., "FF0000") to RGB components
 RGBColor parseHexColorCode(const std::string& hexString) {
     if (hexString.length() != 6) {
-        throw std::invalid_argument("Hex color must be exactly 6 characters (e.g., 0000FF)");
+        throw std::invalid_argument("Hex color must be 6 characters (e.g., 0000FF)");
     }
     uint32_t parsedValue = std::stoul(hexString, nullptr, 16);
     return {
@@ -27,34 +28,72 @@ RGBColor parseHexColorCode(const std::string& hexString) {
     };
 }
 
-int main(int argumentCount, char* argumentValues[]) {
-    if (argumentCount != 2) {
-        std::cerr << "Usage: " << argumentValues[0] << " <HEX_COLOR>\nExample: " << argumentValues[0] << " 0000FF" << std::endl;
+int main(int argc, char* argv[]) {
+    if (argc != 3) {
+        std::cerr << "Usage: " << argv[0] << " <LAYOUT> <HEX_COLOR>\n"
+                  << "Example: " << argv[0] << " 93ring FF0000" << std::endl;
         return 1;
     }
 
+    // 1. Calculate pixel count from the layout argument
+    LEDLayout layout;
+    try {
+        layout.parseArgument(argv[1]);
+    } catch (...) {
+        std::cerr << "Error: Failed to parse layout: " << argv[1] << std::endl;
+        return 1;
+    }
+
+    if (layout.pixels.empty()) {
+        std::cerr << "Error: Layout resulted in 0 LEDs." << std::endl;
+        return 1;
+    }
+
+    // 2. Parse the target color
     RGBColor targetColor;
     try {
-        targetColor = parseHexColorCode(argumentValues[1]);
+        targetColor = parseHexColorCode(argv[2]);
     } catch (...) {
         std::cerr << "Error: Invalid hex color format." << std::endl;
         return 1;
     }
 
-    std::vector<uint8_t> pixelPayloadData;
-    pixelPayloadData.reserve(PAYLOAD_BYTE_SIZE);
-
-    for (int pixelIndex = 0; pixelIndex < TOTAL_PIXELS_COUNT; ++pixelIndex) {
-        pixelPayloadData.push_back(targetColor.redIntensity);
-        pixelPayloadData.push_back(targetColor.greenIntensity);
-        pixelPayloadData.push_back(targetColor.blueIntensity);
+    // 3. Find the MAXIMUM opc_index to size our buffer correctly
+    int maxOpcIndex = 0;
+    for (const auto& pixel : layout.pixels) {
+        if (pixel.opc_index > maxOpcIndex) {
+            maxOpcIndex = pixel.opc_index;
+        }
     }
 
+    // The buffer size must cover up to the max index (index 0 to maxOpcIndex)
+    const int totalPayloadPixels = maxOpcIndex + 1;
+
+    // 4. Prepare the data payload (initialize all to 0 / black for the "gaps")
+    std::vector<uint8_t> pixelPayloadData(totalPayloadPixels * 3, 0);
+
+    // Fill the buffer by mapping the color specifically to the opc_index
+    for (const auto& pixel : layout.pixels) {
+        int bufferIdx = pixel.opc_index * 3;
+        pixelPayloadData[bufferIdx]     = targetColor.r;
+        pixelPayloadData[bufferIdx + 1] = targetColor.g;
+        pixelPayloadData[bufferIdx + 2] = targetColor.b;
+    }
+
+    // 5. Connect once and send frames
     OPCClient displayClient(TARGET_OPC_HOST, TARGET_OPC_PORT);
-    if (!displayClient.sendPixelPayload(0, pixelPayloadData.data(), pixelPayloadData.size())) {
-        std::cerr << "Warning: Failed to transmit initial packet to OPC server." << std::endl;
-        return 1;
+    
+    std::cout << "Sending " << argv[2] << " mapped to " << layout.pixels.size() 
+              << " LEDs (Max index: " << maxOpcIndex << ")..." << std::endl;
+
+    for (int frame = 0; frame < 10; ++frame) {
+        if (!displayClient.sendPixelPayload(0, pixelPayloadData.data(), pixelPayloadData.size())) {
+            std::cerr << "Error: Failed to transmit frame " << frame << std::endl;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
 
+    std::cout << "Done." << std::endl;
     return 0;
 }

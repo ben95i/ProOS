@@ -16,302 +16,301 @@
 #include <algorithm>
 #include <cmath> 
 #include <ws2811/ws2811.h> 
+#include <netinet/tcp.h>
+#include "httpapiserver.h"
 
-// --- Hardware & System Configuration ---
-constexpr int   DEFAULT_GPIO_PIN    = 18;       // RPi PWM0
-constexpr int   DEFAULT_DMA_CH      = 10;
-constexpr int   STRIP_TYPE          = WS2811_STRIP_GRB;
-constexpr float PERCEPTUAL_GAMMA    = 2.8f;     // Expands the low-brightness range
-constexpr const char* RUNAS_USER    = "nobody";
+// --- System Constants ---
+constexpr int GPIO_OUTPUT_PIN = 18;
+constexpr int DMA_CHANNEL = 10;
+constexpr int LED_STRIP_TYPE = WS2811_STRIP_GRB;
+constexpr float GAMMA_EXPONENT = 2.7f;
+constexpr const char* SECURITY_USER = "nobody";
+constexpr int OPC_LISTENER_PORT = 7890;
+constexpr int HTTP_CONTROL_PORT = 7892;
+constexpr int HTTP_RATE_LIMIT_MS = 100;
+constexpr const char* LOOPBACK_IP = "127.0.0.1";
+constexpr float REFRESH_RATE_HZ = 60.0f;
+constexpr auto TARGET_FRAME_TIME = std::chrono::microseconds(static_cast<long long>(1000000 / REFRESH_RATE_HZ));
+constexpr uint16_t MAP_INDEX_INVALID = 0xFFFF;
 
-// --- Network Configuration ---
-constexpr int   OPC_PORT            = 7890;
-constexpr int   HTTP_PORT           = 7892;
-constexpr const char* BIND_IP       = "127.0.0.1";
+// --- State Variables ---
+int matrixWidth = 16;
+int matrixHeight = 16;
+int totalLedCount = 256;
+int startupHardwareLimit = 255;
+int uiRotationDeg = 0;
 
-// --- Protocol & Timing Constants ---
-constexpr int   OPC_HEADER_SIZE     = 4;
-constexpr int   OPC_CMD_SET_PIXELS  = 0;
-constexpr int   RGB_CHANNELS        = 3;
-constexpr float TARGET_FPS          = 60.0f;
-constexpr auto  FRAME_BUDGET        = std::chrono::microseconds(static_cast<long long>(1000000 / TARGET_FPS));
-constexpr auto  HTTP_MIN_INTERVAL   = std::chrono::milliseconds(50);
-constexpr uint16_t SENTINEL_INVALID = 0xFFFF;
+std::atomic<bool> isRunning{true};
+ws2811_t ledStripDriver;
+std::mutex sharedDataMutex;
 
-// --- Global Dynamic State ---
-int g_width             = 16;  
-int g_height            = 16;
-int g_num_leds          = 256;
-int g_hw_master_limit   = 255; // Set by argv[2], mapped to hardware brightness
-int g_rotation          = 0;   // Set by argv[3] (0, 90, 180, 270)
+// --- High Performance Buffers ---
+std::atomic<int> apiBrightnessLevel{255};
+float gammaLookupTable[256];
+std::vector<uint16_t> physicalLookupTable; // Pre-calculated map
 
-std::atomic<bool> g_running{true};
-ws2811_t g_ledstring; 
-std::mutex g_hw_mutex; // Protects hardware access and frame cache
+std::vector<uint8_t> incomingFrameBuffer;
+std::vector<float> quantizationErrorRed;
+std::vector<float> quantizationErrorGreen;
+std::vector<float> quantizationErrorBlue;
 
-// Software LUT and Cache
-std::atomic<int> g_api_brightness{255}; // User-facing 0-255 scale
-uint8_t g_gamma_table[256];
-std::vector<uint8_t> g_pixel_cache; // Stores the last raw frame for immediate redraws
-int g_cache_count = 0;
-
-// --- Logic ---
-
-void signal_handler(int) { g_running = false; }
-
-void drop_privileges() {
-    struct passwd* pw = getpwnam(RUNAS_USER);
-    if (pw && (setgid(pw->pw_gid) != 0 || setuid(pw->pw_uid) != 0)) {
-        std::cerr << "Note: Running as limited user: " << RUNAS_USER << "\n";
-    }
+void handleTerminationSignal(int) { 
+    bool falseState = false;
+    isRunning.store(falseState); 
 }
 
-/**
- * High-precision Gamma LUT generation.
- * Maps the 0-255 API input to the 0-255 color output.
- */
-void update_gamma_table(int software_level) {
-    float intensity = static_cast<float>(software_level) / 255.0f;
-    for (int i = 0; i < 256; ++i) {
-        float normalized = static_cast<float>(i) / 255.0f;
-        // Apply Gamma 2.8 and scale by the current software brightness level
-        float val = std::pow(normalized, PERCEPTUAL_GAMMA) * intensity * 255.0f;
-        g_gamma_table[i] = static_cast<uint8_t>(std::clamp(std::round(val), 0.0f, 255.0f));
-    }
-}
-
-/**
- * Maps the incoming linear OPC index to the physical Zig-Zag layout,
- * factoring in the user-defined rotation.
- */
-uint16_t map_pixel(uint16_t idx) {
-    if (idx >= (uint16_t)g_num_leds) return SENTINEL_INVALID;
-
-    // 1. Calculate incoming logical source dimensions based on rotation
-    uint16_t src_w = (g_rotation == 90 || g_rotation == 270) ? g_height : g_width;
+void dropProcessPrivileges() {
+    struct passwd* processUser = getpwnam(SECURITY_USER);
     
-    // 2. Find the logical X/Y of the incoming pixel
-    uint16_t src_x = idx % src_w;
-    uint16_t src_y = idx / src_w;
-
-    uint16_t px, py;
-
-    // 3. Rotate logical coordinates to physical matrix coordinates
-    switch(g_rotation) {
-        case 90:
-            px = (g_width - 1) - src_y;
-            py = src_x;
-            break;
-        case 180:
-            px = (g_width - 1) - src_x;
-            py = (g_height - 1) - src_y;
-            break;
-        case 270:
-            px = src_y;
-            py = (g_height - 1) - src_x;
-            break;
-        case 0:
-        default:
-            px = src_x;
-            py = src_y;
-            break;
+    bool isUserFound = false;
+    if (processUser != nullptr) {
+        isUserFound = true;
     }
 
-    // 4. Map the physical coordinates to the hardwired Zig-Zag string
-    // Top-Right origin means row 0 goes Right to Left.
-    uint16_t phys_x = (py % 2 == 0) ? ((g_width - 1) - px) : px;
-    return (py * g_width) + phys_x;
+    if (isUserFound == true) {
+        int gidResult = setgid(processUser->pw_gid);
+        int uidResult = setuid(processUser->pw_uid);
+        
+        bool isPrivilegeDropFailed = false;
+        if (gidResult != 0 || uidResult != 0) {
+            isPrivilegeDropFailed = true;
+        }
+
+        if (isPrivilegeDropFailed == true) {
+            std::cerr << "Process running as user: " << SECURITY_USER << "\n";
+        }
+    }
 }
 
-// --- HTTP Control Server ---
-void web_listener() {
-    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    int opt = 1;
-    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+void generatePhysicalLookupTable() {
+    physicalLookupTable.resize(totalLedCount);
+    for (int iteratorIndex = 0; iteratorIndex < totalLedCount; ++iteratorIndex) {
+        uint16_t canvasWidth = matrixWidth;
+        
+        bool isRotatedSideways = false;
+        if (uiRotationDeg == 90 || uiRotationDeg == 270) {
+            isRotatedSideways = true;
+        }
 
-    sockaddr_in addr{};
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(HTTP_PORT);
-    inet_pton(AF_INET, BIND_IP, &addr.sin_addr);
+        if (isRotatedSideways == true) {
+            canvasWidth = matrixHeight;
+        }
+        
+        uint16_t sourceX = iteratorIndex % canvasWidth;
+        uint16_t sourceY = iteratorIndex / canvasWidth;
+        uint16_t rotatedX = 0;
+        uint16_t rotatedY = 0;
 
-    if (bind(server_fd, (sockaddr*)&addr, sizeof(addr)) < 0) {
-        close(server_fd);
+        switch (uiRotationDeg) {
+            case 90:
+                rotatedX = (matrixWidth - 1) - sourceY;
+                rotatedY = sourceX;
+                break;
+            case 180:
+                rotatedX = (matrixWidth - 1) - sourceX;
+                rotatedY = (matrixHeight - 1) - sourceY;
+                break;
+            case 270:
+                rotatedX = sourceY;
+                rotatedY = (matrixHeight - 1) - sourceX;
+                break;
+            default: 
+                rotatedX = sourceX;
+                rotatedY = sourceY;
+                break;
+        }
+
+        bool isEvenRow = false;
+        if (rotatedY % 2 == 0) {
+            isEvenRow = true;
+        }
+
+        uint16_t physicalX = rotatedX;
+        if (isEvenRow == true) {
+            physicalX = (matrixWidth - 1) - rotatedX;
+        }
+        
+        uint16_t finalIndex = (rotatedY * matrixWidth) + physicalX;
+        physicalLookupTable[iteratorIndex] = finalIndex;
+    }
+}
+
+void precalculateGammaTable() {
+    for (int iteratorIndex = 0; iteratorIndex < 256; ++iteratorIndex) {
+        float normalizedIndex = static_cast<float>(iteratorIndex) / 255.0f;
+        float powerApplied = std::pow(normalizedIndex, GAMMA_EXPONENT);
+        float scaledResult = powerApplied * 255.0f;
+        
+        gammaLookupTable[iteratorIndex] = scaledResult;
+    }
+}
+
+void runOpcReceiver() {
+    int serverSocket = socket(AF_INET, SOCK_STREAM, 0);
+    int socketOptions = 1;
+    setsockopt(serverSocket, SOL_SOCKET, SO_REUSEADDR, &socketOptions, sizeof(socketOptions));
+    
+    sockaddr_in serverAddress{};
+    serverAddress.sin_family = AF_INET;
+    serverAddress.sin_port = htons(OPC_LISTENER_PORT);
+    inet_pton(AF_INET, LOOPBACK_IP, &serverAddress.sin_addr);
+    
+    int bindResult = bind(serverSocket, (sockaddr*)&serverAddress, sizeof(serverAddress));
+    if (bindResult < 0) {
         return;
     }
-    listen(server_fd, 5);
+    
+    listen(serverSocket, 1);
 
-    auto last_req = std::chrono::steady_clock::now() - HTTP_MIN_INTERVAL;
+    std::vector<uint8_t> payloadBuffer;
+    int payloadCapacity = totalLedCount * 3;
+    payloadBuffer.reserve(payloadCapacity);
+    
+    uint8_t headerBuffer[4];
 
-    while (g_running) {
-        int client_fd = accept(server_fd, nullptr, nullptr);
-        if (client_fd < 0) continue;
+    while (isRunning.load() == true) {
+        int clientSocket = accept(serverSocket, nullptr, nullptr);
+        
+        bool isConnectionActive = true;
+        while (isConnectionActive == true) {
+            ssize_t headerBytesRead = recv(clientSocket, headerBuffer, 4, MSG_WAITALL);
+            if (headerBytesRead <= 0) {
+                isConnectionActive = false;
+                continue;
+            }
 
-        auto now = std::chrono::steady_clock::now();
-        if (now - last_req < HTTP_MIN_INTERVAL) {
-            close(client_fd);
-            continue;
+            uint16_t payloadLength = (headerBuffer[2] << 8) | headerBuffer[3];
+            
+            bool isPayloadResizeRequired = false;
+            if (payloadLength > payloadBuffer.size()) {
+                isPayloadResizeRequired = true;
+            }
+
+            if (isPayloadResizeRequired == true) {
+                payloadBuffer.resize(payloadLength);
+            }
+            
+            recv(clientSocket, payloadBuffer.data(), payloadLength, MSG_WAITALL);
+
+            std::lock_guard<std::mutex> lockGuard(sharedDataMutex);
+            size_t copyLength = std::min(static_cast<size_t>(payloadLength), incomingFrameBuffer.size());
+            std::memcpy(incomingFrameBuffer.data(), payloadBuffer.data(), copyLength);
         }
-        last_req = now;
-
-        char buf[1024] = {0};
-        ssize_t bytes = read(client_fd, buf, sizeof(buf) - 1);
-        if (bytes <= 0) { close(client_fd); continue; }
-
-        std::string req(buf);
-        std::string res = "HTTP/1.1 404 Not Found\r\n\r\n";
-
-        // Query Brightness
-        if (req.find("GET /brightness") != std::string::npos) {
-            std::string val = std::to_string(g_api_brightness.load());
-            res = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " + 
-                  std::to_string(val.length()) + "\r\n\r\n" + val;
-        }
-        // Set Brightness
-        else if (size_t pos = req.find("b="); pos != std::string::npos) {
-            try {
-                int val = std::clamp(std::stoi(req.substr(pos + 2)), 0, 255);
-                g_api_brightness.store(val);
-                
-                {
-                    std::lock_guard<std::mutex> lock(g_hw_mutex);
-                    update_gamma_table(val);
-                    
-                    // Immediate re-render of current pixels with new curve
-                    for (int i = 0; i < g_cache_count; ++i) {
-                        uint16_t p = map_pixel(i);
-                        if (p == SENTINEL_INVALID) continue;
-                        g_ledstring.channel[0].leds[p] = 
-                            (g_gamma_table[g_pixel_cache[i*3]] << 16) |
-                            (g_gamma_table[g_pixel_cache[i*3+1]] << 8) |
-                            (g_gamma_table[g_pixel_cache[i*3+2]]);
-                    }
-                    ws2811_render(&g_ledstring);
-                }
-                res = "HTTP/1.1 200 OK\r\n\r\nOK\n";
-            } catch (...) { res = "HTTP/1.1 400 Bad Request\r\n\r\n"; }
-        }
-
-        send(client_fd, res.c_str(), res.length(), 0);
-        close(client_fd);
+        close(clientSocket);
     }
-    close(server_fd);
+    close(serverSocket);
 }
 
-// --- Main OPC Server ---
-int main(int argc, char* argv[]) {
-    // 1. Grid Size Parse
-    if (argc > 1) {
-        if (sscanf(argv[1], "%dx%dgrid", &g_width, &g_height) == 2) {
-            g_num_leds = g_width * g_height;
+// --- Core Execution ---
+
+int main(int argumentCount, char* argumentValues[]) {
+    if (argumentCount > 1) {
+        int matchedArguments = sscanf(argumentValues[1], "%dx%dgrid", &matrixWidth, &matrixHeight);
+        if (matchedArguments == 2) {
+            totalLedCount = matrixWidth * matrixHeight;
         }
     }
-    // 2. Max Brightness Parse
-    if (argc > 2) {
-        g_hw_master_limit = std::clamp(std::stoi(argv[2]), 1, 255);
+    
+    if (argumentCount > 2) {
+        int parsedHardwareLimit = std::stoi(argumentValues[2]);
+        startupHardwareLimit = std::clamp(parsedHardwareLimit, 1, 255);
     }
-    // 3. Rotation Parse
-    if (argc > 3) {
-        try {
-            int rot = std::stoi(argv[3]);
-            if (rot == 0 || rot == 90 || rot == 180 || rot == 270) {
-                g_rotation = rot;
-            } else {
-                std::cerr << "Warning: Invalid rotation. Defaulting to 0.\n";
-            }
-        } catch (...) { std::cerr << "Warning: Invalid rotation argument. Defaulting to 0.\n"; }
+    
+    if (argumentCount > 3) {
+        uiRotationDeg = std::stoi(argumentValues[3]);
     }
 
-    std::cout << "Starting OPC Server...\n"
-              << "Grid: " << g_width << "x" << g_height << " (" << g_num_leds << " LEDs)\n"
-              << "Max Hardware Limit: " << g_hw_master_limit << "/255\n"
-              << "Rotation Map: " << g_rotation << " Degrees\n";
+    int incomingFrameBufferSize = totalLedCount * 3;
+    incomingFrameBuffer.assign(incomingFrameBufferSize, 0);
+    quantizationErrorRed.assign(totalLedCount, 0.0f);
+    quantizationErrorGreen.assign(totalLedCount, 0.0f);
+    quantizationErrorBlue.assign(totalLedCount, 0.0f);
+    
+    precalculateGammaTable();
+    generatePhysicalLookupTable(); 
 
-    g_pixel_cache.resize(g_num_leds * RGB_CHANNELS, 0);
-    update_gamma_table(255); // Initialize full software scale
-
-    signal(SIGINT, signal_handler);
-    signal(SIGTERM, signal_handler);
+    signal(SIGINT, handleTerminationSignal);
+    signal(SIGTERM, handleTerminationSignal);
     signal(SIGPIPE, SIG_IGN);
 
-    // Initialize Hardware with Master Limit
-    memset(&g_ledstring, 0, sizeof(ws2811_t));
-    g_ledstring.freq = WS2811_TARGET_FREQ;
-    g_ledstring.dmanum = DEFAULT_DMA_CH;
-    g_ledstring.channel[0].gpionum = DEFAULT_GPIO_PIN;
-    g_ledstring.channel[0].count = g_num_leds;
-    g_ledstring.channel[0].strip_type = STRIP_TYPE;
-    g_ledstring.channel[0].brightness = g_hw_master_limit; // Hybrid Master
+    memset(&ledStripDriver, 0, sizeof(ws2811_t));
+    ledStripDriver.freq = WS2811_TARGET_FREQ;
+    ledStripDriver.dmanum = DMA_CHANNEL;
+    ledStripDriver.channel[0].gpionum = GPIO_OUTPUT_PIN;
+    ledStripDriver.channel[0].count = totalLedCount;
+    ledStripDriver.channel[0].strip_type = LED_STRIP_TYPE;
+    ledStripDriver.channel[0].brightness = startupHardwareLimit; 
 
-    if (ws2811_init(&g_ledstring) != WS2811_SUCCESS) return 1;
-
-    drop_privileges();
-    std::thread(web_listener).detach();
-
-    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    int opt = 1;
-    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-    sockaddr_in address{};
-    address.sin_family = AF_INET;
-    address.sin_port = htons(OPC_PORT);
-    inet_pton(AF_INET, BIND_IP, &address.sin_addr);
-
-    if (bind(server_fd, (sockaddr*)&address, sizeof(address)) < 0) return 1;
-    listen(server_fd, 1);
-
-    uint8_t header[OPC_HEADER_SIZE];
-    std::vector<uint8_t> rx_buf(g_num_leds * RGB_CHANNELS, 0);
-    auto last_frame = std::chrono::steady_clock::now();
-
-    while (g_running) {
-        int client_sock = accept(server_fd, nullptr, nullptr);
-        if (client_sock < 0) continue;
-
-        while (g_running) {
-            if (recv(client_sock, header, OPC_HEADER_SIZE, MSG_WAITALL) <= 0) break;
-            
-            uint16_t len = (header[2] << 8) | header[3];
-            uint16_t to_read = std::min((uint16_t)(g_num_leds * RGB_CHANNELS), len);
-
-            ssize_t bytes = recv(client_sock, rx_buf.data(), to_read, MSG_WAITALL);
-            if (bytes <= 0) break;
-
-            // Drain extra data into stack sink
-            if (len > to_read) {
-                int remain = len - to_read;
-                char sink[1024];
-                while (remain > 0) {
-                    ssize_t d = recv(client_sock, sink, std::min(remain, 1024), 0);
-                    if (d <= 0) break;
-                    remain -= d;
-                }
-            }
-
-            // Frame Rate Limiter (60Hz)
-            auto now = std::chrono::steady_clock::now();
-            if (now - last_frame < FRAME_BUDGET) continue; 
-            last_frame = now;
-
-            int pixels = bytes / RGB_CHANNELS;
-            {
-                std::lock_guard<std::mutex> lock(g_hw_mutex);
-                g_cache_count = pixels;
-                std::copy(rx_buf.begin(), rx_buf.begin() + bytes, g_pixel_cache.begin());
-
-                for (int i = 0; i < pixels; ++i) {
-                    uint16_t p = map_pixel(i);
-                    if (p == SENTINEL_INVALID) continue;
-                    g_ledstring.channel[0].leds[p] = 
-                        (g_gamma_table[rx_buf[i*3]] << 16) | 
-                        (g_gamma_table[rx_buf[i*3+1]] << 8) | 
-                        (g_gamma_table[rx_buf[i*3+2]]);
-                }
-                ws2811_render(&g_ledstring);
-            }
-        }
-        close(client_sock);
+    ws2811_return_t initializeResult = ws2811_init(&ledStripDriver);
+    if (initializeResult != WS2811_SUCCESS) {
+        return 1;
     }
 
-    close(server_fd);
-    ws2811_fini(&g_ledstring);
+    dropProcessPrivileges();
+    
+    // Set up and start the common HTTP Server
+    HttpApiServer httpServer(HTTP_CONTROL_PORT, HTTP_RATE_LIMIT_MS);
+    httpServer.setCallbacks(
+        []() -> int {
+            int currentBrightness = apiBrightnessLevel.load();
+            return currentBrightness;
+        },
+        [](int newBrightnessLevel) -> void {
+            int clampedBrightness = std::clamp(newBrightnessLevel, 0, 255);
+            apiBrightnessLevel.store(clampedBrightness);
+        }
+    );
+    httpServer.startServer();
+
+    std::thread backgroundReceiverThread(runOpcReceiver);
+    backgroundReceiverThread.detach();
+
+    std::chrono::time_point<std::chrono::steady_clock> frameDeadline = std::chrono::steady_clock::now();
+
+    while (isRunning.load() == true) {
+        frameDeadline += TARGET_FRAME_TIME;
+        
+        int currentBrightnessLevel = apiBrightnessLevel.load();
+        float softwareScaleFactor = static_cast<float>(currentBrightnessLevel) / 255.0f;
+
+        {
+            std::lock_guard<std::mutex> lockGuard(sharedDataMutex);
+
+            for (int iteratorIndex = 0; iteratorIndex < totalLedCount; ++iteratorIndex) {
+                uint16_t physicalIdentifier = physicalLookupTable[iteratorIndex];
+                int pixelOffset = iteratorIndex * 3;
+                
+                int indexRed = incomingFrameBuffer[pixelOffset];
+                int indexGreen = incomingFrameBuffer[pixelOffset + 1];
+                int indexBlue = incomingFrameBuffer[pixelOffset + 2];
+
+                float targetRed = (gammaLookupTable[indexRed] * softwareScaleFactor) + quantizationErrorRed[physicalIdentifier];
+                float targetGreen = (gammaLookupTable[indexGreen] * softwareScaleFactor) + quantizationErrorGreen[physicalIdentifier];
+                float targetBlue = (gammaLookupTable[indexBlue] * softwareScaleFactor) + quantizationErrorBlue[physicalIdentifier];
+
+                uint8_t outputRed = static_cast<uint8_t>(std::clamp(targetRed, 0.0f, 255.0f));
+                uint8_t outputGreen = static_cast<uint8_t>(std::clamp(targetGreen, 0.0f, 255.0f));
+                uint8_t outputBlue = static_cast<uint8_t>(std::clamp(targetBlue, 0.0f, 255.0f));
+
+                float finalErrorRed = targetRed - static_cast<float>(outputRed);
+                float finalErrorGreen = targetGreen - static_cast<float>(outputGreen);
+                float finalErrorBlue = targetBlue - static_cast<float>(outputBlue);
+
+                quantizationErrorRed[physicalIdentifier] = finalErrorRed;
+                quantizationErrorGreen[physicalIdentifier] = finalErrorGreen;
+                quantizationErrorBlue[physicalIdentifier] = finalErrorBlue;
+
+                uint32_t finalColorPixel = (static_cast<uint32_t>(outputRed) << 16) | (static_cast<uint32_t>(outputGreen) << 8) | static_cast<uint32_t>(outputBlue);
+                ledStripDriver.channel[0].leds[physicalIdentifier] = finalColorPixel;
+            }
+            ws2811_render(&ledStripDriver);
+        }
+        std::this_thread::sleep_until(frameDeadline);
+    }
+
+    httpServer.stopServer();
+    ws2811_fini(&ledStripDriver);
     return 0;
 }
+
+

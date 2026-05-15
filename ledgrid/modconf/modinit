@@ -1,5 +1,5 @@
 #!/bin/sh
-## LEDwall Configuration Script
+## LEDgrid Configuration Script
 
 # Import Host name
 HOSTNAME=`cat /opt/rpi/config/hostname`
@@ -25,7 +25,7 @@ rm -f /opt/rpi/ledtype.txt
 echo "16x16grid" > /opt/rpi/ledtype.txt
 
 ## Web Interface ID
-cp -v $BIN/modconf/device.js /var/www/html/
+cp -f $BIN/modconf/device.js /var/www/html/
 chmod 644 /var/www/html/device.js
 chown www-data:www-data /var/www/html/device.js
 

@@ -35,7 +35,7 @@ chmod u=rwx,g=rx,o=rx /etc/sudoers.d/010_pi-nopasswd
 chmod u=r,g=r,o= /etc/sudoers.d/010_pi-nopasswd
 
 ## Allow Password Login
-cp -fv $BIN/modconf/sshd_config /etc/ssh/
+cp -f $BIN/modconf/sshd_config /etc/ssh/
 chown root:root /etc/ssh/sshd_config
 chmod 644 /etc/ssh/sshd_config
 

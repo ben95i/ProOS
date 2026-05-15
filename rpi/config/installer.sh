@@ -277,8 +277,8 @@ chown root:root /etc/lighttpd/lighttpd.conf
 
 ## Node.JS API Pi Specific Overrides
 mv -f /opt/rpi/custom.js /opt/nodeapi/
+mv -f /opt/rpi/ledparser.js /opt/nodeapi/
 mv -f /opt/rpi/controller.js /opt/nodeapi/
-mv -f /opt/rpi/effects/ledparser.js /opt/nodeapi/
 
 ## Node.JS API Server
 mv -f /opt/nodeapi/nodeapi.service /etc/systemd/system/
@@ -289,7 +289,7 @@ npm install
 cd $BIN
 
 ## Lighttpd base website files
-rm -r /var/www/html
+rm -rf /var/www/html
 mkdir -p /var/www/html
 mv -f $BIN/html-base/* /var/www/html
 mv -f $BIN/html/* /var/www/html
@@ -312,13 +312,13 @@ else
   sed -i "s/>Automate</>$MODNAME</g" /var/www/html/index.html
 fi
 
-## WWW Permissions (Network Web UI)
+## WWW Permissions
+usermod -aG audio www-data
 rm -f /etc/sudoers.d/www-perms
 rm -f /etc/sudoers.d/www-nopasswd
 rm -f /etc/sudoers.d/www-mod-nopasswd
 rm -f /etc/sudoers.d/nobody-perms
 sh -c "touch /etc/sudoers.d/www-perms"
-sh -c "echo \"www-data ALL=(ALL) NOPASSWD:/opt/rpi/effects/setleds.sh\" >> /etc/sudoers.d/www-perms"
 sh -c "echo \"www-data ALL=(ALL) NOPASSWD:/opt/rpi/servercmds.sh\" >> /etc/sudoers.d/www-perms"
 sh -c "echo \"www-data ALL=(ALL) NOPASSWD:/opt/rpi/relaxrun.sh\" >> /etc/sudoers.d/www-perms"
 chown root:root /etc/sudoers.d/www-perms
@@ -484,162 +484,180 @@ if [ ! -e "/usr/local/include/ws2811/ws2811.h" ]; then
   cd $BIN
 fi
 #######################################################
-if cmp -s $LED_EF/opcserver.cpp $SRC_BKP/opcserver.cpp; then
-    echo "Skipping OPC to WS2812B Program $NC_MSG"
-else
+if [ ! -f "$SRC_BKP/opcserver.cpp" ]; then
+  touch $SRC_BKP/opcserver.cpp
+fi
+if ! cmp -s $LED_EF/opcserver.cpp $SRC_BKP/opcserver.cpp; then
     echo "Compiling OPC to WS2812B Program..."
     rm -f $LED_EF/opcserver
-    g++ -O3 -Wall -Wextra $LED_EF/opcserver.cpp -o $LED_EF/opcserver -lws2811
+    g++ -O3 -std=c++17 $LED_EF/opcserver.cpp $LED_EF/httpapiserver.cpp -o $LED_EF/opcserver -lws2811 -lpthread
 fi
 mv -f $LED_EF/opcserver.cpp $SRC_BKP/
 #######################################################
-if cmp -s $LED_EF/fcproxy.cpp $SRC_BKP/fcproxy.cpp; then
-    echo "Skipping Brightness Proxy Program $NC_MSG"
-else
+if [ ! -f "$SRC_BKP/fcproxy.cpp" ]; then
+  touch $SRC_BKP/fcproxy.cpp
+fi
+if ! cmp -s $LED_EF/fcproxy.cpp $SRC_BKP/fcproxy.cpp; then
     echo "Compiling Brightness Proxy Program..."
     rm -f $LED_EF/fcproxy
-    g++ -O3 $LED_EF/fcproxy.cpp -o $LED_EF/fcproxy -lpthread
+    g++ -O3 $LED_EF/fcproxy.cpp $LED_EF/httpapiserver.cpp -o $LED_EF/fcproxy -lpthread
 fi
 mv -f $LED_EF/fcproxy.cpp $SRC_BKP/
 #######################################################
-if cmp -s $LED_EF/mp4toleds.cpp $SRC_BKP/mp4toleds.cpp; then
-    echo "Skipping Video File to OPC Program $NC_MSG"
-else
+if [ ! -f "$SRC_BKP/textscroll.cpp" ]; then
+  touch $SRC_BKP/textscroll.cpp
+fi
+if ! cmp -s $LED_EF/textscroll.cpp $SRC_BKP/textscroll.cpp; then
+    echo "Compiling LED Text Scrolling Program..."
+    rm -f $LED_EF/textscroll
+    g++ -O3 -Wall $LED_EF/textscroll.cpp $LED_EF/ledlayout.cpp $LED_EF/opcclient.cpp -o $LED_EF/textscroll
+fi
+mv -f $LED_EF/textscroll.cpp $SRC_BKP/
+#######################################################
+if [ ! -f "$SRC_BKP/mp4toleds.cpp" ]; then
+  touch $SRC_BKP/mp4toleds.cpp
+fi
+if ! cmp -s $LED_EF/mp4toleds.cpp $SRC_BKP/mp4toleds.cpp; then
     echo "Compiling Video File to OPC Program..."
     rm -f $LED_EF/mp4toleds
-    g++ -O3 $LED_EF/mp4toleds.cpp $LED_EF/LEDLayout.cpp $LED_EF/OPCClient.cpp -o $LED_EF/mp4toleds $(pkg-config --cflags --libs opencv4)
+    g++ -O3 $LED_EF/mp4toleds.cpp $LED_EF/ledlayout.cpp $LED_EF/opcclient.cpp -o $LED_EF/mp4toleds $(pkg-config --cflags --libs opencv4) -pthread
 fi
 mv -f $LED_EF/mp4toleds.cpp $SRC_BKP/
 #######################################################
-if cmp -s $LED_EF/spectro.cpp $SRC_BKP/spectro.cpp; then
-    echo "Skipping Spectrogram LED Program $NC_MSG"
-else
+if [ ! -f "$SRC_BKP/spectro.cpp" ]; then
+  touch $SRC_BKP/spectro.cpp
+fi
+if ! cmp -s $LED_EF/spectro.cpp $SRC_BKP/spectro.cpp; then
     echo "Compiling Spectrogram LED Program..."
     rm -f $LED_EF/spectro
-    g++ -O3 $LED_EF/spectro.cpp $LED_EF/LEDLayout.cpp $LED_EF/OPCClient.cpp -o $LED_EF/spectro -lasound -pthread
+    g++ -O3 $LED_EF/spectro.cpp $LED_EF/ledlayout.cpp $LED_EF/opcclient.cpp -o $LED_EF/spectro -lasound -pthread
 fi
 mv -f $LED_EF/spectro.cpp $SRC_BKP/
 #######################################################
-if cmp -s $LED_EF/noise.cpp $SRC_BKP/noise.cpp; then
-    echo "Skipping Noise LED Program $NC_MSG"
-else
+if [ ! -f "$SRC_BKP/noise.cpp" ]; then
+  touch $SRC_BKP/noise.cpp
+fi
+if ! cmp -s $LED_EF/noise.cpp $SRC_BKP/noise.cpp; then
     echo "Compiling Noise LED Program..."
     rm -f $LED_EF/noise
-    g++ -O3 $LED_EF/noise.cpp $LED_EF/LEDLayout.cpp $LED_EF/OPCClient.cpp -o $LED_EF/noise -lm
+    g++ -O3 $LED_EF/noise.cpp $LED_EF/ledlayout.cpp $LED_EF/opcclient.cpp -o $LED_EF/noise -lm
 fi
 mv -f $LED_EF/noise.cpp $SRC_BKP/
 #######################################################
-if cmp -s $LED_EF/orbits.cpp $SRC_BKP/orbits.cpp; then
-    echo "Skipping Orbits LED Program $NC_MSG"
-else
+if [ ! -f "$SRC_BKP/orbits.cpp" ]; then
+  touch $SRC_BKP/orbits.cpp
+fi
+if ! cmp -s $LED_EF/orbits.cpp $SRC_BKP/orbits.cpp; then
     echo "Compiling Orbits LED Program..."
     rm -f $LED_EF/orbits
-    g++ -O3 $LED_EF/orbits.cpp $LED_EF/LEDLayout.cpp $LED_EF/OPCClient.cpp -o $LED_EF/orbits -lm
+    g++ -O3 $LED_EF/orbits.cpp $LED_EF/ledlayout.cpp $LED_EF/opcclient.cpp -o $LED_EF/orbits -lm
 fi
 mv -f $LED_EF/orbits.cpp $SRC_BKP/
 #######################################################
-if cmp -s $LED_EF/miami.cpp $SRC_BKP/miami.cpp; then
-    echo "Skipping Miami LED Program $NC_MSG"
-else
+if [ ! -f "$SRC_BKP/miami.cpp" ]; then
+  touch $SRC_BKP/miami.cpp
+fi
+if ! cmp -s $LED_EF/miami.cpp $SRC_BKP/miami.cpp; then
     echo "Compiling Miami LED Program..."
     rm -f $LED_EF/miami
-    g++ -O3 $LED_EF/miami.cpp $LED_EF/LEDLayout.cpp $LED_EF/OPCClient.cpp -o $LED_EF/miami -lm
+    g++ -O3 $LED_EF/miami.cpp $LED_EF/ledlayout.cpp $LED_EF/opcclient.cpp -o $LED_EF/miami -lm
 fi
 mv -f $LED_EF/miami.cpp $SRC_BKP/
 #######################################################
-if cmp -s $LED_EF/spark.cpp $SRC_BKP/spark.cpp; then
-    echo "Skipping Spark LED Program $NC_MSG"
-else
+if [ ! -f "$SRC_BKP/spark.cpp" ]; then
+  touch $SRC_BKP/spark.cpp
+fi
+if ! cmp -s $LED_EF/spark.cpp $SRC_BKP/spark.cpp; then
     echo "Compiling Spark LED Program..."
     rm -f $LED_EF/spark
-    g++ -O3 $LED_EF/spark.cpp $LED_EF/LEDLayout.cpp $LED_EF/OPCClient.cpp -o $LED_EF/spark -lm
+    g++ -O3 $LED_EF/spark.cpp $LED_EF/ledlayout.cpp $LED_EF/opcclient.cpp -o $LED_EF/spark -lm
 fi
 mv -f $LED_EF/spark.cpp $SRC_BKP/
 #######################################################
-if cmp -s $LED_EF/lava.cpp $SRC_BKP/lava.cpp; then
-    echo "Skipping Lava LED Program $NC_MSG"
-else
+if [ ! -f "$SRC_BKP/lava.cpp" ]; then
+  touch $SRC_BKP/lava.cpp
+fi
+if ! cmp -s $LED_EF/lava.cpp $SRC_BKP/lava.cpp; then
     echo "Compiling Lava LED Program..."
     rm -f $LED_EF/lava
-    g++ -O3 $LED_EF/lava.cpp $LED_EF/LEDLayout.cpp $LED_EF/OPCClient.cpp -o $LED_EF/lava -lm
+    g++ -O3 $LED_EF/lava.cpp $LED_EF/ledlayout.cpp $LED_EF/opcclient.cpp -o $LED_EF/lava -lm
 fi
 mv -f $LED_EF/lava.cpp $SRC_BKP/
 #######################################################
-if cmp -s $LED_EF/stripes.cpp $SRC_BKP/stripes.cpp; then
-    echo "Skipping Stripes LED Program $NC_MSG"
-else
+if [ ! -f "$SRC_BKP/stripes.cpp" ]; then
+  touch $SRC_BKP/stripes.cpp
+fi
+if ! cmp -s $LED_EF/stripes.cpp $SRC_BKP/stripes.cpp; then
     echo "Compiling Stripes LED Program..."
     rm -f $LED_EF/stripes
-    g++ -O3 $LED_EF/stripes.cpp $LED_EF/LEDLayout.cpp $LED_EF/OPCClient.cpp -o $LED_EF/stripes -lm
+    g++ -O3 $LED_EF/stripes.cpp $LED_EF/ledlayout.cpp $LED_EF/opcclient.cpp -o $LED_EF/stripes -lm
 fi
 mv -f $LED_EF/stripes.cpp $SRC_BKP/
 #######################################################
-if cmp -s $LED_EF/rave.cpp $SRC_BKP/rave.cpp; then
-    echo "Skipping Rave LED Program $NC_MSG"
-else
-    echo "Compiling Rave LED Program..."
-    rm -f $LED_EF/rave
-    g++ -O3 $LED_EF/rave.cpp $LED_EF/LEDLayout.cpp $LED_EF/OPCClient.cpp -o $LED_EF/rave -lm
+if [ ! -f "$SRC_BKP/chase.cpp" ]; then
+  touch $SRC_BKP/chase.cpp
 fi
-mv -f $LED_EF/rave.cpp $SRC_BKP/
-#######################################################
-if cmp -s $LED_EF/chase.cpp $SRC_BKP/chase.cpp; then
-    echo "Skipping Chase LED Program $NC_MSG"
-else
+if ! cmp -s $LED_EF/chase.cpp $SRC_BKP/chase.cpp; then
     echo "Compiling Chase LED Program..."
     rm -f $LED_EF/chase
-    g++ -O3 $LED_EF/chase.cpp $LED_EF/LEDLayout.cpp $LED_EF/OPCClient.cpp -o $LED_EF/chase -pthread
+    g++ -O3 $LED_EF/chase.cpp $LED_EF/ledlayout.cpp $LED_EF/opcclient.cpp -o $LED_EF/chase -lm
 fi
 mv -f $LED_EF/chase.cpp $SRC_BKP/
 #######################################################
-if cmp -s $LED_EF/writecolor.cpp $SRC_BKP/writecolor.cpp; then
-    echo "Skipping Color to OPC LED Program $NC_MSG"
-else
+if [ ! -f "$SRC_BKP/writecolor.cpp" ]; then
+  touch $SRC_BKP/writecolor.cpp
+fi
+if ! cmp -s $LED_EF/writecolor.cpp $SRC_BKP/writecolor.cpp; then
     echo "Compiling Color to OPC LED Program..."
     rm -f $LED_EF/writecolor
-    g++ -O3 $LED_EF/writecolor.cpp $LED_EF/OPCClient.cpp -o $LED_EF/writecolor
+    g++ -O3 $LED_EF/writecolor.cpp $LED_EF/ledlayout.cpp $LED_EF/opcclient.cpp -o $LED_EF/writecolor -lm
 fi
 mv -f $LED_EF/writecolor.cpp $SRC_BKP/
 #######################################################
-if cmp -s $LED_EF/colorscan.cbl $SRC_BKP/colorscan.cbl; then
-    echo "Skipping Color Lookup COBOL Program $NC_MSG"
-else
+if [ ! -f "$SRC_BKP/colorscan.cbl" ]; then
+  touch $SRC_BKP/colorscan.cbl
+fi
+if ! cmp -s $LED_EF/colorscan.cbl $SRC_BKP/colorscan.cbl; then
     echo "Compiling Color Lookup COBOL Program..."
     rm -f $LED_EF/colorscan
     cobc -x --free $LED_EF/colorscan.cbl -o $LED_EF/colorscan
 fi
 mv -f $LED_EF/colorscan.cbl $SRC_BKP/
 #######################################################
-if cmp -s $SRC_BIN/gposerver.cpp $SRC_BKP/gposerver.cpp; then
-    echo "Skipping GPO Pin Control Program $NC_MSG"
-else
+if [ ! -f "$SRC_BKP/gposerver.cpp" ]; then
+  touch $SRC_BKP/gposerver.cpp
+fi
+if ! cmp -s $SRC_BIN/gposerver.cpp $SRC_BKP/gposerver.cpp; then
     echo "Compiling GPO Pin Control Program..."
     rm -f $SRC_BIN/gposerver
     g++ $SRC_BIN/gposerver.cpp -o $SRC_BIN/gposerver -lgpiodcxx
 fi
 mv -f $SRC_BIN/gposerver.cpp $SRC_BKP/
 #######################################################
-if cmp -s $SRC_BIN/pinmon.cpp $SRC_BKP/pinmon.cpp; then
-    echo "Skipping GPI Pin Monitor Program $NC_MSG"
-else
+if [ ! -f "$SRC_BKP/pinmon.cpp" ]; then
+  touch $SRC_BKP/pinmon.cpp
+fi
+if ! cmp -s $SRC_BIN/pinmon.cpp $SRC_BKP/pinmon.cpp; then
     echo "Compiling GPI Pin Monitor Program..."
     rm -f $SRC_BIN/pinmon
     g++ -Wall -O3 $SRC_BIN/pinmon.cpp -o $SRC_BIN/pinmon -lgpiodcxx
 fi
 mv -f $SRC_BIN/pinmon.cpp $SRC_BKP/
 #######################################################
-if cmp -s $SRC_BIN/ldrdetect.cpp $SRC_BKP/ldrdetect.cpp; then
-    echo "Skipping LDR Detector Program $NC_MSG"
-else
+if [ ! -f "$SRC_BKP/ldrdetect.cpp" ]; then
+  touch $SRC_BKP/ldrdetect.cpp
+fi
+if ! cmp -s $SRC_BIN/ldrdetect.cpp $SRC_BKP/ldrdetect.cpp; then
     echo "Compiling LDR Detector Program..."
     rm -f $SRC_BIN/ldrdetect
     g++ $SRC_BIN/ldrdetect.cpp -o $SRC_BIN/ldrdetect -lgpiodcxx
 fi
 mv -f $SRC_BIN/ldrdetect.cpp $SRC_BKP/
 #######################################################
-if cmp -s $SRC_BIN/ztermcom.c $SRC_BKP/ztermcom.c; then
-    echo "Skipping Z-Term RS232 Communication Program $NC_MSG"
-else
+if [ ! -f "$SRC_BKP/ztermcom.c" ]; then
+  touch $SRC_BKP/ztermcom.c
+fi
+if ! cmp -s $SRC_BIN/ztermcom.c $SRC_BKP/ztermcom.c; then
     echo "Compiling Z-Term RS232 Communication Program..."
     rm -f /usr/bin/ztermcom
     gcc $SRC_BIN/ztermcom.c -o /usr/bin/ztermcom
@@ -647,8 +665,6 @@ fi
 mv -f $SRC_BIN/ztermcom.c $SRC_BKP/
 usermod -a -G dialout www-data
 usermod -a -G tty www-data
-#######################################################
-echo "Compilation completed."
 #######################################################
 
 ## Services Configuration

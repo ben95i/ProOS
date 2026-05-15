@@ -40,7 +40,7 @@ chown root:root /etc/auto.creds
 mkdir -p /mnt/smb
 
 ## Custom Node API
-cp -v $BIN/modconf/custom.js /opt/nodeapi/
+cp -f $BIN/modconf/custom.js /opt/nodeapi/
 chmod 644 /opt/nodeapi/custom.js
 chown www-data:www-data /opt/nodeapi/custom.js
 

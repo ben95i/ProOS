@@ -25,12 +25,12 @@ rm -f /opt/rpi/ledtype.txt
 echo "93ring" > /opt/rpi/ledtype.txt
 
 ## Web Interface ID
-cp -v $BIN/modconf/device.js /var/www/html/
+cp -f $BIN/modconf/device.js /var/www/html/
 chmod 644 /var/www/html/device.js
 chown www-data:www-data /var/www/html/device.js
 
 ## Custom Node API
-cp -v $BIN/modconf/custom.js /opt/nodeapi/
+cp -f $BIN/modconf/custom.js /opt/nodeapi/
 chmod 644 /opt/nodeapi/custom.js
 chown www-data:www-data /opt/nodeapi/custom.js
 

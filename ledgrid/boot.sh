@@ -1,18 +1,17 @@
 #!/bin/bash
-########################################################
-## LEDgrid boot script by Ben Provenzano III ###########
-########################################################
-########################################################
+###############################################
+## LEDgrid Boot Script by Ben Provenzano III ##
+###############################################
 
-## Setup LEDs
-systemctl stop rpi-fcleds
-systemctl stop rpi-opcserver
-systemctl set-environment rpi_ledtype=`cat /opt/rpi/ledtype.txt`
+## LED Controller
+LEDTYPE=`cat /opt/rpi/ledtype.txt`
+systemctl set-environment rpi_ledtype=$LEDTYPE
 systemctl set-environment rpi_ledgridrotate=180 ## 0, 90, 180, 270 degrees
-systemctl set-environment rpi_ledmaxbright=40 ## 0 thru 255 levels
-systemctl start rpi-opcserver
+systemctl set-environment rpi_ledmaxbright=25 ## 0 thru 255
+systemctl restart rpi-opcserver
+systemctl restart rpi-mp4toleds
 
 ## Auto Wi-Fi Hotspot
-systemctl start rpi-netdetect
+systemctl restart rpi-netdetect
 
 exit

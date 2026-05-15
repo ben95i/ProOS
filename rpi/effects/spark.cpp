@@ -1,6 +1,6 @@
-#include "LEDLayout.h"
-#include "OPCClient.h"
-#include "ColorUtils.h"
+#include "ledlayout.h"
+#include "opcclient.h"
+#include "colorutils.h"
 #include <chrono>
 #include <thread>
 #include <vector>

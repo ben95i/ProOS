@@ -26,7 +26,7 @@ if [ ! -e "/media/usb0/rclone/rclone.conf" ]; then
   echo "API key not found on flash drive, running setup..."
   echo "Create new remote named 'gsync' and attach to Google Drive"
   rclone config
-  cp -fv /root/.config/rclone/rclone.conf /media/usb0/rclone/
+  cp -f /root/.config/rclone/rclone.conf /media/usb0/rclone/
   cat /media/usb0/rclone/rclone.conf
 fi
 

@@ -1,10 +1,12 @@
-lava
-candle
 miami
 abstract
 flames
 spark
 prism
+mario
 rays
 clouds
 spectrum
+orbits
+spectro
+noise

@@ -1,7 +1,7 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
-#include "LEDLayout.h"
-#include "OPCClient.h"
+#include "ledlayout.h"
+#include "opcclient.h"
 
 #include <iostream>
 #include <vector>

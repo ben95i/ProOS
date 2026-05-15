@@ -13,306 +13,407 @@
 #include <signal.h>
 #include <chrono>
 #include <poll.h>
+#include "httpapiserver.h"
 
 // --- Configuration Constants ---
-#define OPC_LISTEN_PORT 7890
-#define OPC_TARGET_PORT 7891
-#define HTTP_LISTEN_PORT 7892
-#define TARGET_IP "127.0.0.1"
+constexpr int OPC_LISTEN_PORT = 7890;
+constexpr int OPC_TARGET_PORT = 7891;
+constexpr int HTTP_LISTEN_PORT = 7892;
+constexpr int HTTP_RATE_LIMIT_MS = 100;
+constexpr const char* LOOPBACK_IP = "127.0.0.1";
 
-const int INITIAL_BRIGHTNESS = 178; 
-const float MIN_BRIGHTNESS_FLOOR = 0.1f; 
-const size_t OPC_HEADER_LEN = 4;
-const float GLOBAL_GAMMA = 2.2f;
-
-constexpr std::chrono::milliseconds HTTP_RATE_LIMIT{100};
+constexpr int INITIAL_BRIGHTNESS = 178; 
+constexpr float MIN_BRIGHTNESS_FLOOR = 0.1f; 
+constexpr size_t OPC_HEADER_LEN = 4;
+constexpr float GLOBAL_GAMMA = 2.8f;
 
 // --- Global State ---
 
-// Thread-safe brightness tracker and state versioning
-std::atomic<int> g_current_brightness{INITIAL_BRIGHTNESS};
-std::atomic<uint32_t> g_brightness_version{0}; 
+std::atomic<int> globalCurrentBrightness{INITIAL_BRIGHTNESS};
+std::atomic<uint32_t> globalBrightnessVersion{0}; 
 
-// Track how many OPC clients are currently connected
-std::atomic<int> g_active_clients{0};
+std::atomic<int> globalActiveClients{0};
 
-// Frame Caching (Double Buffering Concept)
-std::mutex g_cache_mutex;
-std::vector<uint8_t> g_last_raw_payload;
-uint8_t g_last_header[OPC_HEADER_LEN] = {0};
+std::mutex cacheMutex;
+std::vector<uint8_t> lastRawPayload;
+uint8_t lastHeader[OPC_HEADER_LEN] = {0};
 
-// Gamma Lookup Table
-uint8_t g_lookup_table[256];
-std::mutex g_table_mutex;
-
-// Rate Limiting State
-std::mutex g_rate_limit_mutex;
-auto g_last_request_time = std::chrono::steady_clock::now() - HTTP_RATE_LIMIT;
+uint8_t gammaLookupTable[256];
+std::mutex tableMutex;
 
 // --- Logic Functions ---
 
-void update_gamma_table(float brightness_normalized) {
-    std::lock_guard<std::mutex> lock(g_table_mutex);
-    for (int i = 0; i < 256; i++) {
-        float scaled = std::pow((float)i / 255.0f, GLOBAL_GAMMA) * brightness_normalized;
-        g_lookup_table[i] = static_cast<uint8_t>(std::round(scaled * 255.0f));
+void updateGammaTable(float brightnessNormalized) {
+    std::lock_guard<std::mutex> lockGuard(tableMutex);
+    
+    for (int iteratorIndex = 0; iteratorIndex < 256; iteratorIndex++) {
+        float normalizedIndex = static_cast<float>(iteratorIndex) / 255.0f;
+        float powerApplied = std::pow(normalizedIndex, GLOBAL_GAMMA);
+        float scaledValue = powerApplied * brightnessNormalized;
+        
+        float finalRoundedValue = std::round(scaledValue * 255.0f);
+        gammaLookupTable[iteratorIndex] = static_cast<uint8_t>(finalRoundedValue);
     }
 }
 
-// --- HTTP LISTENER ---
-void web_listener() {
-    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    int opt = 1;
-    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+/**
+ * @brief Sends the last cached frame to the target if no client is actively doing it.
+ */
+void triggerFallbackFrameSend() {
+    int activeClientCount = globalActiveClients.load();
+    
+    bool isFallbackRequired = false;
+    if (activeClientCount == 0) {
+        isFallbackRequired = true;
+    }
 
-    struct sockaddr_in addr{};
-    addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = INADDR_ANY;
-    addr.sin_port = htons(HTTP_LISTEN_PORT);
+    if (isFallbackRequired == false) {
+        return;
+    }
 
-    bind(server_fd, (struct sockaddr*)&addr, sizeof(addr));
-    listen(server_fd, 5);
+    std::vector<uint8_t> cachedPayloadData;
+    uint8_t cachedHeaderData[OPC_HEADER_LEN];
+    uint8_t localGammaTable[256];
 
-    while (true) {
-        int client_fd = accept(server_fd, NULL, NULL);
-        if (client_fd < 0) continue;
+    {
+        std::lock_guard<std::mutex> cacheLockGuard(cacheMutex);
+        
+        bool isCacheEmpty = lastRawPayload.empty();
+        if (isCacheEmpty == false) {
+            cachedPayloadData = lastRawPayload;
+            std::copy(lastHeader, lastHeader + OPC_HEADER_LEN, cachedHeaderData);
+        }
+    }
 
-        // Rate Limiter logic
+    bool hasPayloadToProcess = false;
+    if (cachedPayloadData.empty() == false) {
+        hasPayloadToProcess = true;
+    }
+
+    if (hasPayloadToProcess == true) {
         {
-            std::lock_guard<std::mutex> lock(g_rate_limit_mutex);
-            auto now = std::chrono::steady_clock::now();
-            if (now - g_last_request_time < HTTP_RATE_LIMIT) {
-                std::string busy = "HTTP/1.1 200 BUSY\r\nContent-Type: text/plain\r\nContent-Length: 4\r\n\r\nBUSY";
-                send(client_fd, busy.c_str(), busy.length(), 0);
-                close(client_fd);
-                continue;
-            }
-            g_last_request_time = now;
+            std::lock_guard<std::mutex> tableLockGuard(tableMutex);
+            std::copy(std::begin(gammaLookupTable), std::end(gammaLookupTable), std::begin(localGammaTable));
+        }
+        
+        for (size_t payloadIndex = 0; payloadIndex < cachedPayloadData.size(); ++payloadIndex) {
+            uint8_t originalPixel = cachedPayloadData[payloadIndex];
+            uint8_t correctedPixel = localGammaTable[originalPixel];
+            cachedPayloadData[payloadIndex] = correctedPixel;
         }
 
-        char buffer[1024] = {0};
-        read(client_fd, buffer, sizeof(buffer) - 1);
-        std::string request(buffer);
-        std::string response;
-
-        if (request.find("GET /brightness ") != std::string::npos) {
-            std::string body = std::to_string(g_current_brightness.load());
-            response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " + std::to_string(body.length()) + "\r\n\r\n" + body;
-        } 
-        else if (size_t pos = request.find("b="); pos != std::string::npos) {
-            try {
-                float raw_val = std::stof(request.substr(pos + 2));
-                float input_ratio = std::clamp(raw_val / 255.0f, 0.0f, 1.0f);
-                float normalized = MIN_BRIGHTNESS_FLOOR + (input_ratio * (1.0f - MIN_BRIGHTNESS_FLOOR));
-                
-                update_gamma_table(normalized);
-                g_current_brightness.store(static_cast<int>(std::round(raw_val)));
-                
-                // Flag to the active proxy threads that they need to resend their cache
-                g_brightness_version.fetch_add(1);
-
-                // --- FALLBACK LOGIC ---
-                // If there are no active clients sending frames, push the update manually
-                if (g_active_clients.load() == 0) {
-                    std::vector<uint8_t> cached_payload;
-                    uint8_t cached_header[OPC_HEADER_LEN];
-                    uint8_t local_table[256];
-
-                    // Grab the latest cached frame safely
-                    {
-                        std::lock_guard<std::mutex> cache_lock(g_cache_mutex);
-                        if (!g_last_raw_payload.empty()) {
-                            cached_payload = g_last_raw_payload;
-                            std::copy(g_last_header, g_last_header + OPC_HEADER_LEN, cached_header);
-                        }
-                    }
-
-                    if (!cached_payload.empty()) {
-                        {
-                            std::lock_guard<std::mutex> table_lock(g_table_mutex);
-                            std::copy(std::begin(g_lookup_table), std::end(g_lookup_table), std::begin(local_table));
-                        }
-                        
-                        for (auto &pixel : cached_payload) {
-                            pixel = local_table[pixel];
-                        }
-
-                        // Temporarily connect to the target to send the frame
-                        int temp_fd = socket(AF_INET, SOCK_STREAM, 0);
-                        if (temp_fd >= 0) {
-                            struct sockaddr_in target_addr{};
-                            target_addr.sin_family = AF_INET;
-                            target_addr.sin_port = htons(OPC_TARGET_PORT);
-                            inet_pton(AF_INET, TARGET_IP, &target_addr.sin_addr);
-
-                            if (connect(temp_fd, (struct sockaddr*)&target_addr, sizeof(target_addr)) == 0) {
-                                send(temp_fd, cached_header, OPC_HEADER_LEN, 0);
-                                send(temp_fd, cached_payload.data(), cached_payload.size(), 0);
-                            }
-                            close(temp_fd);
-                        }
-                    }
-                }
-                
-                response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK\n";
-            } catch (...) {
-                response = "HTTP/1.1 400 Bad Request\r\n\r\nInvalid Value\n";
-            }
-        } 
-        else {
-            response = "HTTP/1.1 404 Not Found\r\n\r\nNot Found\n";
+        int temporarySocketDescriptor = socket(AF_INET, SOCK_STREAM, 0);
+        
+        bool isSocketValid = false;
+        if (temporarySocketDescriptor >= 0) {
+            isSocketValid = true;
         }
 
-        send(client_fd, response.c_str(), response.length(), 0);
-        close(client_fd);
+        if (isSocketValid == true) {
+            struct sockaddr_in targetAddress{};
+            targetAddress.sin_family = AF_INET;
+            targetAddress.sin_port = htons(OPC_TARGET_PORT);
+            inet_pton(AF_INET, LOOPBACK_IP, &targetAddress.sin_addr);
+
+            int connectionResult = connect(temporarySocketDescriptor, (struct sockaddr*)&targetAddress, sizeof(targetAddress));
+            
+            bool isConnectionSuccessful = false;
+            if (connectionResult == 0) {
+                isConnectionSuccessful = true;
+            }
+
+            if (isConnectionSuccessful == true) {
+                send(temporarySocketDescriptor, cachedHeaderData, OPC_HEADER_LEN, 0);
+                send(temporarySocketDescriptor, cachedPayloadData.data(), cachedPayloadData.size(), 0);
+            }
+            close(temporarySocketDescriptor);
+        }
     }
 }
 
 // --- OPC PROXY ---
-void handle_opc_client(int client_fd, int server_fd) {
-    // RAII helper to safely track active clients even if an error causes an early return
-    struct ClientTracker {
-        ClientTracker() { g_active_clients.fetch_add(1); }
-        ~ClientTracker() { g_active_clients.fetch_sub(1); }
-    } tracker;
-
-    uint8_t header[OPC_HEADER_LEN];
-    std::vector<uint8_t> payload; 
-    uint8_t local_table[256];
+void handleOpcClient(int clientSocketDescriptor, int serverSocketDescriptor) {
+    class ClientTracker {
+    public:
+        ClientTracker() { 
+            globalActiveClients.fetch_add(1); 
+        }
+        ~ClientTracker() { 
+            globalActiveClients.fetch_sub(1); 
+        }
+    };
     
-    uint32_t local_brightness_version = g_brightness_version.load();
+    ClientTracker activeClientTracker;
 
-    struct pollfd pfd;
-    pfd.fd = client_fd;
-    pfd.events = POLLIN;
+    uint8_t headerBuffer[OPC_HEADER_LEN];
+    std::vector<uint8_t> payloadBuffer; 
+    uint8_t localGammaTable[256];
+    
+    uint32_t localBrightnessVersion = globalBrightnessVersion.load();
 
-    while (true) {
-        // 1. Check if the HTTP thread updated the brightness state
-        if (local_brightness_version != g_brightness_version.load()) {
-            local_brightness_version = g_brightness_version.load();
+    struct pollfd pollFileDescriptor;
+    pollFileDescriptor.fd = clientSocketDescriptor;
+    pollFileDescriptor.events = POLLIN;
+
+    bool isClientActive = true;
+    while (isClientActive == true) {
+        
+        uint32_t currentGlobalVersion = globalBrightnessVersion.load();
+        bool isVersionMismatch = false;
+        
+        if (localBrightnessVersion != currentGlobalVersion) {
+            isVersionMismatch = true;
+        }
+
+        if (isVersionMismatch == true) {
+            localBrightnessVersion = currentGlobalVersion;
             
-            std::vector<uint8_t> cached_payload;
-            uint8_t cached_header[OPC_HEADER_LEN];
+            std::vector<uint8_t> cachedPayloadData;
+            uint8_t cachedHeaderData[OPC_HEADER_LEN];
 
-            // Safely fetch the last known raw frame
             {
-                std::lock_guard<std::mutex> cache_lock(g_cache_mutex);
-                if (!g_last_raw_payload.empty()) {
-                    cached_payload = g_last_raw_payload;
-                    std::copy(g_last_header, g_last_header + OPC_HEADER_LEN, cached_header);
+                std::lock_guard<std::mutex> cacheLockGuard(cacheMutex);
+                
+                bool isCacheEmpty = lastRawPayload.empty();
+                if (isCacheEmpty == false) {
+                    cachedPayloadData = lastRawPayload;
+                    std::copy(lastHeader, lastHeader + OPC_HEADER_LEN, cachedHeaderData);
                 }
             }
 
-            // If we have cached data, process and send it
-            if (!cached_payload.empty()) {
+            bool hasCachedPayload = false;
+            if (cachedPayloadData.empty() == false) {
+                hasCachedPayload = true;
+            }
+
+            if (hasCachedPayload == true) {
                 {
-                    std::lock_guard<std::mutex> table_lock(g_table_mutex);
-                    std::copy(std::begin(g_lookup_table), std::end(g_lookup_table), std::begin(local_table));
+                    std::lock_guard<std::mutex> tableLockGuard(tableMutex);
+                    std::copy(std::begin(gammaLookupTable), std::end(gammaLookupTable), std::begin(localGammaTable));
                 }
                 
-                for (auto &pixel : cached_payload) {
-                    pixel = local_table[pixel];
+                for (size_t payloadIndex = 0; payloadIndex < cachedPayloadData.size(); ++payloadIndex) {
+                    uint8_t originalPixel = cachedPayloadData[payloadIndex];
+                    uint8_t correctedPixel = localGammaTable[originalPixel];
+                    cachedPayloadData[payloadIndex] = correctedPixel;
                 }
 
-                if (send(server_fd, cached_header, OPC_HEADER_LEN, 0) <= 0) break;
-                if (send(server_fd, cached_payload.data(), cached_payload.size(), 0) <= 0) break;
+                ssize_t headerBytesSent = send(serverSocketDescriptor, cachedHeaderData, OPC_HEADER_LEN, 0);
+                if (headerBytesSent <= 0) {
+                    break;
+                }
+                
+                ssize_t payloadBytesSent = send(serverSocketDescriptor, cachedPayloadData.data(), cachedPayloadData.size(), 0);
+                if (payloadBytesSent <= 0) {
+                    break;
+                }
             }
         }
 
-        // 2. Poll the socket with a 50ms timeout to allow state checks
-        int poll_res = poll(&pfd, 1, 50); 
-        if (poll_res < 0) break;       // Error occurred
-        if (poll_res == 0) continue;   // Timeout reached, loop back around to check version
-
-        // 3. Process incoming frame since poll says data is ready
-        if (recv(client_fd, header, OPC_HEADER_LEN, MSG_WAITALL) <= 0) break;
-
-        uint16_t length = (static_cast<uint16_t>(header[2]) << 8) | header[3];
-        if (payload.size() < length) payload.resize(length);
-
-        if (length > 0) {
-            if (recv(client_fd, payload.data(), length, MSG_WAITALL) <= 0) break;
+        int pollResult = poll(&pollFileDescriptor, 1, 50); 
+        
+        bool isPollError = false;
+        if (pollResult < 0) {
+            isPollError = true;
+        }
+        if (isPollError == true) {
+            break;
         }
         
-        if (header[1] == 0) { 
-            // Update global raw cache
-            {
-                std::lock_guard<std::mutex> lock(g_cache_mutex);
-                std::copy(header, header + OPC_HEADER_LEN, g_last_header);
-                g_last_raw_payload.assign(payload.begin(), payload.begin() + length);
+        bool isPollTimeout = false;
+        if (pollResult == 0) {
+            isPollTimeout = true;
+        }
+        if (isPollTimeout == true) {
+            continue;
+        }
+
+        ssize_t headerBytesReceived = recv(clientSocketDescriptor, headerBuffer, OPC_HEADER_LEN, MSG_WAITALL);
+        
+        bool isHeaderReceived = false;
+        if (headerBytesReceived > 0) {
+            isHeaderReceived = true;
+        }
+
+        if (isHeaderReceived == false) {
+            break;
+        }
+
+        uint16_t payloadLength = (static_cast<uint16_t>(headerBuffer[2]) << 8) | headerBuffer[3];
+        
+        bool isPayloadResizeRequired = false;
+        if (payloadBuffer.size() < payloadLength) {
+            isPayloadResizeRequired = true;
+        }
+
+        if (isPayloadResizeRequired == true) {
+            payloadBuffer.resize(payloadLength);
+        }
+
+        bool hasPayloadContent = false;
+        if (payloadLength > 0) {
+            hasPayloadContent = true;
+        }
+
+        if (hasPayloadContent == true) {
+            ssize_t payloadBytesReceived = recv(clientSocketDescriptor, payloadBuffer.data(), payloadLength, MSG_WAITALL);
+            
+            bool isPayloadReceived = false;
+            if (payloadBytesReceived > 0) {
+                isPayloadReceived = true;
             }
 
-            // Apply gamma correction using local stack table
+            if (isPayloadReceived == false) {
+                break;
+            }
+        }
+        
+        bool isStandardFrame = false;
+        if (headerBuffer[1] == 0) { 
+            isStandardFrame = true;
+        }
+
+        if (isStandardFrame == true) { 
             {
-                std::lock_guard<std::mutex> lock(g_table_mutex);
-                std::copy(std::begin(g_lookup_table), std::end(g_lookup_table), std::begin(local_table));
+                std::lock_guard<std::mutex> cacheLockGuard(cacheMutex);
+                std::copy(headerBuffer, headerBuffer + OPC_HEADER_LEN, lastHeader);
+                lastRawPayload.assign(payloadBuffer.begin(), payloadBuffer.begin() + payloadLength);
             }
 
-            for (size_t i = 0; i < length; ++i) {
-                payload[i] = local_table[payload[i]];
+            {
+                std::lock_guard<std::mutex> tableLockGuard(tableMutex);
+                std::copy(std::begin(gammaLookupTable), std::end(gammaLookupTable), std::begin(localGammaTable));
+            }
+
+            for (size_t payloadIndex = 0; payloadIndex < payloadLength; ++payloadIndex) {
+                uint8_t rawPixelData = payloadBuffer[payloadIndex];
+                uint8_t correctedPixelData = localGammaTable[rawPixelData];
+                payloadBuffer[payloadIndex] = correctedPixelData;
             }
         }
 
-        // Send the processed payload
-        if (send(server_fd, header, OPC_HEADER_LEN, 0) <= 0) break;
-        if (length > 0) {
-            if (send(server_fd, payload.data(), length, 0) <= 0) break;
+        ssize_t sentHeaderBytes = send(serverSocketDescriptor, headerBuffer, OPC_HEADER_LEN, 0);
+        
+        bool isHeaderSentSuccessfully = false;
+        if (sentHeaderBytes > 0) {
+            isHeaderSentSuccessfully = true;
+        }
+
+        if (isHeaderSentSuccessfully == false) {
+            break;
+        }
+        
+        if (hasPayloadContent == true) {
+            ssize_t sentPayloadBytes = send(serverSocketDescriptor, payloadBuffer.data(), payloadLength, 0);
+            
+            bool isPayloadSentSuccessfully = false;
+            if (sentPayloadBytes > 0) {
+                isPayloadSentSuccessfully = true;
+            }
+
+            if (isPayloadSentSuccessfully == false) {
+                break;
+            }
         }
     }
 }
 
 int main() {
-    // Prevent the program from crashing if a client disconnects unexpectedly
     signal(SIGPIPE, SIG_IGN);
 
-    // Initial gamma table calculation
-    float start_ratio = (float)INITIAL_BRIGHTNESS / 255.0f;
-    float start_normalized = MIN_BRIGHTNESS_FLOOR + (start_ratio * (1.0f - MIN_BRIGHTNESS_FLOOR));
-    update_gamma_table(start_normalized);
+    float initialRatio = static_cast<float>(INITIAL_BRIGHTNESS) / 255.0f;
+    float startNormalizedValue = MIN_BRIGHTNESS_FLOOR + (initialRatio * (1.0f - MIN_BRIGHTNESS_FLOOR));
+    updateGammaTable(startNormalizedValue);
 
-    // Launch background listener
-    std::thread(web_listener).detach();
+    // Set up and start the common HTTP Server
+    HttpApiServer httpServer(HTTP_LISTEN_PORT, HTTP_RATE_LIMIT_MS);
+    httpServer.setCallbacks(
+        []() -> int {
+            int currentBrightness = globalCurrentBrightness.load();
+            return currentBrightness;
+        },
+        [](int newBrightnessLevel) -> void {
+            int clampedBrightness = std::clamp(newBrightnessLevel, 0, 255);
+            float rawValueFloat = static_cast<float>(clampedBrightness);
+            float inputRatioFloat = rawValueFloat / 255.0f;
+            float normalizedBrightnessValue = MIN_BRIGHTNESS_FLOOR + (inputRatioFloat * (1.0f - MIN_BRIGHTNESS_FLOOR));
+            
+            updateGammaTable(normalizedBrightnessValue);
+            globalCurrentBrightness.store(clampedBrightness);
+            globalBrightnessVersion.fetch_add(1);
 
-    int proxy_fd = socket(AF_INET, SOCK_STREAM, 0);
-    int opt = 1;
-    setsockopt(proxy_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+            triggerFallbackFrameSend();
+        }
+    );
+    
+    httpServer.startServer();
 
-    struct sockaddr_in proxy_addr{};
-    proxy_addr.sin_family = AF_INET;
-    proxy_addr.sin_addr.s_addr = INADDR_ANY;
-    proxy_addr.sin_port = htons(OPC_LISTEN_PORT);
+    int proxySocketDescriptor = socket(AF_INET, SOCK_STREAM, 0);
+    int socketOptions = 1;
+    setsockopt(proxySocketDescriptor, SOL_SOCKET, SO_REUSEADDR, &socketOptions, sizeof(socketOptions));
 
-    if (bind(proxy_fd, (struct sockaddr*)&proxy_addr, sizeof(proxy_addr)) < 0) {
+    struct sockaddr_in proxyAddress{};
+    proxyAddress.sin_family = AF_INET;
+    proxyAddress.sin_addr.s_addr = INADDR_ANY;
+    proxyAddress.sin_port = htons(OPC_LISTEN_PORT);
+
+    int bindResult = bind(proxySocketDescriptor, (struct sockaddr*)&proxyAddress, sizeof(proxyAddress));
+    
+    bool isBindSuccessful = false;
+    if (bindResult >= 0) {
+        isBindSuccessful = true;
+    }
+
+    if (isBindSuccessful == false) {
         std::cerr << "Fatal: Could not bind OPC port." << std::endl;
         return 1;
     }
 
-    listen(proxy_fd, 10);
+    listen(proxySocketDescriptor, 10);
     std::cout << "OPC Proxy Active on Port " << OPC_LISTEN_PORT << std::endl;
 
-    while (true) {
-        int client_fd = accept(proxy_fd, NULL, NULL);
-        if (client_fd < 0) continue;
+    bool isProxyRunning = true;
+    while (isProxyRunning == true) {
+        int clientSocketDescriptor = accept(proxySocketDescriptor, nullptr, nullptr);
+        
+        bool isClientValid = false;
+        if (clientSocketDescriptor >= 0) {
+            isClientValid = true;
+        }
 
-        int server_fd = socket(AF_INET, SOCK_STREAM, 0);
-        struct sockaddr_in target_addr{};
-        target_addr.sin_family = AF_INET;
-        target_addr.sin_port = htons(OPC_TARGET_PORT);
-        inet_pton(AF_INET, TARGET_IP, &target_addr.sin_addr);
-
-        if (connect(server_fd, (struct sockaddr*)&target_addr, sizeof(target_addr)) < 0) {
-            close(client_fd);
-            close(server_fd);
+        if (isClientValid == false) {
             continue;
         }
 
-        // Handle each client in a separate thread
-        std::thread([client_fd, server_fd]() {
-            handle_opc_client(client_fd, server_fd);
-            close(client_fd);
-            close(server_fd);
-        }).detach();
+        int targetServerSocketDescriptor = socket(AF_INET, SOCK_STREAM, 0);
+        struct sockaddr_in targetAddress{};
+        targetAddress.sin_family = AF_INET;
+        targetAddress.sin_port = htons(OPC_TARGET_PORT);
+        inet_pton(AF_INET, LOOPBACK_IP, &targetAddress.sin_addr);
+
+        int connectResult = connect(targetServerSocketDescriptor, (struct sockaddr*)&targetAddress, sizeof(targetAddress));
+        
+        bool isConnectSuccessful = false;
+        if (connectResult == 0) {
+            isConnectSuccessful = true;
+        }
+
+        if (isConnectSuccessful == false) {
+            close(clientSocketDescriptor);
+            close(targetServerSocketDescriptor);
+            continue;
+        }
+
+        std::thread clientThread([clientSocketDescriptor, targetServerSocketDescriptor]() {
+            handleOpcClient(clientSocketDescriptor, targetServerSocketDescriptor);
+            close(clientSocketDescriptor);
+            close(targetServerSocketDescriptor);
+        });
+        clientThread.detach();
     }
 
+    httpServer.stopServer();
     return 0;
 }
+
+
