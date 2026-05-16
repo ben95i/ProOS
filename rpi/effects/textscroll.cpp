@@ -14,6 +14,8 @@
 // -------------------------------------------------------------------------
 // CONSTANTS
 // -------------------------------------------------------------------------
+const char* OPC_IP = "127.0.0.1";
+const int OPC_PORT = 7890;
 const int MAX_MESSAGE_BYTES = 2048;
 const int TARGET_FRAMES_PER_SECOND = 60;
 const int BITS_PER_BYTE = 8;
@@ -97,7 +99,6 @@ public:
             fontWidth = 8;
             fontHeight = 8;
         } else {
-            // Defaulting fallback
             fontTypeIdentifier = 2;
             fontWidth = 5;
             fontHeight = 7;
@@ -123,7 +124,7 @@ public:
 
         uint8_t bitmaskColumn = 0;
 
-        if (fontTypeIdentifier == 1) { // 3x5 font processing
+        if (fontTypeIdentifier == 1) { 
             bool isLowercaseCharacter = (asciiValue >= 97) && (asciiValue <= 122);
             if (isLowercaseCharacter == true) {
                 int uppercaseAsciiValue = asciiValue - 32;
@@ -142,7 +143,7 @@ public:
             
             bitmaskColumn = FontLibrary::DATA_3X5[arrayIndex][columnPosition];
             
-        } else if (fontTypeIdentifier == 3) { // 8x8 font processing
+        } else if (fontTypeIdentifier == 3) { 
             bool isOutsideFontBounds = (arrayIndex > 94);
             if (isOutsideFontBounds == true) {
                 return false;
@@ -155,7 +156,7 @@ public:
             
             bitmaskColumn = FontLibrary::DATA_8X8[arrayIndex][columnPosition];
             
-        } else { // 5x7 font processing
+        } else { 
             bool isOutsideFontBounds = (arrayIndex > 94);
             if (isOutsideFontBounds == true) {
                 return false;
@@ -205,15 +206,15 @@ int main(int argc, char* argv[]) {
     }
 
     // 2. Resource Initialization
-    LEDLayout hardwareLayout;
+    LedLayout hardwareLayout;
     hardwareLayout.parseArgument(physicalLayoutType);
 
-    OPCClient networkClient("127.0.0.1", 7890);
+    OPCClient networkClient(OPC_IP, OPC_PORT);
     FontManager textFont(fontChoiceString);
     ColorRgb messageTextColor = ColorProcessor::fromHex(hexColorString);
 
-    // 3. Coordinate Scaling Strategy
-    float layoutLogicalHeight = static_cast<float>(hardwareLayout.logicalHeight);
+    // 3. Coordinate Scaling & PADDING Strategy
+    float layoutLogicalHeight = static_cast<float>(hardwareLayout.getLogicalHeight());
     float fontLogicalHeight = static_cast<float>(textFont.getHeight());
     float canvasVerticalScaleFactor = layoutLogicalHeight / fontLogicalHeight;
 
@@ -221,7 +222,16 @@ int main(int argc, char* argv[]) {
     int singleCharacterStrideWidth = textFont.getWidth() + characterLetterSpacing;
     
     int messageLengthInt = static_cast<int>(textMessage.length());
-    float totalTextCanvasWidth = static_cast<float>(messageLengthInt * singleCharacterStrideWidth);
+    float textOnlyWidth = static_cast<float>(messageLengthInt * singleCharacterStrideWidth);
+    
+    // --- UPDATED GAP CALCULATION ---
+    // By setting the blank spacing to precisely match the logical width of the layout,
+    // the first character of the next loop touches the right edge of the display
+    // at the exact moment the last character of the current loop leaves the left edge.
+    float blankSpacingWidth = static_cast<float>(hardwareLayout.getLogicalWidth());
+    
+    // Total virtual canvas includes the text and the dynamic display-width gap
+    float totalLoopingCanvasWidth = textOnlyWidth + blankSpacingWidth;
 
     // 4. Time Tracking Initialization
     float horizontalScrollPosition = 0.0f;
@@ -229,7 +239,7 @@ int main(int argc, char* argv[]) {
     int sleepMillisecondsTarget = 1000 / TARGET_FRAMES_PER_SECOND;
     std::chrono::milliseconds frameTargetDuration(sleepMillisecondsTarget);
 
-    // Lambda to sample the virtual canvas state for anti-aliasing interpolation
+    // Lambda to sample the virtual canvas state
     auto sampleVirtualTextCanvas = [&](float canvasXCoordinate, float canvasYCoordinate) -> float {
         float sampleIntensity = 0.0f;
         
@@ -238,10 +248,11 @@ int main(int argc, char* argv[]) {
             return sampleIntensity;
         }
 
-        float loopingWrappedX = std::fmod(canvasXCoordinate, totalTextCanvasWidth);
+        // fmod creates an infinite looping canvas utilizing the total padded width
+        float loopingWrappedX = std::fmod(canvasXCoordinate, totalLoopingCanvasWidth);
         bool isNegativeXWrapped = (loopingWrappedX < 0.0f);
         if (isNegativeXWrapped == true) {
-            loopingWrappedX = loopingWrappedX + totalTextCanvasWidth;
+            loopingWrappedX = loopingWrappedX + totalLoopingCanvasWidth;
         }
 
         int floorPixelX = static_cast<int>(std::floor(loopingWrappedX));
@@ -250,6 +261,8 @@ int main(int argc, char* argv[]) {
         int characterStringIndex = floorPixelX / singleCharacterStrideWidth;
         int characterInternalColumn = floorPixelX % singleCharacterStrideWidth;
 
+        // If the index falls into the padded gap, it evaluates as beyond the string 
+        // and safely returns 0 intensity (blank space)
         bool isBeyondStringEnd = (characterStringIndex >= messageLengthInt);
         if (isBeyondStringEnd == true) {
             return sampleIntensity;
@@ -273,7 +286,7 @@ int main(int argc, char* argv[]) {
     // 5. Main Render Loop
     while (true) {
         
-        // Calculate true delta time for perfectly smooth sub-pixel scroll increments
+        // Calculate true delta time for perfectly smooth scroll increments
         auto currentFrameTime = std::chrono::high_resolution_clock::now();
         std::chrono::duration<float> elapsedTimeDuration = currentFrameTime - previousFrameTime;
         previousFrameTime = currentFrameTime;
@@ -282,50 +295,57 @@ int main(int argc, char* argv[]) {
         float positionDelta = scrollVelocityPixelsPerSecond * deltaTimeSecondsFloat;
         horizontalScrollPosition = horizontalScrollPosition + positionDelta;
 
-        size_t layoutTotalPixels = hardwareLayout.pixels.size();
+        std::vector<LedPixel> layoutCurrentPixels = hardwareLayout.getPixels();
+        size_t layoutTotalPixels = layoutCurrentPixels.size();
         std::vector<uint8_t> frameNetworkBuffer(layoutTotalPixels * 3, 0);
 
+        int supersampleResolution = 3; 
+        float totalSamplesFloat = static_cast<float>(supersampleResolution * supersampleResolution);
+
         for (size_t pixelIndex = 0; pixelIndex < layoutTotalPixels; pixelIndex = pixelIndex + 1) {
-            LEDPixel& activePixel = hardwareLayout.pixels[pixelIndex];
+            LedPixel activePixel = layoutCurrentPixels[pixelIndex];
 
-            float layoutWorldX = activePixel.norm_x * static_cast<float>(hardwareLayout.logicalWidth);
-            float layoutWorldY = activePixel.norm_y * static_cast<float>(hardwareLayout.logicalHeight);
+            float layoutWorldX = activePixel.normX * static_cast<float>(hardwareLayout.getLogicalWidth());
+            float layoutWorldY = activePixel.normY * static_cast<float>(hardwareLayout.getLogicalHeight());
 
-            float virtualCanvasX = layoutWorldX + horizontalScrollPosition;
-            float virtualCanvasY = layoutWorldY / canvasVerticalScaleFactor;
+            float logicalBoxLeft = layoutWorldX - 0.5f;
+            float logicalBoxRight = layoutWorldX + 0.5f;
+            float logicalBoxTop = layoutWorldY - 0.5f;
+            float logicalBoxBottom = layoutWorldY + 0.5f;
 
-            // Bilinear Interpolation for smooth, anti-aliased sub-pixel rendering
-            float leftSampleX = std::floor(virtualCanvasX);
-            float rightSampleX = leftSampleX + 1.0f;
-            float topSampleY = std::floor(virtualCanvasY);
-            float bottomSampleY = topSampleY + 1.0f;
+            float canvasMinX = logicalBoxLeft + horizontalScrollPosition;
+            float canvasMaxX = logicalBoxRight + horizontalScrollPosition;
+            float canvasMinY = logicalBoxTop / canvasVerticalScaleFactor;
+            float canvasMaxY = logicalBoxBottom / canvasVerticalScaleFactor;
 
-            float topLeftSampleIntensity = sampleVirtualTextCanvas(leftSampleX, topSampleY);
-            float topRightSampleIntensity = sampleVirtualTextCanvas(rightSampleX, topSampleY);
-            float bottomLeftSampleIntensity = sampleVirtualTextCanvas(leftSampleX, bottomSampleY);
-            float bottomRightSampleIntensity = sampleVirtualTextCanvas(rightSampleX, bottomSampleY);
+            float accumulatedIntensity = 0.0f;
 
-            float horizontalFractionalDifference = virtualCanvasX - leftSampleX;
-            float verticalFractionalDifference = virtualCanvasY - topSampleY;
+            for (int sampleY = 0; sampleY < supersampleResolution; sampleY = sampleY + 1) {
+                float fractionalOffsetY = (static_cast<float>(sampleY) + 0.5f) / static_cast<float>(supersampleResolution);
+                float sampleCanvasY = canvasMinY + ((canvasMaxY - canvasMinY) * fractionalOffsetY);
 
-            float inverseHorizontalFraction = 1.0f - horizontalFractionalDifference;
-            float inverseVerticalFraction = 1.0f - verticalFractionalDifference;
+                for (int sampleX = 0; sampleX < supersampleResolution; sampleX = sampleX + 1) {
+                    float fractionalOffsetX = (static_cast<float>(sampleX) + 0.5f) / static_cast<float>(supersampleResolution);
+                    float sampleCanvasX = canvasMinX + ((canvasMaxX - canvasMinX) * fractionalOffsetX);
 
-            float topRowBlendedIntensity = (topLeftSampleIntensity * inverseHorizontalFraction) + (topRightSampleIntensity * horizontalFractionalDifference);
-            float bottomRowBlendedIntensity = (bottomLeftSampleIntensity * inverseHorizontalFraction) + (bottomRightSampleIntensity * horizontalFractionalDifference);
+                    float pointIntensity = sampleVirtualTextCanvas(sampleCanvasX, sampleCanvasY);
+                    accumulatedIntensity = accumulatedIntensity + pointIntensity;
+                }
+            }
 
-            float finalAntiAliasedIntensity = (topRowBlendedIntensity * inverseVerticalFraction) + (bottomRowBlendedIntensity * verticalFractionalDifference);
+            float averageCoverage = accumulatedIntensity / totalSamplesFloat;
 
-            bool isPixelVisible = (finalAntiAliasedIntensity > 0.0f);
+            bool isPixelVisible = (averageCoverage > 0.0f);
             if (isPixelVisible == true) {
-                size_t bufferMemoryIndex = static_cast<size_t>(activePixel.opc_index) * 3;
+                float gammaCorrectedIntensity = std::pow(averageCoverage, 1.0f / 1.8f);
+
+                size_t bufferMemoryIndex = static_cast<size_t>(activePixel.opcIndex) * 3;
                 
                 bool isSafeMemoryWrite = ((bufferMemoryIndex + 2) < frameNetworkBuffer.size());
                 if (isSafeMemoryWrite == true) {
-                    
-                    float finalRedFloat = static_cast<float>(messageTextColor.r) * finalAntiAliasedIntensity;
-                    float finalGreenFloat = static_cast<float>(messageTextColor.g) * finalAntiAliasedIntensity;
-                    float finalBlueFloat = static_cast<float>(messageTextColor.b) * finalAntiAliasedIntensity;
+                    float finalRedFloat = static_cast<float>(messageTextColor.r) * gammaCorrectedIntensity;
+                    float finalGreenFloat = static_cast<float>(messageTextColor.g) * gammaCorrectedIntensity;
+                    float finalBlueFloat = static_cast<float>(messageTextColor.b) * gammaCorrectedIntensity;
 
                     frameNetworkBuffer[bufferMemoryIndex] = static_cast<uint8_t>(std::round(finalRedFloat));
                     frameNetworkBuffer[bufferMemoryIndex + 1] = static_cast<uint8_t>(std::round(finalGreenFloat));
@@ -334,16 +354,16 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        // Dispatch anti-aliased frame to Open Pixel Control server
         const uint8_t* payloadPointer = frameNetworkBuffer.data();
         size_t payloadByteSize = frameNetworkBuffer.size();
         networkClient.sendPixelPayload(OPC_DEFAULT_CHANNEL, payloadPointer, payloadByteSize);
 
-        // Seamless message looping logic
-        float wrappingBoundaryPoint = totalTextCanvasWidth + static_cast<float>(hardwareLayout.logicalWidth);
-        bool hasPassedBoundary = (horizontalScrollPosition > wrappingBoundaryPoint);
+        // Seamless anti-jerking boundary logic: 
+        // We subtract the exact width rather than resetting to 0, which preserves 
+        // the micro-fractional offset needed for smooth anti-aliased fading.
+        bool hasPassedBoundary = (horizontalScrollPosition >= totalLoopingCanvasWidth);
         if (hasPassedBoundary == true) {
-            horizontalScrollPosition = 0.0f - static_cast<float>(hardwareLayout.logicalWidth);
+            horizontalScrollPosition = horizontalScrollPosition - totalLoopingCanvasWidth;
         }
 
         std::this_thread::sleep_for(frameTargetDuration);

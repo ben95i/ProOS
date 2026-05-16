@@ -12,15 +12,15 @@ constexpr int TARGET_ANIMATION_FPS = 60;
 constexpr int COLOR_CHANNELS_COUNT = 3;
 
 int main(int argumentCount, char** argumentValues) {
-    LEDLayout mappedHardwareLayout;
+    LedLayout mappedHardwareLayout;
     mappedHardwareLayout.parseArgument((argumentCount > 1) ? argumentValues[1] : "8x8");
 
     OPCClient networkDisplayClient(TARGET_SERVER_ADDRESS, TARGET_SERVER_PORT);
     
     int maximumHardwareMappingIndex = 0;
-    for (const auto& individualHardwarePixel : mappedHardwareLayout.pixels) {
-        if (individualHardwarePixel.opc_index > maximumHardwareMappingIndex) {
-            maximumHardwareMappingIndex = individualHardwarePixel.opc_index;
+    for (const auto& individualHardwarePixel : mappedHardwareLayout.getPixels()) {
+        if (individualHardwarePixel.opcIndex > maximumHardwareMappingIndex) {
+            maximumHardwareMappingIndex = individualHardwarePixel.opcIndex;
         }
     }
     
@@ -29,7 +29,7 @@ int main(int argumentCount, char** argumentValues) {
     // Generate constant random values per pixel
     std::mt19937 randomGeneratorStream(std::random_device{}());
     std::uniform_real_distribution<float> randomDistribution(0.0f, 1.0f);
-    std::vector<float> randomizedPixelOffsets(mappedHardwareLayout.pixels.size());
+    std::vector<float> randomizedPixelOffsets(mappedHardwareLayout.getPixels().size());
     for (auto& singleRandomValue : randomizedPixelOffsets) {
         singleRandomValue = randomDistribution(randomGeneratorStream);
     }
@@ -43,11 +43,11 @@ int main(int argumentCount, char** argumentValues) {
 
         std::fill(outgoingNetworkPayloadBuffer.begin(), outgoingNetworkPayloadBuffer.end(), 0);
 
-        for (size_t pixelIteratorIndex = 0; pixelIteratorIndex < mappedHardwareLayout.pixels.size(); ++pixelIteratorIndex) {
-            const auto& specificTargetPixel = mappedHardwareLayout.pixels[pixelIteratorIndex];
+        for (size_t pixelIteratorIndex = 0; pixelIteratorIndex < mappedHardwareLayout.getPixels().size(); ++pixelIteratorIndex) {
+            const auto& specificTargetPixel = mappedHardwareLayout.getPixels()[pixelIteratorIndex];
             
-            float mutatedCoordinateX = specificTargetPixel.norm_x;
-            float mutatedCoordinateY = specificTargetPixel.norm_y;
+            float mutatedCoordinateX = specificTargetPixel.normX;
+            float mutatedCoordinateY = specificTargetPixel.normY;
             float mutatedCoordinateZ = 0.0f; // Defaulting to 0.0 for 2D layouts
 
             mutatedCoordinateY += ColorUtils::waveCosine(mutatedCoordinateX + 0.2f * mutatedCoordinateZ, 0.0f, 1.0f, 0.0f, 0.6f);
@@ -82,7 +82,7 @@ int main(int argumentCount, char** argumentValues) {
             // Color scheme shift: fade towards blue-and-orange
             calculatedGreenChannel = calculatedGreenChannel * 0.6f + ((calculatedRedChannel + calculatedBlueChannel) / 2.0f) * 0.4f;
 
-            int targetVectorBaseIndex = specificTargetPixel.opc_index * COLOR_CHANNELS_COUNT;
+            int targetVectorBaseIndex = specificTargetPixel.opcIndex * COLOR_CHANNELS_COUNT;
             outgoingNetworkPayloadBuffer[targetVectorBaseIndex]     = ColorUtils::floatToByte(calculatedRedChannel);
             outgoingNetworkPayloadBuffer[targetVectorBaseIndex + 1] = ColorUtils::floatToByte(calculatedGreenChannel);
             outgoingNetworkPayloadBuffer[targetVectorBaseIndex + 2] = ColorUtils::floatToByte(calculatedBlueChannel);

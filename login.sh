@@ -123,6 +123,7 @@ if [ "$MODULE" == "logon" ] || \
    [ "$MODULE" == ".ssh" ] || \
    [ "$MODULE" == "rpi" ] || \
    [ "$MODULE" == "wkst" ] || \
+   [ "$MODULE" == "shared" ] || \
    [ "$MODULE" == "sources" ]; then
 echo "Hostname not allowed."
 exit
@@ -263,22 +264,21 @@ DEPLOY_PI(){
   done
   echo ""
   if [ "$CMD" == "reset" ] || [ "$CMD" == "init" ] ; then
-    ssh -t -o $SSH_ARGS root@$HOST "rm -fv /etc/rpi-conf.done"
+    ssh -t -o $SSH_ARGS root@$HOST "rm -f /etc/rpi-conf.done"
   fi
   EXCLUDED="--exclude=photos --exclude=sources"
   RSYNC_ARGS="--stats --human-readable --recursive --times --checksum"
   echo "Downloading base software..."
   rsync -e "ssh -o $SSH_ARGS" $RSYNC_ARGS $EXCLUDED $ROOTDIR/rpi root@$HOST:/opt/
   echo "Downloading shared software..."
-  rsync -e "ssh -o $SSH_ARGS" $RSYNC_ARGS $ROOTDIR/automate/config/ztermcom.c root@$HOST:/opt/rpi/
-  rsync -e "ssh -o $SSH_ARGS" $RSYNC_ARGS --mkpath $ROOTDIR/automate/config/nodeapi/ root@$HOST:/opt/nodeapi/
-  rsync -e "ssh -o $SSH_ARGS" $RSYNC_ARGS --mkpath $ROOTDIR/automate/config/html/ root@$HOST:/opt/rpi/config/html-base/
+  rsync -e "ssh -o $SSH_ARGS" $RSYNC_ARGS --mkpath $ROOTDIR/shared/html/ root@$HOST:/opt/rpi/config/html-base/
+  rsync -e "ssh -o $SSH_ARGS" $RSYNC_ARGS --mkpath $ROOTDIR/shared/menus/ root@$HOST:/opt/rpi/config/menus/
+  rsync -e "ssh -o $SSH_ARGS" $RSYNC_ARGS --mkpath $ROOTDIR/shared/nodeapi/ root@$HOST:/opt/nodeapi/
+  rsync -e "ssh -o $SSH_ARGS" $RSYNC_ARGS $ROOTDIR/shared/ztermcom.c root@$HOST:/opt/rpi/
   echo "Downloading module-specific software..."
   rsync -e "ssh -o $SSH_ARGS" $RSYNC_ARGS $EXCLUDED $ROOTDIR/$MODULE/ root@$HOST:/opt/rpi/
   echo "Starting installer..."
   ssh -t -o $SSH_ARGS root@$HOST "cd /opt/rpi/config; echo $MODULE > ./hostname; chmod +x ./installer.sh; ./installer.sh"
-  echo "Configuring menu items..."
-  rsync -e "ssh -o $SSH_ARGS" $RSYNC_ARGS --mkpath $ROOTDIR/automate/config/menus/*.txt root@$HOST:/var/www/html/ram/
   POST_DEPLOY_MENU
 }
 
@@ -293,7 +293,14 @@ DEPLOY_SERVER(){
     EXIT_PRGM
   fi
   echo "Copying files to work folder $TMPFLDR..."
-  cp -r $ROOTDIR/$MODULE/config $TMPFLDR/
+  cp -rf $ROOTDIR/$MODULE/config $TMPFLDR/
+  if [ "$MODULE" == "automate" ]; then
+    echo "Copying shared software..."
+    cp -rf $ROOTDIR/shared/html $TMPFLDR/config/
+    cp -rf $ROOTDIR/shared/menus $TMPFLDR/config/
+    cp -rf $ROOTDIR/shared/nodeapi $TMPFLDR/config/
+    cp -f $ROOTDIR/shared/ztermcom.c $TMPFLDR/config/
+  fi
   echo "Compressing files..."
   cd $TMPFLDR
   export COPYFILE_DISABLE=true

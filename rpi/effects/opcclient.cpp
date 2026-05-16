@@ -9,7 +9,8 @@
 
 OPCClient::OPCClient(const std::string& hostAddress, int portNumber)
     : serverAddress(hostAddress), serverPort(portNumber), activeSocketDescriptor(-1) {
-    connectToServer();
+    // connectToServer() removed from constructor.
+    // Connection is now deferred until the first frame of video playback.
 }
 
 OPCClient::~OPCClient() {
@@ -48,6 +49,7 @@ void OPCClient::disconnectFromServer() {
 }
 
 bool OPCClient::sendPixelPayload(uint8_t channelIndex, const uint8_t* payloadDataPointer, size_t payloadByteSize) {
+    // Lazy-connection natively handles opening the socket when the video starts
     if (activeSocketDescriptor == -1) {
         connectToServer();
         if (activeSocketDescriptor == -1) return false;

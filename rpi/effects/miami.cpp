@@ -12,20 +12,20 @@ constexpr int TARGET_ANIMATION_FPS = 60;
 constexpr int COLOR_CHANNELS_COUNT = 3;
 
 int main(int argumentCount, char** argumentValues) {
-    LEDLayout mappedHardwareLayout;
+    LedLayout mappedHardwareLayout;
     mappedHardwareLayout.parseArgument((argumentCount > 1) ? argumentValues[1] : "8x8");
 
     OPCClient networkDisplayClient(TARGET_SERVER_ADDRESS, TARGET_SERVER_PORT);
     
     int maximumHardwareMappingIndex = 0;
-    for (const auto& individualHardwarePixel : mappedHardwareLayout.pixels) {
-        if (individualHardwarePixel.opc_index > maximumHardwareMappingIndex) {
-            maximumHardwareMappingIndex = individualHardwarePixel.opc_index;
+    for (const auto& individualHardwarePixel : mappedHardwareLayout.getPixels()) {
+        if (individualHardwarePixel.opcIndex > maximumHardwareMappingIndex) {
+            maximumHardwareMappingIndex = individualHardwarePixel.opcIndex;
         }
     }
     
     std::vector<uint8_t> outgoingNetworkPayloadBuffer((maximumHardwareMappingIndex + 1) * COLOR_CHANNELS_COUNT, 0);
-    int totalSystemPixelsCount = mappedHardwareLayout.pixels.size();
+    int totalSystemPixelsCount = mappedHardwareLayout.getPixels().size();
     
     std::mt19937 randomGeneratorStream(std::random_device{}());
     std::uniform_real_distribution<float> randomDistribution(0.0f, 1.0f);
@@ -44,10 +44,10 @@ int main(int argumentCount, char** argumentValues) {
         std::fill(outgoingNetworkPayloadBuffer.begin(), outgoingNetworkPayloadBuffer.end(), 0);
 
         for (int pixelIteratorIndex = 0; pixelIteratorIndex < totalSystemPixelsCount; ++pixelIteratorIndex) {
-            const auto& specificTargetPixel = mappedHardwareLayout.pixels[pixelIteratorIndex];
+            const auto& specificTargetPixel = mappedHardwareLayout.getPixels()[pixelIteratorIndex];
             
-            float mutatedCoordinateX = specificTargetPixel.norm_x;
-            float mutatedCoordinateY = specificTargetPixel.norm_y;
+            float mutatedCoordinateX = specificTargetPixel.normX;
+            float mutatedCoordinateY = specificTargetPixel.normY;
             float mutatedCoordinateZ = 0.0f; // Defaulting to 0.0 for 2D layouts
 
             mutatedCoordinateY += ColorUtils::waveCosine(mutatedCoordinateX + 0.2f * mutatedCoordinateZ, 0.0f, 1.0f, 0.0f, 0.6f);
@@ -113,7 +113,7 @@ int main(int argumentCount, char** argumentValues) {
             calculatedGreenChannel += currentTwinklePhase;
             calculatedBlueChannel += currentTwinklePhase;
 
-            int targetVectorBaseIndex = specificTargetPixel.opc_index * COLOR_CHANNELS_COUNT;
+            int targetVectorBaseIndex = specificTargetPixel.opcIndex * COLOR_CHANNELS_COUNT;
             outgoingNetworkPayloadBuffer[targetVectorBaseIndex]     = ColorUtils::floatToByte(calculatedRedChannel);
             outgoingNetworkPayloadBuffer[targetVectorBaseIndex + 1] = ColorUtils::floatToByte(calculatedGreenChannel);
             outgoingNetworkPayloadBuffer[targetVectorBaseIndex + 2] = ColorUtils::floatToByte(calculatedBlueChannel);

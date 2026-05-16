@@ -1,3 +1,4 @@
+textscroll|ledmenu|TextScroll
 abstract|ledmenu|Abstract
 flames|ledmenu|Flames
 tunnel|ledmenu|Tunnel

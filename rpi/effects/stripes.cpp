@@ -11,20 +11,20 @@ constexpr int TARGET_ANIMATION_FPS = 60;
 constexpr int COLOR_CHANNELS_COUNT = 3;
 
 int main(int argumentCount, char** argumentValues) {
-    LEDLayout mappedHardwareLayout;
+    LedLayout mappedHardwareLayout;
     mappedHardwareLayout.parseArgument((argumentCount > 1) ? argumentValues[1] : "8x8");
 
     OPCClient networkDisplayClient(TARGET_SERVER_ADDRESS, TARGET_SERVER_PORT);
     
     int maximumHardwareMappingIndex = 0;
-    for (const auto& individualHardwarePixel : mappedHardwareLayout.pixels) {
-        if (individualHardwarePixel.opc_index > maximumHardwareMappingIndex) {
-            maximumHardwareMappingIndex = individualHardwarePixel.opc_index;
+    for (const auto& individualHardwarePixel : mappedHardwareLayout.getPixels()) {
+        if (individualHardwarePixel.opcIndex > maximumHardwareMappingIndex) {
+            maximumHardwareMappingIndex = individualHardwarePixel.opcIndex;
         }
     }
     
     std::vector<uint8_t> outgoingNetworkPayloadBuffer((maximumHardwareMappingIndex + 1) * COLOR_CHANNELS_COUNT, 0);
-    int totalSystemPixels = mappedHardwareLayout.pixels.size();
+    int totalSystemPixels = mappedHardwareLayout.getPixels().size();
     auto applicationExecutionStartTime = std::chrono::steady_clock::now();
 
     while (true) {
@@ -34,10 +34,10 @@ int main(int argumentCount, char** argumentValues) {
         std::fill(outgoingNetworkPayloadBuffer.begin(), outgoingNetworkPayloadBuffer.end(), 0);
 
         for (int pixelIteratorIndex = 0; pixelIteratorIndex < totalSystemPixels; ++pixelIteratorIndex) {
-            const auto& specificTargetPixel = mappedHardwareLayout.pixels[pixelIteratorIndex];
+            const auto& specificTargetPixel = mappedHardwareLayout.getPixels()[pixelIteratorIndex];
             
-            float calculatedRedChannel = ColorUtils::waveCosine(specificTargetPixel.norm_x, elapsedSecondsCount / 4.0f, 1.0f, 0.0f, 0.7f);
-            float calculatedGreenChannel = ColorUtils::waveCosine(specificTargetPixel.norm_y, elapsedSecondsCount / 4.0f, 1.0f, 0.0f, 0.7f);
+            float calculatedRedChannel = ColorUtils::waveCosine(specificTargetPixel.normX, elapsedSecondsCount / 4.0f, 1.0f, 0.0f, 0.7f);
+            float calculatedGreenChannel = ColorUtils::waveCosine(specificTargetPixel.normY, elapsedSecondsCount / 4.0f, 1.0f, 0.0f, 0.7f);
             float calculatedBlueChannel = ColorUtils::waveCosine(0.0f, elapsedSecondsCount / 4.0f, 1.0f, 0.0f, 0.7f);
             
             ColorUtils::applyContrast(calculatedRedChannel, calculatedGreenChannel, calculatedBlueChannel, 0.5f, 2.0f);
@@ -52,7 +52,7 @@ int main(int argumentCount, char** argumentValues) {
             calculatedGreenChannel += derivedSparkValue;
             calculatedBlueChannel += derivedSparkValue;
 
-            int targetVectorBaseIndex = specificTargetPixel.opc_index * COLOR_CHANNELS_COUNT;
+            int targetVectorBaseIndex = specificTargetPixel.opcIndex * COLOR_CHANNELS_COUNT;
             outgoingNetworkPayloadBuffer[targetVectorBaseIndex]     = ColorUtils::floatToByte(calculatedRedChannel);
             outgoingNetworkPayloadBuffer[targetVectorBaseIndex + 1] = ColorUtils::floatToByte(calculatedGreenChannel);
             outgoingNetworkPayloadBuffer[targetVectorBaseIndex + 2] = ColorUtils::floatToByte(calculatedBlueChannel);

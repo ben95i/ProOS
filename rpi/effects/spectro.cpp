@@ -131,12 +131,12 @@ void performFastFourierTransform(std::vector<std::complex<double>>& complexDataB
 }
 
 int main(int argumentCount, char** argumentValues) {
-    LEDLayout mappedLayout;
+    LedLayout mappedLayout;
     std::string configurationArgument = (argumentCount > 1) ? argumentValues[1] : "8x8";
     mappedLayout.parseArgument(configurationArgument);
 
-    int configuredGridWidth = std::clamp(mappedLayout.logicalWidth > 0 ? mappedLayout.logicalWidth : 16, 1, MAX_GRID_DIMENSION);
-    int configuredGridHeight = std::clamp(mappedLayout.logicalHeight > 0 ? mappedLayout.logicalHeight : 16, 1, MAX_GRID_DIMENSION);
+    int configuredGridWidth = std::clamp(mappedLayout.getLogicalWidth() > 0 ? mappedLayout.getLogicalWidth() : 16, 1, MAX_GRID_DIMENSION);
+    int configuredGridHeight = std::clamp(mappedLayout.getLogicalHeight() > 0 ? mappedLayout.getLogicalHeight() : 16, 1, MAX_GRID_DIMENSION);
 
     float audioGainMultiplier = 50.0f;
     float minimumFrequencyThreshold = 0.0f;
@@ -192,9 +192,9 @@ int main(int argumentCount, char** argumentValues) {
     
     // Find highest map index to properly size OPC payload
     int maximumOpcPixelIndex = 0;
-    for (const auto& physicalPixel : mappedLayout.pixels) {
-        if (physicalPixel.opc_index > maximumOpcPixelIndex) {
-            maximumOpcPixelIndex = physicalPixel.opc_index;
+    for (const auto& physicalPixel : mappedLayout.getPixels()) {
+        if (physicalPixel.opcIndex > maximumOpcPixelIndex) {
+            maximumOpcPixelIndex = physicalPixel.opcIndex;
         }
     }
     std::vector<uint8_t> outgoingNetworkPayload((maximumOpcPixelIndex + 1) * COLOR_CHANNELS, 0);
@@ -250,13 +250,13 @@ int main(int argumentCount, char** argumentValues) {
 
         // Map internal 2D buffer array to physical OPC vector
         std::fill(outgoingNetworkPayload.begin(), outgoingNetworkPayload.end(), 0);
-        for (const auto& physicalPixelTarget : mappedLayout.pixels) {
-            int mappedPixelXCoord = std::clamp(static_cast<int>(physicalPixelTarget.norm_x * activeDisplayBuffer.gridWidth), 0, activeDisplayBuffer.gridWidth - 1);
-            int mappedPixelYCoord = std::clamp(static_cast<int>(physicalPixelTarget.norm_y * activeDisplayBuffer.gridHeight), 0, activeDisplayBuffer.gridHeight - 1);
+        for (const auto& physicalPixelTarget : mappedLayout.getPixels()) {
+            int mappedPixelXCoord = std::clamp(static_cast<int>(physicalPixelTarget.normX * activeDisplayBuffer.gridWidth), 0, activeDisplayBuffer.gridWidth - 1);
+            int mappedPixelYCoord = std::clamp(static_cast<int>(physicalPixelTarget.normY * activeDisplayBuffer.gridHeight), 0, activeDisplayBuffer.gridHeight - 1);
             
             PixelColor selectedPixelColor = activeDisplayBuffer.pixelDataBuffer[mappedPixelYCoord * activeDisplayBuffer.gridWidth + mappedPixelXCoord];
             
-            int baseVectorIndex = physicalPixelTarget.opc_index * COLOR_CHANNELS;
+            int baseVectorIndex = physicalPixelTarget.opcIndex * COLOR_CHANNELS;
             outgoingNetworkPayload[baseVectorIndex]     = selectedPixelColor.redIntensity;
             outgoingNetworkPayload[baseVectorIndex + 1] = selectedPixelColor.greenIntensity;
             outgoingNetworkPayload[baseVectorIndex + 2] = selectedPixelColor.blueIntensity;

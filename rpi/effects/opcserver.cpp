@@ -47,7 +47,7 @@ std::mutex sharedDataMutex;
 // --- High Performance Buffers ---
 std::atomic<int> apiBrightnessLevel{255};
 float gammaLookupTable[256];
-std::vector<uint16_t> physicalLookupTable; // Pre-calculated map
+std::vector<uint16_t> physicalLookupTable; 
 
 std::vector<uint8_t> incomingFrameBuffer;
 std::vector<float> quantizationErrorRed;
@@ -55,28 +55,14 @@ std::vector<float> quantizationErrorGreen;
 std::vector<float> quantizationErrorBlue;
 
 void handleTerminationSignal(int) { 
-    bool falseState = false;
-    isRunning.store(falseState); 
+    isRunning.store(false); 
 }
 
 void dropProcessPrivileges() {
     struct passwd* processUser = getpwnam(SECURITY_USER);
     
-    bool isUserFound = false;
     if (processUser != nullptr) {
-        isUserFound = true;
-    }
-
-    if (isUserFound == true) {
-        int gidResult = setgid(processUser->pw_gid);
-        int uidResult = setuid(processUser->pw_uid);
-        
-        bool isPrivilegeDropFailed = false;
-        if (gidResult != 0 || uidResult != 0) {
-            isPrivilegeDropFailed = true;
-        }
-
-        if (isPrivilegeDropFailed == true) {
+        if (setgid(processUser->pw_gid) != 0 || setuid(processUser->pw_uid) != 0) {
             std::cerr << "Process running as user: " << SECURITY_USER << "\n";
         }
     }
@@ -87,12 +73,7 @@ void generatePhysicalLookupTable() {
     for (int iteratorIndex = 0; iteratorIndex < totalLedCount; ++iteratorIndex) {
         uint16_t canvasWidth = matrixWidth;
         
-        bool isRotatedSideways = false;
         if (uiRotationDeg == 90 || uiRotationDeg == 270) {
-            isRotatedSideways = true;
-        }
-
-        if (isRotatedSideways == true) {
             canvasWidth = matrixHeight;
         }
         
@@ -120,13 +101,10 @@ void generatePhysicalLookupTable() {
                 break;
         }
 
-        bool isEvenRow = false;
-        if (rotatedY % 2 == 0) {
-            isEvenRow = true;
-        }
-
         uint16_t physicalX = rotatedX;
-        if (isEvenRow == true) {
+        
+        // RESTORED ORIGINAL LOGIC: Reverses the EVEN rows (0, 2, 4...)
+        if (rotatedY % 2 == 0) {
             physicalX = (matrixWidth - 1) - rotatedX;
         }
         
@@ -138,11 +116,39 @@ void generatePhysicalLookupTable() {
 void precalculateGammaTable() {
     for (int iteratorIndex = 0; iteratorIndex < 256; ++iteratorIndex) {
         float normalizedIndex = static_cast<float>(iteratorIndex) / 255.0f;
-        float powerApplied = std::pow(normalizedIndex, GAMMA_EXPONENT);
-        float scaledResult = powerApplied * 255.0f;
-        
-        gammaLookupTable[iteratorIndex] = scaledResult;
+        gammaLookupTable[iteratorIndex] = std::pow(normalizedIndex, GAMMA_EXPONENT) * 255.0f;
     }
+}
+
+// --- Network Connection Handler ---
+void handleOpcClientConnection(int clientSocket) {
+    std::vector<uint8_t> payloadBuffer;
+    payloadBuffer.reserve(totalLedCount * 3);
+    uint8_t headerBuffer[4];
+
+    while (isRunning.load() == true) {
+        if (recv(clientSocket, headerBuffer, 4, MSG_WAITALL) <= 0) {
+            break; 
+        }
+
+        uint16_t payloadLength = (headerBuffer[2] << 8) | headerBuffer[3];
+        
+        if (payloadLength > payloadBuffer.size()) {
+            payloadBuffer.resize(payloadLength);
+        }
+        
+        if (payloadLength > 0) {
+            if (recv(clientSocket, payloadBuffer.data(), payloadLength, MSG_WAITALL) <= 0) {
+                break;
+            }
+        }
+
+        std::lock_guard<std::mutex> lockGuard(sharedDataMutex);
+        size_t copyLength = std::min(static_cast<size_t>(payloadLength), incomingFrameBuffer.size());
+        std::memcpy(incomingFrameBuffer.data(), payloadBuffer.data(), copyLength);
+    }
+    
+    close(clientSocket);
 }
 
 void runOpcReceiver() {
@@ -155,48 +161,21 @@ void runOpcReceiver() {
     serverAddress.sin_port = htons(OPC_LISTENER_PORT);
     inet_pton(AF_INET, LOOPBACK_IP, &serverAddress.sin_addr);
     
-    int bindResult = bind(serverSocket, (sockaddr*)&serverAddress, sizeof(serverAddress));
-    if (bindResult < 0) {
+    if (bind(serverSocket, (sockaddr*)&serverAddress, sizeof(serverAddress)) < 0) {
+        std::cerr << "OPC Bind Failed\n";
         return;
     }
     
-    listen(serverSocket, 1);
-
-    std::vector<uint8_t> payloadBuffer;
-    int payloadCapacity = totalLedCount * 3;
-    payloadBuffer.reserve(payloadCapacity);
-    
-    uint8_t headerBuffer[4];
+    listen(serverSocket, 10); 
 
     while (isRunning.load() == true) {
         int clientSocket = accept(serverSocket, nullptr, nullptr);
         
-        bool isConnectionActive = true;
-        while (isConnectionActive == true) {
-            ssize_t headerBytesRead = recv(clientSocket, headerBuffer, 4, MSG_WAITALL);
-            if (headerBytesRead <= 0) {
-                isConnectionActive = false;
-                continue;
-            }
-
-            uint16_t payloadLength = (headerBuffer[2] << 8) | headerBuffer[3];
-            
-            bool isPayloadResizeRequired = false;
-            if (payloadLength > payloadBuffer.size()) {
-                isPayloadResizeRequired = true;
-            }
-
-            if (isPayloadResizeRequired == true) {
-                payloadBuffer.resize(payloadLength);
-            }
-            
-            recv(clientSocket, payloadBuffer.data(), payloadLength, MSG_WAITALL);
-
-            std::lock_guard<std::mutex> lockGuard(sharedDataMutex);
-            size_t copyLength = std::min(static_cast<size_t>(payloadLength), incomingFrameBuffer.size());
-            std::memcpy(incomingFrameBuffer.data(), payloadBuffer.data(), copyLength);
+        if (clientSocket >= 0) {
+            std::thread(handleOpcClientConnection, clientSocket).detach();
+        } else {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
-        close(clientSocket);
     }
     close(serverSocket);
 }
@@ -205,15 +184,13 @@ void runOpcReceiver() {
 
 int main(int argumentCount, char* argumentValues[]) {
     if (argumentCount > 1) {
-        int matchedArguments = sscanf(argumentValues[1], "%dx%dgrid", &matrixWidth, &matrixHeight);
-        if (matchedArguments == 2) {
+        if (sscanf(argumentValues[1], "%dx%dgrid", &matrixWidth, &matrixHeight) == 2) {
             totalLedCount = matrixWidth * matrixHeight;
         }
     }
     
     if (argumentCount > 2) {
-        int parsedHardwareLimit = std::stoi(argumentValues[2]);
-        startupHardwareLimit = std::clamp(parsedHardwareLimit, 1, 255);
+        startupHardwareLimit = std::clamp(std::stoi(argumentValues[2]), 1, 255);
     }
     
     if (argumentCount > 3) {
@@ -241,23 +218,22 @@ int main(int argumentCount, char* argumentValues[]) {
     ledStripDriver.channel[0].strip_type = LED_STRIP_TYPE;
     ledStripDriver.channel[0].brightness = startupHardwareLimit; 
 
-    ws2811_return_t initializeResult = ws2811_init(&ledStripDriver);
-    if (initializeResult != WS2811_SUCCESS) {
+    if (ws2811_init(&ledStripDriver) != WS2811_SUCCESS) {
         return 1;
     }
 
+    for (int i = 0; i < totalLedCount; ++i) {
+        ledStripDriver.channel[0].leds[i] = 0;
+    }
+    ws2811_render(&ledStripDriver);
+
     dropProcessPrivileges();
     
-    // Set up and start the common HTTP Server
     HttpApiServer httpServer(HTTP_CONTROL_PORT, HTTP_RATE_LIMIT_MS);
     httpServer.setCallbacks(
-        []() -> int {
-            int currentBrightness = apiBrightnessLevel.load();
-            return currentBrightness;
-        },
+        []() -> int { return apiBrightnessLevel.load(); },
         [](int newBrightnessLevel) -> void {
-            int clampedBrightness = std::clamp(newBrightnessLevel, 0, 255);
-            apiBrightnessLevel.store(clampedBrightness);
+            apiBrightnessLevel.store(std::clamp(newBrightnessLevel, 0, 255));
         }
     );
     httpServer.startServer();
@@ -266,6 +242,7 @@ int main(int argumentCount, char* argumentValues[]) {
     backgroundReceiverThread.detach();
 
     std::chrono::time_point<std::chrono::steady_clock> frameDeadline = std::chrono::steady_clock::now();
+    std::vector<uint8_t> localRenderBuffer(incomingFrameBufferSize, 0);
 
     while (isRunning.load() == true) {
         frameDeadline += TARGET_FRAME_TIME;
@@ -275,36 +252,36 @@ int main(int argumentCount, char* argumentValues[]) {
 
         {
             std::lock_guard<std::mutex> lockGuard(sharedDataMutex);
-
-            for (int iteratorIndex = 0; iteratorIndex < totalLedCount; ++iteratorIndex) {
-                uint16_t physicalIdentifier = physicalLookupTable[iteratorIndex];
-                int pixelOffset = iteratorIndex * 3;
-                
-                int indexRed = incomingFrameBuffer[pixelOffset];
-                int indexGreen = incomingFrameBuffer[pixelOffset + 1];
-                int indexBlue = incomingFrameBuffer[pixelOffset + 2];
-
-                float targetRed = (gammaLookupTable[indexRed] * softwareScaleFactor) + quantizationErrorRed[physicalIdentifier];
-                float targetGreen = (gammaLookupTable[indexGreen] * softwareScaleFactor) + quantizationErrorGreen[physicalIdentifier];
-                float targetBlue = (gammaLookupTable[indexBlue] * softwareScaleFactor) + quantizationErrorBlue[physicalIdentifier];
-
-                uint8_t outputRed = static_cast<uint8_t>(std::clamp(targetRed, 0.0f, 255.0f));
-                uint8_t outputGreen = static_cast<uint8_t>(std::clamp(targetGreen, 0.0f, 255.0f));
-                uint8_t outputBlue = static_cast<uint8_t>(std::clamp(targetBlue, 0.0f, 255.0f));
-
-                float finalErrorRed = targetRed - static_cast<float>(outputRed);
-                float finalErrorGreen = targetGreen - static_cast<float>(outputGreen);
-                float finalErrorBlue = targetBlue - static_cast<float>(outputBlue);
-
-                quantizationErrorRed[physicalIdentifier] = finalErrorRed;
-                quantizationErrorGreen[physicalIdentifier] = finalErrorGreen;
-                quantizationErrorBlue[physicalIdentifier] = finalErrorBlue;
-
-                uint32_t finalColorPixel = (static_cast<uint32_t>(outputRed) << 16) | (static_cast<uint32_t>(outputGreen) << 8) | static_cast<uint32_t>(outputBlue);
-                ledStripDriver.channel[0].leds[physicalIdentifier] = finalColorPixel;
-            }
-            ws2811_render(&ledStripDriver);
+            std::memcpy(localRenderBuffer.data(), incomingFrameBuffer.data(), incomingFrameBufferSize);
         }
+
+        for (int iteratorIndex = 0; iteratorIndex < totalLedCount; ++iteratorIndex) {
+            uint16_t physicalIdentifier = physicalLookupTable[iteratorIndex];
+            int pixelOffset = iteratorIndex * 3;
+            
+            int indexRed = localRenderBuffer[pixelOffset];
+            int indexGreen = localRenderBuffer[pixelOffset + 1];
+            int indexBlue = localRenderBuffer[pixelOffset + 2];
+
+            float targetRed = (gammaLookupTable[indexRed] * softwareScaleFactor) + quantizationErrorRed[physicalIdentifier];
+            float targetGreen = (gammaLookupTable[indexGreen] * softwareScaleFactor) + quantizationErrorGreen[physicalIdentifier];
+            float targetBlue = (gammaLookupTable[indexBlue] * softwareScaleFactor) + quantizationErrorBlue[physicalIdentifier];
+
+            uint8_t outputRed = static_cast<uint8_t>(std::clamp(targetRed, 0.0f, 255.0f));
+            uint8_t outputGreen = static_cast<uint8_t>(std::clamp(targetGreen, 0.0f, 255.0f));
+            uint8_t outputBlue = static_cast<uint8_t>(std::clamp(targetBlue, 0.0f, 255.0f));
+
+            quantizationErrorRed[physicalIdentifier] = targetRed - static_cast<float>(outputRed);
+            quantizationErrorGreen[physicalIdentifier] = targetGreen - static_cast<float>(outputGreen);
+            quantizationErrorBlue[physicalIdentifier] = targetBlue - static_cast<float>(outputBlue);
+
+            ledStripDriver.channel[0].leds[physicalIdentifier] = 
+                (static_cast<uint32_t>(outputRed) << 16) | 
+                (static_cast<uint32_t>(outputGreen) << 8) | 
+                static_cast<uint32_t>(outputBlue);
+        }
+        
+        ws2811_render(&ledStripDriver);
         std::this_thread::sleep_until(frameDeadline);
     }
 
@@ -312,5 +289,3 @@ int main(int argumentCount, char* argumentValues[]) {
     ws2811_fini(&ledStripDriver);
     return 0;
 }
-
-

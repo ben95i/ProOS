@@ -2,7 +2,7 @@
         "listen": [null, 7891],
         "verbose": false,
         "color": {
-            "gamma": 2.2,
+            "gamma": 2.8,
             "whitepoint": [0.97, 0.97, 0.97]
         },
         "devices": [

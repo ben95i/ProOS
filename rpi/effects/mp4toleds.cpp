@@ -42,7 +42,7 @@ void systemSignalHandler(int signalCode) {
 
 class VideoPlaybackEngine {
 private:
-    LEDLayout configuredDisplayLayout;
+    const LedLayout& configuredDisplayLayout;
     OPCClient networkPixelTransmitter;
     
     std::thread videoDecodingThread;
@@ -64,9 +64,9 @@ private:
      */
     int calculateRequiredPayloadByteLength() const {
         int maximumHardwarePixelIndex = 0;
-        for (const auto& individualPixel : configuredDisplayLayout.pixels) {
-            if (individualPixel.opc_index > maximumHardwarePixelIndex) {
-                maximumHardwarePixelIndex = individualPixel.opc_index;
+        for (const auto& individualPixel : configuredDisplayLayout.getPixels()) {
+            if (individualPixel.opcIndex > maximumHardwarePixelIndex) {
+                maximumHardwarePixelIndex = individualPixel.opcIndex;
             }
         }
         
@@ -173,17 +173,17 @@ private:
                     int renderOffsetX = 0;
                     int renderOffsetY = 0;
 
-                    if (nativeVideoAspectRatio > configuredDisplayLayout.targetAspect) {
-                        croppedRenderWidth = static_cast<int>(currentDecodedFrame.rows * configuredDisplayLayout.targetAspect);
+                    if (nativeVideoAspectRatio > configuredDisplayLayout.getTargetAspect()) {
+                        croppedRenderWidth = static_cast<int>(currentDecodedFrame.rows * configuredDisplayLayout.getTargetAspect());
                         renderOffsetX = (currentDecodedFrame.cols - croppedRenderWidth) / 2;
                     } else {
-                        croppedRenderHeight = static_cast<int>(currentDecodedFrame.cols / configuredDisplayLayout.targetAspect);
+                        croppedRenderHeight = static_cast<int>(currentDecodedFrame.cols / configuredDisplayLayout.getTargetAspect());
                         renderOffsetY = (currentDecodedFrame.rows - croppedRenderHeight) / 2;
                     }
 
-                    for (const auto& activePixel : configuredDisplayLayout.pixels) {
-                        int sampledPixelX = renderOffsetX + static_cast<int>(activePixel.norm_x * (croppedRenderWidth - 1));
-                        int sampledPixelY = renderOffsetY + static_cast<int>(activePixel.norm_y * (croppedRenderHeight - 1));
+                    for (const auto& activePixel : configuredDisplayLayout.getPixels()) {
+                        int sampledPixelX = renderOffsetX + static_cast<int>(activePixel.normX * (croppedRenderWidth - 1));
+                        int sampledPixelY = renderOffsetY + static_cast<int>(activePixel.normY * (croppedRenderHeight - 1));
                         
                         sampledPixelX = std::clamp(sampledPixelX, 0, currentDecodedFrame.cols - 1);
                         sampledPixelY = std::clamp(sampledPixelY, 0, currentDecodedFrame.rows - 1);
@@ -197,9 +197,9 @@ private:
                 }
 
                 uint8_t* rawOpenCvBufferData = currentDecodedFrame.data;
-                for (size_t index = 0; index < configuredDisplayLayout.pixels.size(); ++index) {
+                for (size_t index = 0; index < configuredDisplayLayout.getPixels().size(); ++index) {
                     uint8_t* sourceBgrPixel = &rawOpenCvBufferData[textureLookupOffsets[index]];
-                    int baseIndex = configuredDisplayLayout.pixels[index].opc_index * 3;
+                    int baseIndex = configuredDisplayLayout.getPixels()[index].opcIndex * 3;
                     
                     framePayloadBuffer[baseIndex]     = sourceBgrPixel[2]; // Red
                     framePayloadBuffer[baseIndex + 1] = sourceBgrPixel[1]; // Green
@@ -243,7 +243,7 @@ private:
     }
 
 public:
-    VideoPlaybackEngine(const LEDLayout& layout) 
+    VideoPlaybackEngine(const LedLayout& layout) 
         : configuredDisplayLayout(layout), networkPixelTransmitter(OpcServerIpAddress, OpcServerPortNumber) {
         
         bool directoryExists = std::filesystem::exists(ApprovedVideoDirectory);
@@ -464,7 +464,7 @@ int main(int argumentCount, char** argumentValues) {
     signal(SIGINT, systemSignalHandler);
     signal(SIGTERM, systemSignalHandler);
 
-    LEDLayout targetDisplayLayout;
+    LedLayout targetDisplayLayout;
     targetDisplayLayout.parseArgument(argumentValues[1]);
 
     VideoPlaybackEngine playbackEngine(targetDisplayLayout);

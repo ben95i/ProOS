@@ -36,7 +36,7 @@ int main(int argc, char* argv[]) {
     }
 
     // 1. Calculate pixel count from the layout argument
-    LEDLayout layout;
+    LedLayout layout;
     try {
         layout.parseArgument(argv[1]);
     } catch (...) {
@@ -44,7 +44,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    if (layout.pixels.empty()) {
+    if (layout.getPixels().empty()) {
         std::cerr << "Error: Layout resulted in 0 LEDs." << std::endl;
         return 1;
     }
@@ -60,9 +60,9 @@ int main(int argc, char* argv[]) {
 
     // 3. Find the MAXIMUM opc_index to size our buffer correctly
     int maxOpcIndex = 0;
-    for (const auto& pixel : layout.pixels) {
-        if (pixel.opc_index > maxOpcIndex) {
-            maxOpcIndex = pixel.opc_index;
+    for (const auto& pixel : layout.getPixels()) {
+        if (pixel.opcIndex > maxOpcIndex) {
+            maxOpcIndex = pixel.opcIndex;
         }
     }
 
@@ -73,8 +73,8 @@ int main(int argc, char* argv[]) {
     std::vector<uint8_t> pixelPayloadData(totalPayloadPixels * 3, 0);
 
     // Fill the buffer by mapping the color specifically to the opc_index
-    for (const auto& pixel : layout.pixels) {
-        int bufferIdx = pixel.opc_index * 3;
+    for (const auto& pixel : layout.getPixels()) {
+        int bufferIdx = pixel.opcIndex * 3;
         pixelPayloadData[bufferIdx]     = targetColor.r;
         pixelPayloadData[bufferIdx + 1] = targetColor.g;
         pixelPayloadData[bufferIdx + 2] = targetColor.b;
@@ -83,7 +83,7 @@ int main(int argc, char* argv[]) {
     // 5. Connect once and send frames
     OPCClient displayClient(TARGET_OPC_HOST, TARGET_OPC_PORT);
     
-    std::cout << "Sending " << argv[2] << " mapped to " << layout.pixels.size() 
+    std::cout << "Sending " << argv[2] << " mapped to " << layout.getPixels().size() 
               << " LEDs (Max index: " << maxOpcIndex << ")..." << std::endl;
 
     for (int frame = 0; frame < 10; ++frame) {

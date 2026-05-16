@@ -3,84 +3,242 @@
 #include <cmath>
 #include <cstdio>
 
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
+void LedLayout::parseArgument(const std::string& layoutArgument) {
+    std::string ringStandard = "93ring";
+    std::string ringInverted = "93ringinv";
+    std::string identifierStrips = "strips";
+    std::string identifierGrid = "grid";
 
-void LEDLayout::parseArgument(const std::string& arg) {
-    if (arg == "93ring") {
-        setup93Ring();
-    } else if (arg.find("strips") != std::string::npos) {
-        int num = 8, len = 60;
-        sscanf(arg.c_str(), "%dx%dstrips", &num, &len);
-        setupStrips(num, len);
-    } else {
-        int w = 8, h = 8;
-        if (arg.find("grid") != std::string::npos) {
-            sscanf(arg.c_str(), "%dx%dgrid", &w, &h);
+    bool isStandardRing = (layoutArgument == ringStandard);
+    bool isInvertedRing = (layoutArgument == ringInverted);
+    bool containsStrips = (layoutArgument.find(identifierStrips) != std::string::npos);
+    bool containsGrid = (layoutArgument.find(identifierGrid) != std::string::npos);
+
+    if (isStandardRing) {
+        bool invertCoordinates = false;
+        setup93Ring(invertCoordinates);
+    } 
+    else if (isInvertedRing) {
+        bool invertCoordinates = true;
+        setup93Ring(invertCoordinates);
+    } 
+    else if (containsStrips) {
+        int defaultStripsCount = 8;
+        int defaultLedsPerStrip = 60;
+        int parsedStripsCount = defaultStripsCount;
+        int parsedLedsPerStrip = defaultLedsPerStrip;
+        
+        sscanf(layoutArgument.c_str(), "%dx%dstrips", &parsedStripsCount, &parsedLedsPerStrip);
+        setupStrips(parsedStripsCount, parsedLedsPerStrip);
+    } 
+    else {
+        int defaultWidth = 8;
+        int defaultHeight = 8;
+        int parsedWidth = defaultWidth;
+        int parsedHeight = defaultHeight;
+
+        if (containsGrid) {
+            sscanf(layoutArgument.c_str(), "%dx%dgrid", &parsedWidth, &parsedHeight);
         } else {
-            sscanf(arg.c_str(), "%dx%d", &w, &h);
+            sscanf(layoutArgument.c_str(), "%dx%d", &parsedWidth, &parsedHeight);
         }
-        setupGrid(w, h);
+        setupGrid(parsedWidth, parsedHeight);
     }
 }
 
-void LEDLayout::setupGrid(int cols, int rows) {
+void LedLayout::setupGrid(int totalColumns, int totalRows) {
+    std::lock_guard<std::mutex> lock(layoutMutex);
+    
     pixels.clear();
-    logicalWidth = cols;
-    logicalHeight = rows;
-    targetAspect = (float)cols / (float)rows;
+    logicalWidth = totalColumns;
+    logicalHeight = totalRows;
+    
+    float floatColumns = static_cast<float>(totalColumns);
+    float floatRows = static_cast<float>(totalRows);
+    float calculatedAspectRatio = floatColumns / floatRows;
+    targetAspect = calculatedAspectRatio;
 
-    for (int y = 0; y < rows; y++) {
-        for (int x = 0; x < cols; x++) {
-            LEDPixel p;
-            p.opc_index = (y * cols) + x;
-            p.norm_x = (cols > 1) ? (float)x / (cols - 1) : 0.5f;
-            p.norm_y = (rows > 1) ? (float)y / (rows - 1) : 0.5f;
-            pixels.push_back(p);
+    for (int currentRowIndex = 0; currentRowIndex < totalRows; currentRowIndex++) {
+        for (int currentColumnIndex = 0; currentColumnIndex < totalColumns; currentColumnIndex++) {
+            LedPixel currentPixel;
+            
+            int rowOffset = currentRowIndex * totalColumns;
+            int finalOpcIndex = rowOffset + currentColumnIndex;
+            currentPixel.opcIndex = finalOpcIndex;
+            
+            if (totalColumns > 1) {
+                float currentColumnFloat = static_cast<float>(currentColumnIndex);
+                int maxColumnIndex = totalColumns - 1;
+                float maxColumnFloat = static_cast<float>(maxColumnIndex);
+                float normalizedX = currentColumnFloat / maxColumnFloat;
+                currentPixel.normX = normalizedX;
+            } else {
+                currentPixel.normX = CENTER_COORDINATE;
+            }
+            
+            if (totalRows > 1) {
+                float currentRowFloat = static_cast<float>(currentRowIndex);
+                int maxRowIndex = totalRows - 1;
+                float maxRowFloat = static_cast<float>(maxRowIndex);
+                float normalizedY = currentRowFloat / maxRowFloat;
+                currentPixel.normY = normalizedY;
+            } else {
+                currentPixel.normY = CENTER_COORDINATE;
+            }
+            
+            pixels.push_back(currentPixel);
         }
     }
-    std::cout << "Initialized " << cols << " columns and " << rows << " rows of LEDs\n";
+    std::cout << "Initialized " << totalColumns << " columns and " << totalRows << " rows of LEDs\n";
 }
 
-void LEDLayout::setupStrips(int numStrips, int ledsPerStrip) {
+void LedLayout::setupStrips(int totalStrips, int ledsPerStrip) {
+    std::lock_guard<std::mutex> lock(layoutMutex);
+    
     pixels.clear();
     logicalWidth = ledsPerStrip;
-    logicalHeight = numStrips;
-    targetAspect = (float)ledsPerStrip / (float)numStrips;
+    logicalHeight = totalStrips;
+    
+    float floatLedsPerStrip = static_cast<float>(ledsPerStrip);
+    float floatTotalStrips = static_cast<float>(totalStrips);
+    float calculatedAspectRatio = floatLedsPerStrip / floatTotalStrips;
+    targetAspect = calculatedAspectRatio;
 
-    for (int s = 0; s < numStrips; s++) {
-        for (int i = 0; i < ledsPerStrip; i++) {
-            LEDPixel p;
-            p.opc_index = (s * ledsPerStrip) + i;
-            p.norm_x = (ledsPerStrip > 1) ? (float)i / (ledsPerStrip - 1) : 0.5f;
-            p.norm_y = (numStrips > 1) ? (float)s / (numStrips - 1) : 0.5f;
-            pixels.push_back(p);
+    for (int currentStripIndex = 0; currentStripIndex < totalStrips; currentStripIndex++) {
+        for (int currentLedIndex = 0; currentLedIndex < ledsPerStrip; currentLedIndex++) {
+            LedPixel currentPixel;
+            
+            int stripOffset = currentStripIndex * ledsPerStrip;
+            int finalOpcIndex = stripOffset + currentLedIndex;
+            currentPixel.opcIndex = finalOpcIndex;
+            
+            if (ledsPerStrip > 1) {
+                float currentLedFloat = static_cast<float>(currentLedIndex);
+                int maxLedIndex = ledsPerStrip - 1;
+                float maxLedFloat = static_cast<float>(maxLedIndex);
+                float normalizedX = currentLedFloat / maxLedFloat;
+                currentPixel.normX = normalizedX;
+            } else {
+                currentPixel.normX = CENTER_COORDINATE;
+            }
+            
+            if (totalStrips > 1) {
+                float currentStripFloat = static_cast<float>(currentStripIndex);
+                int maxStripIndex = totalStrips - 1;
+                float maxStripFloat = static_cast<float>(maxStripIndex);
+                float normalizedY = currentStripFloat / maxStripFloat;
+                currentPixel.normY = normalizedY;
+            } else {
+                currentPixel.normY = CENTER_COORDINATE;
+            }
+            
+            pixels.push_back(currentPixel);
         }
     }
-    std::cout << "Initialized " << numStrips << " strips of " << ledsPerStrip << " LEDs\n";
+    std::cout << "Initialized " << totalStrips << " strips of " << ledsPerStrip << " LEDs\n";
 }
 
-void LEDLayout::setup93Ring() {
+void LedLayout::setup93Ring(bool shouldInvertX) {
+    std::lock_guard<std::mutex> lock(layoutMutex);
+    
     pixels.clear();
-    // Default virtual layout space constraints for non-grid setups
-    logicalWidth = 16;
-    logicalHeight = 16;
-    targetAspect = 1.0f;
     
-    struct RingDef { int start; int count; };
-    std::vector<RingDef> rings = {{0,1}, {8,8}, {20,12}, {36,16}, {60,24}, {92,32}};
+    int defaultVirtualWidth = 16;
+    int defaultVirtualHeight = 16;
+    logicalWidth = defaultVirtualWidth;
+    logicalHeight = defaultVirtualHeight;
+    targetAspect = DEFAULT_ASPECT_RATIO;
     
-    for (int r = 0; r < (int)rings.size(); r++) {
-        float radius = (rings.size() > 1) ? (float)r / (rings.size() - 1) * 0.48f : 0.0f;
-        for (int i = 0; i < rings[r].count; i++) {
-            float angle = (float)i / rings[r].count * 2.0f * M_PI;
-            LEDPixel p;
-            p.opc_index = rings[r].start + i;
-            p.norm_x = 0.5f + radius * std::cos(angle);
-            p.norm_y = 0.5f + radius * std::sin(angle);
-            pixels.push_back(p);
+    struct RingDefinition { 
+        int startingIndex; 
+        int ledCount; 
+    };
+    
+    std::vector<RingDefinition> concentricRings = {
+        {0, 1}, 
+        {8, 8}, 
+        {20, 12}, 
+        {36, 16}, 
+        {60, 24}, 
+        {92, 32}
+    };
+    
+    int totalRings = static_cast<int>(concentricRings.size());
+
+    for (int currentRingIndex = 0; currentRingIndex < totalRings; currentRingIndex++) {
+        
+        float calculatedRadius = 0.0f;
+        if (totalRings > 1) {
+            float currentRingFloat = static_cast<float>(currentRingIndex);
+            int maxRingIndex = totalRings - 1;
+            float maxRingFloat = static_cast<float>(maxRingIndex);
+            float ringRatio = currentRingFloat / maxRingFloat;
+            calculatedRadius = ringRatio * MAX_RING_RADIUS;
+        }
+
+        RingDefinition currentRingDefinition = concentricRings[currentRingIndex];
+        int currentRingLedCount = currentRingDefinition.ledCount;
+        int currentRingStartIndex = currentRingDefinition.startingIndex;
+        float floatRingLedCount = static_cast<float>(currentRingLedCount);
+
+        for (int currentLedIndex = 0; currentLedIndex < currentRingLedCount; currentLedIndex++) {
+            
+            float floatLedIndex = static_cast<float>(currentLedIndex);
+            float angleRatio = floatLedIndex / floatRingLedCount;
+            float currentAngleRadians = angleRatio * FULL_CIRCLE_RADIANS;
+            
+            LedPixel currentPixel;
+            
+            int finalOpcIndex = currentRingStartIndex + currentLedIndex;
+            currentPixel.opcIndex = finalOpcIndex;
+            
+            // --- X Coordinate Calculation ---
+            float cosineValue = std::cos(currentAngleRadians);
+            float xOffset = calculatedRadius * cosineValue;
+            float baseNormalizedX = CENTER_COORDINATE + xOffset;
+            
+            float finalNormalizedX = baseNormalizedX;
+            if (shouldInvertX) {
+                finalNormalizedX = INVERT_MAX_VALUE - baseNormalizedX;
+            }
+            currentPixel.normX = finalNormalizedX;
+            
+            // --- Y Coordinate Calculation ---
+            float sineValue = std::sin(currentAngleRadians);
+            float yOffset = calculatedRadius * sineValue;
+            float finalNormalizedY = CENTER_COORDINATE + yOffset;
+            
+            currentPixel.normY = finalNormalizedY;
+            
+            pixels.push_back(currentPixel);
         }
     }
-    std::cout << "Initialized a ring of 93 LEDs\n";
+    
+    if (shouldInvertX) {
+        std::cout << "Initialized an inverted ring of 93 LEDs for projection\n";
+    } else {
+        std::cout << "Initialized a standard ring of 93 LEDs\n";
+    }
+}
+
+// --- THREAD-SAFE GETTERS IMPLEMENTATION ---
+
+int LedLayout::getLogicalWidth() const {
+    std::lock_guard<std::mutex> lock(layoutMutex);
+    return logicalWidth;
+}
+
+int LedLayout::getLogicalHeight() const {
+    std::lock_guard<std::mutex> lock(layoutMutex);
+    return logicalHeight;
+}
+
+float LedLayout::getTargetAspect() const {
+    std::lock_guard<std::mutex> lock(layoutMutex);
+    return targetAspect;
+}
+
+std::vector<LedPixel> LedLayout::getPixels() const {
+    std::lock_guard<std::mutex> lock(layoutMutex);
+    return pixels;
 }

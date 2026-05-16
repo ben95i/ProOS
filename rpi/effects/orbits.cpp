@@ -19,7 +19,7 @@ constexpr float SCENE_CENTER_X = 0.5f;
 constexpr float SCENE_CENTER_Y = 0.5f;        
 constexpr float KINETIC_ORBIT_RADIUS = 0.25f;   
 constexpr float KINETIC_ORBIT_SPEED = 1.5f;     
-constexpr float RENDERED_DOT_SIZE = 0.65f;       
+constexpr float RENDERED_DOT_SIZE = 0.75f;       
 
 struct ColorValues { uint8_t redIntensity, greenIntensity, blueIntensity; };
 
@@ -48,13 +48,13 @@ struct ImageSprite {
 
 class SceneRenderer {
 public:
-    void drawGraphicToBuffer(const LEDLayout& physicalSystemLayout, std::vector<ColorValues>& renderingColorBuffer, const ImageSprite& targetGraphicSprite, float positionCenterX, float positionCenterY, float scaledDrawSize) {
+    void drawGraphicToBuffer(const LedLayout& physicalSystemLayout, std::vector<ColorValues>& renderingColorBuffer, const ImageSprite& targetGraphicSprite, float positionCenterX, float positionCenterY, float scaledDrawSize) {
         if (targetGraphicSprite.decodedPixelsVector.empty()) return;
         float halfSizeBoundary = scaledDrawSize / 2.0f;
 
-        for (size_t hardwarePixelIndex = 0; hardwarePixelIndex < physicalSystemLayout.pixels.size(); ++hardwarePixelIndex) {
-            float distanceDeltaX = physicalSystemLayout.pixels[hardwarePixelIndex].norm_x - positionCenterX;
-            float distanceDeltaY = physicalSystemLayout.pixels[hardwarePixelIndex].norm_y - positionCenterY;
+        for (size_t hardwarePixelIndex = 0; hardwarePixelIndex < physicalSystemLayout.getPixels().size(); ++hardwarePixelIndex) {
+            float distanceDeltaX = physicalSystemLayout.getPixels()[hardwarePixelIndex].normX - positionCenterX;
+            float distanceDeltaY = physicalSystemLayout.getPixels()[hardwarePixelIndex].normY - positionCenterY;
 
             if (distanceDeltaX >= -halfSizeBoundary && distanceDeltaX <= halfSizeBoundary && distanceDeltaY >= -halfSizeBoundary && distanceDeltaY <= halfSizeBoundary) {
                 float mappedTextureU = (distanceDeltaX + halfSizeBoundary) / scaledDrawSize;
@@ -70,7 +70,7 @@ public:
 };
 
 int main(int argumentCount, char** argumentValues) {
-    LEDLayout operationalLayout;
+    LedLayout operationalLayout;
     std::string providedArgumentData = (argumentCount > 1) ? argumentValues[1] : "8x8";
     operationalLayout.parseArgument(providedArgumentData);
 
@@ -81,12 +81,12 @@ int main(int argumentCount, char** argumentValues) {
     greenOrbSprite.loadSpriteFromDisk("green_dot.png");
     purpleOrbSprite.loadSpriteFromDisk("purple_dot.png");
 
-    std::vector<ColorValues> sceneColorBuffer(operationalLayout.pixels.size(), {0, 0, 0});
+    std::vector<ColorValues> sceneColorBuffer(operationalLayout.getPixels().size(), {0, 0, 0});
     
     int maximumObservedHardwareIndex = 0;
-    for (const auto& physicalSystemPixel : operationalLayout.pixels) {
-        if (physicalSystemPixel.opc_index > maximumObservedHardwareIndex) {
-            maximumObservedHardwareIndex = physicalSystemPixel.opc_index;
+    for (const auto& physicalSystemPixel : operationalLayout.getPixels()) {
+        if (physicalSystemPixel.opcIndex > maximumObservedHardwareIndex) {
+            maximumObservedHardwareIndex = physicalSystemPixel.opcIndex;
         }
     }
     std::vector<uint8_t> outgoingOpcPayload((maximumObservedHardwareIndex + 1) * 3, 0);
@@ -108,8 +108,8 @@ int main(int argumentCount, char** argumentValues) {
         graphicalRenderer.drawGraphicToBuffer(operationalLayout, sceneColorBuffer, purpleOrbSprite, calculatedOrbPositionX2, calculatedOrbPositionY2, RENDERED_DOT_SIZE);
 
         std::fill(outgoingOpcPayload.begin(), outgoingOpcPayload.end(), 0);
-        for (size_t arrayTransferIndex = 0; arrayTransferIndex < operationalLayout.pixels.size(); arrayTransferIndex++) {
-            int targetVectorBaseIndex = operationalLayout.pixels[arrayTransferIndex].opc_index * 3;
+        for (size_t arrayTransferIndex = 0; arrayTransferIndex < operationalLayout.getPixels().size(); arrayTransferIndex++) {
+            int targetVectorBaseIndex = operationalLayout.getPixels()[arrayTransferIndex].opcIndex * 3;
             outgoingOpcPayload[targetVectorBaseIndex]     = sceneColorBuffer[arrayTransferIndex].redIntensity;
             outgoingOpcPayload[targetVectorBaseIndex + 1] = sceneColorBuffer[arrayTransferIndex].greenIntensity;
             outgoingOpcPayload[targetVectorBaseIndex + 2] = sceneColorBuffer[arrayTransferIndex].blueIntensity;

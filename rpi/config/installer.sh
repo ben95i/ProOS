@@ -1,11 +1,11 @@
 #!/bin/bash
-## Raspberry Pi ProOS Server Setup Script v15
+## Raspberry Pi ProOS Server Setup Script v17
 ## run this 1st, then module installer
 
-# Core Path
-BIN="/opt/rpi/config"
+# Installer Files Path
+TMPDIR="/opt/rpi/config"
 # Import Hostname
-NEWHOST=`cat $BIN/hostname`
+NEWHOST=`cat $TMPDIR/hostname`
 # Import Module Name
 MODNAME=`cat /opt/rpi/modconf/brand.txt`
 ## Installer Command Line Arguments
@@ -34,7 +34,7 @@ else
   exit
 fi
 
-cd $BIN
+cd $TMPDIR
 
 echo ""
 echo "########### Welcome to ProOS ! ###########"
@@ -183,7 +183,7 @@ if [ ! -e "/etc/rpi-bootro.done" ]; then
   touch /etc/rpi-bootro.done
 fi
 cp -f /boot/firmware/config.txt /boot/firmware/config.bak
-cp -f $BIN/config.txt /boot/firmware/
+cp -f $TMPDIR/config.txt /boot/firmware/
 
 ## Disable Serial Console Redirection
 sed -i 's/console=serial0,115200 //g' /boot/firmware/cmdline.txt
@@ -195,8 +195,8 @@ systemctl set-default multi-user.target
 raspi-config nonint do_wifi_country US
 
 ## Copy SSH Configuration
-cp $BIN/sshd_config /etc/ssh
-cp $BIN/ssh_config /etc/ssh
+cp $TMPDIR/sshd_config /etc/ssh
+cp $TMPDIR/ssh_config /etc/ssh
 chmod 644 /etc/ssh/sshd_config
 chown root:root /etc/ssh/sshd_config
 chmod 644 /etc/ssh/ssh_config
@@ -205,15 +205,15 @@ chown root:root /etc/ssh/ssh_config
 ## Copy SSH Key for Root
 rm -r /root/.ssh
 mkdir -p /root/.ssh
-cp -f $BIN/authorized_keys /root/.ssh
+cp -f $TMPDIR/authorized_keys /root/.ssh
 chmod 644 /root/.ssh/authorized_keys
 chown root:root /root/.ssh/authorized_keys
 
 ## Copy Bash Login Script
-cp -f $BIN/bashrc /root/.bashrc
+cp -f $TMPDIR/bashrc /root/.bashrc
 chmod +x /root/.bashrc
 chown root:root /root/.bashrc
-cp -f $BIN/bashrc /home/pi/.bashrc
+cp -f $TMPDIR/bashrc /home/pi/.bashrc
 chmod +x /home/pi/.bashrc
 chown pi:pi /home/pi/.bashrc
 
@@ -221,17 +221,17 @@ chown pi:pi /home/pi/.bashrc
 passwd -d root
 
 ## System Configuration
-cp -f $BIN/sysctl.conf /etc
+cp -f $TMPDIR/sysctl.conf /etc
 chmod 644 /etc/sysctl.conf
 chown root:root /etc/sysctl.conf
 
 ## Journal Configuration
-cp -f $BIN/journald.conf /etc/systemd/
+cp -f $TMPDIR/journald.conf /etc/systemd/
 chmod 644 /etc/systemd/journald.conf
 chown root:root /etc/systemd/journald.conf
 
 ## Kernel Drivers Configuration
-cp -f $BIN/modules /etc
+cp -f $TMPDIR/modules /etc
 chmod 644 /etc/modules
 chown root:root /etc/modules
 
@@ -242,17 +242,17 @@ if [ ! -e "/etc/systemd/system/proinit.service" ]; then
 fi
 
 ## Replacement / New Services
-cp -fr $BIN/systemd/* /etc/systemd/system/
+cp -fr $TMPDIR/systemd/* /etc/systemd/system/
 chmod -fR 644 /etc/systemd/system/*.timer
 chown -fR root:root /etc/systemd/system/*.timer
 chmod -fR 644 /etc/systemd/system/*.service
 chown -fR root:root /etc/systemd/system/*.service
 
 ## Startup Scripts
-cp -f $BIN/netmode.sh /etc/
+cp -f $TMPDIR/netmode.sh /etc/
 chmod +x /etc/netmode.sh
 chown root:root /etc/netmode.sh
-cp -f $BIN/preinit.sh /etc/
+cp -f $TMPDIR/preinit.sh /etc/
 chmod +x /etc/preinit.sh
 chown root:root /etc/preinit.sh
 
@@ -271,7 +271,7 @@ fi
 
 ## Light Web Server Configuration
 rm -rf /etc/lighttpd/conf-enabled/*
-cp -f $BIN/lighttpd.conf /etc/lighttpd/
+cp -f $TMPDIR/lighttpd.conf /etc/lighttpd/
 chmod 644 /etc/lighttpd/lighttpd.conf
 chown root:root /etc/lighttpd/lighttpd.conf
 
@@ -286,13 +286,13 @@ chmod 644 /etc/systemd/system/nodeapi.service
 chown root:root /etc/systemd/system/nodeapi.service
 cd /opt/nodeapi
 npm install
-cd $BIN
+cd $TMPDIR
 
 ## Lighttpd base website files
 rm -rf /var/www/html
 mkdir -p /var/www/html
-mv -f $BIN/html-base/* /var/www/html
-mv -f $BIN/html/* /var/www/html
+mv -f $TMPDIR/html-base/* /var/www/html
+mv -f $TMPDIR/html/* /var/www/html
 mkdir -p /var/www/html/ram
 touch /var/www/html/ram/sysout.txt
 chmod -R +x /var/www/html
@@ -338,22 +338,22 @@ usermod -a -G sudo pi
 ## X Server Configuration
 usermod -a -G tty pi
 usermod -a -G video pi
-cp -f $BIN/Xwrapper.config /etc/X11
+cp -f $TMPDIR/Xwrapper.config /etc/X11
 chmod 644 /etc/X11/Xwrapper.config
 chown root:root /etc/X11/Xwrapper.config
 mkdir -p /home/pi/.config/lxsession
 chown -R pi:pi /home/pi/.config/lxsession
 mkdir -p /home/pi/.config/lxsession/LXDE
 chown -R pi:pi /home/pi/.config/lxsession/LXDE
-cp -f $BIN/xdesktop.conf /home/pi/.config/lxsession/LXDE/desktop.conf
+cp -f $TMPDIR/xdesktop.conf /home/pi/.config/lxsession/LXDE/desktop.conf
 chmod 644 /home/pi/.config/lxsession/LXDE/desktop.conf
 chown pi:pi /home/pi/.config/lxsession/LXDE/desktop.conf
-cp -f $BIN/xautostart /home/pi/.config/lxsession/LXDE/autostart
+cp -f $TMPDIR/xautostart /home/pi/.config/lxsession/LXDE/autostart
 chmod +x /home/pi/.config/lxsession/LXDE/autostart
 chown pi:pi /home/pi/.config/lxsession/LXDE/autostart
 
 ## Bluetooth Configuration
-cp -f $BIN/btmain.conf /etc/bluetooth/main.conf
+cp -f $TMPDIR/btmain.conf /etc/bluetooth/main.conf
 if [ ! -e "/opt/rpi/modconf/brand.txt" ]; then
 echo "Skip module naming."
 else
@@ -363,32 +363,32 @@ fi
 chown root:root /etc/bluetooth/main.conf
 chmod 644 /etc/bluetooth/main.conf
 mkdir -p /etc/systemd/system/bluetooth.service.d
-cp -f $BIN/bt-override.conf /etc/systemd/system/bluetooth.service.d/override.conf
+cp -f $TMPDIR/bt-override.conf /etc/systemd/system/bluetooth.service.d/override.conf
 chown root:root /etc/systemd/system/bluetooth.service.d/override.conf
 chmod 644 /etc/systemd/system/bluetooth.service.d/override.conf
 # Make Bluetooth Discoverable
 mkdir -p /etc/systemd/system/bthelper@.service.d
-cp -f $BIN/bthelper-override.conf /etc/systemd/system/bthelper@.service.d/override.conf
+cp -f $TMPDIR/bthelper-override.conf /etc/systemd/system/bthelper@.service.d/override.conf
 chown root:root /etc/systemd/system/bthelper@.service.d/override.conf
 chmod 644 /etc/systemd/system/bthelper@.service.d/override.conf
 # BlueALSA Configuration
 rm -f /etc/systemd/system/bluealsa.service
-cp -f $BIN/bluealsa.service /lib/systemd/system/bluealsa.service  
+cp -f $TMPDIR/bluealsa.service /lib/systemd/system/bluealsa.service  
 chown root:root /lib/systemd/system/bluealsa.service
 chmod 644 /lib/systemd/system/bluealsa.service
 mkdir -p /etc/systemd/system/bluealsa.service.d
-cp -f $BIN/bluealsa-override.conf /etc/systemd/system/bluealsa.service.d/override.conf
+cp -f $TMPDIR/bluealsa-override.conf /etc/systemd/system/bluealsa.service.d/override.conf
 chown root:root /etc/systemd/system/bluealsa.service.d/override.conf
 chmod 644 /etc/systemd/system/bluealsa.service.d/override.conf
 # Bluetooth UDEV Script
-cp -f $BIN/bluetooth-udev /usr/local/bin/bluetooth-udev
+cp -f $TMPDIR/bluetooth-udev /usr/local/bin/bluetooth-udev
 chown root:root /usr/local/bin/bluetooth-udev
 chmod +x /usr/local/bin/bluetooth-udev
-cp -f $BIN/bluetooth-udev.rules /etc/udev/rules.d/99-bluetooth-udev.rules
+cp -f $TMPDIR/bluetooth-udev.rules /etc/udev/rules.d/99-bluetooth-udev.rules
 chown root:root /etc/udev/rules.d/99-bluetooth-udev.rules
 chmod 644 /etc/udev/rules.d/99-bluetooth-udev.rules
 ## Bluetooth Input Configuration
-cp -f $BIN/btinput.conf /etc/bluetooth/input.conf
+cp -f $TMPDIR/btinput.conf /etc/bluetooth/input.conf
 chmod 644 /etc/bluetooth/input.conf
 chown root:root /etc/bluetooth/input.conf
 ## Disable Bluetooth Soft-Block
@@ -403,15 +403,15 @@ timedatectl set-ntp true
 timedatectl status
 
 ## Set hostname to configurations
-if [ ! -e "$BIN/hostname" ]; then
+if [ ! -e "$TMPDIR/hostname" ]; then
 echo "Skipping hostname modification."
 else
 ## Write hostname file
-cp -r $BIN/hostname /etc/hostname
+cp -r $TMPDIR/hostname /etc/hostname
 chmod 644 /etc/hostname
 chown root:root /etc/hostname
 ## Write hosts file
-cp -f $BIN/hosts /etc
+cp -f $TMPDIR/hosts /etc
 chmod 644 /etc/hosts
 chown root:root /etc/hosts
 sed -i "s/raspberrypi/$NEWHOST/g" /etc/hosts
@@ -426,15 +426,15 @@ chmod 777 /var/lib/alsa/asound.state
 fi
 
 ## ALSA Configuration
-cp -f $BIN/asound.conf /etc/
+cp -f $TMPDIR/asound.conf /etc/
 chmod 644 /etc/asound.conf
 chown root:root /etc/asound.conf
-cp -f $BIN/aliases.conf /lib/modprobe.d/
+cp -f $TMPDIR/aliases.conf /lib/modprobe.d/
 chmod 644 /lib/modprobe.d/aliases.conf
 chown root:root /lib/modprobe.d/aliases.conf
 
 ## Samba USB Share Configuration
-cp -f $BIN/smb.conf /etc/samba
+cp -f $TMPDIR/smb.conf /etc/samba
 chmod 644 /etc/samba/smb.conf
 chown root:root /etc/samba/smb.conf
 if [ ! -e "/opt/rpi/modconf/brand.txt" ]; then
@@ -446,21 +446,21 @@ fi
 
 ## Automount Fix System Override
 mkdir -p /etc/systemd/system/systemd-udevd.service.d
-cp -f $BIN/udevd-override.conf /etc/systemd/system/systemd-udevd.service.d/override.conf
+cp -f $TMPDIR/udevd-override.conf /etc/systemd/system/systemd-udevd.service.d/override.conf
 chmod -f 644 /etc/systemd/system/systemd-udevd.service.d/override.conf
 chown -f root:root /etc/systemd/system/systemd-udevd.service.d/override.conf
 ## Run script when USB drive plugged in 
-cp -f $BIN/10-udev-disks.rules /etc/udev/rules.d/
+cp -f $TMPDIR/10-udev-disks.rules /etc/udev/rules.d/
 chmod 644 /etc/udev/rules.d/10-udev-disks.rules
 chown root:root /etc/udev/rules.d/10-udev-disks.rules
 udevadm control --reload-rules
 
 ## Motion Default Configuration
-cp -f $BIN/motion /etc/default/motion
+cp -f $TMPDIR/motion /etc/default/motion
 chmod 644 /etc/default/motion
 chown root:root /etc/default/motion
 mkdir -p /etc/motion
-cp -f $BIN/motion.conf /etc/motion/motion.conf
+cp -f $TMPDIR/motion.conf /etc/motion/motion.conf
 chmod 644 /etc/motion/motion.conf
 chown root:root /etc/motion/motion.conf
 
@@ -481,7 +481,7 @@ if [ ! -e "/usr/local/include/ws2811/ws2811.h" ]; then
   make
   make install
   ldconfig
-  cd $BIN
+  cd $TMPDIR
 fi
 #######################################################
 if [ ! -f "$SRC_BKP/opcserver.cpp" ]; then
@@ -668,10 +668,10 @@ usermod -a -G tty www-data
 #######################################################
 
 ## Services Configuration
-cp -f $BIN/timesyncd.conf /etc/systemd/
+cp -f $TMPDIR/timesyncd.conf /etc/systemd/
 chmod 644 /etc/systemd/timesyncd.conf
 chown root:root /etc/systemd/timesyncd.conf
-cp -f $BIN/keyboard-setup.service /lib/systemd/system/
+cp -f $TMPDIR/keyboard-setup.service /lib/systemd/system/
 chmod 644 /lib/systemd/system/keyboard-setup.service
 chown root:root /lib/systemd/system/keyboard-setup.service
 rm -f /lib/systemd/system/shairport-sync.service
@@ -692,10 +692,10 @@ if [ ! -e "/etc/rpi-conf.done" ]; then
     lighttpd motion serial-getty@ttyS0.service man-db.service nfs-blkmap \
     serial-getty@ttyAMA0.service winbind hciuart bluetooth bthelper@hci0 \
     bluealsa-aplay nmbd smbd samba-ad-dc triggerhappy sshswitch
-  echo "Initial setup (phase II) complete."
+  echo "Initial setup (phase II) complete"
   touch /etc/rpi-conf.done
 else
-  echo "Skipping services configuration."
+  echo "Skipping services configuration"
 fi
 
 ## Run module script if found
@@ -741,17 +741,13 @@ chmod -R 777 /var/log/Xorg.0.log /var/log/Xorg.0.log.old
 chmod -R 644 /home/pi/.xsession-errors
 chown -R pi:pi /var/log/Xorg.0.log /var/log/Xorg.0.log.old /home/pi/.xsession-errors
 
-## Execute Permissions
+## Set Permissions
 chmod -R +x /opt/rpi
 chown -R root:root /opt/rpi
 
-## Remove Installer Files
-rm -rf /opt/rpi/RetroPie-Setup
-rm -rf /opt/rpi/config
-rm -rf /opt/rpi/pkgs
-rm -f /usr/bin/leds
-apt autoclean
-apt clean
+## Install Menus
+echo "Installing menu items..."
+cp -rf $TMPDIR/menus/*.txt /var/www/html/ram/
 
 ## Clean systemd logs
 journalctl --flush --rotate
@@ -760,7 +756,13 @@ journalctl -m --vacuum-time=300s
 ## Aliases
 ln -sf /opt/rpi/rpi.sh /usr/bin/rpi
 
+## Cleanup
+echo "Removing temporary files..."
+rm -rf $TMPDIR
+apt autoclean
+apt clean
+
 echo ""
-echo "Configuration Complete."
+echo "*** Configuration complete ***"
 exit
 

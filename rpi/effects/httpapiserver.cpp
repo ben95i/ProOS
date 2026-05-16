@@ -1,82 +1,54 @@
 #include "httpapiserver.h"
 #include <iostream>
+#include <algorithm>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
 #include <string.h>
 #include <cmath>
+#include <poll.h>
 
-/**
- * @class SocketDescriptorGuard
- * @brief RAII wrapper to ensure socket file descriptors are safely closed to prevent memory/resource leaks.
- */
 class SocketDescriptorGuard {
 public:
-    explicit SocketDescriptorGuard(int socketDescriptor) {
-        managedSocketDescriptor = socketDescriptor;
-    }
-
+    explicit SocketDescriptorGuard(int socketDescriptor) : managedSocketDescriptor(socketDescriptor) {}
     ~SocketDescriptorGuard() {
-        bool isDescriptorValid = false;
-        if (managedSocketDescriptor >= 0) {
-            isDescriptorValid = true;
-        }
-
-        if (isDescriptorValid == true) {
-            close(managedSocketDescriptor);
-        }
+        if (managedSocketDescriptor >= 0) close(managedSocketDescriptor);
     }
-
-    int getDescriptor() const {
-        return managedSocketDescriptor;
-    }
-
+    int getDescriptor() const { return managedSocketDescriptor; }
 private:
     int managedSocketDescriptor;
 };
 
-HttpApiServer::HttpApiServer(int targetPort, int rateLimitMilliseconds) {
-    serverPort = targetPort;
-    
-    std::chrono::milliseconds durationToSet(rateLimitMilliseconds);
-    rateLimitDuration = durationToSet;
-    
-    bool initialRunningState = false;
-    isServerRunning.store(initialRunningState);
-    
-    std::chrono::time_point<std::chrono::steady_clock> epochTime;
-    lastRequestTime = epochTime;
-}
+HttpApiServer::HttpApiServer(int targetPort, int rateLimitMilliseconds) 
+    : serverPort(targetPort), 
+      rateLimitDuration(rateLimitMilliseconds), 
+      isServerRunning(false), 
+      lastRequestTime(std::chrono::steady_clock::now()) {}
 
 HttpApiServer::~HttpApiServer() {
     stopServer();
 }
 
 void HttpApiServer::setCallbacks(GetBrightnessFunction getCallback, SetBrightnessFunction setCallback) {
-    onGetBrightness = getCallback;
-    onSetBrightness = setCallback;
+    onGetBrightness = std::move(getCallback);
+    onSetBrightness = std::move(setCallback);
 }
 
 void HttpApiServer::startServer() {
-    bool currentRunningState = true;
-    isServerRunning.store(currentRunningState);
-    
-    std::thread backgroundThread(&HttpApiServer::listenForConnections, this);
-    listenerThread = std::move(backgroundThread);
+    if (!isServerRunning.exchange(true)) {
+        listenerThread = std::thread(&HttpApiServer::listenForConnections, this);
+    }
 }
 
 void HttpApiServer::stopServer() {
-    bool stoppedState = false;
-    isServerRunning.store(stoppedState);
-    
-    bool isThreadJoinable = listenerThread.joinable();
-    if (isThreadJoinable == true) {
+    if (isServerRunning.exchange(false) && listenerThread.joinable()) {
         listenerThread.join();
     }
 }
 
 void HttpApiServer::listenForConnections() {
     int serverSocketDescriptor = socket(AF_INET, SOCK_STREAM, 0);
+    if (serverSocketDescriptor < 0) return;
     SocketDescriptorGuard serverSocketGuard(serverSocketDescriptor);
 
     int socketOptions = 1;
@@ -87,109 +59,69 @@ void HttpApiServer::listenForConnections() {
     serverAddress.sin_addr.s_addr = INADDR_ANY;
     serverAddress.sin_port = htons(serverPort);
 
-    int bindResult = bind(serverSocketDescriptor, (struct sockaddr*)&serverAddress, sizeof(serverAddress));
-    if (bindResult < 0) {
-        std::cerr << "Fatal: Could not bind HTTP API port." << std::endl;
+    if (bind(serverSocketDescriptor, (struct sockaddr*)&serverAddress, sizeof(serverAddress)) < 0) {
+        std::cerr << "Fatal: Could not bind HTTP API port " << serverPort << std::endl;
         return;
     }
 
     listen(serverSocketDescriptor, 5);
 
-    while (isServerRunning.load() == true) {
-        int clientSocketDescriptor = accept(serverSocketDescriptor, nullptr, nullptr);
-        
-        bool isClientValid = false;
-        if (clientSocketDescriptor >= 0) {
-            isClientValid = true;
-        }
+    struct pollfd pfd{};
+    pfd.fd = serverSocketDescriptor;
+    pfd.events = POLLIN;
 
-        if (isClientValid == true) {
-            // Spawn a detached thread to prevent blocking the listener loop (fixes race condition/hanging)
-            std::thread clientThread(&HttpApiServer::processClientRequest, this, clientSocketDescriptor);
-            clientThread.detach();
+    while (isServerRunning) {
+        // Poll with a 500ms timeout to allow clean shutdown checks
+        if (poll(&pfd, 1, 500) > 0) {
+            int clientSocketDescriptor = accept(serverSocketDescriptor, nullptr, nullptr);
+            if (clientSocketDescriptor >= 0) {
+                std::thread(&HttpApiServer::processClientRequest, this, clientSocketDescriptor).detach();
+            }
         }
     }
 }
 
 void HttpApiServer::processClientRequest(int clientSocketDescriptor) {
     SocketDescriptorGuard clientSocketGuard(clientSocketDescriptor);
+    int clientFd = clientSocketGuard.getDescriptor();
 
-    // Apply Rate Limiting
+    // Setup receive timeout to prevent hung threads
+    struct timeval timeout{2, 0}; // 2 seconds
+    setsockopt(clientFd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+
+    // Rate Limiting
     {
         std::lock_guard<std::mutex> lockGuard(rateLimitMutex);
-        
-        std::chrono::time_point<std::chrono::steady_clock> currentTime = std::chrono::steady_clock::now();
-        std::chrono::milliseconds timeSinceLastRequest = std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - lastRequestTime);
-        
-        bool isRateLimited = false;
-        if (timeSinceLastRequest < rateLimitDuration) {
-            isRateLimited = true;
-        }
-
-        if (isRateLimited == true) {
+        auto currentTime = std::chrono::steady_clock::now();
+        if (std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - lastRequestTime) < rateLimitDuration) {
             std::string busyResponse = "HTTP/1.1 429 Too Many Requests\r\nContent-Type: text/plain\r\nContent-Length: 4\r\n\r\nBUSY";
-            send(clientSocketGuard.getDescriptor(), busyResponse.c_str(), busyResponse.length(), 0);
+            send(clientFd, busyResponse.c_str(), busyResponse.length(), MSG_NOSIGNAL);
             return;
         }
-        
         lastRequestTime = currentTime;
     }
 
-    char requestBuffer[1024];
-    memset(requestBuffer, 0, sizeof(requestBuffer));
-    
-    ssize_t bytesRead = read(clientSocketGuard.getDescriptor(), requestBuffer, sizeof(requestBuffer) - 1);
-    
-    bool isReadSuccessful = false;
-    if (bytesRead > 0) {
-        isReadSuccessful = true;
-    }
+    char requestBuffer[1024] = {0};
+    ssize_t bytesRead = read(clientFd, requestBuffer, sizeof(requestBuffer) - 1);
+    if (bytesRead <= 0) return;
 
-    if (isReadSuccessful == false) {
-        return;
-    }
-
-    std::string requestString(requestBuffer);
+    std::string requestString(requestBuffer, bytesRead);
     std::string responseString;
 
-    size_t getPosition = requestString.find("GET /brightness");
-    size_t setPosition = requestString.find("b=");
-
-    bool isGetRequest = false;
-    if (getPosition != std::string::npos) {
-        isGetRequest = true;
-    }
-
-    bool isSetRequest = false;
-    if (setPosition != std::string::npos) {
-        isSetRequest = true;
-    }
-
-    if (isGetRequest == true) {
-        int currentBrightness = 0;
-        if (onGetBrightness != nullptr) {
-            currentBrightness = onGetBrightness();
-        }
-        
+    if (requestString.find("GET /brightness") != std::string::npos) {
+        int currentBrightness = onGetBrightness ? onGetBrightness() : 0;
         std::string bodyString = std::to_string(currentBrightness);
-        size_t bodyLength = bodyString.length();
-        std::string lengthString = std::to_string(bodyLength);
-        
-        responseString = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " + lengthString + "\r\n\r\n" + bodyString;
+        responseString = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " + 
+                         std::to_string(bodyString.length()) + "\r\n\r\n" + bodyString;
     } 
-    else if (isSetRequest == true) {
+    else if (size_t setPosition = requestString.find("b="); setPosition != std::string::npos) {
         try {
-            size_t valueStartIndex = setPosition + 2;
-            std::string valueString = requestString.substr(valueStartIndex);
-            float rawValueFloat = std::stof(valueString);
+            int targetBrightness = std::stoi(requestString.substr(setPosition + 2));
+            targetBrightness = std::max(0, std::min(targetBrightness, 255));
             
-            float roundedValue = std::round(rawValueFloat);
-            int finalIntegerBrightness = static_cast<int>(roundedValue);
-            
-            if (onSetBrightness != nullptr) {
-                onSetBrightness(finalIntegerBrightness);
+            if (onSetBrightness) {
+                onSetBrightness(targetBrightness);
             }
-            
             responseString = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 3\r\n\r\nOK\n";
         } catch (...) {
             responseString = "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\nContent-Length: 14\r\n\r\nInvalid Value\n";
@@ -199,5 +131,5 @@ void HttpApiServer::processClientRequest(int clientSocketDescriptor) {
         responseString = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 10\r\n\r\nNot Found\n";
     }
 
-    send(clientSocketGuard.getDescriptor(), responseString.c_str(), responseString.length(), 0);
+    send(clientFd, responseString.c_str(), responseString.length(), MSG_NOSIGNAL);
 }

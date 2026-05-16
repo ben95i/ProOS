@@ -22,7 +22,7 @@ mount -o remount,ro /boot/firmware
 
 ## Set LED Type
 rm -f /opt/rpi/ledtype.txt
-echo "93ring" > /opt/rpi/ledtype.txt
+echo "93ringinv" > /opt/rpi/ledtype.txt
 
 ## Web Interface ID
 cp -f $BIN/modconf/device.js /var/www/html/

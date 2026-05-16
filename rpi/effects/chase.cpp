@@ -19,7 +19,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    LEDLayout layout;
+    LedLayout layout;
     try {
         layout.parseArgument(argv[1]);
     } catch (...) {
@@ -27,7 +27,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    const int totalPixels = layout.pixels.size();
+    const int totalPixels = layout.getPixels().size();
     if (totalPixels == 0) {
         std::cerr << "Error: Layout resulted in 0 LEDs." << std::endl;
         return 1;
