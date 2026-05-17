@@ -3,6 +3,8 @@
 #include <cmath>
 #include <cstdio>
 
+const bool RING_93_INVERT_Y = true; // flip image 180 degrees (93 LED rings)
+
 void LedLayout::parseArgument(const std::string& layoutArgument) {
     std::string ringStandard = "93ring";
     std::string ringInverted = "93ringinv";
@@ -154,13 +156,14 @@ void LedLayout::setup93Ring(bool shouldInvertX) {
         int ledCount; 
     };
     
+    // CORRECTED: Sequential starting indices for all 93 LEDs
     std::vector<RingDefinition> concentricRings = {
-        {0, 1}, 
-        {8, 8}, 
-        {20, 12}, 
-        {36, 16}, 
-        {60, 24}, 
-        {92, 32}
+        {0, 1},   // Ring 0: Index 0
+        {1, 8},   // Ring 1: Indices 1-8
+        {9, 12},  // Ring 2: Indices 9-20
+        {21, 16}, // Ring 3: Indices 21-36
+        {37, 24}, // Ring 4: Indices 37-60
+        {61, 32}  // Ring 5: Indices 61-92
     };
     
     int totalRings = static_cast<int>(concentricRings.size());
@@ -185,7 +188,16 @@ void LedLayout::setup93Ring(bool shouldInvertX) {
             
             float floatLedIndex = static_cast<float>(currentLedIndex);
             float angleRatio = floatLedIndex / floatRingLedCount;
-            float currentAngleRadians = angleRatio * FULL_CIRCLE_RADIANS;
+
+            float currentAngleRadians;
+            if (RING_93_INVERT_Y == true) {
+                // --- rotate image by 180-degree ---
+                float rotationOffset = FULL_CIRCLE_RADIANS / 2.0f; 
+                currentAngleRadians = (angleRatio * FULL_CIRCLE_RADIANS) + rotationOffset;
+            } else {
+                // --- no image rotation ---
+                currentAngleRadians = angleRatio * FULL_CIRCLE_RADIANS;
+            }
             
             LedPixel currentPixel;
             

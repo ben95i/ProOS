@@ -520,6 +520,59 @@
   </div>
 </div>
 
+
+<div class="server-grid ledpi-grid">
+  <div class="textscroll__prompt prompt_win">
+    <textarea class="scroll-bar-style" id="textScrollBox" placeholder="Enter message" spellcheck="false"></textarea>
+    <div class="dropdown">
+      <button type="button" class="button button__sml" onclick="showMenu('textscrollfont-menu')">
+        <span class="button__text"> Font</span>
+      </button>  
+      <div class="dd-content dd-button" id="textscrollfont-menu">
+        <a onclick="setTextScrollFont('8x8')"></i> Large</a>
+        <a onclick="setTextScrollFont('5x7')"></i> Small</a>  
+        <a onclick="setTextScrollFont('3x5')"></i> Narrow</a>
+      </div>
+    </div>
+    <div class="dropdown">
+      <button type="button" class="button button__sml" onclick="showMenu('textscrollcolor-menu')">
+        <span class="button__text"> Color</span>
+      </button>  
+      <div class="dd-content dd-button" id="textscrollcolor-menu">
+        <a onclick="setTextScrollColor('00FF00')"></i> Green</a>
+        <a onclick="setTextScrollColor('FF0000')"></i> Red</a>
+        <a onclick="setTextScrollColor('0000FF')"></i> Blue</a>    
+        <a onclick="setTextScrollColor('FFA500')"></i> Orange</a>
+        <a onclick="setTextScrollColor('A020F0')"></i> Purple</a>
+        <a onclick="setTextScrollColor('FFCC00')"></i> Yellow</a> 
+        <a onclick="setTextScrollColor('FFFFFF')"></i> White</a>
+      </div>
+    </div>
+    <div class="dropdown">
+      <button type="button" class="button button__sml" onclick="showMenu('textscrollspeed-menu')">
+        <span class="button__text"> Speed</span>
+      </button>  
+      <div class="dd-content dd-button" id="textscrollspeed-menu">
+        <a onclick="setTextScrollSpeed('3.0')"></i> Slowest</a>
+        <a onclick="setTextScrollSpeed('9.0')"></i> Slow</a>
+        <a onclick="setTextScrollSpeed('12.0')"></i> Normal</a>    
+        <a onclick="setTextScrollSpeed('15.0')"></i> Fast</a> 
+        <a onclick="setTextScrollSpeed('20.0')"></i> Fastest</a>
+      </div>
+    </div>
+    <button type="button" class="button button__sml" onclick="closeTextScroll()">
+      <span class="button__text"><i class="fas fa-times"></i></span>
+    </button>
+    <button type="button" class="button button__sml" onclick="clearTextScrollBox()">
+      <span class="button__text"><i class="fad fa-trash-alt"></i></span>
+    </button>
+    <button type="button" class="button button__sml" onclick="sendTextScroll()">
+      <span class="button__text"><i class="fad fa-upload"></i></span>
+    </button>
+  </div>
+</div>
+
+
 <div class="log-popup popup-win" id="logForm">
   <div class="popup-ctn">
     <textarea readonly class="scroll-bar-style" id="logTextBox" spellcheck="false"></textarea>

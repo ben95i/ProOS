@@ -156,6 +156,9 @@ apt-get clean -y
 rm -fr /etc/systemd/system/rpi-*
 rm -f /etc/systemd/system/usbplug.service
 
+## Recompile All Programs
+rm -rf /opt/source-backup
+
 ## Reset LED configuration
 rm -f /opt/rpi/remotes/leds
 rm -f /tmp/global-fc.lock

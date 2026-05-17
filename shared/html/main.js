@@ -10,6 +10,7 @@ let ctlCommand;
 let fileData = [];
 let serverCmdData;
 let messagePopupTimer;
+let ledScrollData = ["00ff00", "8x8", "6.0"];
 let dynMenuActive = 0;
 let bookmarkState = 0;
 let volPopupTimer;
@@ -242,7 +243,6 @@ function sendBtnAlert(state) {
   }
 }
 
-// clear pending server command 
 function clearPendingCmd() {
   sendBtnAlert("off");
   serverCmdData = null;
@@ -275,7 +275,49 @@ function closeServerOptions(){
   classDisplay("svropt__backup", "none");
 }
 
-/// END- text popup window ///
+/// LEDScroll ///
+
+function openTextScroll(){
+  classDisplay("textscroll__prompt", "block");
+}
+
+function setTextScrollColor(color){
+  ledScrollData[0] = color;
+}
+
+function setTextScrollFont(font){
+  ledScrollData[1] = font;
+}
+
+function setTextScrollSpeed(speed){
+  ledScrollData[2] = speed;
+}
+
+function sendTextScroll(){
+  let textbox = document.getElementById('textScrollBox');
+  const message = cleanString(textbox.value.replaceAll("|", "-"));
+  if (message == null || message == "") {
+    return;
+  }
+  const color = ledScrollData[0];
+  const font = ledScrollData[1];
+  const speed = ledScrollData[2];
+  const commands = message + '|' + color + '|' + font + '|' + speed;
+  const encoded = base64URLSafeEncode(commands);
+  sendCmd('leds','textscroll',encoded);
+}
+
+function closeTextScroll(){
+  hideDropdowns();
+  classDisplay("textscroll__prompt", "none");
+}
+
+function clearTextScrollBox(){
+  let textbox = document.getElementById('textScrollBox');
+  textbox.value = "";
+}
+
+/// END - LEDScroll ///
 
 async function aboutPrompt(){
   const _winid = 'about__prompt';
@@ -1651,6 +1693,7 @@ function showPowerMenu(target, menu) {
           if (pri_cmd == 'pc_awake') {
             _menudata += 'sleepmode~' + target + '~' + menu + 'off|noind|Sleep\n';
           }
+          // window lamp slider
           if (menu == 'wl_leds') {
             _menudata += sub_cmd + '~' + target + '~wl_leds_set|slider|\n';
           }
@@ -1881,8 +1924,13 @@ function createListItem(col0_in, col1, col2, menuid) {
       break;
     case 'ledmenu': 
       // LEDs menu
+      const effect_cmd = col0;
       _elm.addEventListener("click", function() {
-        sendCmd('leds',col0,'');
+        if (effect_cmd == 'textscroll') {
+          openTextScroll();
+        } else {
+          sendCmd('leds',effect_cmd,'');
+        }
       });
       break;
     case 'relaxmenu': 
@@ -1981,7 +2029,7 @@ function createListItem(col0_in, col1, col2, menuid) {
 
 const throttledSliderSend = throttle((host, cmd, val) => {
   sendCmd(host, cmd, val);
-}, 60); // in (ms)
+}, 50); // in (ms)
 
 function drawStatusItem(elm, col0, host, cmd) {
   const _icon = document.createElement('span');

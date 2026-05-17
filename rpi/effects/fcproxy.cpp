@@ -24,7 +24,7 @@ constexpr const char* LOOPBACK_IP = "127.0.0.1";
 constexpr int INITIAL_BRIGHTNESS = 175; 
 constexpr float MIN_BRIGHTNESS_FLOOR = 0.1f; 
 constexpr size_t OPC_HEADER_LEN = 4;
-constexpr float GLOBAL_GAMMA = 2.8f;
+constexpr float GLOBAL_GAMMA = 2.2f;
 
 std::atomic<int> globalCurrentBrightness{INITIAL_BRIGHTNESS};
 std::atomic<uint32_t> globalBrightnessVersion{0}; 

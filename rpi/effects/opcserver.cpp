@@ -23,7 +23,7 @@
 constexpr int GPIO_OUTPUT_PIN = 18;
 constexpr int DMA_CHANNEL = 10;
 constexpr int LED_STRIP_TYPE = WS2811_STRIP_GRB;
-constexpr float GAMMA_EXPONENT = 2.7f;
+constexpr float GAMMA_EXPONENT = 2.8f;
 constexpr const char* SECURITY_USER = "nobody";
 constexpr int OPC_LISTENER_PORT = 7890;
 constexpr int HTTP_CONTROL_PORT = 7892;
