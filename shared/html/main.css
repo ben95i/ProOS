@@ -11,7 +11,8 @@
   box-sizing: border-box;
   font-family: JosefinSans, system-ui;
   font-size: 24px; /* default font size */
-  --secondary-color: #36363d; /* nav bar, menus, and border color */
+  --secondary-color: #36363d; /* nav bar and menus color */
+  --border-color: #878787; /* border color */
 }
 
 body {
@@ -234,7 +235,7 @@ input.chkbox {
 .button {
   /* layout & spacing */
   vertical-align: middle;
-  margin-left: 8px;
+  margin-left: 5px;
   margin-bottom: 8px;
   margin-top: 8px;
   width: 150px;
@@ -321,8 +322,6 @@ input.chkbox {
 
 .large__icon {
   font-size: 38px;
-  position: relative;
-  top: 7px;
 }
 
 /*
@@ -405,7 +404,7 @@ input.chkbox {
   left: 50%;
   transform: translateX(-50%);
   z-index: 996;
-  border: solid 1px #fff;
+  border: 1px solid var(--border-color);
   border-radius: 15px;
   background-color: color-mix(in srgb, var(--secondary-color), #000 40%);
   overflow: hidden;
@@ -422,9 +421,9 @@ input.chkbox {
 
 .popup-actions {
   display: flex;
-  padding-top: 5px;
+  padding-top: 10px;
   padding-left: 5px;
-  padding-right: 10px;
+  padding-right: 5px;
   justify-content: flex-end;
   gap: 10px;
 }
@@ -638,7 +637,7 @@ input.chkbox {
 .prompt_win {
   border-radius: 15px;
   background-color: #000;
-  border: 1px solid #fff;
+  border: 1px solid var(--border-color);
   position: absolute;
   color: #fff;
   z-index: 998;
@@ -762,8 +761,8 @@ input.chkbox {
 }
 
 .editFav__button {
-  padding-top: 3px;
   margin-right: 5px;
+  margin-left: 8px;
   height: 50px;
   width: 155px;
 }
@@ -808,12 +807,10 @@ input.chkbox {
 }
 
 #about__btn {
-  position: absolute;
-  margin-left: -75px;
   width: 150px;
-  height: 70px;
-  bottom: 12px;
-  left: 50%;
+  height: 65px;
+  left: 3px;
+  top: 10px;
 }
 
 .about__title {
@@ -863,32 +860,11 @@ input.chkbox {
   overflow-y: visible;
   top: 50%;
   left: 50%;
-  padding-top: 7px;
-  padding-right: 3px; 
   transform: translate(-50%, -50%);
   margin-right: -50%;
+  padding-top: 5px;
   width: 460px;
   height: auto;
-}
-
-.svropt__bkp_brd {
-  padding-top: 10px; 
-  padding-bottom: 10px; 
-  padding-left: 5px; 
-  padding-right: 5px; 
-}
-
-.svropt__bkp_frame {
-  border: 1px solid #fff;
-  color: #fff;
-  padding-top: 7px; 
-  padding-bottom: 7px; 
-  padding-left: 5px; 
-  padding-right: 5px; 
-}
-
-.svropt__bkp_btn {
-  width: 128px;  
 }
 
 .svropt_button {
@@ -922,7 +898,7 @@ input.chkbox {
 #color__box {
   position: relative;
   padding: 0;
-  border: 1px solid #fff;
+  border: 1px solid var(--border-color);
   border-radius: 0px;
   background: none;
   margin-top: 15px;
@@ -965,7 +941,7 @@ input.chkbox {
   position: absolute;
   border-radius: 50%;
   display: inline-block;
-  border-top: 3px solid #FFF;
+  border-top: 3px solid #fff;
   border-right: 3px solid transparent;
   box-sizing: border-box;
   animation: rotation 1s linear infinite;
@@ -987,7 +963,7 @@ input.chkbox {
 .popup-alert {
   border-radius: 15px;
   background-color: #000;
-  border: 1px solid #fff;
+  border: 1px solid var(--border-color);
   position: fixed;
   top: 50px;
   height: auto;
@@ -1073,8 +1049,6 @@ input.chkbox {
 .temp__btn {
   width: 100px;
   height: 60px;
-  margin-right: 5px;
-  margin-left: 5px;
 }
 
 .thermometer {

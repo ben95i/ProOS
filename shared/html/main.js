@@ -10,7 +10,7 @@ let ctlCommand;
 let fileData = [];
 let serverCmdData;
 let messagePopupTimer;
-let ledScrollData = ["00ff00", "8x8", "6.0"];
+let ledScrollData = ["00ff00", "8x8", "10.0"];
 let dynMenuActive = 0;
 let bookmarkState = 0;
 let volPopupTimer;
