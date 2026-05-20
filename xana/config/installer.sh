@@ -153,7 +153,7 @@ cp -r /tmp/config/fonts/* /usr/share/fonts/opentype/
 chmod -R 777 /usr/share/fonts/opentype/
 
 ## Themes
-if [ ! -e /etc/themes.installed ]; then
+if [ ! -e "/etc/themes.installed" ]; then
   tar -Jxvf /tmp/config/icons/Bluecurve.txz -C /tmp/config/icons/
   cp -r /tmp/config/icons/BluecurveRH /usr/share/icons/
   chmod -R 777 /usr/share/icons/

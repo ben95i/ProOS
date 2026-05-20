@@ -7,9 +7,11 @@ const { runStatusUpdate } = require('./statusupd');
 const execFileAsync = util.promisify(execFile);
 const execAsync = util.promisify(exec);
 
-const MAX_PING_WAIT = "0.5";
+const API_CALL_TIMEOUT = 5000; // in (ms)
+const MAX_PING_WAIT = "0.5"; // in (sec)
 const LOCAL_DOMAIN = "home";
 const NET_RANGE = "192.168.1.0";
+const BRPC_MAC = "90:2e:16:46:86:43";
 const IPs = {
     lrxmit: "192.168.1.12",
     desk: "192.168.1.14",
@@ -17,9 +19,8 @@ const IPs = {
     brpc: "192.168.1.17",
     picolamp1: "192.168.1.18"
 };
-const BRPC_MAC = "90:2e:16:46:86:43";
 
-function extractBashPipe(str) {
+function extractResponse(str) {
     const delimiter = "|";
     if (str === "") {
         return "";
@@ -70,13 +71,13 @@ async function callApi(target, arg1, arg2 = "") {
     }
     const server = `http://${target}:80/api?var=${arg2}&arg=${arg1}&action=main`;
     try {
-        const response = await fetch(server, { signal: AbortSignal.timeout(3000) });
+        const response = await fetch(server, { signal: AbortSignal.timeout(API_CALL_TIMEOUT) });
         if (!response.ok) {
             return "invalid response";
         }
         const apiResp = await response.text();
         const respClean = apiResp.replace(/[\\"]/g, '');
-        return(extractBashPipe(respClean));
+        return(extractResponse(respClean));
     } catch (error) {
         return "callApi exception: " + error.message;
     }
@@ -88,7 +89,7 @@ async function callPico(target, arg1, arg2 = "") {
     }
     const server = `http://${target}:4000/api?${arg1},,${arg2}~`;
     try {
-        const response = await fetch(server, { signal: AbortSignal.timeout(3000) });
+        const response = await fetch(server, { signal: AbortSignal.timeout(API_CALL_TIMEOUT) });
         if (!response.ok) {
             return "invalid response";
         }
@@ -107,7 +108,7 @@ async function readComResp(xmit, respCmd, respPos = "") {
     if (xmit === "local") {
         ttyRaw = await localCom(respCmd);
     }
-    const ttyOut = extractBashPipe(ttyRaw);
+    const ttyOut = extractResponse(ttyRaw);
     if (respPos === "") {
         return ttyOut;
     }
@@ -137,11 +138,11 @@ async function brXmit(cmd) {
         case "roomth":     return await readComResp("local", "01005", "");
         
         case "brtv":       return await readComResp("local", "01003", "0");
+        case "brtvoff":    return await localCom("01002");
         case "brtvon":
             await localCom("01001");
             await wakeBrpc();
-            return "";
-        case "brtvoff":    return await localCom("01002");
+            return "OK";
 
         case "brpc": {
             const ping = await localPing(IPs.brpc);
@@ -153,16 +154,16 @@ async function brXmit(cmd) {
             if (ping === "1") {
                 return await callApi(IPs.brpc, "sleep", "");
             } else {
-                return `${IPs.desk} is already offline`;
+                return `${IPs.brpc} is already offline`;
             }
         }
         case "brpcon": {
             const ping = await localPing(IPs.brpc);
             if (ping === "1") {
-                return `${IPs.desk} is already online`;
+                return `${IPs.brpc} is already online`;
             } else {
                 await wakeBrpc();
-                return "";
+                return "OK";
             }
         }
 
@@ -172,10 +173,9 @@ async function brXmit(cmd) {
 }
 
 async function lrXmit(cmdIn) {
-    const CMD_SEP = "-";
     let cmd1 = cmdIn;
     let cmd2 = "";
-    const sepIndex = cmdIn.indexOf(CMD_SEP);
+    const sepIndex = cmdIn.indexOf("-");
     if (sepIndex !== -1) {
         cmd1 = cmdIn.substring(0, sepIndex);
         cmd2 = cmdIn.substring(sepIndex + 1);

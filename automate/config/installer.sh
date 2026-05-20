@@ -5,45 +5,29 @@
 
 WWWPATH="/var/www/html"
 TMPDIR="/tmp/config"
+cd $TMPDIR
 
 ## Update Sources
 apt-get --yes update
 
 ## Install Packages
 apt-get install -y --no-upgrade --ignore-missing dirmngr ca-certificates bpytop \
- apt-transport-https wget unzip gnupg rsync curl screen parallel libdbus-1-dev \
- ethtool libdbus-glib-1-dev locales aptitude sudo gnupg scrub binutils nmap fastfetch \
- avahi-daemon ffmpeg pip python3-ament-xmllint etherwake wakeonlan npm nodejs
+ ethtool libdbus-glib-1-dev locales aptitude sudo gnupg scrub binutils nmap pip \
+ apt-transport-https wget unzip gnupg rsync curl screen parallel libdbus-1-dev htop \
+ autotools-dev autoconf automake build-essential libncursesw5-dev fastfetch \
+ avahi-daemon ffmpeg python3-ament-xmllint etherwake wakeonlan npm nodejs 
 
 ## Remove Packages
-apt-get remove -y --purge cron anacron postfix apache2 apache2-data htop
+apt-get remove -y --purge cron anacron postfix apache2 apache2-data
 
 ## CSS Minifier
-apt-get install -y --no-upgrade --ignore-missing yui-compressor default-jre-headless
 mkdir -p /usr/lib/jvm/java-8-openjdk-amd64
+apt-get install -y --no-upgrade --ignore-missing yui-compressor default-jre-headless
 ln -sf /usr/lib/jvm/default-java /usr/lib/jvm/java-8-openjdk-amd64/jre
 if [ ! -e "/usr/local/bin/uglifyjs" ]; then
   ## Minify JS
   npm install uglify-js -g
 fi  
-
-## Process Monitor
-if [ ! -e "/usr/local/bin/htop" ]; then
-  apt-get remove -y htop
-  apt-get install -y --no-upgrade --ignore-missing libncursesw5-dev \
-   autotools-dev autoconf automake build-essential
-  cd $TMPDIR
-  wget https://github.com/htop-dev/htop/releases/download/3.2.1/htop-3.2.1.tar.xz
-  tar -xf htop-3.2.1.tar.xz
-  cd htop-3.2.1
-  ./autogen.sh
-  ./configure
-  make
-  make install
-  cd $TMPDIR
-  ln -sf /usr/local/bin/htop /usr/bin/htop	
-fi
-ln -sf /usr/bin/bpytop /usr/bin/pytop
 
 ## Install Replacement Logger
 apt-get remove --purge -y rsyslog
@@ -71,38 +55,41 @@ fi
 ## Install Arduino Support
 if [ ! -e "/usr/bin/arduino-cli" ]; then
   curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR=/usr/bin sh
-  arduino-cli version
   arduino-cli core update-index
   arduino-cli core install arduino:avr
   arduino-cli lib install Encoder@1.4.4
+  cd $TMPDIR
 fi
 
 ## Arduino Firmware
-rm -rf /opt/AutomateHub_1
-mkdir -p /opt/AutomateHub_1
-cp -r $TMPDIR/firmware/AutomateHub_1/* /opt/AutomateHub_1/
-chmod -R 644 /opt/AutomateHub_1/*
-chown -R root:root /opt/AutomateHub_1/*
+FWNME="AutomateHub_1"
+rm -rf /opt/$FWNME
+mkdir -p /opt/$FWNME
+cp -r $TMPDIR/$FWNME/* /opt/$FWNME/
+chmod -R 644 /opt/$FWNME/*
+chown -R root:root /opt/$FWNME
 cp -f $TMPDIR/update-fw.sh /usr/bin/update-fw
-chmod 755 /usr/bin/update-fw
+chmod +x /usr/bin/update-fw
 chown root:root /usr/bin/update-fw
 
 ## Xmit Serial COM
 rm -f /usr/bin/ztermcom
 gcc $TMPDIR/ztermcom.c -o /usr/bin/ztermcom
-chmod 755 /usr/bin/ztermcom 
+chmod +x /usr/bin/ztermcom 
 chown root:root /usr/bin/ztermcom
 usermod -a -G dialout www-data
 usermod -a -G tty www-data
 
 ## Node.JS API Server
-mkdir -p /opt/nodeapi
-cp -r $TMPDIR/nodeapi/* /opt/nodeapi/
 mv -f /opt/nodeapi/nodeapi.service /etc/systemd/system/
 chmod 644 /etc/systemd/system/nodeapi.service
 chown root:root /etc/systemd/system/nodeapi.service
+mkdir -p /opt/nodeapi
+cp -r $TMPDIR/nodeapi/* /opt/nodeapi/
+chown -R root:root /opt/nodeapi
 cd /opt/nodeapi
 npm install
+npm audit fix
 cd $TMPDIR
 
 ## Light Web Server
@@ -149,7 +136,7 @@ rm -f $WWWPATH/main.min.js
 
 ## Boot Service
 cp -f $TMPDIR/rc.local /etc/
-chmod 755 /etc/rc.local
+chmod +x /etc/rc.local
 chown root:root /etc/rc.local
 cp -f $TMPDIR/rc-local.service /etc/systemd/system/
 chmod 644 /etc/systemd/system/rc-local.service
@@ -170,14 +157,14 @@ chown root:root /etc/ssh/sshd_config
 
 ## Profile Configuration
 cp -f $TMPDIR/profile /root/.profile
-chmod 755 /root/.profile
+chmod +x /root/.profile
 chown root:root /root/.profile
 touch /root/.hushlogin
 chmod 644 /root/.hushlogin
 chown root:root /root/.hushlogin
 
 ## Set Permissions
-chmod -R 755 /opt/system
+chmod -R +x /opt/system
 chown -R root:root /opt/system
 
 ## Clean-up

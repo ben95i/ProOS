@@ -16,29 +16,11 @@ apt-get install -y --no-upgrade --ignore-missing unzip wget \
  rsync curl screen scrub ethtool aptitude sudo samba sshpass \
  libdbus-1-dev libdbus-glib-1-dev bc git locales mailutils \
  fastfetch apt-transport-https nmap bpytop binutils iperf3 cron \
- cron-daemon-common fuse gocryptfs inotify-tools
+ cron-daemon-common fuse gocryptfs inotify-tools htop
 
 ## NeoFetch Alias
 apt-get remove -y neofetch
 ln -sf /usr/bin/fastfetch /usr/bin/neofetch
-
-## Process Monitor
-if [ ! -e /usr/local/bin/htop ]; then
-  apt-get remove -y htop
-  apt-get install -y --no-upgrade --ignore-missing libncursesw5-dev autotools-dev \
-   autoconf automake build-essential
-  cd /tmp/config/
-  wget https://github.com/htop-dev/htop/releases/download/3.2.1/htop-3.2.1.tar.xz
-  tar -xf htop-3.2.1.tar.xz
-  cd htop-3.2.1
-  ./autogen.sh
-  ./configure
-  make
-  make install
-  cd -
-  ln -sf /usr/local/bin/htop /usr/bin/htop  
-fi
-ln -sf /usr/bin/bpytop /usr/bin/pytop
 
 ## Set Locale
 if [ ! -e /etc/locales.generated ]; then

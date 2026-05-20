@@ -287,11 +287,13 @@ mv -f /opt/rpi/controller.js /opt/nodeapi/
 mv -f /opt/nodeapi/nodeapi.service /etc/systemd/system/
 chmod 644 /etc/systemd/system/nodeapi.service
 chown root:root /etc/systemd/system/nodeapi.service
+chown -R root:root /opt/nodeapi
 cd /opt/nodeapi
 npm install
+npm audit fix
 cd $TMPDIR
 
-## Lighttpd base website files
+## WWW files
 rm -rf /var/www/html
 mkdir -p /var/www/html
 mv -f $TMPDIR/html-base/* /var/www/html

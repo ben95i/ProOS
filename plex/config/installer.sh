@@ -17,31 +17,11 @@ apt-get --yes update
 ## Install Packages
 apt-get install -y --no-upgrade --ignore-missing unzip wget rsync curl screen \
  parallel ethtool aptitude sudo gnupg iptables libdbus-1-dev libdbus-glib-1-dev \
- locales apt-transport-https plexmediaserver bpytop htop binutils fastfetch
-
-## Remove Packages
-apt-get remove -y --purge shellinabox nginx-full nginx nginx-common
-
-## Process Monitor
-if [ ! -e /usr/local/bin/htop ]; then
-  apt-get remove -y htop
-  apt-get install -y --no-upgrade --ignore-missing libncursesw5-dev autotools-dev \
-   autoconf automake build-essential
-  cd /tmp/config/
-  wget https://github.com/htop-dev/htop/releases/download/3.2.1/htop-3.2.1.tar.xz
-  tar -xf htop-3.2.1.tar.xz
-  cd htop-3.2.1
-  ./autogen.sh
-  ./configure
-  make
-  make install
-  cd -
-  ln -sf /usr/local/bin/htop /usr/bin/htop	
-fi
-ln -sf /usr/bin/bpytop /usr/bin/pytop
+ locales apt-transport-https plexmediaserver bpytop htop binutils fastfetch \
+ libncursesw5-dev autotools-dev autoconf automake build-essential
 
 ## Set Locale
-if [ ! -e /etc/locales.generated ]; then
+if [ ! -e "/etc/locales.generated" ]; then
  dpkg-reconfigure locales
  touch /etc/locales.generated
 fi

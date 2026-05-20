@@ -93,5 +93,5 @@ chown ben:ben /opt/deploy
 systemctl daemon-reload
 
 ## Clean-up
-rm -r /tmp/config/
+rm -rf /tmp/config
 exit
