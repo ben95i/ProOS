@@ -19,7 +19,6 @@ apt-get install -y --no-upgrade --ignore-missing unzip wget \
  cron-daemon-common fuse gocryptfs inotify-tools htop
 
 ## NeoFetch Alias
-apt-get remove -y neofetch
 ln -sf /usr/bin/fastfetch /usr/bin/neofetch
 
 ## Set Locale

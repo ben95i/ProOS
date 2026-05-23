@@ -258,7 +258,7 @@ then
               /mnt/data/ /mnt/extbkps/$POOL/Data/ -delete --delete-excluded
           fi
           #### Regions Share ####
-          if [ ! -e "$REGDATA/SFTP" ]; then
+          if [ ! -e "$REGDATA/DB" ]; then
             echo "'Regions' share not found!"
           else
             echo "syncing 'Regions' share to $POOL drive..."
@@ -285,7 +285,7 @@ then
               /mnt/data/ /mnt/extbkps/$POOL/Data/ -delete --delete-excluded
           fi
           #### Regions Share ####
-          if [ ! -e "$REGDATA/SFTP" ]; then
+          if [ ! -e "$REGDATA/DB" ]; then
             echo "'Regions' share not found!"
           else
             echo "syncing 'Regions' share to $POOL drive..."

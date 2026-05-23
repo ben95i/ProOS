@@ -324,8 +324,8 @@ rm -f /etc/sudoers.d/www-nopasswd
 rm -f /etc/sudoers.d/www-mod-nopasswd
 rm -f /etc/sudoers.d/nobody-perms
 sh -c "touch /etc/sudoers.d/www-perms"
-sh -c "echo \"www-data ALL=(ALL) NOPASSWD:/opt/rpi/servercmds.sh\" >> /etc/sudoers.d/www-perms"
-sh -c "echo \"www-data ALL=(ALL) NOPASSWD:/opt/rpi/relaxrun.sh\" >> /etc/sudoers.d/www-perms"
+sh -c "echo \"www-data ALL=(root) NOPASSWD:/opt/rpi/servercmds.sh\" >> /etc/sudoers.d/www-perms"
+sh -c "echo \"www-data ALL=(root) NOPASSWD:/opt/rpi/relaxrun.sh\" >> /etc/sudoers.d/www-perms"
 chown root:root /etc/sudoers.d/www-perms
 chmod u=rwx,g=rx,o=rx /etc/sudoers.d/www-perms
 chmod u=r,g=r,o= /etc/sudoers.d/www-perms
@@ -334,7 +334,7 @@ chmod u=r,g=r,o= /etc/sudoers.d/www-perms
 rm -f /etc/sudoers.d/010_pi-perms
 rm -f /etc/sudoers.d/010_pi-nopasswd
 sh -c "touch /etc/sudoers.d/010_pi-nopasswd"
-sh -c "echo \"pi ALL=(ALL) NOPASSWD: ALL\" >> /etc/sudoers.d/010_pi-nopasswd"
+sh -c "echo \"pi ALL=(root) NOPASSWD: ALL\" >> /etc/sudoers.d/010_pi-nopasswd"
 chown root:root /etc/sudoers.d/010_pi-nopasswd
 chmod u=rwx,g=rx,o=rx /etc/sudoers.d/010_pi-nopasswd
 chmod u=r,g=r,o= /etc/sudoers.d/010_pi-nopasswd
@@ -568,26 +568,6 @@ if ! cmp -s $LED_EF/miami.cpp $SRC_BKP/miami.cpp; then
     g++ -O3 $LED_EF/miami.cpp $LED_EF/ledlayout.cpp $LED_EF/opcclient.cpp -o $LED_EF/miami -lm
 fi
 mv -f $LED_EF/miami.cpp $SRC_BKP/
-#######################################################
-if [ ! -f "$SRC_BKP/spark.cpp" ]; then
-  touch $SRC_BKP/spark.cpp
-fi
-if ! cmp -s $LED_EF/spark.cpp $SRC_BKP/spark.cpp; then
-    echo "Compiling Spark LED Program..."
-    rm -f $LED_EF/spark
-    g++ -O3 $LED_EF/spark.cpp $LED_EF/ledlayout.cpp $LED_EF/opcclient.cpp -o $LED_EF/spark -lm
-fi
-mv -f $LED_EF/spark.cpp $SRC_BKP/
-#######################################################
-if [ ! -f "$SRC_BKP/lava.cpp" ]; then
-  touch $SRC_BKP/lava.cpp
-fi
-if ! cmp -s $LED_EF/lava.cpp $SRC_BKP/lava.cpp; then
-    echo "Compiling Lava LED Program..."
-    rm -f $LED_EF/lava
-    g++ -O3 $LED_EF/lava.cpp $LED_EF/ledlayout.cpp $LED_EF/opcclient.cpp -o $LED_EF/lava -lm
-fi
-mv -f $LED_EF/lava.cpp $SRC_BKP/
 #######################################################
 if [ ! -f "$SRC_BKP/stripes.cpp" ]; then
   touch $SRC_BKP/stripes.cpp

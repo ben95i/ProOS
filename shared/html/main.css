@@ -154,23 +154,25 @@ body {
  *  Scrollbar Style
  */
 
-.scroll-bar-style::-webkit-scrollbar-track
-{
+.scroll-bar-style::-webkit-scrollbar-track {
   margin-top: 3px;
   margin-bottom: 3px;
   background-color: #000;
   border-radius: 5px;
 }
 
-.scroll-bar-style::-webkit-scrollbar-thumb
-{
+.scroll-bar-style::-webkit-scrollbar-thumb {
   background-color: color-mix(in srgb, var(--main-color) 70%, #fff);
   border-radius: 5px;
 }
 
-.scroll-bar-style::-webkit-scrollbar
-{
+.scroll-bar-style::-webkit-scrollbar {
   width: 6px;
+  height: 6px;
+}
+
+.scroll-bar-style::-webkit-scrollbar-corner {
+  background: transparent; 
 }
 
 /*
@@ -430,6 +432,7 @@ input.chkbox {
 
 .popup-ctn textarea {
   flex-grow: 1;
+  box-sizing: border-box;
   width: 100%;
   padding: 6px;
   border-radius: 7px;
@@ -440,7 +443,9 @@ input.chkbox {
   resize: none;
   font-family: monospace;
   font-size: 15px;
-  box-sizing: border-box;
+  text-wrap-mode: nowrap;
+  text-overflow: ellipsis;
+  overflow-x: scroll;
 }
 
 .button_left_txtwin {
@@ -835,8 +840,8 @@ input.chkbox {
   margin-right: -50%;
   transform: translate(-50%, -50%);
   width: 400px;
-  height: 400px;
-  padding: 12px; 
+  height: auto;
+  padding: 5px; 
 }
 
 #textScrollBox {
@@ -846,9 +851,19 @@ input.chkbox {
   color: #fff;
   padding-top: 8px;
   width: 375px;
-  height: 225px;
+  height: 200px;
   outline: none;
   resize: none;
+}
+
+#textScrollTitle {
+  user-select: none;
+  -webkit-user-select: none;
+  text-align: center;
+  color: #000;
+  font-size: 25px;
+  padding-top: 3px;
+  padding-bottom: 5px;
 }
 
 /*

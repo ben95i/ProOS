@@ -1,11 +1,13 @@
 miami
 abstract
 flames
-spark
+stripes
 prism
 mario
 rays
 clouds
+fireworks
+beachball
 spectrum
 orbits
 spectro

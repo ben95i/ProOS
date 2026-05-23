@@ -3,6 +3,7 @@
 
 // global variables //
 const MAIN_SITE = "Automate";
+const ERR_RESP = "500 : Internal Server Error"
 const BKM_INACTIVE = 0;
 const BKM_OPEN_MODE = 1;
 const BKM_EDIT_MODE = 2;
@@ -10,7 +11,7 @@ let ctlCommand;
 let fileData = [];
 let serverCmdData;
 let messagePopupTimer;
-let ledScrollData = ["00ff00", "8x8", "10.0"];
+let ledScrollData = ["00ff00", "8x8", "12.0"];
 let dynMenuActive = 0;
 let bookmarkState = 0;
 let volPopupTimer;
@@ -275,49 +276,82 @@ function closeServerOptions(){
   classDisplay("svropt__backup", "none");
 }
 
-/// LEDScroll ///
+/////// LEDScroll ///////
+
+function setTextScrollTitle(){
+  let title = document.getElementById('textScrollTitle');
+  const color = ledScrollData[0];
+  const font = ledScrollData[1];
+  const speed = ledScrollData[2];
+  title.style.color = '#' + color;
+  title.textContent = "Textscroll " + font + ' ' + speed + 'x';
+}
+
+function clearTextScrollBox(){
+  let textbox = document.getElementById('textScrollBox');
+  textbox.placeholder = "Enter message";
+  textbox.value = '';
+}
 
 function openTextScroll(){
   classDisplay("textscroll__prompt", "block");
+  clearTextScrollBox();
+  setTextScrollTitle();
+}
+
+function closeTextScroll(){
+  classDisplay("textscroll__prompt", "none");
+  clearTextScrollBox();
+  hideDropdowns();
+}
+
+function clearLEDsMessage(){
+  clearTextScrollBox();
+  sendCmd('leds', 'stop', '');
 }
 
 function setTextScrollColor(color){
   ledScrollData[0] = color;
+  setTextScrollTitle();
 }
 
 function setTextScrollFont(font){
   ledScrollData[1] = font;
+  setTextScrollTitle();
 }
 
 function setTextScrollSpeed(speed){
   ledScrollData[2] = speed;
+  setTextScrollTitle();
 }
 
 function sendTextScroll(){
   let textbox = document.getElementById('textScrollBox');
   const message = cleanString(textbox.value.replaceAll("|", "-"));
   if (message == null || message == "") {
+    textbox.placeholder = "Message cannot be empty";
     return;
   }
+  textbox.placeholder = "Sending message..";
+  textbox.value = '';
   const color = ledScrollData[0];
   const font = ledScrollData[1];
   const speed = ledScrollData[2];
-  const commands = message + '|' + color + '|' + font + '|' + speed;
+  const commands = `${message}|${color}|${font}|${speed}`;
   const encoded = base64URLSafeEncode(commands);
-  sendCmd('leds','textscroll',encoded);
+  sendCmd('leds', 'textscroll', encoded).then((data) => {
+    if (data == ERR_RESP) {
+      textbox.placeholder = "Error sending message!"; 
+    } else {
+      textbox.placeholder = "Message sent";
+    }
+    setTimeout(function(){
+      textbox.value = message;
+    }, 1000); // in ms
+  });
 }
 
-function closeTextScroll(){
-  hideDropdowns();
-  classDisplay("textscroll__prompt", "none");
-}
-
-function clearTextScrollBox(){
-  let textbox = document.getElementById('textScrollBox');
-  textbox.value = "";
-}
-
-/// END - LEDScroll ///
+/////////////////////////
 
 async function aboutPrompt(){
   const _winid = 'about__prompt';
@@ -1812,6 +1846,7 @@ async function sendCmd(act, arg1, arg2) {
     return out;
   } catch (error) {
     showPopup("[sendCmd] " + error);
+    return ERR_RESP;
   }
 }
 

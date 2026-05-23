@@ -27,7 +27,7 @@ ln -sf /usr/lib/jvm/default-java /usr/lib/jvm/java-8-openjdk-amd64/jre
 if [ ! -e "/usr/local/bin/uglifyjs" ]; then
   ## Minify JS
   npm install uglify-js -g
-fi  
+fi
 
 ## Install Replacement Logger
 apt-get remove --purge -y rsyslog
@@ -122,6 +122,14 @@ mkdir -p /var/www/uploads
 chmod -R g+rx /var/www/uploads
 chown -R www-data:www-data /var/www/uploads
 
+## Website permissions
+rm -f /etc/sudoers.d/www-perms
+sh -c "touch /etc/sudoers.d/www-perms"
+sh -c "echo \"www-data ALL=(root) NOPASSWD:/usr/bin/nmap\" >> /etc/sudoers.d/www-perms"
+chown root:root /etc/sudoers.d/www-perms
+chmod u=rwx,g=rx,o=rx /etc/sudoers.d/www-perms
+chmod u=r,g=r,o= /etc/sudoers.d/www-perms
+
 ## Minify JS/CSS
 uglifyjs --warn --compress --output $WWWPATH/main.min.js -- $WWWPATH/main.js
 yui-compressor $WWWPATH/main.css > $WWWPATH/main.min.css
@@ -168,10 +176,6 @@ chmod -R +x /opt/system
 chown -R root:root /opt/system
 
 ## Clean-up
-rm -f /etc/sudoers.d/www-perms
-rm -f /etc/sudoers.d/www-nopasswd
-rm -f /etc/sudoers.d/www-mod-nopasswd
-rm -f /etc/sudoers.d/nobody-perms
 systemctl daemon-reload
 rm -rf $TMPDIR
 apt-get autoremove -y

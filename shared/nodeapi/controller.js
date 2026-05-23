@@ -10,7 +10,7 @@ const execAsync = util.promisify(exec);
 const API_CALL_TIMEOUT = 5000; // in (ms)
 const MAX_PING_WAIT = "0.5"; // in (sec)
 const LOCAL_DOMAIN = "home";
-const NET_RANGE = "192.168.1.0";
+const NET_RANGE = "192.168.1.0/24";
 const BRPC_MAC = "90:2e:16:46:86:43";
 const IPs = {
     lrxmit: "192.168.1.12",
@@ -43,6 +43,88 @@ async function localPing(ip) {
         return "1"; 
     } catch (error) {
         return "0";
+    }
+}
+
+// Helper function to pad or truncate text to a fixed width
+function formatCol(text, width) {
+    text = text || ''; // Handle undefined or null
+    if (text.length > width) {
+        // Truncate and add '...' leaving exact width
+        return text.substring(0, width - 3) + '... ';
+    }
+    // Pad with spaces to align the next column
+    return text.padEnd(width, ' ') + ' ';
+}
+
+async function scanNetwork(targetRange) {
+    try {
+        const activeHosts = [];
+        
+        // Define exact character widths for each column
+        const wIP = 15;
+        const wHost = 15;
+        const wVendor = 20;
+        const wMac = 20;
+
+        // Build the Header Row
+        const headerRow = formatCol('IP ADDRESS:', wIP) + 
+                          formatCol('HOSTNAME:', wHost) + 
+                          formatCol('MANUFACTURE:', wVendor) +
+                          formatCol('MAC ADDRESS:', wMac);
+
+        // Push headers to the final array first
+        activeHosts.push(headerRow);
+
+        const { stdout } = await execFileAsync('/usr/bin/sudo', ['/usr/bin/nmap', '-sn', targetRange]);
+
+        // Split output into blocks per host
+        const hostBlocks = stdout.split('Nmap scan report for ').slice(1);
+        
+        for (const block of hostBlocks) {
+            const lines = block.split('\n');
+            const firstLine = lines[0].trim();
+            
+            let ip = '';
+            let hostname = '';
+            let vendor = '';
+            let mac = '';
+            
+            // Parse IP and Hostname
+            if (firstLine.includes('(')) {
+                const parts = firstLine.split(' (');
+                hostname = parts[0];
+                ip = parts[1].replace(')', '');
+            } else {
+                ip = firstLine;
+            }
+
+            // Find the MAC Address line to extract both MAC and Vendor
+            const macLine = lines.find(line => line.startsWith('MAC Address:'));
+            if (macLine) {
+                const macMatch = macLine.match(/MAC Address:\s+([0-9A-Fa-f:]+)/);
+                if (macMatch) mac = macMatch[1];
+
+                const vendorMatch = macLine.match(/\(([^)]+)\)/);
+                if (vendorMatch) vendor = vendorMatch[1];
+            }
+
+            // Build the fixed-width data row
+            const row = formatCol(ip, wIP) +
+                        formatCol(hostname, wHost) +
+                        formatCol(vendor || 'Unknown', wVendor) +
+                        formatCol(mac || 'Unknown', wMac);
+                        
+            activeHosts.push(row);
+        }
+
+        // Add a blank line and the total count
+        activeHosts.push(`Total active hosts: ${hostBlocks.length}`);
+        
+        return activeHosts.join('\n');
+        
+    } catch (error) {
+        return error.message;
     }
 }
 
@@ -336,15 +418,17 @@ async function executeMain(ramDisk, firstArg, secondArg) {
         case "server": {
             const logFile = `${ramDisk}/sysout.txt`;
             if (subCmd === "") {
-                return "server argument cannot be empty!";
+                return "empty command!";
             }
             if (subCmd === "netscan") {
-                await execAsync(`nmap -v --open -sn ${NET_RANGE}/24 >> ${logFile}`);
-                return "** network scan **";
+                await fsPromises.appendFile(logFile, `\nScanning network range ${NET_RANGE}...\n`);
+                const scanResult = await scanNetwork(NET_RANGE);
+                await fsPromises.appendFile(logFile, `${scanResult}\n`);
+                return "OK";
             }
             await fsPromises.appendFile(logFile, `\n${subCmd} sent.\n`);
             await execAsync(`touch ${ramDisk}/${subCmd}.txt`);
-            return " ";
+            return "OK";
         }
         default:
             return "invalid command !";

@@ -69,8 +69,8 @@ if [ ! -e "/usr/lib/systemd/system/netatalk.service" ]; then
     libpam0g-dev libsqlite3-dev libtalloc-dev libtirpc-dev libtracker-sparql-3.0-dev \
     libwrap0-dev meson ninja-build quota systemtap-sdt-dev tcpd tracker tracker-miner-fs valgrind
   ## download source code
-  tar -xvf ./netatalk-4.3.2.tar.xz
-  cd netatalk-4.3.2
+  tar -xvf ./netatalk-4.4.3.tar.xz
+  cd netatalk-4.4.3
   ## compile from source
   meson setup build -Dbuildtype=release -Dwith-appletalk=true -Dwith-cups-pap-backend=true \
     -Dwith-dbus-sysconf-path=/usr/share/dbus-1/system.d -Dwith-init-hooks=false \

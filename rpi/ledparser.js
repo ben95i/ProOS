@@ -20,7 +20,6 @@ const execAsync = util.promisify(exec);
 
 /**
  * PERSISTENT MEMORY STATE
- * Replaces the JSON state file to reduce disk I/O and prevent corruption.
  */
 let inMemoryState = {
     processId: null,
@@ -46,8 +45,7 @@ function recordEffectState(processId, effectName) {
 }
 
 /**
- * Performs a broad system sweep to kill any process running from the effects directory.
- * Explicitly ignores protected services like mp4toleds.
+ * Performs a broad system sweep to stop any process running in the effects directory.
  */
 async function forceKillOrphanedProcesses() {
     try {
@@ -70,7 +68,7 @@ async function forceKillOrphanedProcesses() {
                         const nameResult = await execAsync(checkNameCommand, { encoding: 'utf-8' });
                         const processName = nameResult.stdout.trim();
                         
-                        const protectedProcesses = ["mp4toleds", "opcserver", "fcproxy"];
+                        const protectedProcesses = ["mp4toleds", "opcserver", "fcproxy", "fcserver"];
                         
                         const isProtected = protectedProcesses.some((protectedName) => {
                             return processName.includes(protectedName);
@@ -99,19 +97,14 @@ async function stopActiveEffect() {
     try {
         await fetch(stopApiUrl, { signal: AbortSignal.timeout(1000) });
     } catch (networkError) {}
-
-    // 2. Kill PID stored in persistent memory
+    // 2. Terminate PID stored in persistent memory
     const activePid = inMemoryState.processId;
     if (activePid !== null) {
         try {
             process.kill(activePid, TERM_SIGNAL);
         } catch (pidKillError) {}
     }
-
-    // 3. System sweep for orphans
-    //await forceKillOrphanedProcesses();
-
-    // 4. Reset Memory
+    // 3. Clear Memory
     recordEffectState(null, null);
 }
 
@@ -120,8 +113,9 @@ async function stopActiveEffect() {
  */
 async function executeEffectProcess(binaryPath, binaryArguments, effectName) {
     await stopActiveEffect();
-
     try {
+        console.log(`executeEffectProcess: ${effectName}`);
+
         const processConfiguration = {
             stdio: 'ignore',
             detached: false,
@@ -146,7 +140,7 @@ async function executeEffectProcess(binaryPath, binaryArguments, effectName) {
             logInternalError("executeEffectProcess", "failed to spawn binary", spawnError.message);
             recordEffectState(null, null);
         });
-
+        
     } catch (spawnException) {
         logInternalError("executeEffectProcess", "exception during process creation", spawnException.message);
     }
@@ -177,8 +171,8 @@ async function initializeSystemOnStartup() {
 
         const hardwareType = await fetchLedHardwareType();
         const clearBinary = `${EFFECTS_DIRECTORY_PATH}/writecolor`;
-        
         await executeEffectProcess(clearBinary, [hardwareType, "000000"], "startup_clear");
+
         isSystemInitialized = true;
     } catch (e) {
         logInternalError("initializeSystemOnStartup", "critical failure", e.message);
@@ -202,24 +196,25 @@ async function OPCLEDparser(ramDiskPath, effectCommand = "", secondaryArgument =
 
     const currentLedHardware = await fetchLedHardwareType();
 
-    // 1. Core State Controls
+    // 1. State Controls
     if (effectCommand === "pause") {
         await stopActiveEffect();
+        await forceKillOrphanedProcesses();
+        console.log('OPCLEDparser: pausedEffect');
         return "paused";
     }
     if (effectCommand === "stop") {
-        await stopActiveEffect();
         const writeColorBinary = `${EFFECTS_DIRECTORY_PATH}/writecolor`;
         await executeEffectProcess(writeColorBinary, [currentLedHardware, "000000"], "stop_clear");
+        await forceKillOrphanedProcesses();
         return "stopped";
     }
 
-    // 2. Fadecandy Proxy Logic
+    // 2. Brightness Logic
     if (effectCommand === "fc" || effectCommand === "fc_leds") {
         let proxyRequestUrl = (effectCommand === "fc") 
             ? `${LED_PROXY_URL}/set?b=${encodeURIComponent(secondaryArgument)}`
             : `${LED_PROXY_URL}/brightness`;
-
         try {
             const proxyResponse = await fetch(proxyRequestUrl, { signal: AbortSignal.timeout(1000) });
             return (effectCommand === "fc_leds") ? await proxyResponse.text() : "fc ok";
@@ -244,21 +239,26 @@ async function OPCLEDparser(ramDiskPath, effectCommand = "", secondaryArgument =
     try {
         const videoFileName = `${effectCommand}.mp4`;
         await fsPromises.access(`${EFFECTS_DIRECTORY_PATH}/videos/${videoFileName}`);
+
         await stopActiveEffect();
+
         const apiResponse = await fetch(`${MP4_LEDS_API_URL}/api?video=${videoFileName}`, { signal: AbortSignal.timeout(1000) });
-        return await apiResponse.text();
+        const apiText = await apiResponse.text();
+        console.log(`OPCLEDparser: ${apiText}`);
+        
+        return apiText;
     } catch (e) {
         // File not found, proceed to binary check
     }
 
     // 5. C++ Executable Effects
-    const registeredCppEffects = ["lava", "orbits", "noise", "chase", "miami", "spark", "stripes", "spectro", "textscroll"];
+    const registeredCppEffects = ["orbits", "noise", "chase", "miami", "stripes", "spectro", "textscroll"];
     if (registeredCppEffects.includes(effectCommand)) {
         let binaryArgs = [currentLedHardware];
 
         // Spectrograph
-        const MIC_GAIN = "40";
-        const MIN_FREQ = "350";
+        const MIC_GAIN = "45";
+        const MIN_FREQ = "300";
         const MAX_FREQ = "4000";
         if (effectCommand === "spectro") binaryArgs.push(MIC_GAIN, MIN_FREQ, MAX_FREQ);
 

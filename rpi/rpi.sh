@@ -16,9 +16,13 @@ echo "Press Ctrl+C to exit"
 exit
 ;;
 
-mon)
-## System resource monitor
-bpytop
+jl)
+journalctl --follow 
+exit
+;;
+
+jh)
+journalctl --reverse 
 exit
 ;;
 
@@ -373,7 +377,8 @@ echo "resetbt - Clear active bluetooth connections"
 echo "ftp - List file transfer command"
 echo "gpu - GPU usage statistics"
 echo "temp - System temperature"
-echo "mon - Resource monitor"
+echo "jl - Show Live Journal"
+echo "jh - Show Journal History"
 echo " "
 exit
 ;;
