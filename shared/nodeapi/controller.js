@@ -48,49 +48,38 @@ async function localPing(ip) {
 
 // Helper function to pad or truncate text to a fixed width
 function formatCol(text, width) {
-    text = text || ''; // Handle undefined or null
-    if (text.length > width) {
-        // Truncate and add '...' leaving exact width
-        return text.substring(0, width - 3) + '... ';
+    const safeText = String(text || ''); 
+    if (safeText.length > width) {
+        return safeText.substring(0, width - 3) + '...';
     }
-    // Pad with spaces to align the next column
-    return text.padEnd(width, ' ') + ' ';
+    return safeText.padEnd(width, ' ');
 }
 
+/**
+ * Scans a local network and returns a formatted string table.
+ * @param {string} targetRange - The IP CIDR range to scan (e.g., '192.168.1.0/24')
+ * @returns {Promise<string>} The formatted network table
+ */
 async function scanNetwork(targetRange) {
     try {
-        const activeHosts = [];
-        
-        // Define exact character widths for each column
-        const wIP = 15;
-        const wHost = 15;
-        const wVendor = 20;
-        const wMac = 20;
-
-        // Build the Header Row
-        const headerRow = formatCol('IP ADDRESS:', wIP) + 
-                          formatCol('HOSTNAME:', wHost) + 
-                          formatCol('MANUFACTURE:', wVendor) +
-                          formatCol('MAC ADDRESS:', wMac);
-
-        // Push headers to the final array first
-        activeHosts.push(headerRow);
-
+        // execFileAsync is safe from shell injection. 
+        // Max buffer defaults to 1MB, which is plenty for a /24 subnet.
         const { stdout } = await execFileAsync('/usr/bin/sudo', ['/usr/bin/nmap', '-sn', targetRange]);
 
-        // Split output into blocks per host
         const hostBlocks = stdout.split('Nmap scan report for ').slice(1);
-        
+        const devices = [];
+
+        // 1. Parse Nmap Output
         for (const block of hostBlocks) {
             const lines = block.split('\n');
             const firstLine = lines[0].trim();
             
             let ip = '';
             let hostname = '';
-            let vendor = '';
-            let mac = '';
+            let vendor = '---';
+            let mac = '---';
             
-            // Parse IP and Hostname
+            // Extract IP and Hostname
             if (firstLine.includes('(')) {
                 const parts = firstLine.split(' (');
                 hostname = parts[0];
@@ -99,7 +88,7 @@ async function scanNetwork(targetRange) {
                 ip = firstLine;
             }
 
-            // Find the MAC Address line to extract both MAC and Vendor
+            // Extract MAC Address and Vendor
             const macLine = lines.find(line => line.startsWith('MAC Address:'));
             if (macLine) {
                 const macMatch = macLine.match(/MAC Address:\s+([0-9A-Fa-f:]+)/);
@@ -109,22 +98,75 @@ async function scanNetwork(targetRange) {
                 if (vendorMatch) vendor = vendorMatch[1];
             }
 
-            // Build the fixed-width data row
-            const row = formatCol(ip, wIP) +
-                        formatCol(hostname, wHost) +
-                        formatCol(vendor || 'Unknown', wVendor) +
-                        formatCol(mac || 'Unknown', wMac);
-                        
+            devices.push({ ip, hostname, vendor, mac });
+        }
+
+        // 2. Safe Numerical Sorting by IP
+        devices.sort((a, b) => {
+            const aParts = a.ip.split('.');
+            const bParts = b.ip.split('.');
+
+            // Fallback: If an IP is malformed or IPv6, push it to the bottom
+            if (aParts.length !== 4) return 1;
+            if (bParts.length !== 4) return -1;
+
+            const aOctets = aParts.map(Number);
+            const bOctets = bParts.map(Number);
+
+            for (let i = 0; i < 4; i++) {
+                if (aOctets[i] !== bOctets[i]) {
+                    // Fallback: Handle NaN just in case the string was letters
+                    if (isNaN(aOctets[i])) return 1;
+                    if (isNaN(bOctets[i])) return -1;
+                    return aOctets[i] - bOctets[i];
+                }
+            }
+            return 0; // IPs are identical
+        });
+
+        // 3. Assemble the Visual Table
+        const activeHosts = [];
+        
+        // Define exact character widths for the text
+        const wIP = 15;
+        const wHost = 15; // Expanded slightly so hostnames clip less often
+        const wVendor = 21;
+        const wMac = 19;  // Exactly enough for a MAC address (17 chars + 2 padding)
+
+        // Explicit 1-space margin to insert between columns
+        const colSeparator = ' '; 
+
+        // Build Header
+        const headerRow = formatCol('IP ADDRESS', wIP) + colSeparator +
+                          formatCol('HOSTNAME', wHost) + colSeparator +
+                          formatCol('MANUFACTURER', wVendor) + colSeparator +
+                          formatCol('MAC ADDRESS', wMac);
+        
+        // Build a dashed line that matches the total width of columns + separators
+        const totalWidth = wIP + wHost + wMac + wVendor + (colSeparator.length * 3);
+        const dividerRow = '-'.repeat(totalWidth);
+
+        activeHosts.push(headerRow);
+        activeHosts.push(dividerRow);
+
+        // Build Rows
+        for (const device of devices) {
+            const row = formatCol(device.ip, wIP) + colSeparator +
+                        formatCol(device.hostname, wHost) + colSeparator +
+                        formatCol(device.vendor, wVendor) + colSeparator +
+                        formatCol(device.mac, wMac);
+            
             activeHosts.push(row);
         }
 
-        // Add a blank line and the total count
-        activeHosts.push(`Total active hosts: ${hostBlocks.length}`);
+        // Add Footer
+        activeHosts.push(`Total active hosts: ${devices.length}`);
         
         return activeHosts.join('\n');
         
     } catch (error) {
-        return error.message;
+        // Throw the error so the calling function knows the scan actually failed
+        throw new Error(`Nmap scan failed: ${error.message}`);
     }
 }
 
@@ -155,13 +197,15 @@ async function callApi(target, arg1, arg2 = "") {
     try {
         const response = await fetch(server, { signal: AbortSignal.timeout(API_CALL_TIMEOUT) });
         if (!response.ok) {
-            return "invalid response";
+            console.error("callApi exception: invalid response");
+            return "ERROR";
         }
         const apiResp = await response.text();
         const respClean = apiResp.replace(/[\\"]/g, '');
         return(extractResponse(respClean));
     } catch (error) {
-        return "callApi exception: " + error.message;
+        console.error("callApi exception: " + error.message);
+        return "ERROR";
     }
 }
 
@@ -190,6 +234,7 @@ async function readComResp(xmit, respCmd, respPos = "") {
     if (xmit === "local") {
         ttyRaw = await localCom(respCmd);
     }
+    console.log("readComResp raw response: " + ttyRaw);
     const ttyOut = extractResponse(ttyRaw);
     if (respPos === "") {
         return ttyOut;
@@ -282,13 +327,8 @@ async function lrXmit(cmdIn) {
         }
         case "wkststateoff":
         case "wkststateon":   return await callApi(IPs.lrxmit, "pc_power", "");
-        
-        case "hifistate": {
-            const resp = await readComResp("lrxmit", "15019", "");
-            if (resp === "1") { return "1"; }
-            if (resp === "0") { return "0"; }
-            return "X";
-        }
+        case "hifistate":     return await readComResp("lrxmit", "15019", "");
+
         case "hifistateoff":  return await callApi(IPs.lrxmit, "extcom", "15018");
         case "hifistateon":   return await callApi(IPs.lrxmit, "extcom", "15017");
         case "hifitoggle":    return await callApi(IPs.lrxmit, "extcom", "15016");
@@ -397,21 +437,59 @@ async function executeMain(ramDisk, firstArg, secondArg) {
         }
         case "sitelookup": {
             try {
+                // Decode the base64 URL
                 let base64In = subCmd.replace(/-/g, "+").replace(/_/g, "/").replace(/@/g, "=");
                 let decodedUrl = Buffer.from(base64In, 'base64').toString('utf8');
                 let urlObj = new URL(decodedUrl);
+
+                // Handle hardcoded special cases
                 if (urlObj.hostname === "www.ups.com" || urlObj.hostname === "ups.com") {
                     return "UPS Tracking";
                 }
                 if (urlObj.hostname === "tools.usps.com") {
                     return "USPS Tracking";
                 }
-                const { stdout } = await execAsync(`curl -s -X GET "${decodedUrl}" | xmllint -html -xpath "//head/title/text()" - 2>/dev/null`);
-                if (stdout.trim() === "") {
+
+                // Fetch the HTML natively (Requires Node.js 18+)
+                const response = await fetch(decodedUrl, {
+                    method: 'GET',
+                    // Adding a standard user-agent helps prevent sites from blocking the request
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36'
+                    }
+                });
+
+                if (!response.ok) {
                     return "Site Lookup Error!";
                 }
-                return stdout.trim();
+
+                const html = await response.text();
+
+                // Extract the title using Regex (matches <title> optionally with attributes, and captures the content)
+                // The 'i' flag makes it case-insensitive, the 's' flag allows '.' to match newlines
+                const titleMatch = html.match(/<title[^>]*>(.*?)<\/title>/is);
+
+                if (titleMatch && titleMatch[1]) {
+                    let title = titleMatch[1].trim();
+
+                    // Clean up common HTML entities that might be present in the title
+                    title = title.replace(/&amp;/g, '&')
+                                 .replace(/&lt;/g, '<')
+                                 .replace(/&gt;/g, '>')
+                                 .replace(/&quot;/g, '"')
+                                 .replace(/&#39;/g, "'");
+
+                    if (title === "") {
+                        return "Site Lookup Error!";
+                    }
+                    
+                    // Remove any accidental newlines or extra spaces parsed from the HTML
+                    return title.replace(/\s+/g, ' '); 
+                }
+
+                return "Site Lookup Error!";
             } catch (e) {
+                // This catches invalid URLs, network timeouts, and fetch errors
                 return "Site Lookup Error!";
             }
         }
@@ -422,9 +500,13 @@ async function executeMain(ramDisk, firstArg, secondArg) {
             }
             if (subCmd === "netscan") {
                 await fsPromises.appendFile(logFile, `\nScanning network range ${NET_RANGE}...\n`);
-                const scanResult = await scanNetwork(NET_RANGE);
-                await fsPromises.appendFile(logFile, `${scanResult}\n`);
-                return "OK";
+                try {
+                    const scanResult = await scanNetwork(NET_RANGE);
+                    await fsPromises.appendFile(logFile, `${scanResult}\n`);
+                    return "OK";
+                } catch (error) {
+                    return `scanNetwork error: ${error.message}`;
+                }
             }
             await fsPromises.appendFile(logFile, `\n${subCmd} sent.\n`);
             await execAsync(`touch ${ramDisk}/${subCmd}.txt`);

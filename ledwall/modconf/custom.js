@@ -15,7 +15,7 @@ async function curlGpio(pin, state) {
             signal: AbortSignal.timeout(500) 
         });
     } catch (error) {
-        console.error(`GPIO request failed for pin ${pin}:`, error.message);
+        console.error(`GPIO request failed for pin ${pin}:` + error.message);
     }
 }
 
@@ -24,7 +24,9 @@ async function ztermCom(cmd) {
         const { stdout } = await execFileAsync('/usr/bin/ztermcom', [cmd]);
         return stdout;
     } catch (error) {
-        return('ztermcom command failed:', error.message + '|' + error.stderr);
+        const out = error.stdout || '';
+        const err = error.stderr || '';
+        return `${out} ${err} ${error.message}`.replace(/\s+/g, ' ').trim();
     }
 }
 

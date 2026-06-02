@@ -10,7 +10,7 @@ iptables -t nat -F
 iptables -t nat -X
 ## Allow port forwarding
 iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE  
-if [ -e "/sys/class/net/wlan0" ] ; then
+if [ -e "/sys/class/net/wlan0" ]; then
   ## Delete Existing Connections
   nmcli con down RPiWiFi
   nmcli con delete RPiWiFi
@@ -32,7 +32,7 @@ STOP_NET
 if [ -e "/boot/firmware/disable.wifi" ]; then
   echo "Wi-Fi Client Mode Disabled."
 else
-  if [ -e "/sys/class/net/wlan0" ] ; then
+  if [ -e "/sys/class/net/wlan0" ]; then
     ## Read Wi-Fi Configuration
     if [ -e "/boot/firmware/wpa.conf" ]; then
       WPADATA=`cat /boot/firmware/wpa.conf`
@@ -58,7 +58,7 @@ fi
 APD_MODE(){
 ## Stop Networking
 STOP_NET
-if [ -e "/sys/class/net/wlan0" ] ; then
+if [ -e "/sys/class/net/wlan0" ]; then
   ## Read Custom Hotspot Configuration 
   if [ -e "/boot/firmware/apd.conf" ]; then
     APDDATA=`cat /boot/firmware/apd.conf`
@@ -88,7 +88,7 @@ if [ -e "/sys/class/net/wlan0" ] ; then
       LINE=( ${ELM//|/ } )
       HOST_DN="${LINE[0]}"
       MAC_ADR="${LINE[1]}"
-      if [ MAC_ADR != "" ] ; then
+      if [ MAC_ADR != "" ]; then
         echo "allowing $HOST_DN access"
         iptables -I FORWARD -i wlan0 -m mac --mac-source "$MAC_ADR" -j ACCEPT
         iptables -I INPUT -i wlan0 -m mac --mac-source "$MAC_ADR" -j ACCEPT
@@ -116,7 +116,7 @@ SERVER=$(/sbin/ip route | awk '/default/ { print $3 }')
 date
 echo "Gateway IP $SERVER"
 ########
-if [ ! -e "/sys/class/net/wlan0" ] ; then
+if [ ! -e "/sys/class/net/wlan0" ]; then
   echo "wlan0 not found, network check has been disabled."
   echo " "
   exit

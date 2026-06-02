@@ -494,24 +494,6 @@ function getTemperatureData() {
       // valid response
       pushTempDataToThermos(resp_arr, temp_elm, humd_elm);
     } else {
-      // retry request
-      setTimeout(function(){
-        retryGetTempData(temp_elm, humd_elm);
-      }, 500); // in ms
-    }
-  });
-}
-
-function retryGetTempData(temp_elm, humd_elm) {
-  console.log("re-trying DHT data refresh...");
-  sendCmd('main', 'brxmit', 'roomth').then((data) => {
-    const resp = cleanString(data);
-    // extract numerics
-    const resp_arr = resp.split("~");
-    // validate response
-    if (resp_arr.length == 2) {
-      pushTempDataToThermos(resp_arr, temp_elm, humd_elm);
-    } else {
       pushTempErrorThermos(temp_elm, humd_elm);
     }
   });
@@ -1570,7 +1552,7 @@ function showHiFiAmpInput() {
           // PC input
           _indtype = 'blkind';
           if (resp == '1') { _indtype = 'grnind'; }
-          _menudata += 'cmd~' + target + '~usb|' + _indtype + '|PC In\n';
+          _menudata += 'cmd~' + target + '~usb|' + _indtype + '|USB\n';
           // phono input
           _indtype = 'blkind';
           if (resp == '3') { _indtype = 'grnind'; }      
@@ -1625,7 +1607,7 @@ function showBedroomAmpInput() {
           // apple TV input 
           let _indtype = 'blkind';
           if (resp == '2') { _indtype = 'grnind'; }
-          _menudata += 'cmd~' + target + '~opt-a|' + _indtype + '|PC In\n';
+          _menudata += 'cmd~' + target + '~opt-a|' + _indtype + '|USB\n';
           // coaxial input
           _indtype = 'blkind';
           if (resp == '3') { _indtype = 'grnind'; }      

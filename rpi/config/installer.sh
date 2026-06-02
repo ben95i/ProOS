@@ -43,7 +43,7 @@ echo "######### by Ben Provenzano III ##########"
 echo ""
 
 ###################################################
-### Initial configuration #########################
+### Initial #########################
 if [ ! -e "/etc/rpi-conf.done" ]; then
 echo "*"
 echo "Resettings to defaults..."
@@ -159,7 +159,7 @@ rm -f /etc/systemd/system/usbplug.service
 ## Recompile All Programs
 rm -rf /opt/source-backup
 
-## Reset LED configuration
+## Reset LED
 rm -f /opt/rpi/remotes/leds
 rm -f /tmp/global-fc.lock
 
@@ -168,8 +168,8 @@ fi ###### END OF SUB-SCRIPT #######################
 ###################################################
 
 ###################################################
-########## Install System Configuration ###########
-echo "Installing system configuration."
+########## Install System ###########
+echo "Installing system."
 
 ## Boot partition read-write
 mount -o remount,rw /boot/firmware
@@ -194,10 +194,10 @@ sed -i 's/console=serial0,115200 //g' /boot/firmware/cmdline.txt
 ## Boot to Console
 systemctl set-default multi-user.target
 
-## WiFi Configuration
+## WiFi
 raspi-config nonint do_wifi_country US
 
-## Copy SSH Configuration
+## Copy SSH
 cp $TMPDIR/sshd_config /etc/ssh
 cp $TMPDIR/ssh_config /etc/ssh
 chmod 644 /etc/ssh/sshd_config
@@ -223,17 +223,25 @@ chown pi:pi /home/pi/.bashrc
 ## Remove Root Password
 passwd -d root
 
-## System Configuration
+## System
 cp -f $TMPDIR/sysctl.conf /etc
 chmod 644 /etc/sysctl.conf
 chown root:root /etc/sysctl.conf
 
-## Journal Configuration
+## Network
+cp -f $TMPDIR/NetworkManager.conf /etc/NetworkManager/
+chmod 644 /etc/NetworkManager/NetworkManager.conf
+chown root:root /etc/NetworkManager/NetworkManager.conf
+cp -f $TMPDIR/captive.conf /etc/NetworkManager/dnsmasq-shared.d/
+chmod 644 /etc/NetworkManager/dnsmasq-shared.d/captive.conf
+chown root:root /etc/NetworkManager/dnsmasq-shared.d/captive.conf
+
+## Journal
 cp -f $TMPDIR/journald.conf /etc/systemd/
 chmod 644 /etc/systemd/journald.conf
 chown root:root /etc/systemd/journald.conf
 
-## Kernel Drivers Configuration
+## Kernel Drivers
 cp -f $TMPDIR/modules /etc
 chmod 644 /etc/modules
 chown root:root /etc/modules
@@ -268,11 +276,11 @@ rm -f /etc/init.d/shairport-sync
 if [ ! -e "/opt/rpi/modconf/brand.txt" ]; then
   echo "Skipping module modification."
 else
-  ## ShairPort configuration
+  ## ShairPort
   sed -i "s/RaspberryPi/$MODNAME/g" /etc/systemd/system/rpi-airplay.service
 fi
 
-## Light Web Server Configuration
+## Light Web Server
 rm -rf /etc/lighttpd/conf-enabled/*
 cp -f $TMPDIR/lighttpd.conf /etc/lighttpd/
 chmod 644 /etc/lighttpd/lighttpd.conf
@@ -340,7 +348,7 @@ chmod u=rwx,g=rx,o=rx /etc/sudoers.d/010_pi-nopasswd
 chmod u=r,g=r,o= /etc/sudoers.d/010_pi-nopasswd
 usermod -a -G sudo pi
 
-## X Server Configuration
+## X Server
 usermod -a -G tty pi
 usermod -a -G video pi
 cp -f $TMPDIR/Xwrapper.config /etc/X11
@@ -357,7 +365,7 @@ cp -f $TMPDIR/xautostart /home/pi/.config/lxsession/LXDE/autostart
 chmod +x /home/pi/.config/lxsession/LXDE/autostart
 chown pi:pi /home/pi/.config/lxsession/LXDE/autostart
 
-## Bluetooth Configuration
+## Bluetooth
 cp -f $TMPDIR/btmain.conf /etc/bluetooth/main.conf
 if [ ! -e "/opt/rpi/modconf/brand.txt" ]; then
 echo "Skip module naming."
@@ -376,7 +384,7 @@ mkdir -p /etc/systemd/system/bthelper@.service.d
 cp -f $TMPDIR/bthelper-override.conf /etc/systemd/system/bthelper@.service.d/override.conf
 chown root:root /etc/systemd/system/bthelper@.service.d/override.conf
 chmod 644 /etc/systemd/system/bthelper@.service.d/override.conf
-# BlueALSA Configuration
+# BlueALSA
 rm -f /etc/systemd/system/bluealsa.service
 cp -f $TMPDIR/bluealsa.service /lib/systemd/system/bluealsa.service  
 chown root:root /lib/systemd/system/bluealsa.service
@@ -392,7 +400,7 @@ chmod +x /usr/local/bin/bluetooth-udev
 cp -f $TMPDIR/bluetooth-udev.rules /etc/udev/rules.d/99-bluetooth-udev.rules
 chown root:root /etc/udev/rules.d/99-bluetooth-udev.rules
 chmod 644 /etc/udev/rules.d/99-bluetooth-udev.rules
-## Bluetooth Input Configuration
+## Bluetooth Input
 cp -f $TMPDIR/btinput.conf /etc/bluetooth/input.conf
 chmod 644 /etc/bluetooth/input.conf
 chown root:root /etc/bluetooth/input.conf
@@ -407,7 +415,7 @@ rm -f /lib/udev/rules.d/75-persistent-net-generator.rules
 timedatectl set-ntp true
 timedatectl status
 
-## Set hostname to configurations
+## Hostname
 if [ ! -e "$TMPDIR/hostname" ]; then
 echo "Skipping hostname modification."
 else
@@ -430,7 +438,7 @@ echo '#' > /var/lib/alsa/asound.state
 chmod 777 /var/lib/alsa/asound.state
 fi
 
-## ALSA Configuration
+## ALSA
 cp -f $TMPDIR/asound.conf /etc/
 chmod 644 /etc/asound.conf
 chown root:root /etc/asound.conf
@@ -438,7 +446,7 @@ cp -f $TMPDIR/aliases.conf /lib/modprobe.d/
 chmod 644 /lib/modprobe.d/aliases.conf
 chown root:root /lib/modprobe.d/aliases.conf
 
-## Samba USB Share Configuration
+## Samba USB Share
 cp -f $TMPDIR/smb.conf /etc/samba
 chmod 644 /etc/samba/smb.conf
 chown root:root /etc/samba/smb.conf
@@ -460,7 +468,7 @@ chmod 644 /etc/udev/rules.d/10-udev-disks.rules
 chown root:root /etc/udev/rules.d/10-udev-disks.rules
 udevadm control --reload-rules
 
-## Motion Default Configuration
+## Motion Default
 cp -f $TMPDIR/motion /etc/default/motion
 chmod 644 /etc/default/motion
 chown root:root /etc/default/motion
@@ -652,7 +660,7 @@ usermod -a -G dialout www-data
 usermod -a -G tty www-data
 #######################################################
 
-## Services Configuration
+## Services
 cp -f $TMPDIR/timesyncd.conf /etc/systemd/
 chmod 644 /etc/systemd/timesyncd.conf
 chown root:root /etc/systemd/timesyncd.conf
@@ -680,7 +688,7 @@ if [ ! -e "/etc/rpi-conf.done" ]; then
   echo "Initial setup (phase II) complete"
   touch /etc/rpi-conf.done
 else
-  echo "Skipping services configuration"
+  echo "Skipping services"
 fi
 
 ## Run module script if found
@@ -748,6 +756,6 @@ apt autoclean
 apt clean
 
 echo ""
-echo "*** Configuration complete ***"
+echo "*** complete ***"
 exit
 
