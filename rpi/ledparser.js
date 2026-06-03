@@ -252,15 +252,24 @@ async function OPCLEDparser(ramDiskPath, effectCommand = "", secondaryArgument =
     }
 
     // 5. C++ Executable Effects
-    const registeredCppEffects = ["orbits", "noise", "chase", "miami", "stripes", "spectro", "textscroll"];
+    const registeredCppEffects = ["orbits", "noise", "chase", "miami", "stripes", "spectro", "oscope", "textscroll"];
     if (registeredCppEffects.includes(effectCommand)) {
         let binaryArgs = [currentLedHardware];
 
         // Spectrograph
-        const MIC_GAIN = "45";
-        const MIN_FREQ = "300";
-        const MAX_FREQ = "4000";
-        if (effectCommand === "spectro") binaryArgs.push(MIC_GAIN, MIN_FREQ, MAX_FREQ);
+        const AGC_FLOOR = "0.015";
+        const VERT_ZOOM = "3";
+        const OCTAVE_BANDS = "8";
+        const MIN_FREQ = "1500";
+        const MAX_FREQ = "4500";
+        if (effectCommand === "spectro") binaryArgs.push(VERT_ZOOM, OCTAVE_BANDS, MIN_FREQ, MAX_FREQ, AGC_FLOOR);
+
+        // Oscilloscope
+        const AMP_DIV = "2.5";
+        const FREQ_DIV = "3";
+        const LINE_SMOOTH = "0.6";
+        const NOISE_GATE = "10";
+        if (effectCommand === "oscope") binaryArgs.push(AMP_DIV, FREQ_DIV, LINE_SMOOTH, NOISE_GATE);
 
         // Scrolling Text        
         if (effectCommand === "textscroll") {

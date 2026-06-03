@@ -537,6 +537,16 @@ if ! cmp -s $LED_EF/mp4toleds.cpp $SRC_BKP/mp4toleds.cpp; then
 fi
 mv -f $LED_EF/mp4toleds.cpp $SRC_BKP/
 #######################################################
+if [ ! -f "$SRC_BKP/oscope.cpp" ]; then
+  touch $SRC_BKP/oscope.cpp
+fi
+if ! cmp -s $LED_EF/oscope.cpp $SRC_BKP/oscope.cpp; then
+    echo "Compiling Waveform LED Program..."
+    rm -f $LED_EF/oscope
+    g++ -O3 $LED_EF/oscope.cpp $LED_EF/ledlayout.cpp $LED_EF/opcclient.cpp -o $LED_EF/oscope -lasound -pthread
+fi
+mv -f $LED_EF/oscope.cpp $SRC_BKP/
+#######################################################
 if [ ! -f "$SRC_BKP/spectro.cpp" ]; then
   touch $SRC_BKP/spectro.cpp
 fi

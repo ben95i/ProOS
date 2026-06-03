@@ -10,6 +10,7 @@ miami|ledmenu|Miami
 plasma|ledmenu|Plasma
 prism|ledmenu|Prism
 clouds|ledmenu|Clouds
+oscope|ledmenu|Waveform
 spectro|ledmenu|Spectro
 mario|ledmenu|Mario
 8bit|ledmenu|8-Bit

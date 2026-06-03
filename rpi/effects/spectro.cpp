@@ -28,7 +28,15 @@ constexpr double HAMMING_WINDOW_BETA = 0.46;
 constexpr double TWO_PI_CONSTANT = 2.0 * M_PI;
 
 constexpr float DEFAULT_SCROLL_SPEED = 30.0f;
+
+// --- DECAY RATES ---
+// PEAK_DECAY_RATE: How fast the vertical bars fall down. (Lower = faster fall)
 constexpr float PEAK_DECAY_RATE = 0.92f;
+
+// AGC_DECAY_RATE: How fast the auto-gain recovers after a loud sound.
+// 0.99f = very slow recovery, 0.90f = very fast recovery.
+constexpr float AGC_DECAY_RATE = 0.92f; 
+
 constexpr int MAX_COLOR_VALUE = 255;
 constexpr float HSV_SECTOR_SIZE = 43.0f;
 constexpr int HSV_REMAINDER_MULTIPLIER = 6;
@@ -138,27 +146,46 @@ int main(int argumentCount, char** argumentValues) {
     int configuredGridWidth = std::clamp(mappedLayout.getLogicalWidth() > 0 ? mappedLayout.getLogicalWidth() : 16, 1, MAX_GRID_DIMENSION);
     int configuredGridHeight = std::clamp(mappedLayout.getLogicalHeight() > 0 ? mappedLayout.getLogicalHeight() : 16, 1, MAX_GRID_DIMENSION);
 
-    float audioGainMultiplier = 50.0f;
-    float minimumFrequencyThreshold = 0.0f;
+    float verticalZoom = 1.0f; // Replaces hard max bar height
+    int octaveBands = configuredGridWidth; 
+    float minimumFrequencyThreshold = 20.0f;
     float maximumFrequencyThreshold = 20000.0f;
+    float minAgcThreshold = 0.001f; // Default low floor
 
-    if (argumentCount > 2) audioGainMultiplier = std::atof(argumentValues[2]);
-    if (argumentCount > 3) minimumFrequencyThreshold = std::atof(argumentValues[3]);
-    if (argumentCount > 4) maximumFrequencyThreshold = std::atof(argumentValues[4]);
+    if (argumentCount > 2) verticalZoom = std::atof(argumentValues[2]);
+    if (argumentCount > 3) octaveBands = std::atoi(argumentValues[3]);
+    if (argumentCount > 4) minimumFrequencyThreshold = std::atof(argumentValues[4]);
+    if (argumentCount > 5) maximumFrequencyThreshold = std::atof(argumentValues[5]);
+    if (argumentCount > 6) minAgcThreshold = std::atof(argumentValues[6]);
+
+    // Safety checks for inputs and boundaries
+    verticalZoom = std::max(0.01f, verticalZoom);
+    minimumFrequencyThreshold = std::max(1.0f, minimumFrequencyThreshold);
+    maximumFrequencyThreshold = std::clamp(maximumFrequencyThreshold, minimumFrequencyThreshold + 1.0f, static_cast<float>(AUDIO_SAMPLE_RATE / 2));
+    octaveBands = std::clamp(octaveBands, 1, configuredGridWidth);
+    minAgcThreshold = std::max(0.0001f, minAgcThreshold);
 
     std::cout << "--- Visualizer Configuration ---\n"
-              << "Virtual Grid: " << configuredGridWidth << "x" << configuredGridHeight << "\n"
-              << "Gain:      " << audioGainMultiplier << "\n"
-              << "EQ Band:   " << minimumFrequencyThreshold << " Hz - " << maximumFrequencyThreshold << " Hz\n"
+              << "Usage: ./spectro [Layout] [Vertical Zoom] [Octave Bands] [Min Freq] [Max Freq] [Min AGC Threshold]\n\n"
+              << "Arguments Info:\n"
+              << "  [1] Layout String   : Defines LED mapping     (Default: 8x8)\n"
+              << "  [2] Vertical Zoom   : Audio scale multiplier  (Default: 1.0. Try 0.5 to shrink, 2.0 to stretch up)\n"
+              << "  [3] Octave Bands    : Columns of audio data   (Min: 1, Max: " << configuredGridWidth << " based on layout)\n"
+              << "  [4] Min Freq (Hz)   : EQ lower cutoff         (Min: 1.0, Max: < Max Freq)\n"
+              << "  [5] Max Freq (Hz)   : EQ upper cutoff         (Min: > Min Freq, Max: " << (AUDIO_SAMPLE_RATE / 2) << " Nyquist limit)\n"
+              << "  [6] AGC Noise Floor : Minimum gain threshold  (Try: 0.01 to 0.05 for noise suppression)\n\n"
+              << "Current Settings:\n"
+              << "  Virtual Grid:   " << configuredGridWidth << "x" << configuredGridHeight << "\n"
+              << "  Vertical Zoom:  " << verticalZoom << "x\n"
+              << "  Octave Bands:   " << octaveBands << " bars\n"
+              << "  EQ Band:        " << minimumFrequencyThreshold << " Hz - " << maximumFrequencyThreshold << " Hz\n"
+              << "  AGC Floor:      " << minAgcThreshold << "\n"
               << "--------------------------------\n";
 
-    int minimumBinIndex = static_cast<int>(minimumFrequencyThreshold * AUDIO_BUFFER_SIZE / AUDIO_SAMPLE_RATE);
-    int maximumBinIndex = static_cast<int>(maximumFrequencyThreshold * AUDIO_BUFFER_SIZE / AUDIO_SAMPLE_RATE);
-    
-    minimumBinIndex = std::clamp(minimumBinIndex, 0, static_cast<int>(AUDIO_BUFFER_SIZE / 2) - 2);
-    maximumBinIndex = std::clamp(maximumBinIndex, minimumBinIndex + 1, static_cast<int>(AUDIO_BUFFER_SIZE / 2) - 1);
-
-    float frequencyBinsPerDisplayColumn = static_cast<float>(maximumBinIndex - minimumBinIndex) / configuredGridWidth;
+    // Precalculate logarithmic boundaries
+    float logMinFreq = std::log10(minimumFrequencyThreshold);
+    float logMaxFreq = std::log10(maximumFrequencyThreshold);
+    float logFreqStep = (logMaxFreq - logMinFreq) / octaveBands;
 
     DisplayBuffer activeDisplayBuffer(configuredGridWidth, configuredGridHeight);
     OPCClient networkDisplayClient(DEFAULT_OPC_HOST, DEFAULT_OPC_PORT);
@@ -184,13 +211,16 @@ int main(int argumentCount, char** argumentValues) {
 
     std::vector<int16_t> capturedAudioRawBuffer(AUDIO_BUFFER_SIZE);
     std::vector<std::complex<double>> fastFourierComplexBuffer(AUDIO_BUFFER_SIZE);
-    std::vector<float> audioColumnPeakValues(configuredGridWidth, 0.0f);
+    
+    std::vector<float> audioColumnPeakValues(octaveBands, 0.0f);
+    
+    // Initialize autoGainMaxPeak to the new user-defined floor
+    float autoGainMaxPeak = minAgcThreshold;
     int activeGlobalHueState = 0;
 
     auto scheduledNextFrameTime = std::chrono::steady_clock::now();
     auto initialApplicationStartTime = std::chrono::steady_clock::now();
     
-    // Find highest map index to properly size OPC payload
     int maximumOpcPixelIndex = 0;
     for (const auto& physicalPixel : mappedLayout.getPixels()) {
         if (physicalPixel.opcIndex > maximumOpcPixelIndex) {
@@ -202,7 +232,6 @@ int main(int argumentCount, char** argumentValues) {
     while (true) {
         activeDisplayBuffer.clearBufferData();
 
-        // Audio processing is bypassed smoothly if no hardware is detected
         if (activeAudioDeviceHandle) {
             int capturedAudioFrames = snd_pcm_readi(activeAudioDeviceHandle, capturedAudioRawBuffer.data(), AUDIO_BUFFER_SIZE);
             if (capturedAudioFrames < 0) snd_pcm_recover(activeAudioDeviceHandle, capturedAudioFrames, 0);
@@ -213,39 +242,87 @@ int main(int argumentCount, char** argumentValues) {
             }
             performFastFourierTransform(fastFourierComplexBuffer);
         } else {
-            // Nullify FFT buffer if no audio handle to prevent drawing garbage bars
             std::fill(fastFourierComplexBuffer.begin(), fastFourierComplexBuffer.end(), std::complex<double>(0.0, 0.0));
         }
 
         auto currentRenderingTimestamp = std::chrono::steady_clock::now();
         float elapsedExecutionSeconds = std::chrono::duration<float>(currentRenderingTimestamp - initialApplicationStartTime).count();
         
-        // This ensures the background still scrolls entirely dependent on system clock duration, bypassing audio availability 
         activeDisplayBuffer.drawScrollingImage(scrollingBackgroundGraphic, loadedImageWidthPixels, loadedImageHeightPixels, elapsedExecutionSeconds * DEFAULT_SCROLL_SPEED);
 
         PixelColor activeBarDrawColor = convertHsvToRgb(activeGlobalHueState, MAX_COLOR_VALUE, MAX_COLOR_VALUE);
         
-        for (int displayColumnIndex = 0; displayColumnIndex < configuredGridWidth; ++displayColumnIndex) {
-            int signalBlockStartBin = minimumBinIndex + static_cast<int>(displayColumnIndex * frequencyBinsPerDisplayColumn);
-            int signalBlockEndBin = minimumBinIndex + static_cast<int>((displayColumnIndex + 1) * frequencyBinsPerDisplayColumn);
-            
-            if (signalBlockEndBin <= signalBlockStartBin) signalBlockEndBin = signalBlockStartBin + 1; 
+        float currentFrameMax = 0.0001f;
+        std::vector<float> rawBandAmplitudes(octaveBands, 0.0f);
 
+        // Map frequencies logarithmically to discrete octave bands
+        for (int bandIndex = 0; bandIndex < octaveBands; ++bandIndex) {
+            float startFreq = std::pow(10.0f, logMinFreq + bandIndex * logFreqStep);
+            float endFreq = std::pow(10.0f, logMinFreq + (bandIndex + 1) * logFreqStep);
+            
+            int signalBlockStartBin = static_cast<int>(startFreq * AUDIO_BUFFER_SIZE / AUDIO_SAMPLE_RATE);
+            int signalBlockEndBin = static_cast<int>(endFreq * AUDIO_BUFFER_SIZE / AUDIO_SAMPLE_RATE);
+            
+            signalBlockStartBin = std::clamp(signalBlockStartBin, 0, static_cast<int>(AUDIO_BUFFER_SIZE / 2) - 1);
+            signalBlockEndBin = std::clamp(signalBlockEndBin, signalBlockStartBin + 1, static_cast<int>(AUDIO_BUFFER_SIZE / 2));
+            
             float aggregatedMagnitudeTotal = 0;
-            int totalFrequencyBinsInColumn = signalBlockEndBin - signalBlockStartBin;
+            int totalFrequencyBinsInBand = signalBlockEndBin - signalBlockStartBin;
             
             for (int frequencyBinIndex = signalBlockStartBin; frequencyBinIndex < signalBlockEndBin; ++frequencyBinIndex) {
                 aggregatedMagnitudeTotal += std::abs(fastFourierComplexBuffer[frequencyBinIndex]);
             }
             
-            float finalCalculatedAmplitude = (aggregatedMagnitudeTotal / totalFrequencyBinsInColumn) * audioGainMultiplier; 
-            if (finalCalculatedAmplitude > audioColumnPeakValues[displayColumnIndex]) {
-                audioColumnPeakValues[displayColumnIndex] = finalCalculatedAmplitude;
+            float rawAmplitude = aggregatedMagnitudeTotal / totalFrequencyBinsInBand;
+            rawBandAmplitudes[bandIndex] = rawAmplitude;
+            if (rawAmplitude > currentFrameMax) {
+                currentFrameMax = rawAmplitude;
+            }
+        }
+
+        // --- Auto-Gain Control (AGC) Update ---
+        if (currentFrameMax > autoGainMaxPeak) {
+            autoGainMaxPeak = currentFrameMax; 
+        } else {
+            autoGainMaxPeak = autoGainMaxPeak * AGC_DECAY_RATE; 
+            
+            // Restrict AGC from amplifying silence by using the user-defined floor
+            if (autoGainMaxPeak < minAgcThreshold) {
+                autoGainMaxPeak = minAgcThreshold;
+            }
+        }
+
+        // Draw frequency bands appropriately scaled and smoothed
+        float columnsPerBand = static_cast<float>(configuredGridWidth) / octaveBands;
+
+        for (int bandIndex = 0; bandIndex < octaveBands; ++bandIndex) {
+            float normalizedAmplitude = rawBandAmplitudes[bandIndex] / autoGainMaxPeak;
+            
+            // 1. Calculate the raw target height based on the grid limit and user's vertical zoom
+            float finalCalculatedHeight = (normalizedAmplitude * configuredGridHeight) * verticalZoom;
+
+            // 2. Cap the target to the top of the grid BEFORE applying the decay so bars don't "hang" mathematically off-screen
+            finalCalculatedHeight = std::min(finalCalculatedHeight, static_cast<float>(configuredGridHeight));
+
+            // 3. Track falling peaks
+            if (finalCalculatedHeight > audioColumnPeakValues[bandIndex]) {
+                audioColumnPeakValues[bandIndex] = finalCalculatedHeight;
             } else {
-                audioColumnPeakValues[displayColumnIndex] *= PEAK_DECAY_RATE; 
+                audioColumnPeakValues[bandIndex] *= PEAK_DECAY_RATE; 
             }
 
-            activeDisplayBuffer.drawVerticalFrequencyBar(displayColumnIndex, static_cast<int>(audioColumnPeakValues[displayColumnIndex] * configuredGridHeight), activeBarDrawColor);
+            // 4. Safely clamp output to screen constraints for rendering
+            int targetHeight = static_cast<int>(audioColumnPeakValues[bandIndex]);
+            targetHeight = std::clamp(targetHeight, 0, configuredGridHeight);
+
+            int startCol = static_cast<int>(bandIndex * columnsPerBand);
+            int endCol = static_cast<int>((bandIndex + 1) * columnsPerBand);
+            
+            for (int col = startCol; col < endCol; ++col) {
+                if (col < configuredGridWidth) {
+                    activeDisplayBuffer.drawVerticalFrequencyBar(col, targetHeight, activeBarDrawColor);
+                }
+            }
         }
 
         // Map internal 2D buffer array to physical OPC vector
