@@ -7,11 +7,11 @@ const ERR_RESP = "500 : Internal Server Error"
 const BKM_INACTIVE = 0;
 const BKM_OPEN_MODE = 1;
 const BKM_EDIT_MODE = 2;
-let ctlCommand;
+let ledScrollData = ["00ff00", "8x8", "12.0"];
 let fileData = [];
+let ctlCommand;
 let serverCmdData;
 let messagePopupTimer;
-let ledScrollData = ["00ff00", "8x8", "12.0"];
 let dynMenuActive = 0;
 let bookmarkState = 0;
 let volPopupTimer;
@@ -44,7 +44,9 @@ window.addEventListener("DOMContentLoaded", () => {
   // on-click actions
   window.addEventListener('click', handleClicks, false);
   // load content
-  loadPage();
+  requestAnimationFrame(() => {
+    loadPage();
+  });
 });
 
 // runs on-each mouse click
@@ -188,6 +190,8 @@ function loadPage() {
       _mode = 'lr'; 
     } // living room
     ctlsMenu(_mode);
+    // title-bar room state
+    showRoomState(5);
     // server home page
     classDisplay('server-grid', 'block');
   } else if (sysModel === 'Pi') {
@@ -213,9 +217,68 @@ function setTheme(newTheme) {
   localStorage.setItem("main-color", newTheme);
 }
 
-/// text popup window ///
+function showRoomState(duration) {
+  let lightIcon = document.getElementById("trafficLightIcon");
+  let statusMsg = document.getElementById("statusMessage");
+  let container = document.getElementById('statusDropdownContainer');
+  // 1. reset spinner
+  container.classList.remove('active');
+  container.style.setProperty('--spin-duration', `${duration}s`);    
+  // 2. wait for browser redraw cycle
+  requestAnimationFrame(() => {
+    // 3. activate spinner
+    container.classList.add('active');
+    // 4. wait for set duration
+    setTimeout(() => {
+      let room;
+      let cmd = '';
+      // 5. read selected room
+      if (ctlCommand == 'lr' || ctlCommand == 'subs') {
+        room = "living room";
+        cmd = 'lrstatus';
+      }
+      if (ctlCommand == 'br' ) {
+        room = "bedroom";
+        cmd = 'brstatus';
+      }
+      if (cmd != '') {
+        // 6. call device status API
+        sendCmd('main', cmd, '').then((resp) => {
+          let callSuccess = false;
+          if (resp == "1") { 
+            // devices are online
+            lightIcon.classList.remove("status-off");
+            lightIcon.classList.add("status-on");
+            statusMsg.textContent = "Devices in the " + room + " are on";
+            callSuccess = true;
+          } else if (resp == "0") { 
+            // all devices offline
+            lightIcon.classList.remove("status-on");
+            lightIcon.classList.add("status-off");
+            statusMsg.textContent = "Devices in the " + room + " are off";
+            callSuccess = true;
+          } else {
+            // device error
+            lightIcon.classList.remove("status-on");
+            lightIcon.classList.remove("status-off");
+            statusMsg.textContent = "Error checking devices!";
+          }
+          // 7. remove spinner
+          container.classList.remove('active');
+          // 8. repeat when success
+          if (callSuccess) {
+            requestAnimationFrame(() => {
+              showRoomState(duration);
+            });
+          }
+        });
+      }
+    }, duration * 1000);
+  });
+}
 
-// send server action
+/// server popup window ///
+
 async function serverSend() {
   if (serverCmdData === null) {
     // load log data
@@ -2048,6 +2111,10 @@ const throttledSliderSend = throttle((host, cmd, val) => {
   sendCmd(host, cmd, val);
 }, 50); // in (ms)
 
+function sendPowerCommand(host, cmd) {
+  sendCmd('main', host, cmd);
+}
+
 function drawStatusItem(elm, col0, host, cmd) {
   const _icon = document.createElement('span');
   if (col0 == 'oncmd') { // power-on remote API call on click
@@ -2056,7 +2123,7 @@ function drawStatusItem(elm, col0, host, cmd) {
     _icon.classList.add('left-jfy'); // left-justify icon
     elm.appendChild(_icon);
     elm.addEventListener("click", function() {
-      sendCmd('main', host, cmd);
+      sendPowerCommand(host, cmd);
     });
   }
   if (col0 == 'offcmd') { // power-off remote API call on click
@@ -2065,7 +2132,7 @@ function drawStatusItem(elm, col0, host, cmd) {
     _icon.classList.add('left-jfy'); // left-justify icon
     elm.appendChild(_icon);
     elm.addEventListener("click", function() {
-      sendCmd('main', host, cmd);
+      sendPowerCommand(host, cmd);
     });
   }
   if (col0 == 'sleepmode') { // sleep PC type menu
@@ -2074,7 +2141,7 @@ function drawStatusItem(elm, col0, host, cmd) {
     _icon.classList.add('left-jfy'); // left-justify icon
     elm.appendChild(_icon);
     elm.addEventListener("click", function() {
-      sendCmd('main', host, cmd);
+      sendPowerCommand(host, cmd);
     });
   }
   if (col0 == 'cmd') { // generic remote API call on click

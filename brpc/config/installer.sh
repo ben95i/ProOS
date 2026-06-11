@@ -4,11 +4,15 @@
 
 CFGDIR="/tmp/config"
 
-## Add Google Chrome Source
-if [ ! -e "/etc/apt/sources.list.d/google-chrome.list" ]; then
-  echo "Adding Google Chrome Repo..."
-  curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg
-  echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main" | tee /etc/apt/sources.list.d/google-chrome.list
+## Add Vivaldi Repo
+#apt-get remove --yes --purge google-chrome-stable
+rm -f /etc/apt/sources.list.d/google-chrome.list
+if [ ! -e "/etc/apt/sources.list.d/vivaldi.list" ]; then
+  echo "Adding Vivaldi Repo..."
+  wget -qO- https://repo.vivaldi.com/archive/linux_signing_key.pub | \
+    gpg --dearmor -o /usr/share/keyrings/vivaldi-keyring.gpg
+  echo "deb [signed-by=/usr/share/keyrings/vivaldi-keyring.gpg arch=amd64] https://repo.vivaldi.com/archive/deb/ stable main" | \
+    tee /etc/apt/sources.list.d/vivaldi.list
 fi
 
 ## Update Sources
@@ -18,7 +22,7 @@ apt-get --yes update
 apt-get install -y --no-upgrade --ignore-missing dirmngr ca-certificates htop \
  apt-transport-https wget unzip gnupg rsync curl screen ethtool libdbus-1-dev \
  libdbus-glib-1-dev locales gnupg scrub binutils avahi-daemon kodi autofs \
- cifs-utils playerctl triggerhappy google-chrome-stable fastfetch
+ cifs-utils playerctl triggerhappy fastfetch vivaldi-stable
 
 ## SSH Configuration
 cp -f $CFGDIR/sshd_config /etc/ssh/

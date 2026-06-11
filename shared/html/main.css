@@ -101,6 +101,70 @@ body {
   display: none;
 }
 
+/*
+ *  Titlebar Room Status 
+ */
+
+.roomstatus-stack {
+  width: 50px;
+  height: 60px;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+}
+
+.roomstatus-svg-stack {
+  width: 45px;
+  height: 45px;
+  margin-bottom: 2px;
+  display: block;
+  overflow: visible;
+}
+
+.spinner-path {
+  transform-origin: center;
+  transform: rotate(-90deg);
+  stroke: color-mix(in srgb, var(--main-color) 30%, #fff);
+  stroke-width: 5px;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100; 
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.5s ease, visibility 0.5s ease, stroke-dashoffset 0s; 
+}
+
+#statusDropdownContainer.active .spinner-path {
+  opacity: 1;
+  visibility: visible;
+  stroke-dashoffset: 0;
+  transition: stroke-dashoffset var(--spin-duration, 2s) linear, opacity 0.5s ease, visibility 0.5s ease;
+}
+
+#trafficLightIcon {
+  fill: transparent; 
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.5s ease, fill 1.0s ease;
+}
+
+#trafficLightIcon.status-on {
+  opacity: 1 !important;
+  visibility: visible !important;
+  fill: #10B981 !important; /* Green */
+}
+
+#trafficLightIcon.status-off {
+  opacity: 1 !important;
+  visibility: visible !important;
+  fill: #b2681d !important; /* Orange */
+}
+
+/*
+ *  Homepage Styles
+ */
+
 .grid {
   display: flex;
   flex-wrap: nowrap;
@@ -151,7 +215,7 @@ body {
 }
 
 /*
- *  Scrollbar Style
+ *  Scrollbar Styles
  */
 
 .scroll-bar-style::-webkit-scrollbar-track {
@@ -176,7 +240,7 @@ body {
 }
 
 /*
- *  Checkbox Style
+ *  Checkbox Styles
  */
 
 input[type="checkbox"] {
@@ -346,7 +410,6 @@ input.chkbox {
   border: none;
   outline: none;
   padding: 0px 12px;
-  padding-top: 4px;
   text-decoration: none;
   text-align: center;
   color: #fff; /* nav font color */
@@ -474,14 +537,12 @@ input.chkbox {
   padding-left: 5px;
   position: absolute;
   display: block;
-  z-index: 997;
 }
 
 .nav_dd_right {
   right: 165px;
   position: absolute;
   display: block;
-  z-index: 997;
 }
 
 #nav_right_menu {

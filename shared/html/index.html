@@ -4,12 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="initial-scale=0.75, minimum-scale=0.75, maximum-scale=0.75 shrink-to-fit=no"/>
   <title id="title">Automate</title>
-  <link href="img/automate.png" rel="icon" type="image/x-icon">
-  <link href="fonts/fa/css/all.min.css" rel="stylesheet" type="text/css">
-  <link href="main.css" rel="stylesheet" type="text/css">
-  <script src="device.js"></script>
-  <script src="wifi.js"></script>
-  <script src="main.js"></script>
+  <link href="img/automate.png" rel="icon" type="image/x-icon"></link>
+  <link href="fonts/fa/css/all.min.css" rel="stylesheet" type="text/css"></link>
+  <link href="main.css" rel="stylesheet" type="text/css"></link>
+  <script type="text/javascript" src="wifi.js"></script>
+  <script type="text/javascript" src="device.js"></script>
+  <script type="text/javascript" src="main.js" defer></script>
 </head>
 <body class="scroll-bar-style" ontouchstart="">
 
@@ -43,11 +43,14 @@
       </a>   
       <a onclick="addBookmark()" class="nohide__click">
         <i class="fas fa-plus"></i>
-      </a> 
+      </a>
     </div>
-  </div>
-  <!-- right label-->
-  <div class="server-grid">
+    <a onclick="showMenu('roomstatus')" id="statusDropdownContainer" class="roomstatus-stack nohide__click">
+      <svg viewBox="0 0 50 50" class="roomstatus-svg-stack nohide__click">
+        <circle id="trafficLightIcon" cx="25" cy="25" r="17" stroke="none" class="nohide__click"></circle>
+        <circle id="spinnerCircle" class="spinner-path nohide__click" fill="none" stroke-linecap="round" pathLength="100" cx="25" cy="25" r="23"></circle>
+      </svg>
+    </a>
     <a onclick="showStatusMenu()" id="nav_right_menu" class="nohide__click">
       <i id="navstats-icon" class="fad fa-chart-network"></i>
       <i id="navstats-spinner"></i>
@@ -70,12 +73,11 @@
       <a onclick="GoToHomePage()"><i class="fad fa-home"></i> Home</a>
     </div>
   </div>
-</div>
-<div class="nav_dd_left">
   <div class="dd-content dd-menu" id="thememenu"></div>
-</div>
-<div class="nav_dd_left">
   <div class="dd-content dd-menu" id="bookmarks"></div>
+  <div class="dd-content dd-menu" id="roomstatus">
+    <a id="statusMessage">Checking status...</a>
+  </div>
 </div>
 <div class="nav_dd_right">
   <div class="dd-content dd-menu ind-button" id="statsmenu"></div>

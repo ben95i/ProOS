@@ -265,7 +265,7 @@ async function OPCLEDparser(ramDiskPath, effectCommand = "", secondaryArgument =
         if (effectCommand === "spectro") binaryArgs.push(VERT_ZOOM, OCTAVE_BANDS, MIN_FREQ, MAX_FREQ, AGC_FLOOR);
 
         // Oscilloscope
-        const AMP_DIV = "2.5";
+        const AMP_DIV = "2";
         const FREQ_DIV = "3";
         const LINE_SMOOTH = "0.6";
         const NOISE_GATE = "10";

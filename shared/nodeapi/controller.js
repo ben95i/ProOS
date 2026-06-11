@@ -3,6 +3,8 @@ const fsPromises = require('fs/promises');
 const util = require('util');
 const { OPCLEDparser } = require('./ledparser');
 const { runStatusUpdate } = require('./statusupd');
+const { runScanNetwork } = require('./netscan');
+const { runSiteLookup } = require('./sitelookup');
 
 const execFileAsync = util.promisify(execFile);
 const execAsync = util.promisify(exec);
@@ -19,6 +21,15 @@ const IPs = {
     brpc: "192.168.1.17",
     picolamp1: "192.168.1.18"
 };
+
+function containsNonZero(arr) {
+  for (let i = 0; i < arr.length; i++) {
+    if (arr[i] != '0' && arr[i] != 0) {
+      return true;
+    }
+  }
+  return false;
+}
 
 function extractResponse(str) {
     const delimiter = "|";
@@ -46,181 +57,50 @@ async function localPing(ip) {
     }
 }
 
-// Helper function to pad or truncate text to a fixed width
-function formatCol(text, width) {
-    const safeText = String(text || ''); 
-    if (safeText.length > width) {
-        return safeText.substring(0, width - 3) + '...';
-    }
-    return safeText.padEnd(width, ' ');
-}
-
-/**
- * Scans a local network and returns a formatted string table.
- * @param {string} targetRange - The IP CIDR range to scan (e.g., '192.168.1.0/24')
- * @returns {Promise<string>} The formatted network table
- */
-async function scanNetwork(targetRange) {
-    try {
-        // execFileAsync is safe from shell injection. 
-        // Max buffer defaults to 1MB, which is plenty for a /24 subnet.
-        const { stdout } = await execFileAsync('/usr/bin/sudo', ['/usr/bin/nmap', '-sn', targetRange]);
-
-        const hostBlocks = stdout.split('Nmap scan report for ').slice(1);
-        const devices = [];
-
-        // 1. Parse Nmap Output
-        for (const block of hostBlocks) {
-            const lines = block.split('\n');
-            const firstLine = lines[0].trim();
-            
-            let ip = '';
-            let hostname = '';
-            let vendor = '---';
-            let mac = '---';
-            
-            // Extract IP and Hostname
-            if (firstLine.includes('(')) {
-                const parts = firstLine.split(' (');
-                hostname = parts[0];
-                ip = parts[1].replace(')', '');
-            } else {
-                ip = firstLine;
-            }
-
-            // Extract MAC Address and Vendor
-            const macLine = lines.find(line => line.startsWith('MAC Address:'));
-            if (macLine) {
-                const macMatch = macLine.match(/MAC Address:\s+([0-9A-Fa-f:]+)/);
-                if (macMatch) mac = macMatch[1];
-
-                const vendorMatch = macLine.match(/\(([^)]+)\)/);
-                if (vendorMatch) vendor = vendorMatch[1];
-            }
-
-            devices.push({ ip, hostname, vendor, mac });
-        }
-
-        // 2. Safe Numerical Sorting by IP
-        devices.sort((a, b) => {
-            const aParts = a.ip.split('.');
-            const bParts = b.ip.split('.');
-
-            // Fallback: If an IP is malformed or IPv6, push it to the bottom
-            if (aParts.length !== 4) return 1;
-            if (bParts.length !== 4) return -1;
-
-            const aOctets = aParts.map(Number);
-            const bOctets = bParts.map(Number);
-
-            for (let i = 0; i < 4; i++) {
-                if (aOctets[i] !== bOctets[i]) {
-                    // Fallback: Handle NaN just in case the string was letters
-                    if (isNaN(aOctets[i])) return 1;
-                    if (isNaN(bOctets[i])) return -1;
-                    return aOctets[i] - bOctets[i];
-                }
-            }
-            return 0; // IPs are identical
-        });
-
-        // 3. Assemble the Visual Table
-        const activeHosts = [];
-        
-        // Define exact character widths for the text
-        const wIP = 15;
-        const wHost = 15; // Expanded slightly so hostnames clip less often
-        const wVendor = 21;
-        const wMac = 19;  // Exactly enough for a MAC address (17 chars + 2 padding)
-
-        // Explicit 1-space margin to insert between columns
-        const colSeparator = ' '; 
-
-        // Build Header
-        const headerRow = formatCol('IP ADDRESS', wIP) + colSeparator +
-                          formatCol('HOSTNAME', wHost) + colSeparator +
-                          formatCol('MANUFACTURER', wVendor) + colSeparator +
-                          formatCol('MAC ADDRESS', wMac);
-        
-        // Build a dashed line that matches the total width of columns + separators
-        const totalWidth = wIP + wHost + wMac + wVendor + (colSeparator.length * 3);
-        const dividerRow = '-'.repeat(totalWidth);
-
-        activeHosts.push(headerRow);
-        activeHosts.push(dividerRow);
-
-        // Build Rows
-        for (const device of devices) {
-            const row = formatCol(device.ip, wIP) + colSeparator +
-                        formatCol(device.hostname, wHost) + colSeparator +
-                        formatCol(device.vendor, wVendor) + colSeparator +
-                        formatCol(device.mac, wMac);
-            
-            activeHosts.push(row);
-        }
-
-        // Add Footer
-        activeHosts.push(`Total active hosts: ${devices.length}`);
-        
-        return activeHosts.join('\n');
-        
-    } catch (error) {
-        // Throw the error so the calling function knows the scan actually failed
-        throw new Error(`Nmap scan failed: ${error.message}`);
-    }
-}
-
 async function localCom(cmd) {
-    try {
-        const { stdout } = await execFileAsync('/usr/bin/ztermcom', [cmd]);
-        return stdout;
-    } catch (error) {
-        return error.stderr || error.message;
-    }
+    const { stdout } = await execFileAsync('/usr/bin/ztermcom', [cmd]);
+    return stdout;
 }
 
 async function wakeBrpc() {
     const ping = await localPing(IPs.brpc);
     if (ping === "1") {
-        return "bedroom PC already online.";
+        return "bedroom PC already online";
     } else {
         await execFileAsync('/usr/bin/wakeonlan', [BRPC_MAC]);
-        return "";
+        return "OK";
     }
 }
 
 async function callApi(target, arg1, arg2 = "") {
     if (arg1 === "") {
-        return "";
+        return "callApi: argument cannot be empty";
     }
     const server = `http://${target}:80/api?var=${arg2}&arg=${arg1}&action=main`;
     try {
         const response = await fetch(server, { signal: AbortSignal.timeout(API_CALL_TIMEOUT) });
         if (!response.ok) {
-            console.error("callApi exception: invalid response");
-            return "ERROR";
+            return "callApi: invalid response";
         }
         const apiResp = await response.text();
-        const respClean = apiResp.replace(/[\\"]/g, '');
+        const respClean = apiResp.replace(/[\\"\n]/g, '');
         return(extractResponse(respClean));
     } catch (error) {
-        console.error("callApi exception: " + error.message);
-        return "ERROR";
+        return "callApi exception: " + error.message;
     }
 }
 
 async function callPico(target, arg1, arg2 = "") {
     if (arg1 === "") {
-        return "argument cannot be empty";
+        return "callPico: argument cannot be empty";
     }
     const server = `http://${target}:4000/api?${arg1},,${arg2}~`;
     try {
         const response = await fetch(server, { signal: AbortSignal.timeout(API_CALL_TIMEOUT) });
         if (!response.ok) {
-            return "invalid response";
+            return "callPico: invalid response";
         }
-        const piResp = await response.text();
-        return piResp.replace(/[\\"]/g, '')
+        return (await response.text()).replace(/[\\"\n]/g, '');
     } catch (error) {
         return "callPico exception: " + error.message;
     }
@@ -234,7 +114,6 @@ async function readComResp(xmit, respCmd, respPos = "") {
     if (xmit === "local") {
         ttyRaw = await localCom(respCmd);
     }
-    console.log("readComResp raw response: " + ttyRaw);
     const ttyOut = extractResponse(ttyRaw);
     if (respPos === "") {
         return ttyOut;
@@ -294,8 +173,7 @@ async function brXmit(cmd) {
             }
         }
 
-        default:
-            return "invalid local command!";
+        default:  return "brXmit: invalid command";
     }
 }
 
@@ -317,6 +195,7 @@ async function lrXmit(cmdIn) {
         case "wl_leds_set":   return await callPico(IPs.picolamp1, "3", cmd2);
         case "wl_led2off":    return await callPico(IPs.picolamp1, "2", "0");
         case "wl_led2on":     return await callPico(IPs.picolamp1, "2", "1");
+        case "wl_led1":       return await callPico(IPs.picolamp1, "1", "0");
         case "wl_led2":       return await callPico(IPs.picolamp1, "2", "2");
 
         case "wkststate": {
@@ -358,7 +237,7 @@ async function lrXmit(cmdIn) {
         case "subup_fast":    return await callApi(IPs.lrxmit, "extcom", "17004");
         case "subdwn_fast":   return await callApi(IPs.lrxmit, "extcom", "17005");
 
-        default:              return "invalid lrXmit command!";
+        default:  return "lrXmit: invalid command";
     }
 }
 
@@ -366,13 +245,81 @@ async function executeMain(ramDisk, firstArg, secondArg) {
     const cmd = firstArg.replace(/\n/g, "");
     const subCmd = secondArg.replace(/\n/g, "");
     switch (cmd) {
+
+        // all lights
+        case "lightson":
+            await lrXmit("wl_led1on");
+            await lrXmit("wl_led2on");
+            await brXmit("brlamp1on");
+            return "OK";
+        case "lightsoff":
+            await lrXmit("wl_led1off");
+            await lrXmit("wl_led2off");
+            await brXmit("brlamp1off");
+            await OPCLEDparser(ramDisk, "stop", "");
+            return "OK";
+
+        // living room
+        case "lrxmit":
+            return await lrXmit(subCmd);
+        case "lrstatus":
+            try {
+                let lrstatus = new Array();
+                lrstatus.push(await lrXmit("wl_led1"));
+                lrstatus.push(await lrXmit("wl_led2"));
+                lrstatus.push(await lrXmit("hifistate"));
+                lrstatus.push(await lrXmit("wkststate"));
+                if (containsNonZero(lrstatus) == true) { return "1"; }
+                return "0";
+            } catch (error) {
+                return "lrstatus error: " + error.message;
+            }
+        case "lrlightson":
+            await lrXmit("wl_led1on");
+            return "OK";
+        case "lrlightsoff":
+            await lrXmit("wl_led1off");
+            return "OK";
+        case "lron":
+            await lrXmit("wl_led1on");
+            await lrXmit("wl_led2on");
+            await OPCLEDparser(ramDisk, "abstract", "");
+            await lrXmit("wkststateon");
+            await lrXmit("hifistateon");
+            return "OK";
+        case "lroff":
+            await lrXmit("wl_led1off");
+            await lrXmit("wl_led2off");
+            await OPCLEDparser(ramDisk, "stop", "");
+            await lrXmit("wkststateoff");
+            await lrXmit("hifistateoff");
+            return "OK";
+
+        // bedroom
+        case "brxmit":
+            return await brXmit(subCmd);
+        case "brstatus":
+            try {
+                let brstatus = new Array();
+                brstatus.push(await brXmit("brlamp1"));
+                brstatus.push(await brXmit("retropi"));
+                brstatus.push(await brXmit("brmacs"));
+                brstatus.push(await brXmit("brtv"));
+                brstatus.push(await brXmit("brpc"));
+                brstatus.push(await callApi(IPs.brpi, "ampstate", ""));
+                if (containsNonZero(brstatus) == true) { return "1"; }
+                return "0";
+            } catch (error) {
+                return "brstatus error: " + error.message;
+            }
+
         case "bron":
             await brXmit("brlamp1on");
             await brXmit("retropion");
             await brXmit("brmacson");
-            await callApi(IPs.brpi, "ampstateon", "");
             await brXmit("brtvon");
-            return "";
+            await callApi(IPs.brpi, "ampstateon", "");
+            return "OK";
         case "broff":
             await brXmit("brlamp1off");
             await brXmit("retropioff");
@@ -380,118 +327,31 @@ async function executeMain(ramDisk, firstArg, secondArg) {
             await callApi(IPs.brpi, "ampstateoff", "");
             await brXmit("brtvoff");
             await callApi(IPs.brpc, "sleep", "");
-            return "";
-        case "lightson":
-            await lrXmit("wl_led1on");
-            await lrXmit("wl_led2on");
-            await brXmit("brlamp1on");
-            return "";
-        case "lightsoff":
-            await lrXmit("wl_led1off");
-            await lrXmit("wl_led2off");
-            await brXmit("brlamp1off");
-            await OPCLEDparser(ramDisk, "stop", "");
-            return "";
-        case "lrlightson":
-            await lrXmit("wl_led1on");
-            return "";
-        case "lrlightsoff":
-            await lrXmit("wl_led1off");
-            return "";
-        case "lron":
-            await lrXmit("wl_led1on");
-            await lrXmit("wl_led2on");
-            await OPCLEDparser(ramDisk, "abstract", "");
-            await lrXmit("wkststateon");
-            await lrXmit("hifistateon");
-            return "";
-        case "lroff":
-            await lrXmit("wl_led1off");
-            await lrXmit("wl_led2off");
-            await OPCLEDparser(ramDisk, "stop", "");
-            await lrXmit("wkststateoff");
-            await lrXmit("hifistateoff");
-            return "";
-        case "brxmit":
-            return await brXmit(subCmd);
-        case "lrxmit":
-            return await lrXmit(subCmd);
+            return "OK";
         case "brpi":
             return await callApi(IPs.brpi, subCmd, "");
         case "relax":
             await callApi(IPs.brpi, "relax", subCmd);
             await callApi(IPs.brpc, "sleep", "");
             await brXmit("brtvoff");
-            return "";
+            return "OK";
         case "stop-br":
             return await callApi(IPs.brpi, "stoprelax", "");
+
+        // server functions
         case "localping":
             return await localPing(`${subCmd}.${LOCAL_DOMAIN}`);
         case "status": {
             try {
-                const result = await runStatusUpdate(ramDisk);
-                return result; 
+                const status_list = await runStatusUpdate(ramDisk);
+                return status_list; 
             } catch (exc) {
                 return "status update exception: " + exc.message;
             }
         }
         case "sitelookup": {
-            try {
-                // Decode the base64 URL
-                let base64In = subCmd.replace(/-/g, "+").replace(/_/g, "/").replace(/@/g, "=");
-                let decodedUrl = Buffer.from(base64In, 'base64').toString('utf8');
-                let urlObj = new URL(decodedUrl);
-
-                // Handle hardcoded special cases
-                if (urlObj.hostname === "www.ups.com" || urlObj.hostname === "ups.com") {
-                    return "UPS Tracking";
-                }
-                if (urlObj.hostname === "tools.usps.com") {
-                    return "USPS Tracking";
-                }
-
-                // Fetch the HTML natively (Requires Node.js 18+)
-                const response = await fetch(decodedUrl, {
-                    method: 'GET',
-                    // Adding a standard user-agent helps prevent sites from blocking the request
-                    headers: {
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36'
-                    }
-                });
-
-                if (!response.ok) {
-                    return "Site Lookup Error!";
-                }
-
-                const html = await response.text();
-
-                // Extract the title using Regex (matches <title> optionally with attributes, and captures the content)
-                // The 'i' flag makes it case-insensitive, the 's' flag allows '.' to match newlines
-                const titleMatch = html.match(/<title[^>]*>(.*?)<\/title>/is);
-
-                if (titleMatch && titleMatch[1]) {
-                    let title = titleMatch[1].trim();
-
-                    // Clean up common HTML entities that might be present in the title
-                    title = title.replace(/&amp;/g, '&')
-                                 .replace(/&lt;/g, '<')
-                                 .replace(/&gt;/g, '>')
-                                 .replace(/&quot;/g, '"')
-                                 .replace(/&#39;/g, "'");
-
-                    if (title === "") {
-                        return "Site Lookup Error!";
-                    }
-                    
-                    // Remove any accidental newlines or extra spaces parsed from the HTML
-                    return title.replace(/\s+/g, ' '); 
-                }
-
-                return "Site Lookup Error!";
-            } catch (e) {
-                // This catches invalid URLs, network timeouts, and fetch errors
-                return "Site Lookup Error!";
-            }
+            const site_title = await runSiteLookup(subCmd);
+            return site_title;
         }
         case "server": {
             const logFile = `${ramDisk}/sysout.txt`;
@@ -500,20 +360,16 @@ async function executeMain(ramDisk, firstArg, secondArg) {
             }
             if (subCmd === "netscan") {
                 await fsPromises.appendFile(logFile, `\nScanning network range ${NET_RANGE}...\n`);
-                try {
-                    const scanResult = await scanNetwork(NET_RANGE);
-                    await fsPromises.appendFile(logFile, `${scanResult}\n`);
-                    return "OK";
-                } catch (error) {
-                    return `scanNetwork error: ${error.message}`;
-                }
+                const scanResult = await runScanNetwork(NET_RANGE);
+                await fsPromises.appendFile(logFile, `${scanResult}\n`);
+                return "OK";
             }
             await fsPromises.appendFile(logFile, `\n${subCmd} sent.\n`);
             await execAsync(`touch ${ramDisk}/${subCmd}.txt`);
             return "OK";
         }
-        default:
-            return "invalid command !";
+
+        default:  return "executeMain: invalid command";
     }
 }
 

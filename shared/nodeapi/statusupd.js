@@ -10,6 +10,7 @@ const execFileAsync = util.promisify(execFile);
  */
 
 const STATS_FILE = "/opt/system/statsmenu.txt";
+const MAX_WAIT = "0.35";
 
 /**
  * Replicates the ping logic to determine device state.
@@ -18,8 +19,7 @@ const STATS_FILE = "/opt/system/statsmenu.txt";
 async function updateState(host, action) {
     if (action === "ping") {
         try {
-            // Equivalent to ping -4 -A -c 1 -i 0.25 -W 0.25
-            await execFileAsync('/usr/bin/ping', ['-4', '-A', '-c', '1', '-i', '0.25', '-W', '0.25', host]);
+            await execFileAsync('/usr/bin/ping', ['-4', '-A', '-c', '1', '-i', MAX_WAIT, '-W', MAX_WAIT, host]);
             return "grnind"; // Green indicator (Online)
         } catch (error) {
             return "blkind"; // Black indicator (Offline)

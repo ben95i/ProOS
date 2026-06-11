@@ -86,8 +86,11 @@ int main(int argumentCount, char** argumentValues) {
     std::string configurationArgument = (argumentCount > 1) ? argumentValues[1] : "8x8";
     mappedLayout.parseArgument(configurationArgument);
 
-    int configuredGridWidth = std::clamp(mappedLayout.getLogicalWidth() > 0 ? mappedLayout.getLogicalWidth() : 16, 1, MAX_GRID_DIMENSION);
-    int configuredGridHeight = std::clamp(mappedLayout.getLogicalHeight() > 0 ? mappedLayout.getLogicalHeight() : 16, 1, MAX_GRID_DIMENSION);
+    // Increase the fallback dimension for non-logical mapped sets (like rings) to provide 
+    // enough internal resolution for the aspect-aware projection logic to sample from.
+    int fallbackDimension = 64;
+    int configuredGridWidth = std::clamp(mappedLayout.getLogicalWidth() > 0 ? mappedLayout.getLogicalWidth() : fallbackDimension, 1, MAX_GRID_DIMENSION);
+    int configuredGridHeight = std::clamp(mappedLayout.getLogicalHeight() > 0 ? mappedLayout.getLogicalHeight() : fallbackDimension, 1, MAX_GRID_DIMENSION);
 
     float amplitudeDivision = 1.0f;
     if (argumentCount > 2) {
@@ -107,9 +110,6 @@ int main(int argumentCount, char** argumentValues) {
         smoothingFactor = std::clamp(smoothingFactor, 0.01f, 1.0f);
     }
 
-    // --- NEW: Noise Gate Threshold ---
-    // A value of ~50-100 is usually enough to mask ADC line noise, 
-    // but you can push it to 500+ if you only want loud beats to show up.
     float noiseGateThreshold = 75.0f; 
     if (argumentCount > 5) {
         noiseGateThreshold = static_cast<float>(std::atof(argumentValues[5]));
@@ -182,7 +182,6 @@ int main(int argumentCount, char** argumentValues) {
         // --- 2. Oscilloscope Trigger ---
         int triggerIndex = 0;
         
-        // We only waste time hunting for a phase-lock trigger if the audio isn't silent
         if (!isSilent) {
             float triggerThreshold = smoothedPeakAmplitude * 0.15f; 
             for (size_t i = 1; i < AUDIO_BUFFER_SIZE / 2; ++i) {
@@ -203,8 +202,6 @@ int main(int argumentCount, char** argumentValues) {
         for (int i = 0; i < displaySamples; ++i) {
             float targetAmplitude = 0.0f;
 
-            // If we have actual sound, calculate where the waveform wants to be.
-            // If we don't (isSilent == true), the target stays firmly at 0.0f (center line).
             if (!isSilent) {
                 int sampleIndex = triggerIndex + i;
                 if (sampleIndex >= AUDIO_BUFFER_SIZE) sampleIndex = AUDIO_BUFFER_SIZE - 1;
@@ -214,17 +211,13 @@ int main(int argumentCount, char** argumentValues) {
                 targetAmplitude = std::clamp(targetAmplitude, -1.0f, 1.0f);
             }
 
-            // Interpolate the memory array smoothly toward the target amplitude
             smoothedWaveform[i] += (targetAmplitude - smoothedWaveform[i]) * smoothingFactor;
             
-            // Use the newly smoothed value for drawing
             float finalAmplitude = smoothedWaveform[i];
             finalAmplitude = std::clamp(finalAmplitude, -1.0f, 1.0f);
 
-            // Map time (sample index) to X coordinate
             int currentXCoord = static_cast<int>((static_cast<float>(i) / (displaySamples - 1)) * (configuredGridWidth - 1));
             
-            // Map amplitude to Y coordinate
             int currentYCoord = static_cast<int>((-finalAmplitude + 1.0f) / 2.0f * (configuredGridHeight - 1));
             currentYCoord = std::clamp(currentYCoord, 0, configuredGridHeight - 1);
 
@@ -232,7 +225,6 @@ int main(int argumentCount, char** argumentValues) {
             int finalHue = (activeGlobalHueState + columnHueOffset) % (MAX_COLOR_VALUE + 1);
             PixelColor activeDrawColor = convertHsvToRgb(finalHue, MAX_COLOR_VALUE, MAX_COLOR_VALUE);
 
-            // Connect lines between every audio sample 
             if (i == 0) {
                 activeDisplayBuffer.applyPixelColor(currentXCoord, currentYCoord, activeDrawColor);
             } else {
@@ -243,11 +235,29 @@ int main(int argumentCount, char** argumentValues) {
             previousYCoord = currentYCoord;
         }
 
-        // Send payload to OPC server
+        // --- 4. Map internal 2D buffer array to physical OPC vector using mp4toleds.cpp aspect-aware centering ---
         std::fill(outgoingNetworkPayload.begin(), outgoingNetworkPayload.end(), 0);
+
+        float bufferAspectRatio = static_cast<float>(activeDisplayBuffer.gridWidth) / static_cast<float>(activeDisplayBuffer.gridHeight);
+        int croppedRenderWidth = activeDisplayBuffer.gridWidth;
+        int croppedRenderHeight = activeDisplayBuffer.gridHeight;
+        int renderOffsetX = 0;
+        int renderOffsetY = 0;
+
+        if (bufferAspectRatio > mappedLayout.getTargetAspect()) {
+            croppedRenderWidth = static_cast<int>(activeDisplayBuffer.gridHeight * mappedLayout.getTargetAspect());
+            renderOffsetX = (activeDisplayBuffer.gridWidth - croppedRenderWidth) / 2;
+        } else {
+            croppedRenderHeight = static_cast<int>(activeDisplayBuffer.gridWidth / mappedLayout.getTargetAspect());
+            renderOffsetY = (activeDisplayBuffer.gridHeight - croppedRenderHeight) / 2;
+        }
+
         for (const auto& physicalPixelTarget : mappedLayout.getPixels()) {
-            int mappedPixelXCoord = std::clamp(static_cast<int>(physicalPixelTarget.normX * activeDisplayBuffer.gridWidth), 0, activeDisplayBuffer.gridWidth - 1);
-            int mappedPixelYCoord = std::clamp(static_cast<int>(physicalPixelTarget.normY * activeDisplayBuffer.gridHeight), 0, activeDisplayBuffer.gridHeight - 1);
+            int mappedPixelXCoord = renderOffsetX + static_cast<int>(physicalPixelTarget.normX * (croppedRenderWidth - 1));
+            int mappedPixelYCoord = renderOffsetY + static_cast<int>(physicalPixelTarget.normY * (croppedRenderHeight - 1));
+            
+            mappedPixelXCoord = std::clamp(mappedPixelXCoord, 0, activeDisplayBuffer.gridWidth - 1);
+            mappedPixelYCoord = std::clamp(mappedPixelYCoord, 0, activeDisplayBuffer.gridHeight - 1);
             
             PixelColor selectedPixelColor = activeDisplayBuffer.pixelDataBuffer[mappedPixelYCoord * activeDisplayBuffer.gridWidth + mappedPixelXCoord];
             
@@ -268,3 +278,4 @@ int main(int argumentCount, char** argumentValues) {
     if (activeAudioDeviceHandle) snd_pcm_close(activeAudioDeviceHandle);
     return 0;
 }
+
