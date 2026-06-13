@@ -12,7 +12,10 @@
   font-family: JosefinSans, system-ui;
   font-size: 24px; /* default font size */
   --secondary-color: #36363d; /* nav bar and menus color */
-  --border-color: #878787; /* border color */
+  --border-color: #878787;
+  --yellow-ind: #ffd000; 
+  --green-ind: #29b036;
+  --red-ind: #6b1328;
 }
 
 body {
@@ -105,7 +108,7 @@ body {
  *  Titlebar Room Status 
  */
 
-.roomstatus-stack {
+.roomstatus {
   width: 50px;
   height: 60px;
   display: inline-flex !important;
@@ -115,7 +118,7 @@ body {
   padding: 0;
 }
 
-.roomstatus-svg-stack {
+.roomstatus-svgs {
   width: 45px;
   height: 45px;
   margin-bottom: 2px;
@@ -126,7 +129,7 @@ body {
 .spinner-path {
   transform-origin: center;
   transform: rotate(-90deg);
-  stroke: color-mix(in srgb, var(--main-color) 30%, #fff);
+  stroke: color-mix(in srgb, var(--main-color) 35%, #fff);
   stroke-width: 5px;
   stroke-dasharray: 100;
   stroke-dashoffset: 100; 
@@ -135,7 +138,7 @@ body {
   transition: opacity 0.5s ease, visibility 0.5s ease, stroke-dashoffset 0s; 
 }
 
-#statusDropdownContainer.active .spinner-path {
+#statusDropdownContainer.status-loading .spinner-path {
   opacity: 1;
   visibility: visible;
   stroke-dashoffset: 0;
@@ -143,22 +146,25 @@ body {
 }
 
 #trafficLightIcon {
-  fill: transparent; 
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 0.5s ease, fill 1.0s ease;
+  transition: fill-opacity 0.5s ease;
+  fill-opacity: 1.0;
+  fill: transparent;
+}
+
+#trafficLightIcon.status-pending {
+  fill-opacity: 0.7;
+}
+
+#trafficLightIcon.status-error {
+  fill: var(--red-ind);
 }
 
 #trafficLightIcon.status-on {
-  opacity: 1 !important;
-  visibility: visible !important;
-  fill: #10B981 !important; /* Green */
+  fill: var(--green-ind);
 }
 
 #trafficLightIcon.status-off {
-  opacity: 1 !important;
-  visibility: visible !important;
-  fill: #b2681d !important; /* Orange */
+  fill: #000;
 }
 
 /*
@@ -594,6 +600,13 @@ input.chkbox {
   color: #000;
 }
 
+/* Theme Menu */
+
+.theme-colorbox {
+  border-radius: 5px;
+  margin: 8px;
+}
+
 /* Status Menu */
 
 .ind_dot {
@@ -608,27 +621,20 @@ input.chkbox {
 }
 
 .ind_dot_yellow {
-  background-color: #ffd000;
+  background-color: var(--yellow-ind);
 }
 
 .ind_dot_green {
-  background-color: #00ff00;
+  background-color: var(--green-ind);
 }
 
 .ind_dot_red {
-  background-color: #ff0000;
+  background-color: var(--red-ind);
 }
 
 .ind-button {
   position: absolute;
   min-width: 160px;
-}
-
-/* Theme Menu */
-
-.theme-colorbox {
-  border-radius: 5px;
-  margin: 8px;
 }
 
 /*
@@ -640,7 +646,7 @@ input.chkbox {
 }
 
 .bookmark-editmode {
-  background-color: #6f230f;
+  background-color: #853c2a;
 }
 
 #bookmarks {

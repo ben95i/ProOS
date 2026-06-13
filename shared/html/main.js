@@ -44,9 +44,7 @@ window.addEventListener("DOMContentLoaded", () => {
   // on-click actions
   window.addEventListener('click', handleClicks, false);
   // load content
-  requestAnimationFrame(() => {
-    loadPage();
-  });
+  loadPage();
 });
 
 // runs on-each mouse click
@@ -221,59 +219,48 @@ function showRoomState(duration) {
   let lightIcon = document.getElementById("trafficLightIcon");
   let statusMsg = document.getElementById("statusMessage");
   let container = document.getElementById('statusDropdownContainer');
-  // 1. reset spinner
-  container.classList.remove('active');
-  container.style.setProperty('--spin-duration', `${duration}s`);    
-  // 2. wait for browser redraw cycle
-  requestAnimationFrame(() => {
-    // 3. activate spinner
-    container.classList.add('active');
-    // 4. wait for set duration
-    setTimeout(() => {
-      let room;
-      let cmd = '';
-      // 5. read selected room
-      if (ctlCommand == 'lr' || ctlCommand == 'subs') {
-        room = "living room";
-        cmd = 'lrstatus';
-      }
-      if (ctlCommand == 'br' ) {
-        room = "bedroom";
-        cmd = 'brstatus';
-      }
-      if (cmd != '') {
-        // 6. call device status API
-        sendCmd('main', cmd, '').then((resp) => {
-          let callSuccess = false;
-          if (resp == "1") { 
-            // devices are online
-            lightIcon.classList.remove("status-off");
-            lightIcon.classList.add("status-on");
-            statusMsg.textContent = "Devices in the " + room + " are on";
-            callSuccess = true;
-          } else if (resp == "0") { 
-            // all devices offline
-            lightIcon.classList.remove("status-on");
-            lightIcon.classList.add("status-off");
-            statusMsg.textContent = "Devices in the " + room + " are off";
-            callSuccess = true;
-          } else {
-            // device error
-            lightIcon.classList.remove("status-on");
-            lightIcon.classList.remove("status-off");
-            statusMsg.textContent = "Error checking devices!";
-          }
-          // 7. remove spinner
-          container.classList.remove('active');
-          // 8. repeat when success
-          if (callSuccess) {
-            requestAnimationFrame(() => {
-              showRoomState(duration);
-            });
-          }
-        });
-      }
-    }, duration * 1000);
+  container.classList.remove('status-loading');
+  let room = null; let cmd = null;
+  if (ctlCommand == 'lr' || ctlCommand == 'subs') {
+    room = "living room"; cmd = 'lrstatus';
+  }
+  if (ctlCommand == 'br') {
+    room = "bedroom"; cmd = 'brstatus';
+  }
+  if (cmd == null) return;
+  lightIcon.classList.add("status-pending");
+  statusMsg.textContent = "Scanning devices...";
+  sendCmd('main', cmd, '').then((resp) => {
+    let success = false;
+    if (resp == "1") {
+      lightIcon.classList.remove("status-error");
+      lightIcon.classList.remove("status-off");
+      lightIcon.classList.add("status-on");
+      statusMsg.textContent = "Devices in the " + room + " are on";
+      success = true;
+    } else if (resp == "0") { 
+      lightIcon.classList.remove("status-error");
+      lightIcon.classList.remove("status-on");
+      lightIcon.classList.add("status-off");
+      statusMsg.textContent = "Devices in the " + room + " are off";
+      success = true;
+    } else {
+      lightIcon.classList.remove("status-off");
+      lightIcon.classList.remove("status-on");
+      lightIcon.classList.add("status-error");
+      statusMsg.textContent = "Error checking devices!";
+    }
+    lightIcon.classList.remove("status-pending");
+    if (success) {
+      container.style.setProperty('--spin-duration', `${duration}s`);    
+      void container.offsetWidth; 
+      requestAnimationFrame(() => {
+        container.classList.add('status-loading');
+        setTimeout(() => {
+          showRoomState(duration);
+        }, duration * 1000);
+      });
+    }
   });
 }
 

@@ -9,7 +9,7 @@ const { runSiteLookup } = require('./sitelookup');
 const execFileAsync = util.promisify(execFile);
 const execAsync = util.promisify(exec);
 
-const API_CALL_TIMEOUT = 5000; // in (ms)
+const API_CALL_TIMEOUT = 1000; // in (ms)
 const MAX_PING_WAIT = "0.5"; // in (sec)
 const LOCAL_DOMAIN = "home";
 const NET_RANGE = "192.168.1.0/24";
@@ -21,31 +21,15 @@ const IPs = {
     brpc: "192.168.1.17",
     picolamp1: "192.168.1.18"
 };
+let serialQueue = Promise.resolve();
 
 function containsNonZero(arr) {
-  for (let i = 0; i < arr.length; i++) {
-    if (arr[i] != '0' && arr[i] != 0) {
+  for (let idx = 0; idx < arr.length; idx++) {
+    if (arr[idx] != '0' && arr[idx] != 0) {
       return true;
     }
   }
   return false;
-}
-
-function extractResponse(str) {
-    const delimiter = "|";
-    if (str === "") {
-        return "";
-    }
-    let tmpStr = str;
-    const firstPipe = tmpStr.indexOf(delimiter);
-    if (firstPipe !== -1) {
-        tmpStr = tmpStr.substring(firstPipe + 1);
-    }
-    const lastPipe = tmpStr.lastIndexOf(delimiter);
-    if (lastPipe !== -1) {
-        tmpStr = tmpStr.substring(0, lastPipe);
-    }
-    return tmpStr;
 }
 
 async function localPing(ip) {
@@ -57,17 +41,12 @@ async function localPing(ip) {
     }
 }
 
-async function localCom(cmd) {
-    const { stdout } = await execFileAsync('/usr/bin/ztermcom', [cmd]);
-    return stdout;
-}
-
 async function wakeBrpc() {
     const ping = await localPing(IPs.brpc);
     if (ping === "1") {
         return "bedroom PC already online";
     } else {
-        await execFileAsync('/usr/bin/wakeonlan', [BRPC_MAC]);
+        
         return "OK";
     }
 }
@@ -82,12 +61,26 @@ async function callApi(target, arg1, arg2 = "") {
         if (!response.ok) {
             return "callApi: invalid response";
         }
-        const apiResp = await response.text();
-        const respClean = apiResp.replace(/[\\"\n]/g, '');
-        return(extractResponse(respClean));
+        const raw_resp = await response.text();
+        const resp = extractResponse(raw_resp.replace(/[\\"\n]/g, ''), '|');
+        return resp;
     } catch (error) {
         return "callApi exception: " + error.message;
     }
+}
+
+function extractResponse(str, delimiter) {
+    if (str === "") return "";
+    let outstr = str;
+    const firstPipe = outstr.indexOf(delimiter);
+    if (firstPipe !== -1) {
+        outstr = outstr.substring(firstPipe + 1);
+    }
+    const lastPipe = outstr.lastIndexOf(delimiter);
+    if (lastPipe !== -1) {
+        outstr = outstr.substring(0, lastPipe);
+    }
+    return outstr;
 }
 
 async function callPico(target, arg1, arg2 = "") {
@@ -100,75 +93,72 @@ async function callPico(target, arg1, arg2 = "") {
         if (!response.ok) {
             return "callPico: invalid response";
         }
-        return (await response.text()).replace(/[\\"\n]/g, '');
+        const raw_resp = await response.text();
+        return raw_resp.replace(/[\\"\n]/g, '');
     } catch (error) {
         return "callPico exception: " + error.message;
     }
 }
 
-async function readComResp(xmit, respCmd, respPos = "") {
-    let ttyRaw = "";
-    if (xmit === "lrxmit") {
-        ttyRaw = await callApi(IPs.lrxmit, "extcom", respCmd);
-    }
-    if (xmit === "local") {
-        ttyRaw = await localCom(respCmd);
-    }
-    const ttyOut = extractResponse(ttyRaw);
-    if (respPos === "") {
-        return ttyOut;
-    }
-    if (ttyOut.length === 3) {
-        return ttyOut[parseInt(respPos)] === "9" ? "1" : "0";
-    }
-    if (ttyOut.length === 1) {
-        return ttyOut[0] === "1" ? "1" : "0";
-    }
-    return "X";
+async function callSerial(host, cmd, out_pos = "") {
+    const executeTask = async () => {
+        let out;
+        if (host === "lrxmit") {
+            out = await callApi(IPs.lrxmit, "extcom", cmd);
+        } 
+        else if (host === "local") {
+            const { stdout } = await execFileAsync('/usr/bin/ztermcom', [cmd]);
+            out = extractResponse(stdout, '|');
+        } else return "host empty!";
+        if (out_pos === "") return out;
+        if (out && out.length === 3) {
+            return out[parseInt(out_pos)] === "9" ? "1" : "0";
+        } 
+        else if (out && out.length === 1) {
+            return out[0] === "1" ? "1" : "0";
+        } else return "X";
+    };
+    const task = serialQueue.then(() => executeTask());
+    serialQueue = task.catch(() => {});
+    return task;
 }
 
 async function brXmit(cmd) {
     switch (cmd) {
-        case "brlamp1":    return await readComResp("local", "10007", "0");
-        case "brlamp1on":  return await localCom("10002");
-        case "brlamp1off": return await localCom("10001");
+        case "brlamp1":    return await callSerial("local", "10007", "0");
+        case "brlamp1on":  return await callSerial("local", "10002");
+        case "brlamp1off": return await callSerial("local", "10001");
         
-        case "brmacs":     return await readComResp("local", "10007", "1");
-        case "brmacson":   return await localCom("10004");
-        case "brmacsoff":  return await localCom("10003");
+        case "brmacs":     return await callSerial("local", "10007", "1");
+        case "brmacson":   return await callSerial("local", "10004");
+        case "brmacsoff":  return await callSerial("local", "10003");
         
-        case "retropi":    return await readComResp("local", "10007", "2");
-        case "retropion":  return await localCom("10006");
-        case "retropioff": return await localCom("10005");
+        case "retropi":    return await callSerial("local", "10007", "2");
+        case "retropion":  return await callSerial("local", "10006");
+        case "retropioff": return await callSerial("local", "10005");
         
-        case "roomth":     return await readComResp("local", "01005", "");
+        case "roomth":     return await callSerial("local", "01005");
         
-        case "brtv":       return await readComResp("local", "01003", "0");
-        case "brtvoff":    return await localCom("01002");
-        case "brtvon":
-            await localCom("01001");
-            await wakeBrpc();
-            return "OK";
+        case "brtv":       return await callSerial("local", "01003", "0");
+        case "brtvoff":    return await callSerial("local", "01002");
+        case "brtvon":     return await callSerial("local", "01001");
 
         case "brpc": {
-            const ping = await localPing(IPs.brpc);
-            if (ping === "1") { return "pc_awake"; }
+            if (await localPing(IPs.brpc) === "1") return "pc_awake";
             return "0";
         }
         case "brpcoff": {
-            const ping = await localPing(IPs.brpc);
-            if (ping === "1") {
-                return await callApi(IPs.brpc, "sleep", "");
+            if (await localPing(IPs.brpc) === "1") {
+                return await callApi(IPs.brpc, "sleep");
             } else {
                 return `${IPs.brpc} is already offline`;
             }
         }
         case "brpcon": {
-            const ping = await localPing(IPs.brpc);
-            if (ping === "1") {
+            if (await localPing(IPs.brpc) === "1") {
                 return `${IPs.brpc} is already online`;
             } else {
-                await wakeBrpc();
+                await execFileAsync('/usr/bin/wakeonlan', [BRPC_MAC]);
                 return "OK";
             }
         }
@@ -185,7 +175,6 @@ async function lrXmit(cmdIn) {
         cmd1 = cmdIn.substring(0, sepIndex);
         cmd2 = cmdIn.substring(sepIndex + 1);
     }
-    
     switch (cmd1) {
         case "wl_leds":       return await callPico(IPs.picolamp1, "4", "0");
         case "wl_ledsoff":
@@ -205,46 +194,46 @@ async function lrXmit(cmdIn) {
             return "X";
         }
         case "wkststateoff":
-        case "wkststateon":   return await callApi(IPs.lrxmit, "pc_power", "");
-        case "hifistate":     return await readComResp("lrxmit", "15019", "");
+        case "wkststateon":   return await callApi(IPs.lrxmit, "pc_power");
+        case "hifistate":     return await callSerial("lrxmit", "15019");
 
-        case "hifistateoff":  return await callApi(IPs.lrxmit, "extcom", "15018");
-        case "hifistateon":   return await callApi(IPs.lrxmit, "extcom", "15017");
-        case "hifitoggle":    return await callApi(IPs.lrxmit, "extcom", "15016");
+        case "hifistateoff":  return await callSerial("lrxmit", "15018");
+        case "hifistateon":   return await callSerial("lrxmit", "15017");
+        case "hifitoggle":    return await callSerial("lrxmit", "15016");
 
-        case "aux":           return await callApi(IPs.lrxmit, "extcom", "15002");
-        case "phono":         return await callApi(IPs.lrxmit, "extcom", "15003");
-        case "usb":           return await callApi(IPs.lrxmit, "extcom", "15001");
-        case "coax":          return await callApi(IPs.lrxmit, "extcom", "15004");
-        case "opt":           return await callApi(IPs.lrxmit, "extcom", "15005");
-        case "curinput":      return await callApi(IPs.lrxmit, "extcom", "15007");
-        case "autodac":       return await callApi(IPs.lrxmit, "extcom", "15006");
+        case "aux":           return await callSerial("lrxmit", "15002");
+        case "phono":         return await callSerial("lrxmit", "15003");
+        case "usb":           return await callSerial("lrxmit", "15001");
+        case "coax":          return await callSerial("lrxmit", "15004");
+        case "opt":           return await callSerial("lrxmit", "15005");
+        case "curinput":      return await callSerial("lrxmit", "15007");
+        case "autodac":       return await callSerial("lrxmit", "15006");
         
-        case "vlimit":        return await callApi(IPs.lrxmit, "extcom", "15015");
-        case "togglehpf":     return await callApi(IPs.lrxmit, "extcom", "15014");
-        case "curhpfvollim":  return await callApi(IPs.lrxmit, "extcom", "15020");
+        case "vlimit":        return await callSerial("lrxmit", "15015");
+        case "togglehpf":     return await callSerial("lrxmit", "15014");
+        case "curhpfvollim":  return await callSerial("lrxmit", "15020");
         
-        case "voldisplay":    return await readComResp("lrxmit", "15013", "");
-        case "volmute":       return await readComResp("lrxmit", "15012", "");
-        case "voldwn":        return await readComResp("lrxmit", "15010", "");
-        case "volup":         return await readComResp("lrxmit", "15011", "");
-        case "voldwnc":       return await readComResp("lrxmit", "15008", "");
-        case "volupc":        return await readComResp("lrxmit", "15009", "");
+        case "voldisplay":    return await callSerial("lrxmit", "15013");
+        case "volmute":       return await callSerial("lrxmit", "15012");
+        case "voldwn":        return await callSerial("lrxmit", "15010");
+        case "volup":         return await callSerial("lrxmit", "15011");
+        case "voldwnc":       return await callSerial("lrxmit", "15008");
+        case "volupc":        return await callSerial("lrxmit", "15009");
         
-        case "submute":       return await callApi(IPs.lrxmit, "extcom", "17001");
-        case "subup":         return await callApi(IPs.lrxmit, "extcom", "17002");
-        case "subdwn":        return await callApi(IPs.lrxmit, "extcom", "17003");
-        case "subup_fast":    return await callApi(IPs.lrxmit, "extcom", "17004");
-        case "subdwn_fast":   return await callApi(IPs.lrxmit, "extcom", "17005");
+        case "submute":       return await callSerial("lrxmit", "17001");
+        case "subup":         return await callSerial("lrxmit", "17002");
+        case "subdwn":        return await callSerial("lrxmit", "17003");
+        case "subup_fast":    return await callSerial("lrxmit", "17004");
+        case "subdwn_fast":   return await callSerial("lrxmit", "17005");
 
         default:  return "lrXmit: invalid command";
     }
 }
 
-async function executeMain(ramDisk, firstArg, secondArg) {
-    const cmd = firstArg.replace(/\n/g, "");
-    const subCmd = secondArg.replace(/\n/g, "");
-    switch (cmd) {
+async function executeMain(ramDisk, firstArgIn, secondArgIn) {
+    const firstArg = firstArgIn.replace(/\n/g, "");
+    const secondArg = secondArgIn.replace(/\n/g, "");
+    switch (firstArg) {
 
         // all lights
         case "lightson":
@@ -261,7 +250,7 @@ async function executeMain(ramDisk, firstArg, secondArg) {
 
         // living room
         case "lrxmit":
-            return await lrXmit(subCmd);
+            return await lrXmit(secondArg);
         case "lrstatus":
             try {
                 let lrstatus = new Array();
@@ -269,7 +258,7 @@ async function executeMain(ramDisk, firstArg, secondArg) {
                 lrstatus.push(await lrXmit("wl_led2"));
                 lrstatus.push(await lrXmit("hifistate"));
                 lrstatus.push(await lrXmit("wkststate"));
-                if (containsNonZero(lrstatus) == true) { return "1"; }
+                if (containsNonZero(lrstatus) == true) return "1";
                 return "0";
             } catch (error) {
                 return "lrstatus error: " + error.message;
@@ -297,7 +286,7 @@ async function executeMain(ramDisk, firstArg, secondArg) {
 
         // bedroom
         case "brxmit":
-            return await brXmit(subCmd);
+            return await brXmit(secondArg);
         case "brstatus":
             try {
                 let brstatus = new Array();
@@ -306,8 +295,8 @@ async function executeMain(ramDisk, firstArg, secondArg) {
                 brstatus.push(await brXmit("brmacs"));
                 brstatus.push(await brXmit("brtv"));
                 brstatus.push(await brXmit("brpc"));
-                brstatus.push(await callApi(IPs.brpi, "ampstate", ""));
-                if (containsNonZero(brstatus) == true) { return "1"; }
+                brstatus.push(await callApi(IPs.brpi, "ampstate"));
+                if (containsNonZero(brstatus) == true) return "1";
                 return "0";
             } catch (error) {
                 return "brstatus error: " + error.message;
@@ -318,29 +307,29 @@ async function executeMain(ramDisk, firstArg, secondArg) {
             await brXmit("retropion");
             await brXmit("brmacson");
             await brXmit("brtvon");
-            await callApi(IPs.brpi, "ampstateon", "");
+            await callApi(IPs.brpi, "ampstateon");
             return "OK";
         case "broff":
             await brXmit("brlamp1off");
             await brXmit("retropioff");
             await brXmit("brmacsoff");
-            await callApi(IPs.brpi, "ampstateoff", "");
             await brXmit("brtvoff");
-            await callApi(IPs.brpc, "sleep", "");
+            await callApi(IPs.brpi, "ampstateoff");
+            await callApi(IPs.brpc, "sleep");
             return "OK";
         case "brpi":
-            return await callApi(IPs.brpi, subCmd, "");
+            return await callApi(IPs.brpi, secondArg);
         case "relax":
-            await callApi(IPs.brpi, "relax", subCmd);
-            await callApi(IPs.brpc, "sleep", "");
             await brXmit("brtvoff");
+            await callApi(IPs.brpi, "relax", secondArg);
+            await callApi(IPs.brpc, "sleep");
             return "OK";
         case "stop-br":
-            return await callApi(IPs.brpi, "stoprelax", "");
+            return await callApi(IPs.brpi, "stoprelax");
 
         // server functions
         case "localping":
-            return await localPing(`${subCmd}.${LOCAL_DOMAIN}`);
+            return await localPing(`${secondArg}.${LOCAL_DOMAIN}`);
         case "status": {
             try {
                 const status_list = await runStatusUpdate(ramDisk);
@@ -350,25 +339,24 @@ async function executeMain(ramDisk, firstArg, secondArg) {
             }
         }
         case "sitelookup": {
-            const site_title = await runSiteLookup(subCmd);
+            const site_title = await runSiteLookup(secondArg);
             return site_title;
         }
         case "server": {
             const logFile = `${ramDisk}/sysout.txt`;
-            if (subCmd === "") {
-                return "empty command!";
+            if (secondArg === "") {
+                return "empty server command!";
             }
-            if (subCmd === "netscan") {
+            if (secondArg === "netscan") {
                 await fsPromises.appendFile(logFile, `\nScanning network range ${NET_RANGE}...\n`);
                 const scanResult = await runScanNetwork(NET_RANGE);
                 await fsPromises.appendFile(logFile, `${scanResult}\n`);
                 return "OK";
             }
-            await fsPromises.appendFile(logFile, `\n${subCmd} sent.\n`);
-            await execAsync(`touch ${ramDisk}/${subCmd}.txt`);
+            await fsPromises.appendFile(logFile, `\n${secondArg} sent.\n`);
+            await execAsync(`touch ${ramDisk}/${secondArg}.txt`);
             return "OK";
         }
-
         default:  return "executeMain: invalid command";
     }
 }
