@@ -17,6 +17,17 @@ let bookmarkState = 0;
 let volPopupTimer;
 let sysModel;
 
+const PRESET_COLORS = [
+  '#FF0000', '#FF7F00', '#FFFF00', '#00FF00', '#00FFFF',
+  '#0000FF', '#7F00FF', '#FF00FF', '#FFFFFF', '#000000'
+];
+let isGridInitialized = false;
+const colorParser = document.createElement('div');
+let isColorCommandPending = false;
+let pendingQueuedColor = null;
+let currentHSV = { h: 0, s: 1, v: 1 };
+let isDraggingMap = false;
+
 // request rate limiter
 function throttle(func, limit) {
   let lastFunc;
@@ -115,6 +126,65 @@ function removeWindow(id) {
     document.body.removeChild(win);
   }
 }
+
+/// utilities ///
+
+function hsvToRgb(h, s, v) {
+  let r, g, b, i, f, p, q, t;
+  h /= 360;
+  i = Math.floor(h * 6);
+  f = h * 6 - i;
+  p = v * (1 - s);
+  q = v * (1 - f * s);
+  t = v * (1 - (1 - f) * s);
+  switch (i % 6) {
+    case 0: r = v, g = t, b = p; break;
+    case 1: r = q, g = v, b = p; break;
+    case 2: r = p, g = v, b = t; break;
+    case 3: r = p, g = q, b = v; break;
+    case 4: r = t, g = p, b = v; break;
+    case 5: r = v, g = p, b = q; break;
+  }
+  return { r: Math.round(r * 255), g: Math.round(g * 255), b: Math.round(b * 255) };
+}
+
+function rgbToHsv(r, g, b) {
+  r /= 255, g /= 255, b /= 255;
+  let max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h, s, v = max;
+  let d = max - min;
+  s = max === 0 ? 0 : d / max;
+  if (max === min) {
+    h = 0; 
+  } else {
+    switch (max) {
+      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+      case g: h = (b - r) / d + 2; break;
+      case b: h = (r - g) / d + 4; break;
+    }
+    h /= 6;
+  }
+  return { h: h * 360, s: s, v: v };
+}
+
+function hexToRgb(hex) {
+  let bigint = parseInt(hex.replace('#', ''), 16);
+  return { r: (bigint >> 16) & 255, g: (bigint >> 8) & 255, b: bigint & 255 };
+}
+
+function rgbToHex(r, g, b) {
+  return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase();
+}
+
+function isNumeric(value) {
+  return /^-?\d+$/.test(value);
+}
+
+function mapNumber(num, inMin, inMax, outMin, outMax) {
+  return (num - inMin) * (outMax - outMin) / (inMax - inMin) + outMin;
+}
+
+///////////
 
 function showPopup(message) {
   let msgtext;
@@ -802,64 +872,138 @@ function passwordPrompt(){
   }); 
 }
 
-async function colorPrompt(){
-  const winid = "color__prompt";
-  // only allow one-instance of the window
-  if (document.getElementById(winid)) {
-    return;
+/// Color Prompt ///
+
+const throttledColorSend = throttle((strippedHex) => {
+  if (isColorCommandPending) return; 
+  isColorCommandPending = true;
+  sendCmd('leds', 'hex', strippedHex)
+    .catch(err => {
+      console.error("Failed to send color command:", err);
+    })
+    .finally(() => {
+      isColorCommandPending = false;
+    });
+}, 50);
+
+function dispatchColorCommand(hex) {
+  let strippedHex = hex.replace('#', '');
+  throttledColorSend(strippedHex);
+}
+
+function updateUIFromHSV(triggerSend = true) {
+  let rgb = hsvToRgb(currentHSV.h, currentHSV.s, currentHSV.v);
+  let hex = rgbToHex(rgb.r, rgb.g, rgb.b);
+  document.getElementById('hex-color').value = hex;
+  colorParser.style.color = hex;
+  document.querySelectorAll('.color-swatch').forEach(swatch => {
+    if (swatch.style.backgroundColor === colorParser.style.color) {
+      swatch.classList.add('active-swatch');
+    } else {
+      swatch.classList.remove('active-swatch');
+    }
+  });
+  if (triggerSend) dispatchColorCommand(hex);
+}
+
+function updateStateFromHex(hex, updateMapUI = true, triggerSend = true) {
+  let rgb = hexToRgb(hex);
+  currentHSV = rgbToHsv(rgb.r, rgb.g, rgb.b);
+  if (updateMapUI) {
+    document.getElementById('slider-hue').value = currentHSV.h;
+    document.getElementById('color-map-bg').style.background = `hsl(${currentHSV.h}, 100%, 50%)`;
+    document.getElementById('color-pointer').style.left = `${currentHSV.s * 100}%`;
+    document.getElementById('color-pointer').style.top = `${(1 - currentHSV.v) * 100}%`;
   }
-  hideDropdowns();
-  let colorprompt = document.createElement("div"); //creates the div to be used as a prompt
-  colorprompt.id = winid; //gives the prompt an id
-  colorprompt.classList.add("prompt_win");
-  let colortext = document.createElement("div"); //create the div for the password-text
-  colortext.innerHTML = "Pick a color:"; //put inside the text
-  colortext.id = "color__text";
-  colorprompt.appendChild(colortext); //append the text-div to the prompt
-  // color selector box
-  let colorinput = document.createElement("input");
-  colorinput.id = "color__box";
-  colorinput.name = "color";
-  colorinput.type = "color";
-  colorinput.value = "#000000";
-  colorprompt.appendChild(colorinput);  
-  // the cancel-button
-  let colorcancelb = document.createElement("button"); 
-  colorcancelb.innerHTML = "Close";
-  colorcancelb.className ="button"; 
-  colorcancelb.type="button"; 
-  colorprompt.appendChild(colorcancelb); //append cancel-button
-  // append the password-prompt so it is visible
-  document.body.appendChild(colorprompt); 
-  new Promise(function() {
-      colorinput.addEventListener('input', function colorEventListener(inp_evnt) {
-        let hex_rgb = colorinput.value.replace(/^#/, ''); // save color values
-        sendCmd('leds','hex',hex_rgb);
-        // cleanup listener
-        if (inp_evnt.target.tagName !== 'INPUT') { return; }
-        colorinput.removeEventListener('click', colorEventListener); 
-      });
-      colorprompt.addEventListener('click', function handleButtonClicks(btn_evnt) {
-        if (btn_evnt.target.tagName !== 'BUTTON') { return; } //nothing to do - user clicked somewhere else
-        // close button
-        colorprompt.removeEventListener('click', handleButtonClicks);
-        document.body.removeChild(colorprompt);  //as we are done clean up by removing the-prompt
-      });
-  });   
+  document.getElementById('hex-color').value = hex.toUpperCase();
+  updateUIFromHSV(triggerSend);
+}
+
+function handleHexInput(e) {
+  let val = e.target.value;
+  if (!val.startsWith('#')) val = '#' + val;
+  if (/^#[0-9A-F]{6}$/i.test(val)) {
+    updateStateFromHex(val, true, true);
+  }
+}
+
+function handleHueInput(e) {
+  currentHSV.h = parseFloat(e.target.value);
+  document.getElementById('color-map-bg').style.background = `hsl(${currentHSV.h}, 100%, 50%)`;
+  updateUIFromHSV(true);
+}
+
+// Map Dragging
+function startMapDrag(e) {
+  isDraggingMap = true;
+  updateMapPointer(e);
+  window.addEventListener('pointermove', updateMapPointer);
+  window.addEventListener('pointerup', stopMapDrag);
+  window.addEventListener('pointercancel', stopMapDrag);
+}
+
+function updateMapPointer(e) {
+  if (!isDraggingMap) return;
+  const mapRect = document.getElementById('color-map').getBoundingClientRect();
+  let x = Math.max(0, Math.min(e.clientX - mapRect.left, mapRect.width));
+  let y = Math.max(0, Math.min(e.clientY - mapRect.top, mapRect.height));
+  document.getElementById('color-pointer').style.left = `${(x / mapRect.width) * 100}%`;
+  document.getElementById('color-pointer').style.top = `${(y / mapRect.height) * 100}%`;
+  currentHSV.s = x / mapRect.width;
+  currentHSV.v = 1 - (y / mapRect.height);
+  updateUIFromHSV(true);
+}
+
+function stopMapDrag() {
+  isDraggingMap = false;
+  window.removeEventListener('pointermove', updateMapPointer);
+  window.removeEventListener('pointerup', stopMapDrag);
+  window.removeEventListener('pointercancel', stopMapDrag);
+}
+
+function initColorGrid() {
+  if (isGridInitialized) return;
+  const grid = document.getElementById('preset-color-grid');
+  if (!grid) return;
+  grid.innerHTML = ''; 
+  PRESET_COLORS.forEach(color => {
+    const swatch = document.createElement('div');
+    swatch.className = 'color-swatch';
+    swatch.style.backgroundColor = color;
+    swatch.addEventListener('click', () => updateStateFromHex(color, true, true));
+    grid.appendChild(swatch);
+  });
+  isGridInitialized = true;
+}
+
+function colorPrompt(initialColor) {
+  initColorGrid();
+  let formattedColor = String(initialColor);
+  if (!formattedColor.startsWith('#')) {
+    formattedColor = '#' + formattedColor;
+  }
+  const pendingLock = isColorCommandPending;
+  isColorCommandPending = true; 
+  updateStateFromHex(formattedColor, true, false);
+  isColorCommandPending = pendingLock; 
+  document.getElementById('hex-color').addEventListener('input', handleHexInput);
+  document.getElementById('slider-hue').addEventListener('input', handleHueInput);
+  document.getElementById('color-map').addEventListener('pointerdown', startMapDrag);
+  document.getElementById('color-popup').style.display = 'flex';
+}
+
+function closeColorPrompt() {
+  document.getElementById('color-popup').style.display = 'none';
+  document.getElementById('hex-color').removeEventListener('input', handleHexInput);
+  document.getElementById('slider-hue').removeEventListener('input', handleHueInput);
+  document.getElementById('color-map').removeEventListener('pointerdown', startMapDrag);
+  stopMapDrag();
 }
 
 /// END DYNAMIC WINDOWS ///
 
 function relaxSend(_cmd) {
   sendCmd('main', 'relax', _cmd);
-}
-
-function isNumeric(value) {
-  return /^-?\d+$/.test(value);
-}
-
-function mapNumber(num, inMin, inMax, outMin, outMax) {
-  return (num - inMin) * (outMax - outMin) / (inMax - inMin) + outMin;
 }
 
 // volume controls

@@ -575,7 +575,6 @@
   </div>
 </div>
 
-
 <div class="log-popup popup-win" id="logForm">
   <div class="popup-ctn">
     <textarea readonly class="scroll-bar-style" id="logTextBox" spellcheck="false"></textarea>
@@ -594,6 +593,36 @@
       </button>  
     </div>
   </div> 
+</div>
+
+<div id="color-popup">
+  <div class="color-popup-content">
+    <h3 class="color-popup-title">Select Color</h3>
+    
+    <div id="color-map">
+      <div id="color-map-bg" class="color-map-layer"></div>
+      <div class="color-map-layer map-layer-white"></div>
+      <div class="color-map-layer map-layer-black"></div>
+      <div id="color-pointer"></div>
+    </div>
+
+    <div class="hue-slider-container">
+      <input type="range" class="slider-wide" id="slider-hue" min="0" max="360" value="0">
+    </div>
+
+    <div class="color-grid" id="preset-color-grid"></div>
+
+    <div class="custom-color-input">
+      <label for="hex-color">Hex:</label>
+      <input type="text" id="hex-color" maxlength="7" spellcheck="false" />
+    </div>
+
+    <div class="color-popup-actions">
+      <button type="button" class="button button_left_txtwin color-popup-btn" onclick="closeColorPrompt()">
+        <i class="fas fa-times"></i> Close
+      </button>
+    </div>
+  </div>
 </div>
 
 <div class="popup-win" id="cam-popup">
