@@ -7,7 +7,12 @@ const ERR_RESP = "500 : Internal Server Error"
 const BKM_INACTIVE = 0;
 const BKM_OPEN_MODE = 1;
 const BKM_EDIT_MODE = 2;
-let ledScrollData = ["00ff00", "8x8", "12.0"];
+const REFRESH_INTERVAL = 3;
+const TIMEOUT_INTERVAL = 60;
+let activityTimeout;
+let isRoomStateRunning = false;
+let shootingStarsActive = true;
+let ledScrollData = ["00FF00", "8x8", "12.0"];
 let fileData = [];
 let ctlCommand;
 let serverCmdData;
@@ -17,16 +22,17 @@ let bookmarkState = 0;
 let volPopupTimer;
 let sysModel;
 
+// color selector //
 const PRESET_COLORS = [
   '#FF0000', '#FF7F00', '#FFFF00', '#00FF00', '#00FFFF',
   '#0000FF', '#7F00FF', '#FF00FF', '#FFFFFF', '#000000'
 ];
-let isGridInitialized = false;
-const colorParser = document.createElement('div');
+let currentHSV = { h: 0, s: 1, v: 1 };
+let isColorPromptInit = false;
+const colorPromptParser = document.createElement('div');
 let isColorCommandPending = false;
 let pendingQueuedColor = null;
-let currentHSV = { h: 0, s: 1, v: 1 };
-let isDraggingMap = false;
+let isColorDragMap = false;
 
 // request rate limiter
 function throttle(func, limit) {
@@ -58,8 +64,39 @@ window.addEventListener("DOMContentLoaded", () => {
   loadPage();
 });
 
+function loadPage() {
+  animatedBackground();
+  // read device type
+  sysModel = deviceType(); 
+  if (sysModel === MAIN_SITE) {
+    // load control menu saved state
+    let _mode = localStorage.getItem("ctls-mode")
+    if (_mode === null || _mode === undefined || _mode === "") { 
+      _mode = 'lr'; 
+    } // living room
+    ctlsMenu(_mode);
+    // server home page
+    classDisplay('server-grid', 'block');
+  } else if (sysModel === 'Pi') {
+    classDisplay('pi-grid', 'block');
+  } else if (sysModel === 'LEDpi') {
+    classDisplay('ledpi-grid', 'block');
+  }
+  // set theme
+  let currentTheme;
+  let _theme = localStorage.getItem("main-color")
+  if (_theme === null || _theme === undefined || _theme === "") {
+    currentTheme = "#1f2051"; // dark blue
+  } else {
+    currentTheme = localStorage.getItem("main-color");
+  }  
+  setTheme(currentTheme);
+  resetActivityTimer();
+}
+
 // runs on-each mouse click
 function handleClicks(event) {
+  resetActivityTimer();
   // disable click events when in bookmark edit mode
   if (bookmarkState === BKM_EDIT_MODE) {
     if (event.target.className !== "editFav__win") {
@@ -83,6 +120,18 @@ function handleClicks(event) {
   hideDropdowns();
 }
 
+function resetActivityTimer() {
+  // timeout reset actions
+  shootingStarsActive = true;
+  if (sysModel === MAIN_SITE) showRoomState();
+  clearTimeout(activityTimeout);
+  activityTimeout = setTimeout(() => {
+    // timeout reached actions
+    shootingStarsActive = false;
+    if (sysModel === MAIN_SITE) hideRoomState();
+  }, TIMEOUT_INTERVAL * 1000);
+}
+
 function hideDropdowns() {
   // hide all dropdown menus
   classDisplay("dd-content", "none");
@@ -98,7 +147,35 @@ function hideDropdowns() {
   removeDynMenus();
 }
 
-// show / hide multiple classes
+
+// open URL in new tab
+function GoToExtPage(_path) {
+  let url = "https://" + _path;   
+  window.open(url, "_blank");
+}
+
+// back to home page 
+function GoToHomePage() {
+  if (sysModel === MAIN_SITE) {
+    hidePages();
+    loadPage();
+  } else {
+    window.location = 'https://' + MAIN_SITE + '.home';   
+  }
+}
+
+function hidePages() {
+  classDisplay('pi-grid', 'none'); 
+  classDisplay('ledpi-grid', 'none'); 
+  classDisplay('server-grid', 'none');
+}
+
+function setTheme(newTheme) {
+  let body = document.getElementsByTagName("html")[0];
+  body.style.setProperty('--main-color', newTheme);
+  localStorage.setItem("main-color", newTheme);
+}
+
 function classDisplay(_elem, _state) {
   let _itr;
   let _class = document.getElementsByClassName(_elem);
@@ -127,7 +204,29 @@ function removeWindow(id) {
   }
 }
 
-/// utilities ///
+function cleanString(data) {
+  if (data == null || data == undefined) {
+    return null;
+  } else {
+    let out = data.replace(/(\r\n|\n|\r)/gm, '');
+    return out;
+  }
+}
+
+function base64URLSafeEncode(buffer) {
+  return btoa(buffer)
+    .replace(/\+/g, '-')  // Convert '+' to '-'
+    .replace(/\//g, '_')  // Convert '/' to '_'
+    .replace(/\=/g, '@'); // Convert '=' to '@'
+}
+
+function isNumeric(value) {
+  return /^-?\d+$/.test(value);
+}
+
+function mapNumber(num, inMin, inMax, outMin, outMax) {
+  return (num - inMin) * (outMax - outMin) / (inMax - inMin) + outMin;
+}
 
 function hsvToRgb(h, s, v) {
   let r, g, b, i, f, p, q, t;
@@ -176,16 +275,6 @@ function rgbToHex(r, g, b) {
   return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase();
 }
 
-function isNumeric(value) {
-  return /^-?\d+$/.test(value);
-}
-
-function mapNumber(num, inMin, inMax, outMin, outMax) {
-  return (num - inMin) * (outMax - outMin) / (inMax - inMin) + outMin;
-}
-
-///////////
-
 function showPopup(message) {
   let msgtext;
   let win_name = "msg-popup";
@@ -225,67 +314,22 @@ function showPopup(message) {
   }, 4000); // hide delay in (ms)
 }
 
-// open URL in new tab
-function GoToExtPage(_path) {
-  let url = "https://" + _path;   
-  window.open(url, "_blank");
+function hideRoomState() {
+  if (isRoomStateRunning === false) return;
+  clearTimeout(roomStateTimeoutId);
+  isRoomStateRunning = false;
+  let lightIcon = document.getElementById("trafficLightIcon");
+  let container = document.getElementById('statusDropdownContainer');
+  container.classList.remove('status-loading');
+  lightIcon.classList.remove("status-pending");
+  lightIcon.classList.remove("status-error");
+  lightIcon.classList.remove("status-off");
+  lightIcon.classList.remove("status-on");
 }
 
-// back to home page 
-function GoToHomePage() {
-  if (sysModel === MAIN_SITE) {
-    hidePages();
-    loadPage();
-  } else {
-    window.location = 'https://' + MAIN_SITE + '.home';   
-  }
-}
-
-function hidePages() {
-  classDisplay('pi-grid', 'none'); 
-  classDisplay('ledpi-grid', 'none'); 
-  classDisplay('server-grid', 'none');
-}
-
-// runs on page load
-function loadPage() {
-  // read device type
-  sysModel = deviceType(); 
-  if (sysModel === MAIN_SITE) {
-    // load control menu saved state
-    let _mode = localStorage.getItem("ctls-mode")
-    if (_mode === null || _mode === undefined || _mode === "") { 
-      _mode = 'lr'; 
-    } // living room
-    ctlsMenu(_mode);
-    // title-bar room state
-    showRoomState(5);
-    // server home page
-    classDisplay('server-grid', 'block');
-  } else if (sysModel === 'Pi') {
-    classDisplay('pi-grid', 'block');
-  } else if (sysModel === 'LEDpi') {
-    classDisplay('ledpi-grid', 'block');
-  }
-  // set theme
-  let currentTheme;
-  let _theme = localStorage.getItem("main-color")
-  if (_theme === null || _theme === undefined || _theme === "") {
-    currentTheme = "#1f2051"; // dark blue
-  } else {
-    currentTheme = localStorage.getItem("main-color");
-  }  
-  setTheme(currentTheme);
-  animatedBackground();
-}
-
-function setTheme(newTheme) {
-  let body = document.getElementsByTagName("html")[0];
-  body.style.setProperty('--main-color', newTheme);
-  localStorage.setItem("main-color", newTheme);
-}
-
-function showRoomState(duration) {
+async function showRoomState() {
+  if (isRoomStateRunning === true) return;
+  isRoomStateRunning = true;
   let lightIcon = document.getElementById("trafficLightIcon");
   let statusMsg = document.getElementById("statusMessage");
   let container = document.getElementById('statusDropdownContainer');
@@ -297,7 +341,10 @@ function showRoomState(duration) {
   if (ctlCommand == 'br') {
     room = "bedroom"; cmd = 'brstatus';
   }
-  if (cmd == null) return;
+  if (cmd == null) {
+    isRoomStateRunning = false;
+    return;
+  }
   lightIcon.classList.add("status-pending");
   statusMsg.textContent = "Scanning devices...";
   sendCmd('main', cmd, '').then((resp) => {
@@ -322,13 +369,14 @@ function showRoomState(duration) {
     }
     lightIcon.classList.remove("status-pending");
     if (success) {
-      container.style.setProperty('--spin-duration', `${duration}s`);    
+      container.style.setProperty('--spin-duration', `${REFRESH_INTERVAL}s`);    
       void container.offsetWidth; 
       requestAnimationFrame(() => {
         container.classList.add('status-loading');
-        setTimeout(() => {
-          showRoomState(duration);
-        }, duration * 1000);
+        roomStateTimeoutId = setTimeout(() => {
+          isRoomStateRunning = false;
+          showRoomState(REFRESH_INTERVAL);
+        }, REFRESH_INTERVAL * 1000);
       });
     }
   });
@@ -895,9 +943,9 @@ function updateUIFromHSV(triggerSend = true) {
   let rgb = hsvToRgb(currentHSV.h, currentHSV.s, currentHSV.v);
   let hex = rgbToHex(rgb.r, rgb.g, rgb.b);
   document.getElementById('hex-color').value = hex;
-  colorParser.style.color = hex;
+  colorPromptParser.style.color = hex;
   document.querySelectorAll('.color-swatch').forEach(swatch => {
-    if (swatch.style.backgroundColor === colorParser.style.color) {
+    if (swatch.style.backgroundColor === colorPromptParser.style.color) {
       swatch.classList.add('active-swatch');
     } else {
       swatch.classList.remove('active-swatch');
@@ -935,7 +983,7 @@ function handleHueInput(e) {
 
 // Map Dragging
 function startMapDrag(e) {
-  isDraggingMap = true;
+  isColorDragMap = true;
   updateMapPointer(e);
   window.addEventListener('pointermove', updateMapPointer);
   window.addEventListener('pointerup', stopMapDrag);
@@ -943,7 +991,7 @@ function startMapDrag(e) {
 }
 
 function updateMapPointer(e) {
-  if (!isDraggingMap) return;
+  if (!isColorDragMap) return;
   const mapRect = document.getElementById('color-map').getBoundingClientRect();
   let x = Math.max(0, Math.min(e.clientX - mapRect.left, mapRect.width));
   let y = Math.max(0, Math.min(e.clientY - mapRect.top, mapRect.height));
@@ -955,14 +1003,14 @@ function updateMapPointer(e) {
 }
 
 function stopMapDrag() {
-  isDraggingMap = false;
+  isColorDragMap = false;
   window.removeEventListener('pointermove', updateMapPointer);
   window.removeEventListener('pointerup', stopMapDrag);
   window.removeEventListener('pointercancel', stopMapDrag);
 }
 
 function initColorGrid() {
-  if (isGridInitialized) return;
+  if (isColorPromptInit) return;
   const grid = document.getElementById('preset-color-grid');
   if (!grid) return;
   grid.innerHTML = ''; 
@@ -973,7 +1021,7 @@ function initColorGrid() {
     swatch.addEventListener('click', () => updateStateFromHex(color, true, true));
     grid.appendChild(swatch);
   });
-  isGridInitialized = true;
+  isColorPromptInit = true;
 }
 
 function colorPrompt(initialColor) {
@@ -1557,23 +1605,6 @@ function addHTTPtoURL(linkin) {
     }
   }
   return linkout;
-}
-
-// remove newlines
-function cleanString(data) {
-  if (data == null || data == undefined) {
-    return null;
-  } else {
-    let out = data.replace(/(\r\n|\n|\r)/gm, '');
-    return out;
-  }
-}
-
-function base64URLSafeEncode(buffer) {
-  return btoa(buffer)
-    .replace(/\+/g, '-')  // Convert '+' to '-'
-    .replace(/\//g, '_')  // Convert '/' to '_'
-    .replace(/\=/g, '@'); // Convert '=' to '@'
 }
 
 async function lookupURL() {
@@ -2376,15 +2407,9 @@ function closePopup() {
 
 function animatedBackground() {
   const BG_COLOR = '#000';
-  
   // Background Stars
-  const BG_STAR_DENSITY = 2000; 
-  const BG_STAR_MAX_RADIUS = 1.3;
-  const BG_STAR_MIN_ALPHA = 0.1;
-  const BG_STAR_MAX_ALPHA = 0.8;
-  const BG_STAR_FLICKER_BASE_SPEED = 0.005;
-  const BG_STAR_FLICKER_VARIANCE = 0.001;
-  
+  const BG_STAR_DENSITY = 2500;
+  const BG_STAR_SIZE = 1.7;
   // Shooting Stars
   const MAX_SH_STARS = 6;
   const SH_STAR_MIN_SPEED = 5;
@@ -2396,10 +2421,8 @@ function animatedBackground() {
   const SH_STAR_BASE_ANGLE = Math.PI / 4; 
   const SH_STAR_ANGLE_VARIANCE = 0.05;
   const SH_STAR_START_Y_OFFSET = -150;
-
   const canvas = document.getElementById('star-canvas');
   const ctx = canvas.getContext('2d');
-
   let backgroundStars = [];
   let shootingStars = [];
 
@@ -2407,7 +2430,6 @@ function animatedBackground() {
     // OPTIMIZATION: Cap the Device Pixel Ratio to 1.5 on low-end devices 
     // to prevent mobile phones from rendering at 3x or 4x resolution unnecessarily.
     const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
-    
     canvas.width = window.innerWidth * dpr;
     canvas.height = window.innerHeight * dpr;
     canvas.style.width = `${window.innerWidth}px`;
@@ -2420,20 +2442,11 @@ function animatedBackground() {
     constructor() {
       this.x = Math.random() * window.innerWidth;
       this.y = Math.random() * window.innerHeight;
-      // OPTIMIZATION: Calculate size once. (Radius * 2)
-      this.size = (Math.random() * BG_STAR_MAX_RADIUS) * 2;
-      this.alpha = Math.random();
-      this.alphaChange = (Math.random() * BG_STAR_FLICKER_VARIANCE) + BG_STAR_FLICKER_BASE_SPEED;
+      this.size = Math.random() * BG_STAR_SIZE;
+      this.alpha = Math.random(); 
     }
-    update() {
-      this.alpha += this.alphaChange;
-      if (this.alpha <= BG_STAR_MIN_ALPHA || this.alpha >= BG_STAR_MAX_ALPHA) {
-        this.alphaChange = -this.alphaChange;
-      }  
-      
+    draw() {
       ctx.globalAlpha = this.alpha;
-      // OPTIMIZATION: Replaced arc() with fillRect(). Drawing tiny squares is 
-      // drastically faster than drawing tiny circles, and visually indistinguishable.
       ctx.fillRect(this.x, this.y, this.size, this.size);
     }
   }
@@ -2446,23 +2459,19 @@ function animatedBackground() {
     reset() {
       this.x = Math.random() * window.innerWidth * 0.5 - (window.innerWidth * 0.2); 
       this.y = Math.random() * SH_STAR_START_Y_OFFSET; 
-      
       const speed = (Math.random() * SH_STAR_SPEED_VARIANCE) + SH_STAR_MIN_SPEED; 
       this.length = (Math.random() * SH_STAR_LENGTH_VARIANCE) + SH_STAR_MIN_LENGTH;
       this.thickness = (Math.random() * SH_STAR_THICKNESS_VARIANCE) + SH_STAR_MIN_THICKNESS;
       this.angle = SH_STAR_BASE_ANGLE + (Math.random() * (SH_STAR_ANGLE_VARIANCE * 2) - SH_STAR_ANGLE_VARIANCE); 
-      
       // OPTIMIZATION: Pre-calculate velocity vectors here so we don't 
       // compute Math.sin() and Math.cos() 60 times a second per star.
       this.vx = speed * Math.cos(this.angle);
       this.vy = speed * Math.sin(this.angle);
-      
       // OPTIMIZATION: Cache the gradient. Instead of creating a new linear 
       // gradient every frame, we create it once per star lifespan.
       this.gradient = ctx.createLinearGradient(0, 0, -this.length, 0);
       this.gradient.addColorStop(0, '#fff');
       this.gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-      
       this.delay = Math.random() * 200 + 50; 
     }
     update() {
@@ -2470,11 +2479,9 @@ function animatedBackground() {
         this.delay--;
         return; 
       }
-      
       // Use pre-calculated velocities
       this.x += this.vx;
       this.y += this.vy;
-      
       if (this.x > window.innerWidth + this.length || 
           this.y > window.innerHeight + this.length) {
         this.reset();
@@ -2482,7 +2489,6 @@ function animatedBackground() {
         ctx.save();
         ctx.translate(this.x, this.y);
         ctx.rotate(this.angle);
-        
         ctx.strokeStyle = this.gradient;
         ctx.lineWidth = this.thickness;
         ctx.lineCap = 'round';
@@ -2490,7 +2496,6 @@ function animatedBackground() {
         ctx.moveTo(0, 0);
         ctx.lineTo(-this.length, 0);
         ctx.stroke();
-        
         ctx.restore();
       }
     }
@@ -2501,7 +2506,6 @@ function animatedBackground() {
     shootingStars = [];
     // Slight optimization using bitwise NOT for faster flooring
     const numStars = ~~((window.innerWidth * window.innerHeight) / BG_STAR_DENSITY);
-    
     for (let i = 0; i < numStars; i++) {
       backgroundStars.push(new BackgroundStar());
     }
@@ -2511,25 +2515,25 @@ function animatedBackground() {
   }
 
   function animateCanvas() {
+    // Clear the canvas and set the background color
     ctx.globalAlpha = 1; 
     ctx.fillStyle = BG_COLOR;
     ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
-    
-    // OPTIMIZATION: Set fillStyle ONCE for all background stars, rather 
-    // than setting it individually inside the class method on every loop.
+    // OPTIMIZATION: Set fillStyle ONCE for all background stars
     ctx.fillStyle = '#fff';
-    
-    // OPTIMIZATION: Standard for-loops are traditionally faster than .forEach
+    // 1. Draw the static background stars (no twinkling)
     for (let i = 0; i < backgroundStars.length; i++) {
-      backgroundStars[i].update();
+      backgroundStars[i].draw();
     }
-    
     // Reset alpha for shooting stars
     ctx.globalAlpha = 1; 
-    for (let i = 0; i < shootingStars.length; i++) {
-      shootingStars[i].update();
+    // 2. Only run the shooting star animation if the inactivity timer hasn't triggered
+    if (shootingStarsActive) {
+      for (let i = 0; i < shootingStars.length; i++) {
+        shootingStars[i].update();
+      }
     }
-    
+    // Continue the animation loop
     requestAnimationFrame(animateCanvas);
   }
 

@@ -1,7 +1,7 @@
 /*
  * Ben Provenzano III
  * -----------------
- * 03/24/2026
+ * 06/13/2026
  * Automate Hub #1
  * -----------------
  */
@@ -14,547 +14,566 @@
 #include "DHT_NonBlocking.h"
 
 // general constants
-const uint8_t debounceDelay = 75; // in ms
-const char nullTrm = '\0';
+const uint8_t DEBOUNCE_DELAY_MS = 75; 
+const char NULL_TERMINATOR_CHAR = '\0';
 
 // power control I/O
-#define PWR_TRIG_1 9 // TRIGGER TIP
-#define PWR_SENS_1 2 // SENSE RING
-#define PWR_IO_3   7 // YELLOW TIP (RING 5v)
-#define PWR_IO_4   4 // WHITE TIP (RING 5v)
+const uint8_t POWER_TRIGGER_PIN_1 = 9; 
+const uint8_t POWER_SENSE_PIN_1 = 2;   
+const uint8_t POWER_IO_PIN_3 = 7;      
+const uint8_t POWER_IO_PIN_4 = 4;      
 
 // DHT humidity-temperature sensor
 #define DHT_SENSOR_TYPE DHT_TYPE_22
-static const int PWR_IO_2 = 8; // GREEN TIP (RING 5v)
-DHT_nonblocking DHT_SENSOR(PWR_IO_2, DHT_SENSOR_TYPE);
-float dhtHumidity = 0.0;
-float dhtTemp = 0.0;
-bool dhtState = false;
+const int POWER_IO_PIN_2 = 8; 
+const unsigned long DHT_SAMPLE_DELAY = 10000ul; // 10-seconds
+DHT_nonblocking environmentSensor(POWER_IO_PIN_2, DHT_SENSOR_TYPE);
+float currentSensorHumidity = 0.0;
+float currentSensorTemperature = 0.0;
+bool dhtDataValid = false;
 
 // analog inputs
-#define ADC_IN_1  A0 // RED TIP
-#define ADC_IN_2  A1 // RED RING
+const uint8_t ADC_INPUT_PIN_1 = A0; 
+const uint8_t ADC_INPUT_PIN_2 = A1; 
 
 // toggle switch inputs
-#define PWR_SWITCH_2 6 // BLUE TIP
-#define PWR_SWITCH_1 5 // BLUE RING
-bool powerButton_1Last = 0;
-bool powerButton_1State = 0;
-uint32_t powerButton_1Millis;
-bool powerButton_2Last = 0;
-bool powerButton_2State = 0;
-uint32_t powerButton_2Millis;
-bool powerButton_3Last = 1;
-bool powerButton_3State = 1;
-uint32_t powerButton_3Millis;
+const uint8_t POWER_SWITCH_PIN_2 = 6; 
+const uint8_t POWER_SWITCH_PIN_1 = 5; 
+bool powerButton1LastState = false;
+bool powerButton1CurrentState = false;
+uint32_t powerButton1TimerMillis = 0;
+bool powerButton2LastState = false;
+bool powerButton2CurrentState = false;
+uint32_t powerButton2TimerMillis = 0;
+bool powerButton3LastState = true;
+bool powerButton3CurrentState = true;
+uint32_t powerButton3TimerMillis = 0;
 
 // serial resources
-#define serialBaudRate 9600
-#define TX_PIN 11 // 232-TX TIP
-#define RX_PIN 10 // 232-RX RING
-SoftwareSerial ExtSerial(RX_PIN, TX_PIN); 
-const uint8_t maxMessage = 32;
-const uint8_t cmdRegLen = 2; // register length (99***)
-const uint8_t cmdDatLen = 3; // data length (**999)
-const char serialDataStart = '<';
-const char serialDataEnd = '>';
-const char respDelimiter = '|';
-char serialMessageOut[maxMessage + 1];
-char serialMessageIn[maxMessage + 1];
-uint16_t serialCurPos = 0;
-bool serialFwrdMode = 0;
-bool serialReading = 0;
-bool serialMsgEnd = 0;
-const uint16_t maxFwrdWait = 500; // max wait in (ms) for external serial response
-Neotimer maxFwrdRead = Neotimer();
+const uint16_t SERIAL_BAUD_RATE = 9600;
+const uint8_t TX_PIN = 11; 
+const uint8_t RX_PIN = 10; 
+SoftwareSerial externalSerialConnection(RX_PIN, TX_PIN); 
+const uint8_t MAX_MESSAGE_LENGTH = 32;
+const uint8_t COMMAND_REGISTER_LENGTH = 2; 
+const uint8_t COMMAND_DATA_LENGTH = 3;     
+const char SERIAL_DATA_START_CHAR = '<';
+const char SERIAL_DATA_END_CHAR = '>';
+const char RESPONSE_DELIMITER_CHAR = '|';
+char serialMessageOutputBuffer[MAX_MESSAGE_LENGTH + 1];
+char serialMessageInputBuffer[MAX_MESSAGE_LENGTH + 1];
+uint16_t serialCurrentPosition = 0;
+bool isSerialForwardModeEnabled = false;
+bool isSerialReading = false;
+bool isSerialMessageComplete = false;
+const uint16_t MAX_FORWARD_WAIT_MS = 500; 
+Neotimer maxForwardReadTimer = Neotimer();
 
 ///////////////////////////////////////
 
 // main control functions
-void internalFunctions(uint16_t command) {
-  // power trigger #1 
-  if (command >= 1 && command <= 4) {
-    int state = powerSense(PWR_SENS_1);
-    if (command == 3) { // status
-      // write status back to serial
-      switch (state) {
-        case 1: // power off (inverted)
-          sprintf(serialMessageOut ,"0");
-          break;
-        case 0: // power on (inverted)
-          sprintf(serialMessageOut ,"1");
-          break;
-        default: // invalid response
-          sprintf(serialMessageOut ,"X");
-          break;
+void processInternalCommands(uint16_t commandCode) {
+  bool isPowerCommand = false;
+  if (commandCode >= 1) {
+    if (commandCode <= 4) {
+      isPowerCommand = true;
+    }
+  }
+  if (isPowerCommand == true) {
+    int currentPowerState = getAveragePowerSense(POWER_SENSE_PIN_1);
+    bool isStatusRequest = (commandCode == 3);
+    if (isStatusRequest == true) {
+      bool isPowerOff = (currentPowerState == 1);
+      bool isPowerOn = (currentPowerState == 0);
+      if (isPowerOff == true) {
+        snprintf(serialMessageOutputBuffer, MAX_MESSAGE_LENGTH, "0");
+      } else if (isPowerOn == true) {
+        snprintf(serialMessageOutputBuffer, MAX_MESSAGE_LENGTH, "1");
+      } else {
+        snprintf(serialMessageOutputBuffer, MAX_MESSAGE_LENGTH, "X");
       }
     } else {
-      if (state == 0) { // device on
-        if (command == 2) { // power off
-          powerPulse(PWR_TRIG_1);
+      bool isDeviceOn = (currentPowerState == 0);
+      bool isDeviceOff = (currentPowerState == 1);
+      if (isDeviceOn == true) {
+        bool isTurnOffCommand = (commandCode == 2);
+        if (isTurnOffCommand == true) {
+          triggerPowerPulse(POWER_TRIGGER_PIN_1);
         }
-      } else { // device off
-        if (command == 1) { // power on
-          powerPulse(PWR_TRIG_1);
+      } else if (isDeviceOff == true) {
+        bool isTurnOnCommand = (commandCode == 1);
+        if (isTurnOnCommand == true) {
+          triggerPowerPulse(POWER_TRIGGER_PIN_1);
         }
       }
-      if (command == 4) { // toggle power
-        powerPulse(PWR_TRIG_1);
+      bool isToggleCommand = (commandCode == 4);
+      if (isToggleCommand == true) {
+        triggerPowerPulse(POWER_TRIGGER_PIN_1);
       }
     }
   }
-  if (command == 5) {
-    // rooms temperature & humidity
-    writeTempHumidity();
+  bool isEnvironmentCommand = (commandCode == 5);
+  if (isEnvironmentCommand == true) {
+    formatAndWriteTemperatureHumidity();
   }
 }
 
 // return average digital input reading
-int powerSense(int powerSensePin) {
-  const int inputReadings = 16;
-  int readings[inputReadings];
-  int total = 0;
-  for (int idx = 0; idx < inputReadings; idx++) {
-    // read then add the reading to the total
-    total = total + digitalRead(powerSensePin);
+int getAveragePowerSense(int powerSensePin) {
+  const int TOTAL_INPUT_READINGS = 16;
+  int accumulatedTotal = 0;
+  for (int currentIndex = 0; currentIndex < TOTAL_INPUT_READINGS; currentIndex++) {
+    int currentReading = digitalRead(powerSensePin);
+    accumulatedTotal = accumulatedTotal + currentReading;
   }
-  switch (total) {
-    case inputReadings:
-    // high reading
-      return 1;
-    case 0:
-    // low reading
-      return 0;
-    default:
-    // invalid reading
-      return -1;
-  }
-}
-
-void powerPulse(int _powerPin) {
-  digitalWrite(_powerPin, HIGH);
-  delay(250);
-  digitalWrite(_powerPin, LOW);
-}
-
-void writeTempHumidity() {
-  if (dhtState == true) {
-    // convert floats to characters
-    char _temp[8], _humi[8];
-    dtostrf(dhtTemp, 3, 1, _temp);
-    dtostrf(dhtHumidity, 3, 1, _humi);
-    // concat arrays then write to output buffer
-    sprintf(serialMessageOut ,"%s~%s" ,_temp ,_humi);
+  bool isHighReading = (accumulatedTotal == TOTAL_INPUT_READINGS);
+  bool isLowReading = (accumulatedTotal == 0);
+  if (isHighReading == true) {
+    return 1;
+  } else if (isLowReading == true) {
+    return 0;
   } else {
-    sprintf(serialMessageOut ,"X");
+    return -1;
   }
 }
 
-void readTempHumidity() {
-  float temperature, humidity;
-  if(measureDHT(&temperature, &humidity) == true) {
-    dhtTemp = ((temperature * 9) + 3) / 5 + 32; // convert C -> F
-    dhtHumidity = humidity;
+void triggerPowerPulse(int targetPowerPin) {
+  digitalWrite(targetPowerPin, HIGH);
+  delay(250);
+  digitalWrite(targetPowerPin, LOW);
+}
+
+void formatAndWriteTemperatureHumidity() {
+  if (dhtDataValid == true) {
+    char temperatureString[8];
+    char humidityString[8];
+    dtostrf(currentSensorTemperature, 3, 1, temperatureString);
+    dtostrf(currentSensorHumidity, 3, 1, humidityString);
+    snprintf(serialMessageOutputBuffer, MAX_MESSAGE_LENGTH, "%s~%s", temperatureString, humidityString);
+  } else {
+    snprintf(serialMessageOutputBuffer, MAX_MESSAGE_LENGTH, "X");
   }
 }
 
-static bool measureDHT(float *temperature, float *humidity) {
-  static unsigned long measure_ts = millis();
-  /* Measure every 8-seconds. */
-  if(millis() - measure_ts > 8000ul) 
-  {
-    if(DHT_SENSOR.measure(temperature, humidity) == true) {
-      measure_ts = millis();
-      dhtState = true;
-      return(true);
-    } else {
-      dhtState = false;
+void readTemperatureAndHumidity() {
+  float temporaryTemperature = 0.0;
+  float temporaryHumidity = 0.0;
+  bool isMeasurementSuccessful = measureDhtSensorData(&temporaryTemperature, &temporaryHumidity);
+  if (isMeasurementSuccessful == true) {
+    float celsiusTemperature = temporaryTemperature;
+    float multipliedByNine = celsiusTemperature * 9.0;
+    float addedThreeNumerator = multipliedByNine + 3.0;
+    float dividedByFive = addedThreeNumerator / 5.0;
+    float finalFahrenheitTemperature = dividedByFive + 32.0;
+    currentSensorTemperature = finalFahrenheitTemperature;
+    currentSensorHumidity = temporaryHumidity;
+  }
+}
+
+static bool measureDhtSensorData(float *temperaturePointer, float *humidityPointer) {
+  static unsigned long lastMeasurementTimestamp = millis();
+  unsigned long currentTimestamp = millis();
+  unsigned long elapsedDuration = currentTimestamp - lastMeasurementTimestamp;
+  bool isTimeToMeasure = (elapsedDuration > DHT_SAMPLE_DELAY);
+  if (isTimeToMeasure == true) {
+    bool isMeasurementComplete = environmentSensor.measure(temperaturePointer, humidityPointer);
+    if (isMeasurementComplete == true) {
+      lastMeasurementTimestamp = currentTimestamp;
+      dhtDataValid = true;
+      return true;
     }
   }
-  return(false);
+  return false;
 }
 
 /// initialization routines ///
 
 void setup() {
-  initGPIO();
-  initTimers();
-  initSerial();
+  initializeGeneralPurposeInputOutput();
+  initializeTimers();
+  initializeSerialCommunications();
 }
 
-void initGPIO() {
-  // activity LED
+void initializeGeneralPurposeInputOutput() {
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, HIGH);
-  // 3.5mm digital I/O ports
-  pinMode(PWR_TRIG_1, OUTPUT);
-  digitalWrite(PWR_TRIG_1, LOW);
-  pinMode(PWR_SENS_1, INPUT_PULLUP);
-  pinMode(PWR_IO_3, INPUT_PULLUP);
-  pinMode(PWR_IO_4, INPUT_PULLUP);
-  // 3.5mm analog in port
-  pinMode(ADC_IN_1, INPUT_PULLUP);
-  pinMode(ADC_IN_2, INPUT_PULLUP);
-  // 3.5mm switch(s) in port
-  pinMode(PWR_SWITCH_1, INPUT_PULLUP);
-  pinMode(PWR_SWITCH_2, INPUT_PULLUP);
-  // startup delay
+  pinMode(POWER_TRIGGER_PIN_1, OUTPUT);
+  digitalWrite(POWER_TRIGGER_PIN_1, LOW);
+  pinMode(POWER_SENSE_PIN_1, INPUT_PULLUP);
+  pinMode(POWER_IO_PIN_3, INPUT_PULLUP);
+  pinMode(POWER_IO_PIN_4, INPUT_PULLUP);
+  pinMode(ADC_INPUT_PIN_1, INPUT_PULLUP);
+  pinMode(ADC_INPUT_PIN_2, INPUT_PULLUP);
+  pinMode(POWER_SWITCH_PIN_1, INPUT_PULLUP);
+  pinMode(POWER_SWITCH_PIN_2, INPUT_PULLUP);
   delay(500);
   digitalWrite(LED_BUILTIN, LOW);
 }
 
-void initTimers() {
-  maxFwrdRead.reset();
-  maxFwrdRead.stop();
+void initializeTimers() {
+  maxForwardReadTimer.reset();
+  maxForwardReadTimer.stop();
 }
 
-void initSerial() {
-  Serial.begin(serialBaudRate);
-  ExtSerial.begin(serialBaudRate);
-  serialMessageIn[0] = nullTrm;
-  serialMessageOut[0] = nullTrm;
+void initializeSerialCommunications() {
+  Serial.begin(SERIAL_BAUD_RATE);
+  externalSerialConnection.begin(SERIAL_BAUD_RATE);
+  serialMessageInputBuffer[0] = NULL_TERMINATOR_CHAR;
+  serialMessageOutputBuffer[0] = NULL_TERMINATOR_CHAR;
 }
 
 /// superloop ///
 
 void loop() {
-  serialProcess();
-  readDigitalInputs();
+  processSerialCommunications();
+  readDigitalInputStates();
 }
 
-void readDigitalInputs() {
-  readPowerButton_1();
-  readPowerButton_2();
-  readPowerButton_3();
-  readTempHumidity();
+void readDigitalInputStates() {
+  readPowerButtonState1();
+  readPowerButtonState2();
+  readPowerButtonState3();
+  readTemperatureAndHumidity();
 }
 
-void readPowerButton_1() {
-  // read pin state
-  bool reading = digitalRead(PWR_SWITCH_1);
-  // switch changed
-  if (reading != powerButton_1Last) {
-    // reset the debouncing timer
-    powerButton_1Millis = millis();
+void readPowerButtonState1() {
+  bool currentPinReading = digitalRead(POWER_SWITCH_PIN_1);
+  bool hasSwitchChanged = (currentPinReading != powerButton1LastState);
+  if (hasSwitchChanged == true) {
+    powerButton1TimerMillis = millis();
   }
-  if ((millis() - powerButton_1Millis) > debounceDelay) {
-    if (reading != powerButton_1State) {
-      powerButton_1State = reading;
-      // input button was pressed
-      if (powerButton_1State == 1) { 
-        routeMessage(1,10,8); // toggle lamp
+  unsigned long currentTime = millis();
+  unsigned long timeDifference = currentTime - powerButton1TimerMillis;
+  bool isDebounceTimePassed = (timeDifference > DEBOUNCE_DELAY_MS);
+  if (isDebounceTimePassed == true) {
+    bool hasStateChanged = (currentPinReading != powerButton1CurrentState);
+    if (hasStateChanged == true) {
+      powerButton1CurrentState = currentPinReading;
+      bool isButtonPressed = (powerButton1CurrentState == 1); 
+      if (isButtonPressed == true) { 
+        routeCommunicationMessage(true, 10, 8);
       }
     }
   }
-  powerButton_1Last = reading;
+  powerButton1LastState = currentPinReading;
 }
 
-void readPowerButton_2() {
-  // read pin state
-  bool reading = digitalRead(PWR_SWITCH_2);
-  // switch changed
-  if (reading != powerButton_2Last) {
-    // reset the debouncing timer
-    powerButton_2Millis = millis();
+void readPowerButtonState2() {
+  bool currentPinReading = digitalRead(POWER_SWITCH_PIN_2);
+  bool hasSwitchChanged = (currentPinReading != powerButton2LastState);
+  if (hasSwitchChanged == true) {
+    powerButton2TimerMillis = millis();
   }
-  if ((millis() - powerButton_2Millis) > debounceDelay) {
-    if (reading != powerButton_2State) {
-      powerButton_2State = reading;
-      // input button was pressed
-      if (powerButton_2State == 1) { 
-        routeMessage(1,10,9); // toggle macs
+  unsigned long currentTime = millis();
+  unsigned long timeDifference = currentTime - powerButton2TimerMillis;
+  bool isDebounceTimePassed = (timeDifference > DEBOUNCE_DELAY_MS);
+  if (isDebounceTimePassed == true) {
+    bool hasStateChanged = (currentPinReading != powerButton2CurrentState);
+    if (hasStateChanged == true) {
+      powerButton2CurrentState = currentPinReading;
+      bool isButtonPressed = (powerButton2CurrentState == 1); 
+      if (isButtonPressed == true) { 
+        routeCommunicationMessage(true, 10, 9);
       }
     }
   }
-  powerButton_2Last = reading;
+  powerButton2LastState = currentPinReading;
 }
 
-void readPowerButton_3() {
-  // read pin state
-  bool reading = digitalRead(PWR_IO_4);
-  // switch changed
-  if (reading != powerButton_3Last) {
-    // reset the debouncing timer
-    powerButton_3Millis = millis();
+void readPowerButtonState3() {
+  bool currentPinReading = digitalRead(POWER_IO_PIN_4);
+  bool hasSwitchChanged = (currentPinReading != powerButton3LastState);
+  if (hasSwitchChanged == true) {
+    powerButton3TimerMillis = millis();
   }
-  if ((millis() - powerButton_3Millis) > debounceDelay) {
-    if (reading != powerButton_3State) {
-      powerButton_3State = reading;
-      // input button was pressed
-      if (powerButton_3State == 0) { 
-        routeMessage(1,10,10); // toggle retropi
+  unsigned long currentTime = millis();
+  unsigned long timeDifference = currentTime - powerButton3TimerMillis;
+  bool isDebounceTimePassed = (timeDifference > DEBOUNCE_DELAY_MS);
+  if (isDebounceTimePassed == true) {
+    bool hasStateChanged = (currentPinReading != powerButton3CurrentState);
+    if (hasStateChanged == true) {
+      powerButton3CurrentState = currentPinReading;
+      bool isButtonPressed = (powerButton3CurrentState == 0); 
+      
+      if (isButtonPressed == true) { 
+        routeCommunicationMessage(true, 10, 10);
       }
     }
   }
-  powerButton_3Last = reading;
+  powerButton3LastState = currentPinReading;
 }
 
 //// RS-232 logic ////
 
-void flushSerialBuffers() {
-  serialMessageOut[0] = nullTrm;
-  serialMessageIn[0] = nullTrm;
-  serialMsgEnd = 0;
+void clearSerialBuffers() {
+  serialMessageOutputBuffer[0] = NULL_TERMINATOR_CHAR;
+  serialMessageInputBuffer[0] = NULL_TERMINATOR_CHAR;
+  isSerialMessageComplete = false;
 }
 
-void disableFwrdMode() {
-  serialFwrdMode = 0;
-  maxFwrdRead.reset();
-  maxFwrdRead.stop();
+void disableForwardMode() {
+  isSerialForwardModeEnabled = false;
+  maxForwardReadTimer.reset();
+  maxForwardReadTimer.stop();
 }
 
-void serialProcess() {
-  // read main serial port
-  if (serialFwrdMode == 0) {
-    if (serialMsgEnd == 0) {
-      if (Serial.available()) {
-        readSerialData(Serial.read(), serialDataStart, serialDataEnd);
+void processSerialCommunications() {
+  bool isForwardModeOff = (isSerialForwardModeEnabled == false);
+  if (isForwardModeOff == true) {
+    bool isMessageNotComplete = (isSerialMessageComplete == false);
+    if (isMessageNotComplete == true) {
+      int availableBytes = Serial.available();
+      bool hasAvailableBytes = (availableBytes > 0);
+      if (hasAvailableBytes == true) {
+        char receivedCharacter = Serial.read();
+        readIncomingSerialData(receivedCharacter, SERIAL_DATA_START_CHAR, SERIAL_DATA_END_CHAR);
       }
     } else {
-      // process serial data
-      decodeMessage();
-      // send response to main serial
-      if (serialFwrdMode == 0) { writeSerialData(0); }
-      flushSerialBuffers();
+      decodeIncomingMessage();
+      bool isStillForwardModeOff = (isSerialForwardModeEnabled == false);
+      if (isStillForwardModeOff == true) { 
+        writeOutgoingSerialData(false); 
+      }
+      clearSerialBuffers();
     }
   }
-  // forwarding mode enabled
-  if (serialFwrdMode == 1) {
-    // listen to external serial port when in forwarding mode
-    if (serialMsgEnd == 0) {
-      if (ExtSerial.available()) {
-        readSerialData(ExtSerial.read(), respDelimiter, respDelimiter);
+  bool isForwardModeOn = (isSerialForwardModeEnabled == true);
+  if (isForwardModeOn == true) {
+    bool isExternalMessageNotComplete = (isSerialMessageComplete == false);
+    if (isExternalMessageNotComplete == true) {
+      int externalAvailableBytes = externalSerialConnection.available();
+      bool hasExternalAvailableBytes = (externalAvailableBytes > 0);
+      if (hasExternalAvailableBytes == true) {
+        char externalReceivedCharacter = externalSerialConnection.read();
+        readIncomingSerialData(externalReceivedCharacter, RESPONSE_DELIMITER_CHAR, RESPONSE_DELIMITER_CHAR);
       }
     } else {
-      // forward external serial reponse to main serial
-      writeSerialData(1); // write serial in buffer
-      disableFwrdMode();
-      flushSerialBuffers();
+      writeOutgoingSerialData(true);
+      disableForwardMode();
+      clearSerialBuffers();
     }
-  }  
-  // external serial reponse timeout
-  if (maxFwrdRead.done()) {
+  }
+  bool hasWaitExceeded = maxForwardReadTimer.done();
+  if (hasWaitExceeded == true) {
     Serial.print("*EXT-232 MAX WAIT EXCEEDED!*\n");
     Serial.flush();
-    disableFwrdMode();
-    flushSerialBuffers();
+    disableForwardMode();
+    clearSerialBuffers();
   }  
 }
 
-void readSerialData(char rc, char startInd ,char endInd) {
-  if (serialReading == 1) {
-    // end-of-reading
-    if (rc == endInd) {
-      // terminate the string
-      serialMessageIn[serialCurPos] = nullTrm;
-      serialReading = 0;
-      serialCurPos = 0;
-      serialMsgEnd = 1;
+void readIncomingSerialData(char receivedCharacter, char startIndicator, char endIndicator) {
+  bool isCurrentlyReading = (isSerialReading == true);
+  if (isCurrentlyReading == true) {
+    bool isEndIndicatorMatched = (receivedCharacter == endIndicator);
+    if (isEndIndicatorMatched == true) {
+      serialMessageInputBuffer[serialCurrentPosition] = NULL_TERMINATOR_CHAR;
+      isSerialReading = false;
+      serialCurrentPosition = 0;
+      isSerialMessageComplete = true;
     } else {
-      // store characters in buffer
-      if (rc != startInd) {
-        serialMessageIn[serialCurPos] = rc;
-        serialCurPos++;
-        // prevent overflow
-        if (serialCurPos >= maxMessage) {
-          serialCurPos = maxMessage - 1;
+      bool isNotStartIndicator = (receivedCharacter != startIndicator);
+      if (isNotStartIndicator == true) {
+        serialMessageInputBuffer[serialCurrentPosition] = receivedCharacter;
+        serialCurrentPosition = serialCurrentPosition + 1;
+        uint16_t maximumAllowedPosition = MAX_MESSAGE_LENGTH - 1;
+        bool isPositionOverflowed = (serialCurrentPosition >= maximumAllowedPosition);
+        if (isPositionOverflowed == true) {
+          serialCurrentPosition = maximumAllowedPosition;
         }
       }
     }
   } else {
-    // start reading
-    if (rc == startInd) {
-      serialReading = 1;
-      serialCurPos = 0;
-      serialMsgEnd = 0;
+    bool isStartIndicatorMatched = (receivedCharacter == startIndicator);
+    if (isStartIndicatorMatched == true) {
+      isSerialReading = true;
+      serialCurrentPosition = 0;
+      isSerialMessageComplete = false;
     }
   }
 }
 
-void writeSerialData(bool InOut) {
+void writeOutgoingSerialData(bool isInputBufferSource) {
   digitalWrite(LED_BUILTIN, HIGH);
-  Serial.print(respDelimiter);
-  for(uint8_t _idx = 0; _idx < maxMessage; _idx++) {
-    char _fwrdChr;
-    if (InOut == 1){
-      _fwrdChr = serialMessageIn[_idx];
+  Serial.print(RESPONSE_DELIMITER_CHAR);
+  for (uint8_t bufferIndex = 0; bufferIndex < MAX_MESSAGE_LENGTH; bufferIndex++) {
+    char characterToForward;
+    bool useInputBuffer = (isInputBufferSource == true);
+    if (useInputBuffer == true){
+      characterToForward = serialMessageInputBuffer[bufferIndex];
     } else {
-      _fwrdChr = serialMessageOut[_idx];
+      characterToForward = serialMessageOutputBuffer[bufferIndex];
     }
-    if (_fwrdChr != nullTrm) {
-      Serial.print(_fwrdChr); 
+    bool isNotNullTerminator = (characterToForward != NULL_TERMINATOR_CHAR);
+    if (isNotNullTerminator == true) {
+      Serial.print(characterToForward); 
     } else {
       break;
     }
   }
-  Serial.print(respDelimiter);
+  Serial.print(RESPONSE_DELIMITER_CHAR);
   Serial.print('\n');
   Serial.flush();
   digitalWrite(LED_BUILTIN, LOW);
 }
 
-// decode serial message
-void decodeMessage() {
-  // count delimiters
-  uint8_t _delims = 0;
-  uint8_t _maxchars = 10;
-  char _delimiter = ',';
-  for(uint8_t _idx = 0; _idx < maxMessage; _idx++) {
-    char _vchr = serialMessageIn[_idx];  
-    if (_vchr == nullTrm) {
+void decodeIncomingMessage() {
+  uint8_t delimiterCount = 0;
+  uint8_t maximumLineCharacters = 10;
+  char delimiterCharacter = ',';
+  for (uint8_t bufferIndex = 0; bufferIndex < MAX_MESSAGE_LENGTH; bufferIndex++) {
+    char currentCharacter = serialMessageInputBuffer[bufferIndex];  
+    bool isNullTerminated = (currentCharacter == NULL_TERMINATOR_CHAR);
+    if (isNullTerminated == true) {
       break;
     }
-    if (_vchr == _delimiter) {
-      _delims++;
+    bool isDelimiterMatched = (currentCharacter == delimiterCharacter);
+    if (isDelimiterMatched == true) {
+      delimiterCount = delimiterCount + 1;
     }
-  } 
-  // exit when delimiters incorrect
-  if (_delims < 2){
+  }
+  bool isDelimiterCountInvalid = (delimiterCount < 2);
+  if (isDelimiterCountInvalid == true) {
     Serial.print("*INVALID DELIMITERS!*");
     return;
   }
-  // find first delimiter position
-  uint8_t _linepos = 0;
-  for(uint8_t _idx = 0; _idx < maxMessage; _idx++) {  
-    char _vchr = serialMessageIn[_idx];  
-    if (_vchr == nullTrm) {
+  uint8_t lineDelimiterPosition = 0;
+  for (uint8_t bufferIndex = 0; bufferIndex < MAX_MESSAGE_LENGTH; bufferIndex++) {  
+    char currentCharacter = serialMessageInputBuffer[bufferIndex];  
+    bool isNullTerminated = (currentCharacter == NULL_TERMINATOR_CHAR);
+    if (isNullTerminated == true) {
       break;
     }
-    if (_vchr == _delimiter) {
-      // store index position
-      _linepos = _idx;
+    bool isDelimiterMatched = (currentCharacter == delimiterCharacter);
+    if (isDelimiterMatched == true) {
+      lineDelimiterPosition = bufferIndex;
       break;
     }
   }
-  // loop through line characters 
-  char _linebuffer[_maxchars + 1];
-  uint8_t _linecount = 0;   
-  for(uint8_t _idx = 0; _idx < _linepos; _idx++) {
-    if (_linecount >= _maxchars) {
-      break;
-    } 
-    // store in new array
-    _linebuffer[_linecount] = serialMessageIn[_idx];
-    _linecount++;
-  } // terminate string
-  _linebuffer[_linecount] = nullTrm;
-  // convert to integer, store line value
-  uint8_t controlData = atoi(_linebuffer); 
-  // find second delimiter position
-  uint8_t _count = 0;
-  uint8_t _cmd2pos = 0; 
-  for(uint8_t _idx = 0; _idx < maxMessage; _idx++) {
-    char _vchr = serialMessageIn[_idx];
-    if (_vchr == nullTrm) {
-      break;
-    }
-    if (_vchr == _delimiter) {
-      if (_count == 1) {
-        // store pointer position
-        _cmd2pos = _idx;
+  char lineCharacterBuffer[maximumLineCharacters + 1];
+  uint8_t lineCharacterCount = 0;
+  for (uint8_t bufferIndex = 0; bufferIndex < lineDelimiterPosition; bufferIndex++) {
+    bool hasReachedMaximumCharacters = (lineCharacterCount >= maximumLineCharacters);
+    if (hasReachedMaximumCharacters == true) break;
+    lineCharacterBuffer[lineCharacterCount] = serialMessageInputBuffer[bufferIndex];
+    lineCharacterCount = lineCharacterCount + 1;
+  } 
+  lineCharacterBuffer[lineCharacterCount] = NULL_TERMINATOR_CHAR;
+  uint8_t extractedControlData = atoi(lineCharacterBuffer); 
+  uint8_t matchingCount = 0;
+  uint8_t secondCommandPosition = 0; 
+  for (uint8_t bufferIndex = 0; bufferIndex < MAX_MESSAGE_LENGTH; bufferIndex++) {
+    char currentCharacter = serialMessageInputBuffer[bufferIndex];
+    bool isNullTerminated = (currentCharacter == NULL_TERMINATOR_CHAR);
+    if (isNullTerminated == true) break;
+    bool isDelimiterMatched = (currentCharacter == delimiterCharacter);
+    if (isDelimiterMatched == true) {
+      bool isSecondDelimiter = (matchingCount == 1);
+      if (isSecondDelimiter == true) {
+        secondCommandPosition = bufferIndex;
         break;
-      }  
-      _count++;
+      }
+      matchingCount = matchingCount + 1;
     }
   }
-  // process command data
-  if (controlData == 9){
-    processCmdData(_cmd2pos + 1);
+  bool isValidControlData = (extractedControlData == 9);
+  if (isValidControlData == true) {
+    uint8_t nextPositionToRead = secondCommandPosition + 1;
+    processCommandData(nextPositionToRead);
   } else {
     Serial.print("*INVALID PREFIX!*");
     Serial.flush();
   }
 }
 
-// process register and command data
-void processCmdData(uint8_t messageStart) {
-  uint8_t _numcnt = 0;
-  uint8_t _cmdlen = cmdRegLen + cmdDatLen;
-  char _cmdarr[_cmdlen + 1];
-  // extract control code from message
-  for(uint8_t _idx = messageStart; _idx < maxMessage; _idx++) {
-    char _curchar = serialMessageIn[_idx];
-    if (_curchar == nullTrm) {
+void processCommandData(uint8_t messageStartPosition) {
+  uint8_t extractedNumberCount = 0;
+  uint8_t expectedCommandLength = COMMAND_REGISTER_LENGTH + COMMAND_DATA_LENGTH;
+  char commandArray[expectedCommandLength + 1];
+  for (uint8_t bufferIndex = messageStartPosition; bufferIndex < MAX_MESSAGE_LENGTH; bufferIndex++) {
+    char currentCharacter = serialMessageInputBuffer[bufferIndex];
+    bool isNullTerminated = (currentCharacter == NULL_TERMINATOR_CHAR);
+    if (isNullTerminated == true) {
       break;
     }
-    if (isDigit(_curchar) && _numcnt < _cmdlen) {
-      _cmdarr[_numcnt] = _curchar;
-      _numcnt++;
+    bool isCharacterDigit = isDigit(currentCharacter);
+    bool isUnderCommandLength = (extractedNumberCount < expectedCommandLength);
+    bool isValidToExtract = (isCharacterDigit == true) && (isUnderCommandLength == true);
+    if (isValidToExtract == true) {
+      commandArray[extractedNumberCount] = currentCharacter;
+      extractedNumberCount = extractedNumberCount + 1;
     }
   }
-  _cmdarr[_numcnt] = nullTrm;
-  // validate control code length
-  if (_numcnt != _cmdlen) {
+  commandArray[extractedNumberCount] = NULL_TERMINATOR_CHAR;
+  bool isInvalidCommandLength = (extractedNumberCount != expectedCommandLength);
+  if (isInvalidCommandLength == true) {
     Serial.print("*INVALID LENGTH!*");
     Serial.flush();
     return;
   }
-  // extract register select
-  char _regarr[cmdRegLen + 1];
-  uint8_t _regidx = 0;
-  for(uint8_t _idx = 0; _idx < cmdRegLen; _idx++) {
-    _regarr[_regidx] = _cmdarr[_idx];
-    _regidx++;
+  char registerArray[COMMAND_REGISTER_LENGTH + 1];
+  uint8_t registerIndex = 0;
+  for (uint8_t bufferIndex = 0; bufferIndex < COMMAND_REGISTER_LENGTH; bufferIndex++) {
+    registerArray[registerIndex] = commandArray[bufferIndex];
+    registerIndex = registerIndex + 1;
   }
-  _regarr[_regidx] = nullTrm;
-  uint8_t _register = atoi(_regarr); 
-  // extract control data
-  char _datarr[cmdDatLen + 1];
-  uint8_t _dataidx = 0;
-  for(uint8_t _idx = (cmdDatLen - 1); _idx < _cmdlen; _idx++) {
-    _datarr[_dataidx] = _cmdarr[_idx];
-    _dataidx++;
+  registerArray[registerIndex] = NULL_TERMINATOR_CHAR;
+  uint8_t extractedRegisterSelect = atoi(registerArray); 
+  char dataArray[COMMAND_DATA_LENGTH + 1];
+  uint8_t dataIndex = 0;
+  uint8_t commandDataStartOffset = COMMAND_DATA_LENGTH - 1;
+  for (uint8_t bufferIndex = commandDataStartOffset; bufferIndex < expectedCommandLength; bufferIndex++) {
+    dataArray[dataIndex] = commandArray[bufferIndex];
+    dataIndex = dataIndex + 1;
   }
-  _datarr[_dataidx] = nullTrm;
-  uint16_t _ctldata = atoi(_datarr);
-  // route message (from main serial)
-  routeMessage(0,_register,_ctldata);
+  dataArray[dataIndex] = NULL_TERMINATOR_CHAR;
+  uint16_t extractedControlData = atoi(dataArray);
+  routeCommunicationMessage(false, extractedRegisterSelect, extractedControlData);
 }
 
-void routeMessage(bool origin, uint8_t reg, uint16_t ctldata) {
-  // 0 = message from main serial
-  // 1 = message from local device
-  if (origin == 1) {
-    // block routing if processing serial message
-    if (serialMsgEnd == 1) {
+void routeCommunicationMessage(bool messageOrigin, uint8_t registerCode, uint16_t controlDataValue) {
+  bool isLocalDeviceOrigin = (messageOrigin == true);
+  if (isLocalDeviceOrigin == true) {
+    bool isProcessingCompleteMessage = (isSerialMessageComplete == true);
+    if (isProcessingCompleteMessage == true) {
       return;
     }
-    if (serialReading == 1) {
+    bool isCurrentlyReadingSerial = (isSerialReading == true);
+    if (isCurrentlyReadingSerial == true) {
       return;
     }
-    if (serialFwrdMode == 1) {
+    bool isForwardingModeActive = (isSerialForwardModeEnabled == true);
+    if (isForwardingModeActive == true) {
       return;
     }
   }
-  /// route data by register ///
-  if (reg == 1) {
-    internalFunctions(ctldata);
+  bool isInternalRegister = (registerCode == 1);
+  if (isInternalRegister == true) {
+    processInternalCommands(controlDataValue);
   } else {
-    if (origin == 1) {
-      // combine fixed-length register and command data
-      serialMessageIn[0] = nullTrm;
-      uint8_t totalMsgLength = cmdRegLen + cmdDatLen + 1;
-      snprintf(serialMessageIn, totalMsgLength, "%02d%03d", reg, ctldata);
+    if (isLocalDeviceOrigin == true) {
+      serialMessageInputBuffer[0] = NULL_TERMINATOR_CHAR;
+      uint8_t totalMessageLength = COMMAND_REGISTER_LENGTH + COMMAND_DATA_LENGTH + 1;
+      snprintf(serialMessageInputBuffer, totalMessageLength, "%02d%03d", registerCode, controlDataValue);
     }
-    /// send message to external serial port ///
-    ExtSerial.print(serialDataStart);
-    if (origin == 1) {
-      ExtSerial.print("9,9,"); // static characters
+    externalSerialConnection.print(SERIAL_DATA_START_CHAR);
+    if (isLocalDeviceOrigin == true) {
+      externalSerialConnection.print("9,9,"); 
     }
-    for(uint8_t _idx = 0; _idx < maxMessage; _idx++) {  
-      char _vchr;
-      _vchr = serialMessageIn[_idx];
-      if (_vchr == nullTrm) {
+    for (uint8_t bufferIndex = 0; bufferIndex < MAX_MESSAGE_LENGTH; bufferIndex++) {  
+      char characterToSend;
+      characterToSend = serialMessageInputBuffer[bufferIndex];
+      bool isNullTerminator = (characterToSend == NULL_TERMINATOR_CHAR);
+      if (isNullTerminator == true) {
         break;
       }
-      ExtSerial.print(_vchr);
+      externalSerialConnection.print(characterToSend);
     }
-    ExtSerial.print(serialDataEnd);
-    ExtSerial.print('\n');
+    externalSerialConnection.print(SERIAL_DATA_END_CHAR);
+    externalSerialConnection.print('\n');
     Serial.flush();
-    // listen for external serial reponse
-    serialFwrdMode = 1;
-    maxFwrdRead.set(maxFwrdWait);
-    maxFwrdRead.start();
+    isSerialForwardModeEnabled = true;
+    maxForwardReadTimer.set(MAX_FORWARD_WAIT_MS);
+    maxForwardReadTimer.start();
   }
 }

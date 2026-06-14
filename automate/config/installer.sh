@@ -131,16 +131,14 @@ chmod u=rwx,g=rx,o=rx /etc/sudoers.d/www-perms
 chmod u=r,g=r,o= /etc/sudoers.d/www-perms
 
 ## Minify JS/CSS
-uglifyjs --warn --compress --output $WWWPATH/main.min.js -- $WWWPATH/main.js
-yui-compressor $WWWPATH/main.css > $WWWPATH/main.min.css
-cp -f $WWWPATH/main.min.js $WWWPATH/main.js
-cp -f $WWWPATH/main.min.css $WWWPATH/main.css
-chown www-data:www-data $WWWPATH/main.css
-chmod 644 $WWWPATH/main.css
+uglifyjs --warn --compress --output $WWWPATH/styles.min.js -- $WWWPATH/main.js
+yui-compressor $WWWPATH/styles.css > $WWWPATH/main.min.css
+mv -f $WWWPATH/styles.min.js $WWWPATH/main.js
+mv -f $WWWPATH/main.min.css $WWWPATH/styles.css
+chown www-data:www-data $WWWPATH/styles.css
+chmod 644 $WWWPATH/styles.css
 chown www-data:www-data $WWWPATH/main.js
 chmod 644 $WWWPATH/main.js
-rm -f $WWWPATH/main.min.css
-rm -f $WWWPATH/main.min.js
 
 ## Boot Service
 cp -f $TMPDIR/rc.local /etc/
