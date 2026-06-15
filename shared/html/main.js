@@ -1,60 +1,47 @@
 // Automate Website - JavaScript Frontend
 // by Ben Provenzano III
 
-// global variables //
-const MAIN_SITE = "Automate";
-const ERR_RESP = "500 : Internal Server Error"
-const BKM_INACTIVE = 0;
-const BKM_OPEN_MODE = 1;
-const BKM_EDIT_MODE = 2;
-const REFRESH_INTERVAL = 3;
-const TIMEOUT_INTERVAL = 60;
-let activityTimeout;
-let isRoomStateRunning = false;
-let shootingStarsActive = true;
-let ledScrollData = ["00FF00", "8x8", "12.0"];
-let fileData = [];
-let ctlCommand;
-let serverCmdData;
-let messagePopupTimer;
-let dynMenuActive = 0;
-let bookmarkState = 0;
-let volPopupTimer;
-let sysModel;
+import { requestThrottle, setTheme, classDisplay, checkElemIsVisibleByID,
+  removeWindow, cleanString, base64URLSafeEncode, isNumeric, mapNumber,
+  hsvToRgb, rgbToHsv, hexToRgb, rgbToHex } from './utils.js';
+import { deviceType } from './device.js';
+import { SSIDpwd } from './wifi.js';
 
-// color selector //
-const PRESET_COLORS = [
+window.MAIN_SITE = "Automate";
+window.BKM_INACTIVE = 0;
+window.BKM_OPEN_MODE = 1;
+window.BKM_EDIT_MODE = 2;
+window.REFRESH_INTERVAL = 5;
+window.TIMEOUT_INTERVAL = 45;
+window.fileData = [];
+window.ctlCommand;
+window.serverCmdData;
+window.starsRunning = true;
+window.messagePopupTimer;
+window.dynMenuActive = 0;
+window.bookmarkState = 0;
+window.volPopupTimer;
+window.sysModel;
+window.activityTimeout;
+window.roomStateData = {
+  timerID: null,
+  isRunning: false,
+  roomState: null,
+  devices: []
+};
+window.ledScrollData = [
+  '00FF00', '8x8', '12.0'
+];
+window.PRESET_COLORS = [
   '#FF0000', '#FF7F00', '#FFFF00', '#00FF00', '#00FFFF',
   '#0000FF', '#7F00FF', '#FF00FF', '#FFFFFF', '#000000'
 ];
-let currentHSV = { h: 0, s: 1, v: 1 };
-let isColorPromptInit = false;
-const colorPromptParser = document.createElement('div');
-let isColorCommandPending = false;
-let pendingQueuedColor = null;
-let isColorDragMap = false;
-
-// request rate limiter
-function throttle(func, limit) {
-  let lastFunc;
-  let lastRan;
-  return function() {
-    const context = this;
-    const args = arguments;
-    if (!lastRan) {
-      func.apply(context, args);
-      lastRan = Date.now();
-    } else {
-      clearTimeout(lastFunc);
-      lastFunc = setTimeout(function() {
-        if ((Date.now() - lastRan) >= limit) {
-          func.apply(context, args);
-          lastRan = Date.now();
-        }
-      }, limit - (Date.now() - lastRan));
-    }
-  };
-}
+window.currentHSV = { h: 0, s: 1, v: 1 };
+window.isColorPromptInit = false;
+window.colorPromptParser = document.createElement('div');
+window.isColorCommandPending = false;
+window.pendingQueuedColor = null;
+window.isColorDragMap = false;
 
 // runs after DOM finishes loading
 window.addEventListener("DOMContentLoaded", () => {
@@ -122,12 +109,12 @@ function handleClicks(event) {
 
 function resetActivityTimer() {
   // timeout reset actions
-  shootingStarsActive = true;
+  starsRunning = true;
   if (sysModel === MAIN_SITE) showRoomState();
   clearTimeout(activityTimeout);
   activityTimeout = setTimeout(() => {
     // timeout reached actions
-    shootingStarsActive = false;
+    starsRunning = false;
     if (sysModel === MAIN_SITE) hideRoomState();
   }, TIMEOUT_INTERVAL * 1000);
 }
@@ -149,12 +136,14 @@ function hideDropdowns() {
 
 
 // open URL in new tab
+window.GoToExtPage = GoToExtPage;
 function GoToExtPage(_path) {
   let url = "https://" + _path;   
   window.open(url, "_blank");
 }
 
 // back to home page 
+window.GoToHomePage = GoToHomePage;
 function GoToHomePage() {
   if (sysModel === MAIN_SITE) {
     hidePages();
@@ -168,111 +157,6 @@ function hidePages() {
   classDisplay('pi-grid', 'none'); 
   classDisplay('ledpi-grid', 'none'); 
   classDisplay('server-grid', 'none');
-}
-
-function setTheme(newTheme) {
-  let body = document.getElementsByTagName("html")[0];
-  body.style.setProperty('--main-color', newTheme);
-  localStorage.setItem("main-color", newTheme);
-}
-
-function classDisplay(_elem, _state) {
-  let _itr;
-  let _class = document.getElementsByClassName(_elem);
-  for (_itr = 0; _itr < _class.length; _itr++) {
-    _class[_itr].style.display = _state;
-  }
-}
-
-function checkElemIsVisibleByID(id){
-  let _elmvis = false;
-  let _elem = document.getElementById(id);
-  if (_elem) {
-    var _style = window.getComputedStyle(_elem)
-    if (_style.display !== 'none') {
-      _elmvis = true;
-    }
-  }
-  return _elmvis;
-}
-
-// remove element by ID
-function removeWindow(id) {
-  let win = document.getElementById(id);
-  if (win) { // window exists
-    document.body.removeChild(win);
-  }
-}
-
-function cleanString(data) {
-  if (data == null || data == undefined) {
-    return null;
-  } else {
-    let out = data.replace(/(\r\n|\n|\r)/gm, '');
-    return out;
-  }
-}
-
-function base64URLSafeEncode(buffer) {
-  return btoa(buffer)
-    .replace(/\+/g, '-')  // Convert '+' to '-'
-    .replace(/\//g, '_')  // Convert '/' to '_'
-    .replace(/\=/g, '@'); // Convert '=' to '@'
-}
-
-function isNumeric(value) {
-  return /^-?\d+$/.test(value);
-}
-
-function mapNumber(num, inMin, inMax, outMin, outMax) {
-  return (num - inMin) * (outMax - outMin) / (inMax - inMin) + outMin;
-}
-
-function hsvToRgb(h, s, v) {
-  let r, g, b, i, f, p, q, t;
-  h /= 360;
-  i = Math.floor(h * 6);
-  f = h * 6 - i;
-  p = v * (1 - s);
-  q = v * (1 - f * s);
-  t = v * (1 - (1 - f) * s);
-  switch (i % 6) {
-    case 0: r = v, g = t, b = p; break;
-    case 1: r = q, g = v, b = p; break;
-    case 2: r = p, g = v, b = t; break;
-    case 3: r = p, g = q, b = v; break;
-    case 4: r = t, g = p, b = v; break;
-    case 5: r = v, g = p, b = q; break;
-  }
-  return { r: Math.round(r * 255), g: Math.round(g * 255), b: Math.round(b * 255) };
-}
-
-function rgbToHsv(r, g, b) {
-  r /= 255, g /= 255, b /= 255;
-  let max = Math.max(r, g, b), min = Math.min(r, g, b);
-  let h, s, v = max;
-  let d = max - min;
-  s = max === 0 ? 0 : d / max;
-  if (max === min) {
-    h = 0; 
-  } else {
-    switch (max) {
-      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-      case g: h = (b - r) / d + 2; break;
-      case b: h = (r - g) / d + 4; break;
-    }
-    h /= 6;
-  }
-  return { h: h * 360, s: s, v: v };
-}
-
-function hexToRgb(hex) {
-  let bigint = parseInt(hex.replace('#', ''), 16);
-  return { r: (bigint >> 16) & 255, g: (bigint >> 8) & 255, b: bigint & 255 };
-}
-
-function rgbToHex(r, g, b) {
-  return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase();
 }
 
 function showPopup(message) {
@@ -315,71 +199,94 @@ function showPopup(message) {
 }
 
 function hideRoomState() {
-  if (isRoomStateRunning === false) return;
-  clearTimeout(roomStateTimeoutId);
-  isRoomStateRunning = false;
+  if (roomStateData.isRunning === false) return;
+  clearTimeout(roomStateData.timerID);
+  roomStateData.isRunning = false;
   let lightIcon = document.getElementById("trafficLightIcon");
   let container = document.getElementById('statusDropdownContainer');
   container.classList.remove('status-loading');
   lightIcon.classList.remove("status-pending");
-  lightIcon.classList.remove("status-error");
   lightIcon.classList.remove("status-off");
   lightIcon.classList.remove("status-on");
 }
 
 async function showRoomState() {
-  if (isRoomStateRunning === true) return;
-  isRoomStateRunning = true;
+  if (roomStateData.isRunning === true) return;
+  roomStateData.isRunning = true;
   let lightIcon = document.getElementById("trafficLightIcon");
-  let statusMsg = document.getElementById("statusMessage");
   let container = document.getElementById('statusDropdownContainer');
   container.classList.remove('status-loading');
   let room = null; let cmd = null;
   if (ctlCommand == 'lr' || ctlCommand == 'subs') {
-    room = "living room"; cmd = 'lrstatus';
+    room = "living room"; 
+    cmd = 'lrstatus';
   }
   if (ctlCommand == 'br') {
-    room = "bedroom"; cmd = 'brstatus';
+    room = "bedroom"; 
+    cmd = 'brstatus';
   }
-  if (cmd == null) {
-    isRoomStateRunning = false;
+  if (cmd === null) {
+    hideRoomState();
     return;
   }
   lightIcon.classList.add("status-pending");
-  statusMsg.textContent = "Scanning devices...";
   sendCmd('main', cmd, '').then((resp) => {
-    let success = false;
-    if (resp == "1") {
-      lightIcon.classList.remove("status-error");
-      lightIcon.classList.remove("status-off");
-      lightIcon.classList.add("status-on");
-      statusMsg.textContent = "Devices in the " + room + " are on";
-      success = true;
-    } else if (resp == "0") { 
-      lightIcon.classList.remove("status-error");
-      lightIcon.classList.remove("status-on");
-      lightIcon.classList.add("status-off");
-      statusMsg.textContent = "Devices in the " + room + " are off";
-      success = true;
-    } else {
-      lightIcon.classList.remove("status-off");
-      lightIcon.classList.remove("status-on");
-      lightIcon.classList.add("status-error");
-      statusMsg.textContent = "Error checking devices!";
-    }
+    roomStateData.devices = [];
+    roomStateData.roomState = null;
+    lightIcon.classList.remove("status-error");
     lightIcon.classList.remove("status-pending");
-    if (success) {
-      container.style.setProperty('--spin-duration', `${REFRESH_INTERVAL}s`);    
-      void container.offsetWidth; 
-      requestAnimationFrame(() => {
-        container.classList.add('status-loading');
-        roomStateTimeoutId = setTimeout(() => {
-          isRoomStateRunning = false;
-          showRoomState(REFRESH_INTERVAL);
-        }, REFRESH_INTERVAL * 1000);
-      });
+    if (resp === null) {
+      lightIcon.classList.add("status-error");
+      hideRoomState();
+      return;
+    } else {
+      roomStateData.roomState = resp.roomState;
+      roomStateData.devices = resp.devices;
+      if (roomStateData.roomState === true) {
+        lightIcon.classList.remove("status-off");
+        lightIcon.classList.add("status-on");
+      } else if (roomStateData.roomState === false) { 
+        lightIcon.classList.remove("status-on");
+        lightIcon.classList.add("status-off");
+      }
     }
+    container.style.setProperty('--spin-duration', `${REFRESH_INTERVAL}s`);    
+    void container.offsetWidth; 
+    requestAnimationFrame(() => {
+      container.classList.add('status-loading');
+      roomStateData.timerID = setTimeout(() => {
+        roomStateData.isRunning = false;
+        showRoomState(REFRESH_INTERVAL);
+      }, REFRESH_INTERVAL * 1000);
+    });
   });
+}
+
+window.roomStateClick = roomStateClick;
+async function roomStateClick() {
+  const menu = 'roomstatus';
+  let _elem = document.getElementById(menu);
+  if (_elem.style.display === 'block') {
+    _elem.style.display = 'none';
+    return;
+  } 
+  hideDropdowns();
+  let menuData;
+  if (roomStateData.roomState === null) {
+    menuData += `${menu}|redind|Error checking devices.\n`;
+  } else {
+    for (const [deviceName, deviceState] of roomStateData.devices) {
+      let indType;
+      if (deviceState == '0') {
+        indType = 'blkind';
+      } else {
+        indType = 'grnind';
+      }
+      menuData += `${menu}|${indType}|${deviceName}\n`;
+    }
+  }
+  drawMenu(menuData, menu);
+  _elem.style.display = 'block';
 }
 
 /// server popup window ///
@@ -417,6 +324,7 @@ function clearPendingCmd() {
   serverCmdData = null;
 }
 
+window.openServerOptions = openServerOptions;
 function openServerOptions(){
   closeServerOptions();
   classDisplay("svropt__prompt", "block");
@@ -435,6 +343,7 @@ function openBackupOptions(){
   classDisplay("svropt__backup", "block");
 }
 
+window.closeServerOptions = closeServerOptions;
 function closeServerOptions(){
   hideDropdowns();
   clearPendingCmd();
@@ -446,6 +355,7 @@ function closeServerOptions(){
 
 /////// LEDScroll ///////
 
+window.setTextScrollTitle = setTextScrollTitle;
 function setTextScrollTitle(){
   let title = document.getElementById('textScrollTitle');
   const color = ledScrollData[0];
@@ -455,48 +365,56 @@ function setTextScrollTitle(){
   title.textContent = "Textscroll " + font + ' ' + speed + 'x';
 }
 
+window.clearTextScrollBox = clearTextScrollBox;
 function clearTextScrollBox(){
   let textbox = document.getElementById('textScrollBox');
   textbox.placeholder = "Enter message";
   textbox.value = '';
 }
 
+window.openTextScroll = openTextScroll;
 function openTextScroll(){
   classDisplay("textscroll__prompt", "block");
   clearTextScrollBox();
   setTextScrollTitle();
 }
 
+window.closeTextScroll = closeTextScroll;
 function closeTextScroll(){
   classDisplay("textscroll__prompt", "none");
   clearTextScrollBox();
   hideDropdowns();
 }
 
+window.clearLEDsMessage = clearLEDsMessage;
 function clearLEDsMessage(){
   clearTextScrollBox();
   sendCmd('leds', 'stop', '');
 }
 
+window.setTextScrollColor = setTextScrollColor;
 function setTextScrollColor(color){
   ledScrollData[0] = color;
   setTextScrollTitle();
 }
 
+window.setTextScrollFont = setTextScrollFont;
 function setTextScrollFont(font){
   ledScrollData[1] = font;
   setTextScrollTitle();
 }
 
+window.setTextScrollSpeed = setTextScrollSpeed;
 function setTextScrollSpeed(speed){
   ledScrollData[2] = speed;
   setTextScrollTitle();
 }
 
+window.sendTextScroll = sendTextScroll;
 function sendTextScroll(){
   let textbox = document.getElementById('textScrollBox');
   const message = cleanString(textbox.value.replaceAll("|", "-"));
-  if (message == null || message == "") {
+  if (message === null || message == "") {
     textbox.placeholder = "Message cannot be empty";
     return;
   }
@@ -508,7 +426,7 @@ function sendTextScroll(){
   const commands = `${message}|${color}|${font}|${speed}`;
   const encoded = base64URLSafeEncode(commands);
   sendCmd('leds', 'textscroll', encoded).then((data) => {
-    if (data == ERR_RESP) {
+    if (data === null || data == "" ) {
       textbox.placeholder = "Error sending message!"; 
     } else {
       textbox.placeholder = "Message sent";
@@ -521,6 +439,7 @@ function sendTextScroll(){
 
 /////////////////////////
 
+window.aboutPrompt = aboutPrompt;
 async function aboutPrompt(){
   const _winid = 'about__prompt';
   // only allow one-instance of the window
@@ -572,6 +491,7 @@ async function aboutPrompt(){
 
 /// Temperature & Humidity ///
 
+window.showTempHumidity = showTempHumidity;
 async function showTempHumidity(){
   const _winid = 'temp__prompt';
   // only allow one-instance of the window
@@ -709,6 +629,7 @@ function pushTempErrorThermos(temp_elm, humd_elm) {
 
 /// END - Temperature & Humidity ///
 
+window.showPiWiFiPrompt = showPiWiFiPrompt;
 async function showPiWiFiPrompt() {
   const winid = "pinet__prompt";
   // only allow one-instance of the window
@@ -785,7 +706,7 @@ async function piWiFiPrompt(_winid){
     }
     // button clicks
     pinetprompt.addEventListener('click', function handleButtonClicks(e) { 
-      if (e.target.tagName !== 'BUTTON') { return; }
+      if (e.target.tagName !== 'BUTTON') return; 
         if (e.target === pinetokbutton) {
           sendWiFiData();
         }
@@ -795,29 +716,28 @@ async function piWiFiPrompt(_winid){
     });
     // key focused on SSID box
     pinetssidbox.addEventListener('keyup', function handleSSID(ssid_evnt){ 
-        if(ssid_evnt.key === 'Enter'){ //if user enters "enter"-key on password-field
-          pinetpassbox.focus(); // focus on password field
-        } else if (ssid_evnt.key === 'Escape'){ //user enters "Escape" on password-field
+        if(ssid_evnt.key === 'Enter') {
+          pinetpassbox.focus();
+        } else if (ssid_evnt.key === 'Escape') { 
           cancelWiFi();
         }
     });
     // key focused on password box
     pinetpassbox.addEventListener('keyup', function handlePass(pass_evnt){ 
-        if(pass_evnt.key === 'Enter'){ //if user enters "enter"-key on password-field
+        if(pass_evnt.key === 'Enter') { 
           sendWiFiData();
-        } else if (pass_evnt.key === 'Escape'){ //user enters "Escape" on password-field
+        } else if (pass_evnt.key === 'Escape') {
           cancelWiFi();
         }
     });
   }); 
 }
 
+window.wifiPrompt = wifiPrompt;
 async function wifiPrompt(){
   const _winid = "wifi__prompt";
   // only allow one-instance of the window
-  if (document.getElementById(_winid)) {
-    return;
-  }
+  if (document.getElementById(_winid)) return;
   let wifiprompt = document.createElement("div");
   wifiprompt.id = _winid;
   wifiprompt.classList.add("prompt_win");
@@ -848,6 +768,7 @@ async function wifiPrompt(){
   });   
 }
 
+window.getPassword = getPassword;
 async function getPassword(_type){
   let result;
   try{
@@ -866,63 +787,100 @@ async function getPassword(_type){
 
 function passwordPrompt(){
   const _winid = "pass__prompt_win";
-  // only allow one-instance of the window
-  if (document.getElementById(_winid)) {
-    return;
-  }
-  let pwprompt = document.createElement("div"); //creates the div to be used as a prompt
-  pwprompt.id = _winid; //gives the prompt an id
+  if (document.getElementById(_winid)) return;
+  let pwprompt = document.createElement("div");
+  pwprompt.id = _winid;
   pwprompt.classList.add("prompt_win");
-  let pwtextdiv = document.createElement("div"); //create the div for the password-text
-  pwtextdiv.innerHTML = "Enter password:"; //put inside the text
-  pwprompt.appendChild(pwtextdiv); //append the text-div to the password-prompt
-  let pwinput = document.createElement("input"); //creates the password-input
-  pwinput.id = "pass__textbox"; //give it some id - not really used in this example...
-  pwinput.type="password"; // makes the input of type password to not show plain-text
-  pwprompt.appendChild(pwinput); //append it to password-prompt
+  let pwtextdiv = document.createElement("div");
+  pwtextdiv.innerHTML = "Enter password:";
+  pwprompt.appendChild(pwtextdiv);
+  let pwinput = document.createElement("input");
+  pwinput.id = "pass__textbox";
+  pwinput.type="password";
+  pwprompt.appendChild(pwinput);
   // buttons 
   let pwbtndiv = document.createElement("div");
   pwbtndiv.id = "pass__prmbtnctr";
-  let pwokbutton = document.createElement("button"); //the ok button
+  let pwokbutton = document.createElement("button");
   pwokbutton.innerHTML = "Send";
   pwokbutton.className ="button pass__prompt_btn"; 
   pwokbutton.type="button"; 
-  let pwcancelb = document.createElement("button"); //the cancel-button
+  let pwcancelb = document.createElement("button");
   pwcancelb.innerHTML = "Cancel";
   pwcancelb.className = "button pass__prompt_btn"; 
   pwcancelb.type = "button"; 
-  pwbtndiv.appendChild(pwcancelb); //append cancel-button first
-  pwbtndiv.appendChild(pwokbutton); //append the ok-button
-  pwprompt.appendChild(pwbtndiv); // append button center div to prompt div
-  //append the password-prompt so it gets visible
+  pwbtndiv.appendChild(pwcancelb);
+  pwbtndiv.appendChild(pwokbutton);
+  pwprompt.appendChild(pwbtndiv);
   document.body.appendChild(pwprompt); 
-  pwinput.focus(); //focus on the password-input-field so user does not need to click
+  pwinput.focus();
   return new Promise(function(resolve, reject) {
-      pwprompt.addEventListener('click', function handleButtonClicks(click_evnt) { //lets handle the buttons
-        if (click_evnt.target.tagName !== 'BUTTON') { return; } //nothing to do - user clicked somewhere else
-        pwprompt.removeEventListener('click', handleButtonClicks); //removes eventhandler on cancel or ok
-        if (click_evnt.target === pwokbutton) { //click on ok-button
-          resolve(pwinput.value); //return the value of the password
-        } else {
-          reject(new Error('User cancelled')); //return an error
-        }
-        document.body.removeChild(pwprompt);  //as we are done clean up by removing the password-prompt
-      });
-      pwinput.addEventListener('keyup',function handleEnter(up_events){ //users dont like to click on buttons
-          if(up_events.key === 'Enter') { //if user enters "enter"-key on password-field
-              resolve(pwinput.value); //return password-value
-              document.body.removeChild(pwprompt); //clean up by removing the password-prompt
-          } else if (up_events.key === 'Escape') { //user enters "Escape" on password-field
-              document.body.removeChild(pwprompt); //clean up the password-prompt
-              reject(new Error("User cancelled")); //return an error
-          }
-      });
+    pwprompt.addEventListener('click', function handleButtonClicks(click_evnt) {
+      if (click_evnt.target.tagName !== 'BUTTON') return;
+      pwprompt.removeEventListener('click', handleButtonClicks);
+      if (click_evnt.target === pwokbutton) {
+        resolve(pwinput.value);
+      } else {
+        reject(new Error('User cancelled'));
+      }
+      document.body.removeChild(pwprompt);
+    });
+    pwinput.addEventListener('keyup',function handleEnter(up_events) {
+      if(up_events.key === 'Enter') {
+        resolve(pwinput.value);
+        document.body.removeChild(pwprompt);
+      } else if (up_events.key === 'Escape') {
+        document.body.removeChild(pwprompt);
+        reject(new Error("User cancelled"));
+      }
+    });
   }); 
 }
 
 /// Color Prompt ///
 
-const throttledColorSend = throttle((strippedHex) => {
+function initColorGrid() {
+  if (isColorPromptInit) return;
+  const grid = document.getElementById('preset-color-grid');
+  if (!grid) return;
+  grid.innerHTML = ''; 
+  PRESET_COLORS.forEach(color => {
+    const swatch = document.createElement('div');
+    swatch.className = 'color-swatch';
+    swatch.style.backgroundColor = color;
+    swatch.addEventListener('click', () => updateStateFromHex(color, true, true));
+    grid.appendChild(swatch);
+  });
+  isColorPromptInit = true;
+}
+
+window.colorPrompt = colorPrompt;
+function colorPrompt(initialColor) {
+  initColorGrid();
+  let formattedColor = String(initialColor);
+  if (!formattedColor.startsWith('#')) {
+    formattedColor = '#' + formattedColor;
+  }
+  const pendingLock = isColorCommandPending;
+  isColorCommandPending = true; 
+  updateStateFromHex(formattedColor, true, false);
+  isColorCommandPending = pendingLock; 
+  document.getElementById('hex-color').addEventListener('input', handleHexInput);
+  document.getElementById('slider-hue').addEventListener('input', handleHueInput);
+  document.getElementById('color-map').addEventListener('pointerdown', startMapDrag);
+  document.getElementById('color-popup').style.display = 'flex';
+}
+
+window.closeColorPrompt = closeColorPrompt;
+function closeColorPrompt() {
+  document.getElementById('color-popup').style.display = 'none';
+  document.getElementById('hex-color').removeEventListener('input', handleHexInput);
+  document.getElementById('slider-hue').removeEventListener('input', handleHueInput);
+  document.getElementById('color-map').removeEventListener('pointerdown', startMapDrag);
+  stopMapDrag();
+}
+
+const throttledColorSend = requestThrottle((strippedHex) => {
   if (isColorCommandPending) return; 
   isColorCommandPending = true;
   sendCmd('leds', 'hex', strippedHex)
@@ -1009,45 +967,6 @@ function stopMapDrag() {
   window.removeEventListener('pointercancel', stopMapDrag);
 }
 
-function initColorGrid() {
-  if (isColorPromptInit) return;
-  const grid = document.getElementById('preset-color-grid');
-  if (!grid) return;
-  grid.innerHTML = ''; 
-  PRESET_COLORS.forEach(color => {
-    const swatch = document.createElement('div');
-    swatch.className = 'color-swatch';
-    swatch.style.backgroundColor = color;
-    swatch.addEventListener('click', () => updateStateFromHex(color, true, true));
-    grid.appendChild(swatch);
-  });
-  isColorPromptInit = true;
-}
-
-function colorPrompt(initialColor) {
-  initColorGrid();
-  let formattedColor = String(initialColor);
-  if (!formattedColor.startsWith('#')) {
-    formattedColor = '#' + formattedColor;
-  }
-  const pendingLock = isColorCommandPending;
-  isColorCommandPending = true; 
-  updateStateFromHex(formattedColor, true, false);
-  isColorCommandPending = pendingLock; 
-  document.getElementById('hex-color').addEventListener('input', handleHexInput);
-  document.getElementById('slider-hue').addEventListener('input', handleHueInput);
-  document.getElementById('color-map').addEventListener('pointerdown', startMapDrag);
-  document.getElementById('color-popup').style.display = 'flex';
-}
-
-function closeColorPrompt() {
-  document.getElementById('color-popup').style.display = 'none';
-  document.getElementById('hex-color').removeEventListener('input', handleHexInput);
-  document.getElementById('slider-hue').removeEventListener('input', handleHueInput);
-  document.getElementById('color-map').removeEventListener('pointerdown', startMapDrag);
-  stopMapDrag();
-}
-
 /// END DYNAMIC WINDOWS ///
 
 function relaxSend(_cmd) {
@@ -1055,6 +974,7 @@ function relaxSend(_cmd) {
 }
 
 // volume controls
+window.sendVol = sendVol;
 function sendVol(_cmd) {
   if (ctlCommand == 'lr' ){
     setAmpVolume(_cmd, 'lrxmit', 100); // living room system
@@ -1154,29 +1074,9 @@ function showVolumePopup(vol) {
   }, 3000); // hide delay in (ms)
 }
 
+window.roomOnOff = roomOnOff;
 function roomOnOff(action) {
-  if (ctlCommand == 'lr') {
-    // living room
-    sendCmd('main', 'lr' + action, '');
-    return;
-  }
-  if (ctlCommand == 'br') {
-    // bedroom
-    sendCmd('main', 'br' + action, '');
-    return;
-  }
-}
-
-function subModeToggle() {
-  // toggle subwoofer mode
-  if (ctlCommand == 'subs') {
-    ctlsMenu('lr');
-    return;
-  }
-  if (ctlCommand != 'subs') {
-    ctlsMenu('subs');
-    return;
-  } 
+  sendCmd('main', ctlCommand + action, '');
 }
 
 // add / remove a class from a element
@@ -1199,10 +1099,10 @@ function subMode(_action) {
   addClassToElem(_action, 'voldwnbtn', 'submode_btn');
   addClassToElem(_action, 'volmutebtn', 'submode_btn');
   addClassToElem(_action, 'volupbtn', 'submode_btn');
-  //addClassToElem(_action, 'subwooferbtn', 'submode_btn');
 }
 
 // controls menu actions
+window.ctlsMenu = ctlsMenu;
 function ctlsMenu(_mode) {
   ctlCommand = _mode; 
   // living room controls
@@ -1233,18 +1133,20 @@ function ctlsMenu(_mode) {
 }
 
 // toggle dropdown menu's
+window.showMenu = showMenu;
 function showMenu(_menu) {
   let _elem = document.getElementById(_menu);
   if (_elem.style.display === 'block') {
     _elem.style.display = 'none';
-  } else {
-    hideDropdowns();
-    _elem.style.display = 'block';
+    return;
   }
+  hideDropdowns();
+  _elem.style.display = 'block';
 }
 
 //// Bookmarks Menu ////
 
+window.showBookmarks = showBookmarks;
 function showBookmarks() {
   // hide menu if clicked while open
   if (bookmarkState !== BKM_INACTIVE) {
@@ -1345,11 +1247,12 @@ function removeBookmarkSearch() {
   const search = document.getElementById("bookmark__search");
   const search_txt = document.getElementById("bookmark__search_txt");
   const search_icon = document.getElementById("bookmark__search_icon")
-  if (search_icon) { search_icon.remove(); }
-  if (search_txt) { search_txt.remove(); }
-  if (search) { search.remove(); }
+  if (search_icon) search_icon.remove();
+  if (search_txt) search_txt.remove();
+  if (search) search.remove();
 }
 
+window.editBookmark = editBookmark;
 function editBookmark() {
   // hide menu if clicked while open
   if (bookmarkState === BKM_EDIT_MODE) {
@@ -1359,6 +1262,7 @@ function editBookmark() {
   enableEditAddMode();
 }
 
+window.addBookmark = addBookmark;
 function addBookmark() {
   enableEditAddMode();
   // create new unique menu ID
@@ -1417,7 +1321,7 @@ function clickBookmark(id) {
   const name = elem.innerText;
   if (elem) { 
     if (bookmarkState === BKM_OPEN_MODE) {
-      if (!(url == null || url == "" || url == "about:blank")) {
+      if (!(url === null || url == "" || url == "about:blank")) {
         // open URL in new tab
         window.open(url, "_blank");
       }
@@ -1544,11 +1448,11 @@ async function drawBookmarkPrompt(add, url, name, elem){
       if (btn_event.target === editFavSaveBtn) {
         // do not allow empty URL or name
         var stopsave = false;
-        if (editFavName.value == null || editFavName.value == "") {
+        if (editFavName.value === null || editFavName.value == "") {
           editFavName.placeholder = "Name cannot be empty";
           stopsave = true;
         }
-        if (editFavURL.value == null || editFavURL.value == "") {
+        if (editFavURL.value === null || editFavURL.value == "") {
           editFavURL.placeholder = "URL cannot be empty";
           stopsave = true;
         }
@@ -1614,7 +1518,7 @@ async function lookupURL() {
     nameBoxElem.value = "Processing...";
     // read URL box
     let urlin = urlBoxElem.value;
-    if (urlin == null || urlin == "") {
+    if (urlin === null || urlin == "") {
       // read from clipboard if URL empty
       urlin = await navigator.clipboard.readText();
     }
@@ -1624,7 +1528,7 @@ async function lookupURL() {
     let encoded_url = base64URLSafeEncode(url);
     // search for URLs title
     sendCmd('main', 'sitelookup', encoded_url).then((data) => {
-      if (data == null || data == "") {
+      if (data === null || data == "") {
         // URL lookup failed actions
         nameBoxElem.value = "Not Found";
         setTimeout(function() {
@@ -1696,6 +1600,7 @@ function closeBookmarkPrompt() {
   }  
 }
 
+window.showHiFiMoreMenu = showHiFiMoreMenu;
 function showHiFiMoreMenu() {
   const offcode = -1;
   const target = 'lrxmit';
@@ -1747,6 +1652,7 @@ function showHiFiMoreMenu() {
   }
 }
 
+window.showHiFiAmpInput = showHiFiAmpInput;
 function showHiFiAmpInput() {
   const offcode = -1;
   const target = 'lrxmit';
@@ -1807,6 +1713,7 @@ function showHiFiAmpInput() {
   }
 }
 
+window.showBedroomAmpInput = showBedroomAmpInput;
 function showBedroomAmpInput() {
   const target = 'brpi';
   const menuname = 'brinpmenu';
@@ -1858,6 +1765,7 @@ function showBedroomAmpInput() {
   }
 }
 
+window.showPowerMenu = showPowerMenu;
 function showPowerMenu(target, menu) {
   let arg1;
   let arg2;
@@ -1882,9 +1790,7 @@ function showPowerMenu(target, menu) {
     _elem.style.display = 'block';
     // custom actions
     let action = 'main';
-    if (menu == 'fc_leds') {
-      action = 'leds'
-    }
+    if (menu == 'fc_leds') action = 'leds';
     sendCmd(action, arg1, arg2).then((data) => { // GET request
       const resp = cleanString(data); // remove newlines
       const field = resp.split("~");
@@ -1949,6 +1855,7 @@ function showPowerMenu(target, menu) {
   }
 }
 
+window.showStatusMenu = showStatusMenu;
 function showStatusMenu() {
   const _menu = 'statsmenu';
   let statIcon = document.getElementById('navstats-icon');
@@ -1991,13 +1898,15 @@ function afterPOSTActions(action) {
   }
 }
 
-// load server action 
+// load server action
+window.serverAction = serverAction;
 function serverAction(cmd) {
   serverCmdData = cmd;
   // change color of send button
   sendBtnAlert("on");
 }
 
+window.openLogWindow = openLogWindow;
 function openLogWindow() {
   // open server log window
   closePopup();
@@ -2008,6 +1917,7 @@ function openLogWindow() {
 }
 
 // load entire text file
+window.loadLog = loadLog;
 async function loadLog(file) {
   // build URL / append data
   const url = location.protocol + "//" + location.hostname + "/api/read?file=" + file;
@@ -2040,6 +1950,7 @@ async function loadLog(file) {
 }
 
 // transmit a command
+window.sendCmd = sendCmd;
 async function sendCmd(act, arg1, arg2) {
   // construct API URL
   const url = location.protocol + "//"+ location.hostname + "/api?var=" + arg2 + "&arg=" + arg1 + "&action=" + act;
@@ -2053,7 +1964,7 @@ async function sendCmd(act, arg1, arg2) {
     return out;
   } catch (error) {
     showPopup("[sendCmd] " + error);
-    return ERR_RESP;
+    return null;
   }
 }
 
@@ -2079,6 +1990,7 @@ function savePOST(file, data) {
 
 //// Dynamic Menus ////
 
+window.showDynMenu = showDynMenu;
 function showDynMenu(menu) {
   let _elem = document.getElementById(menu);
   if (_elem.style.display === 'block') {
@@ -2227,7 +2139,12 @@ function createListItem(col0_in, col1, col2, menuid) {
         _elm.classList.add('submode_btn');
       }
       _elm.addEventListener("click", function() {
-        subModeToggle();
+        // toggle subwoofer mode
+        if (ctlCommand == 'lr') {
+          ctlsMenu('subs');
+        } else {
+          ctlsMenu('lr');
+        } 
       });
       break;
     case 'noind': 
@@ -2269,7 +2186,7 @@ function createListItem(col0_in, col1, col2, menuid) {
   return _elm;
 }
 
-const throttledSliderSend = throttle((host, cmd, val) => {
+const throttledSliderSend = requestThrottle((host, cmd, val) => {
   sendCmd(host, cmd, val);
 }, 50); // in (ms)
 
@@ -2282,7 +2199,6 @@ function drawStatusItem(elm, col0, host, cmd) {
   if (col0 == 'oncmd') { // power-on remote API call on click
     _icon.classList.add('fa');
     _icon.classList.add('fa-toggle-on');
-    _icon.classList.add('left-jfy'); // left-justify icon
     elm.appendChild(_icon);
     elm.addEventListener("click", function() {
       sendPowerCommand(host, cmd);
@@ -2291,7 +2207,6 @@ function drawStatusItem(elm, col0, host, cmd) {
   if (col0 == 'offcmd') { // power-off remote API call on click
     _icon.classList.add('fa');
     _icon.classList.add('fa-toggle-off');
-    _icon.classList.add('left-jfy'); // left-justify icon
     elm.appendChild(_icon);
     elm.addEventListener("click", function() {
       sendPowerCommand(host, cmd);
@@ -2300,7 +2215,6 @@ function drawStatusItem(elm, col0, host, cmd) {
   if (col0 == 'sleepmode') { // sleep PC type menu
     _icon.classList.add('fa');
     _icon.classList.add('fa-moon');
-    _icon.classList.add('left-jfy'); // left-justify icon
     elm.appendChild(_icon);
     elm.addEventListener("click", function() {
       sendPowerCommand(host, cmd);
@@ -2385,18 +2299,21 @@ function removeDynMenus() {
 //// End Dynamic Menus ////
 
 // show camera form window
+window.openCamWindow = openCamWindow;
 function openCamWindow() {
   closePopup();
   document.getElementById("cam-popup").style.display = "block";
   document.getElementById("cam-display").src = "/cam1";
 }
 
+window.goToContextRoot = goToContextRoot;
 function goToContextRoot(_path) {
   closePopup();
   window.location = location.protocol + "//" + location.hostname + "/" + _path;
 }
 
 // close all popup windows
+window.closePopup = closePopup;
 function closePopup() {
   document.getElementById("logForm").style.display = "none";
   document.getElementById("cam-popup").style.display = "none";
@@ -2528,7 +2445,7 @@ function animatedBackground() {
     // Reset alpha for shooting stars
     ctx.globalAlpha = 1; 
     // 2. Only run the shooting star animation if the inactivity timer hasn't triggered
-    if (shootingStarsActive) {
+    if (starsRunning) {
       for (let i = 0; i < shootingStars.length; i++) {
         shootingStars[i].update();
       }

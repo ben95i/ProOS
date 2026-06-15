@@ -87,11 +87,6 @@ body {
   display: block;
 }
 
-.left-jfy {
-  margin-right: 8px;
-  float: left;
-}
-
 .svropt__main {
   display: none;
 }
@@ -107,16 +102,6 @@ body {
 /*
  *  Titlebar Room Status 
  */
-
-.roomstatus {
-  width: 50px;
-  height: 60px;
-  display: inline-flex !important;
-  align-items: center;
-  justify-content: center;
-  margin: 0;
-  padding: 0;
-}
 
 .roomstatus-svgs {
   width: 45px;
@@ -136,6 +121,16 @@ body {
   opacity: 0;
   visibility: hidden;
   transition: opacity 0.5s ease, visibility 0.5s ease, stroke-dashoffset 0s; 
+}
+
+#statusDropdownContainer {
+  width: 50px;
+  height: 60px;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
 }
 
 #statusDropdownContainer.status-loading .spinner-path {
@@ -591,7 +586,10 @@ input.chkbox {
   color: #fff;
   padding: 12px 16px;
   text-align: left;
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 7px;
 }
 
 .dd-content a:hover {
@@ -614,10 +612,7 @@ input.chkbox {
   width: 25px;
   background-color: #000;
   border-radius: 50%;
-  right: 3px;
-  margin-right: 10px;
-  position: absolute;
-  display: inline-block;
+  flex-shrink: 0;
 }
 
 .ind_dot_yellow {

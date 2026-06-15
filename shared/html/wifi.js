@@ -1,4 +1,3 @@
-var SSIDpwd = function() {
-   const str = 'cGhvbmljcy44Ny5yZXBseS4yMTg=';
-   return str;
+export function SSIDpwd() {
+   return '***REMOVED***';
 }

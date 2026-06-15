@@ -231,6 +231,13 @@ async function lrXmit(cmdIn) {
 }
 
 async function executeMain(ramDisk, firstArgIn, secondArgIn) {
+    let roomStateData = {
+      roomState: false,
+      devices: []
+    };
+    function isRoomActive() {
+        return roomStateData.devices.some(device => device[1] !== '0' && device[1] !== 0);
+    }
     const firstArg = firstArgIn.replace(/\n/g, "");
     const secondArg = secondArgIn.replace(/\n/g, "");
     switch (firstArg) {
@@ -253,13 +260,14 @@ async function executeMain(ramDisk, firstArgIn, secondArgIn) {
             return await lrXmit(secondArg);
         case "lrstatus":
             try {
-                let lrstatus = new Array();
-                lrstatus.push(await lrXmit("wl_led1"));
-                lrstatus.push(await lrXmit("wl_led2"));
-                lrstatus.push(await lrXmit("hifistate"));
-                lrstatus.push(await lrXmit("wkststate"));
-                if (containsNonZero(lrstatus) == true) return "1";
-                return "0";
+                roomStateData.devices = [];
+                roomStateData.roomState = false;
+                roomStateData.devices.push(['Window Lamp',   await lrXmit("wl_led1")]);
+                roomStateData.devices.push(['Backlight',     await lrXmit("wl_led2")]);
+                roomStateData.devices.push(['Desktop PC',    await lrXmit("wkststate")]);
+                roomStateData.devices.push(['Stereo System', await lrXmit("hifistate")]);
+                if (isRoomActive()) roomStateData.roomState = true;
+                return roomStateData;
             } catch (error) {
                 return "lrstatus error: " + error.message;
             }
@@ -289,15 +297,16 @@ async function executeMain(ramDisk, firstArgIn, secondArgIn) {
             return await brXmit(secondArg);
         case "brstatus":
             try {
-                let brstatus = new Array();
-                brstatus.push(await brXmit("brlamp1"));
-                brstatus.push(await brXmit("retropi"));
-                brstatus.push(await brXmit("brmacs"));
-                brstatus.push(await brXmit("brtv"));
-                brstatus.push(await brXmit("brpc"));
-                brstatus.push(await callApi(IPs.brpi, "ampstate"));
-                if (containsNonZero(brstatus) == true) return "1";
-                return "0";
+                roomStateData.devices = [];
+                roomStateData.roomState = false;
+                roomStateData.devices.push(['Desk Lamp',    await brXmit("brlamp1")]);
+                roomStateData.devices.push(['RetroPi CRT',  await brXmit("retropi")]);
+                roomStateData.devices.push(['Vintage Macs', await brXmit("brmacs")]);
+                roomStateData.devices.push(['Bedroom TV',   await brXmit("brtv")]);
+                roomStateData.devices.push(['Bedroom PC',   await brXmit("brpc")]);
+                roomStateData.devices.push(['Audio System', await callApi(IPs.brpi, "ampstate")]);
+                if (isRoomActive()) roomStateData.roomState = true;
+                return roomStateData;
             } catch (error) {
                 return "brstatus error: " + error.message;
             }

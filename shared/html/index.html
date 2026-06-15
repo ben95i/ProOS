@@ -7,9 +7,10 @@
   <link href="img/automate.png" rel="icon" type="image/x-icon"></link>
   <link href="fonts/fa/css/all.min.css" rel="stylesheet" type="text/css"></link>
   <link href="styles.css" rel="stylesheet" type="text/css"></link>
-  <script type="text/javascript" src="wifi.js"></script>
-  <script type="text/javascript" src="device.js"></script>
-  <script type="text/javascript" src="main.js" defer></script>
+  <script type="module" type="text/javascript" src="wifi.js"></script>
+  <script type="module" type="text/javascript" src="device.js"></script>
+  <script type="module" type="text/javascript" src="utils.js"></script>
+  <script type="module" type="text/javascript" src="main.js"></script>
 </head>
 <body class="scroll-bar-style" ontouchstart="">
 
@@ -45,7 +46,7 @@
         <i class="fas fa-plus"></i>
       </a>
     </div>
-    <a onclick="showMenu('roomstatus')" id="statusDropdownContainer" class="roomstatus nohide__click">
+    <a onclick="roomStateClick()" id="statusDropdownContainer" class="nohide__click">
       <svg viewBox="0 0 50 50" class="roomstatus-svgs nohide__click">
         <circle id="trafficLightIcon" class="nohide__click" cx="25" cy="25" r="17" stroke="none"></circle>
         <circle id="spinnerCircle" class="spinner-path nohide__click" fill="none" stroke-linecap="round" pathLength="100" cx="25" cy="25" r="23"></circle>
@@ -63,21 +64,19 @@
 <div class="nav_dd_left">
   <div class="server-grid">
     <div class="dd-content dd-menu" id="mainmenu">
-      <a onclick="aboutPrompt()"><i class="fad fa-info"></i> About</a>
+      <a onclick="aboutPrompt()"> About<i class="fad fa-info"></i></a>
     </div>
   </div>
   <div class="pi-grid ledpi-grid">
     <div class="dd-content dd-menu" id="pi-mainmenu">
-      <a onclick="aboutPrompt()"><i class="fad fa-info"></i> About</a>
+      <a onclick="aboutPrompt()"> About<i class="fad fa-info"></i></a>
       <a onclick="openLogWindow()"><i class="fad fa-wrench"></i> System</a>
       <a onclick="GoToHomePage()"><i class="fad fa-home"></i> Home</a>
     </div>
   </div>
   <div class="dd-content dd-menu" id="thememenu"></div>
   <div class="dd-content dd-menu" id="bookmarks"></div>
-  <div class="dd-content dd-menu" id="roomstatus">
-    <a id="statusMessage">Checking status...</a>
-  </div>
+  <div class="dd-content dd-menu" id="roomstatus"></div>
 </div>
 <div class="nav_dd_right">
   <div class="dd-content dd-menu ind-button" id="statsmenu"></div>
@@ -96,7 +95,7 @@
           <span class="button__text"><i class="fad fa-brush"></i> Solid</span>
         </button>
         <div class="dd-content dd-button" id="ledcolormenu">
-          <a onclick="colorPrompt()"><i class="fad fa-tint"></i> Picker</a>
+          <a onclick="colorPrompt()"> Picker<i class="fad fa-tint"></i></a>
         </div>
       </div>
       <!---->

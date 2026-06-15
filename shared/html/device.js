@@ -1,4 +1,3 @@
-var deviceType = function() {
-   const str = 'Automate';
-   return str;
+export function deviceType() {
+   return 'Automate';
 }
