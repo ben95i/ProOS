@@ -7,55 +7,511 @@ import { requestThrottle, setTheme, classDisplay, checkElemIsVisibleByID,
 import { deviceType } from './device.js';
 import { SSIDpwd } from './wifi.js';
 
-window.MAIN_SITE = "Automate";
-window.BKM_INACTIVE = 0;
-window.BKM_OPEN_MODE = 1;
-window.BKM_EDIT_MODE = 2;
-window.REFRESH_INTERVAL = 5;
-window.TIMEOUT_INTERVAL = 45;
-window.fileData = [];
-window.ctlCommand;
-window.serverCmdData;
-window.starsRunning = true;
-window.messagePopupTimer;
-window.dynMenuActive = 0;
-window.bookmarkState = 0;
-window.volPopupTimer;
-window.sysModel;
-window.activityTimeout;
-window.roomStateData = {
-  timerID: null,
-  isRunning: false,
-  roomState: null,
-  devices: []
+window.App = {
+  MAIN_SITE: "Automate",
+  BKM_INACTIVE: 0,
+  BKM_OPEN_MODE: 1,
+  BKM_EDIT_MODE: 2,
+  REFRESH_INTERVAL: 5,
+  TIMEOUT_INTERVAL: 45,
+  fileData: [],
+  ctlCommand: null,
+  serverCmdData: null,
+  starsRunning: true,
+  messagePopupTimer: null,
+  dynMenuActive: 0,
+  bookmarkState: 0,
+  volPopupTimer: null,
+  sysModel: null,
+  activityTimeout: null,
+  roomStateData: {
+    timerID: null,
+    isRunning: false,
+    roomState: null,
+    devices: []
+  },
+  ledScrollData: [
+    '00FF00', '8x8', '12.0'
+  ],
+  PRESET_COLORS: [
+    '#FF0000', '#FF7F00', '#FFFF00', '#00FF00', '#00FFFF',
+    '#0000FF', '#7F00FF', '#FF00FF', '#FFFFFF', '#000000'
+  ],
+  currentHSV: { h: 0, s: 1, v: 1 },
+  pendingQueuedColor: null,
+  isColorPromptInit: false,
+  isColorCommandPending: false,
+  isColorDragMap: false,
+  colorPromptParser: document.createElement('div')
 };
-window.ledScrollData = [
-  '00FF00', '8x8', '12.0'
-];
-window.PRESET_COLORS = [
-  '#FF0000', '#FF7F00', '#FFFF00', '#00FF00', '#00FFFF',
-  '#0000FF', '#7F00FF', '#FF00FF', '#FFFFFF', '#000000'
-];
-window.currentHSV = { h: 0, s: 1, v: 1 };
-window.isColorPromptInit = false;
-window.colorPromptParser = document.createElement('div');
-window.isColorCommandPending = false;
-window.pendingQueuedColor = null;
-window.isColorDragMap = false;
 
 // runs after DOM finishes loading
 window.addEventListener("DOMContentLoaded", () => {
   // on-click actions
   window.addEventListener('click', handleClicks, false);
+  // attach HTML button event listeners
+  setupEventListeners();
   // load content
   loadPage();
 });
 
+function setupEventListeners() {
+    const listeners = {
+        // Top Nav
+        'btn-dyn-mainmenu': 
+        () => showDynMenu('mainmenu'),
+
+        'btn-menu-pimainmenu': 
+        () => showMenu('pi-mainmenu'),
+
+        'btn-dyn-thememenu': 
+        () => showDynMenu('thememenu'),
+
+        'btn-show-bookmarks': 
+        () => showBookmarks(),
+
+        'btn-edit-bookmark': 
+        () => editBookmark(),
+
+        'btn-add-bookmark': 
+        () => addBookmark(),
+
+        'statusDropdownContainer': 
+        () => roomStateClick(),
+        
+        'nav_right_menu': 
+        () => showStatusMenu(),
+        
+        // Menus
+        'btn-about-main': 
+        () => aboutPrompt(),
+
+        'btn-about-pi': 
+        () => aboutPrompt(),
+
+        'btn-log-pi': 
+        () => openLogWindow(),
+
+        'btn-home-pi': 
+        () => GoToHomePage(),
+        
+        // Main Grid Left
+        'btn-dyn-ledcolormenu': 
+        () => showDynMenu('ledcolormenu'),
+
+        'btn-color-prompt': 
+        () => colorPrompt(),
+        'btn-dyn-ledeffectmenu': 
+        () => showDynMenu('ledeffectmenu'),
+
+        'btn-power-fc_leds': 
+        () => showPowerMenu('', 'fc_leds'),
+
+        'btn-cmd-leds-shuffle': 
+        () => sendCmd('leds', 'shuffle', ''),
+
+        'btn-cmd-leds-stop': 
+        () => sendCmd('leds', 'stop', ''),
+
+        'btn-cmd-leds-pause': 
+        () => sendCmd('leds', 'pause', ''),
+
+        'btn-cmd-leds-randcolor': 
+        () => sendCmd('leds', 'randcolor', ''),
+
+        'btn-show-temphumid': 
+        () => showTempHumidity(),
+        
+        'btn-menu-lightmenu': 
+        () => showMenu('lightmenu'),
+
+        'btn-cmd-lightson': 
+        () => sendCmd('main', 'lightson', ''),
+
+        'btn-cmd-lightsoff': 
+        () => sendCmd('main', 'lightsoff', ''),
+        
+        'btn-menu-allmenu': 
+        () => showMenu('allmenu'),
+
+        'btn-room-on': 
+        () => roomOnOff('on'),
+
+        'btn-room-off': 
+        () => roomOnOff('off'),
+
+        'btn-open-cam':
+        () => openCamWindow(),
+
+        'btn-open-log-svr': 
+        () => openLogWindow(),
+        
+        // Main Grid Right (Living Room)
+        'btn-power-wkststate': 
+        () => showPowerMenu('lrxmit', 'wkststate'),
+
+        'btn-menu-lrmenu': 
+        () => showMenu('lr-menu'),
+
+        'btn-ctls-br': 
+        () => ctlsMenu('br'),
+
+        'btn-power-wl_leds': 
+        () => showPowerMenu('lrxmit', 'wl_leds'),
+        
+        'voldwnbtn': 
+        () => sendVol('dwn'),
+
+        'volmutebtn': 
+        () => sendVol('mute'),
+
+        'volupbtn': 
+        () => sendVol('up'),
+
+        'btn-vol-dwnc': 
+        () => sendVol('dwnc'),
+
+        'btn-power-hifistate': 
+        () => showPowerMenu('lrxmit', 'hifistate'),
+
+        'btn-vol-upc': 
+        () => sendVol('upc'),
+
+        'btn-vol-display': 
+        () => sendVol('display'),
+        
+        'btn-show-hifi-amp': 
+        () => showHiFiAmpInput(),
+
+        'btn-show-hifi-more': 
+        () => showHiFiMoreMenu(),
+        
+        // Bedroom Grid
+        'btn-dyn-relaxmenu': 
+        () => showDynMenu('relaxmenu'),
+
+        'btn-cmd-stop-br': 
+        () => sendCmd('main', 'stop-br', ''),
+
+        'btn-menu-brmenu': 
+        () => showMenu('br-menu'),
+
+        'btn-ctls-lr': 
+        () => ctlsMenu('lr'),
+
+        'btn-power-brlamp1': 
+        () => showPowerMenu('brxmit', 'brlamp1'),
+        
+        'br-voldwnbtn': 
+        () => sendVol('dwn'),
+
+        'br-volmutebtn': 
+        () => sendVol('mute'),
+
+        'br-volupbtn': 
+        () => sendVol('up'),
+        
+        'btn-power-brtv': 
+        () => showPowerMenu('brxmit', 'brtv'),
+
+        'btn-power-ampstate': 
+        () => showPowerMenu('brpi', 'ampstate'),
+
+        'btn-power-brpc': 
+        () => showPowerMenu('brxmit', 'brpc'),
+
+        'btn-power-brmacs': 
+        () => showPowerMenu('brxmit', 'brmacs'),
+        
+        'btn-show-br-amp': 
+        () => showBedroomAmpInput(),
+
+        'btn-power-retropi':
+        () => showPowerMenu('brxmit', 'retropi'),
+        
+        // Server Options
+        'btn-menu-legacy': 
+        () => showMenu('legacy-menu'),
+
+        'btn-svr-startlegacy': 
+        () => serverAction('startlegacy'),
+
+        'btn-svr-stoplegacy': 
+        () => serverAction('stoplegacy'),
+        
+        'btn-menu-xana': 
+        () => showMenu('xana-menu'),
+
+        'btn-svr-startxana': 
+        () => serverAction('startxana'),
+
+        'btn-svr-stopxana': 
+        () => serverAction('stopxana'),
+
+        'btn-svr-restorexana': 
+        () => serverAction('restorexana'),
+        
+        'btn-menu-unifi': 
+        () => showMenu('unifi-menu'),
+
+        'btn-ext-unifi': 
+        () => GoToExtPage('unifi:11443/network/ff7gqlig/dashboard'),
+
+        'btn-svr-startunifi': 
+        () => serverAction('startunifi'),
+
+        'btn-svr-stopunifi': 
+        () => serverAction('stopunifi'),
+        
+        'btn-menu-svr': 
+        () => showMenu('svr-menu'),
+
+        'btn-ext-pve': 
+        () => GoToExtPage('pve:8006'),
+
+        'btn-svr-syslog': 
+        () => serverAction('syslog'),
+        
+        'btn-menu-files': 
+        () => showMenu('files-menu'),
+
+        'btn-open-backup': 
+        () => openBackupOptions(),
+
+        'btn-open-regions': 
+        () => openRegionsOptions(),
+        
+        'btn-menu-netwrk': 
+        () => showMenu('netwrk-menu'),
+
+        'btn-wifi-prompt': 
+        () => wifiPrompt(),
+
+        'btn-ext-edgeswitch': 
+        () => GoToExtPage('edgeswitch.home'),
+
+        'btn-svr-netscan': 
+        () => serverAction('netscan'),
+        
+        'btn-close-svr-opt1': 
+        () => closeServerOptions(),
+
+        'btn-svr-files-clearlog': 
+        () => serverAction('files-clearlog'),
+        
+        'btn-menu-router': 
+        () => showMenu('router-menu'),
+
+        'btn-ext-router': 
+        () => GoToExtPage('router.home'),
+
+        'btn-svr-rebootrouter': 
+        () => serverAction('rebootrouter'),
+        
+        // Backup
+        'btn-svr-last_backup_dates': 
+        () => serverAction('files-last_backup_dates'),
+
+        'btn-svr-backupchk': 
+        () => serverAction('files-backupchk'),
+
+        'btn-svr-pve_vmsbkp': 
+        () => serverAction('pve_vmsbkp'),
+
+        'btn-pwd-unlock': 
+        () => getPassword('pwd'),
+
+        'btn-svr-backupstd': 
+        () => serverAction('files-backupstd'),
+
+        'btn-svr-detach_bkps': 
+        () => serverAction('detach_bkps'),
+
+        'btn-close-svr-opt2': 
+        () => closeServerOptions(),
+
+        'btn-svr-pve_listsnaps': 
+        () => serverAction('pve_listsnaps'),
+
+        'btn-open-svr-opt1': 
+        () => openServerOptions(),
+        
+        // Archive
+        'btn-menu-archive': 
+        () => showMenu('archive-menu'),
+
+        'btn-pwd-fusearch': 
+        () => getPassword('fusearch'),
+
+        'btn-svr-unmnt_all_fuse': 
+        () => serverAction('files-unmnt_all_fuse'),
+
+        'btn-menu-external': 
+        () => showMenu('external-menu'),
+
+        'btn-svr-mnt_ext_region': 
+        () => serverAction('files-mnt_ext_region'),
+
+        'btn-svr-unmnt_ext_region': 
+        () => serverAction('files-unmnt_ext_region'),
+
+        'btn-menu-snapshots': 
+        () => showMenu('snapshots-menu'),
+
+        'btn-svr-mnt_snap_region': 
+        () => serverAction('files-mnt_snap_region'),
+
+        'btn-svr-unmnt_snap_region': 
+        () => serverAction('files-unmnt_snap_region'),
+
+        'btn-menu-ramdisk': 
+        () => showMenu('ramdisk-menu'),
+
+        'btn-svr-mnt_ram_region': 
+        () => serverAction('files-mnt_ram_region'),
+
+        'btn-svr-unmnt_ram_region': 
+        () => serverAction('files-unmnt_ram_region'),
+
+        'btn-svr-unmnt_all': 
+        () => serverAction('files-unmnt_all'),
+
+        'btn-close-svr-opt3': 
+        () => closeServerOptions(),
+
+        'btn-open-svr-opt2': 
+        () => openServerOptions(),
+        
+        // Pi Grid
+        'btn-menu-piwifi': 
+        () => showMenu('piwifi-menu'),
+
+        'btn-show-piwifiprompt': 
+        () => showPiWiFiPrompt(),
+
+        'btn-svr-client': 
+        () => serverAction('client'),
+
+        'btn-svr-apd': 
+        () => serverAction('apd'),
+
+        'btn-svr-wifiscan': 
+        () => serverAction('wifiscan'),
+
+        'btn-svr-showwpa': 
+        () => serverAction('showwpa'),
+
+        'btn-svr-temp': 
+        () => serverAction('temp'),
+
+        'btn-close-svr-opt4': 
+        () => closeServerOptions(),
+
+        'btn-svr-clearlog': 
+        () => serverAction('clearlog'),
+
+        'btn-svr-resetbt': 
+        () => serverAction('resetbt'),
+        
+        // Text Scroll
+        'btn-menu-textscrollcolor': 
+        () => showMenu('textscrollcolor-menu'),
+
+        'btn-tscolor-1': 
+        () => setTextScrollColor('00FF00'),
+
+        'btn-tscolor-2': 
+        () => setTextScrollColor('FF0000'),
+
+        'btn-tscolor-3': 
+        () => setTextScrollColor('0000FF'),
+
+        'btn-tscolor-4': 
+        () => setTextScrollColor('FFA500'),
+
+        'btn-tscolor-5': 
+        () => setTextScrollColor('A020F0'),
+
+        'btn-tscolor-6': 
+        () => setTextScrollColor('FFCC00'),
+
+        'btn-tscolor-7': 
+        () => setTextScrollColor('FFFFFF'),
+
+        'btn-menu-textscrollfont': 
+        () => showMenu('textscrollfont-menu'),
+
+        'btn-tsfont-8x8': 
+        () => setTextScrollFont('8x8'),
+
+        'btn-tsfont-5x7': 
+        () => setTextScrollFont('5x7'),
+
+        'btn-tsfont-3x5': 
+        () => setTextScrollFont('3x5'),
+
+        'btn-menu-textscrollspeed': 
+        () => showMenu('textscrollspeed-menu'),
+
+        'btn-tsspeed-slowest': 
+        () => setTextScrollSpeed('3.0'),
+
+        'btn-tsspeed-slow': 
+        () => setTextScrollSpeed('9.0'),
+
+        'btn-tsspeed-normal': 
+        () => setTextScrollSpeed('12.0'),
+
+        'btn-tsspeed-fast': 
+        () => setTextScrollSpeed('15.0'),
+
+        'btn-tsspeed-fastest': 
+        () => setTextScrollSpeed('20.0'),
+
+        'btn-ts-close': 
+        () => closeTextScroll(),
+
+        'btn-ts-clear': 
+        () => clearLEDsMessage(),
+
+        'btn-ts-send': 
+        () => sendTextScroll(),
+        
+        // Popups
+        'btn-log-close': 
+        () => closePopup(),
+
+        'btn-log-open-svr': 
+        () => openServerOptions(),
+
+        'btn-log-load': 
+        () => loadLog('sysout'),
+
+        'sendButton': 
+        () => serverSend(),
+
+        'btn-color-close': 
+        () => closeColorPrompt(),
+
+        'btn-cam-close': 
+        () => closePopup(),
+
+        'btn-cam-fullscreen': 
+        () => goToContextRoot('cam1')
+    };
+
+    // Attach listeners safely
+    for (const [id, handler] of Object.entries(listeners)) {
+        const elem = document.getElementById(id);
+        if (elem) elem.addEventListener('click', handler);
+    }
+}
+
 function loadPage() {
   animatedBackground();
   // read device type
-  sysModel = deviceType(); 
-  if (sysModel === MAIN_SITE) {
+  App.sysModel = deviceType(); 
+  if (App.sysModel === App.MAIN_SITE) {
     // load control menu saved state
     let _mode = localStorage.getItem("ctls-mode")
     if (_mode === null || _mode === undefined || _mode === "") { 
@@ -64,9 +520,9 @@ function loadPage() {
     ctlsMenu(_mode);
     // server home page
     classDisplay('server-grid', 'block');
-  } else if (sysModel === 'Pi') {
+  } else if (App.sysModel === 'Pi') {
     classDisplay('pi-grid', 'block');
-  } else if (sysModel === 'LEDpi') {
+  } else if (App.sysModel === 'LEDpi') {
     classDisplay('ledpi-grid', 'block');
   }
   // set theme
@@ -85,7 +541,7 @@ function loadPage() {
 function handleClicks(event) {
   resetActivityTimer();
   // disable click events when in bookmark edit mode
-  if (bookmarkState === BKM_EDIT_MODE) {
+  if (App.bookmarkState === App.BKM_EDIT_MODE) {
     if (event.target.className !== "editFav__win") {
        // disable all clicks outside of window
       event.stopPropagation();
@@ -109,14 +565,14 @@ function handleClicks(event) {
 
 function resetActivityTimer() {
   // timeout reset actions
-  starsRunning = true;
-  if (sysModel === MAIN_SITE) showRoomState();
-  clearTimeout(activityTimeout);
-  activityTimeout = setTimeout(() => {
+  App.starsRunning = true;
+  if (App.sysModel === App.MAIN_SITE) showRoomState();
+  clearTimeout(App.activityTimeout);
+  App.activityTimeout = setTimeout(() => {
     // timeout reached actions
-    starsRunning = false;
-    if (sysModel === MAIN_SITE) hideRoomState();
-  }, TIMEOUT_INTERVAL * 1000);
+    App.starsRunning = false;
+    if (App.sysModel === App.MAIN_SITE) hideRoomState();
+  }, App.TIMEOUT_INTERVAL * 1000);
 }
 
 function hideDropdowns() {
@@ -130,7 +586,7 @@ function hideDropdowns() {
   }
   removeBookmarkSearch();
   closeBookmarkPrompt();
-  bookmarkState = BKM_INACTIVE;
+  App.bookmarkState = App.BKM_INACTIVE;
   removeDynMenus();
 }
 
@@ -145,11 +601,11 @@ function GoToExtPage(_path) {
 // back to home page 
 window.GoToHomePage = GoToHomePage;
 function GoToHomePage() {
-  if (sysModel === MAIN_SITE) {
+  if (App.sysModel === App.MAIN_SITE) {
     hidePages();
     loadPage();
   } else {
-    window.location = 'https://' + MAIN_SITE + '.home';   
+    window.location = 'https://' + App.MAIN_SITE + '.home';   
   }
 }
 
@@ -182,9 +638,9 @@ function showPopup(message) {
   // set error text
   msgtext.innerHTML = message;
   // reset hide window timeout
-  clearTimeout(messagePopupTimer);
+  clearTimeout(App.messagePopupTimer);
   // hide window after delay
-  messagePopupTimer = setTimeout(() => {
+  App.messagePopupTimer = setTimeout(() => {
     if (msgpopwin) { // window exists
       // fade out window
       msgpopwin.classList.add('fade-out');
@@ -199,9 +655,9 @@ function showPopup(message) {
 }
 
 function hideRoomState() {
-  if (roomStateData.isRunning === false) return;
-  clearTimeout(roomStateData.timerID);
-  roomStateData.isRunning = false;
+  if (App.roomStateData.isRunning === false) return;
+  clearTimeout(App.roomStateData.timerID);
+  App.roomStateData.isRunning = false;
   let lightIcon = document.getElementById("trafficLightIcon");
   let container = document.getElementById('statusDropdownContainer');
   container.classList.remove('status-loading');
@@ -211,17 +667,17 @@ function hideRoomState() {
 }
 
 async function showRoomState() {
-  if (roomStateData.isRunning === true) return;
-  roomStateData.isRunning = true;
+  if (App.roomStateData.isRunning === true) return;
+  App.roomStateData.isRunning = true;
   let lightIcon = document.getElementById("trafficLightIcon");
   let container = document.getElementById('statusDropdownContainer');
   container.classList.remove('status-loading');
   let room = null; let cmd = null;
-  if (ctlCommand == 'lr' || ctlCommand == 'subs') {
+  if (App.ctlCommand == 'lr' || App.ctlCommand == 'subs') {
     room = "living room"; 
     cmd = 'lrstatus';
   }
-  if (ctlCommand == 'br') {
+  if (App.ctlCommand == 'br') {
     room = "bedroom"; 
     cmd = 'brstatus';
   }
@@ -231,8 +687,8 @@ async function showRoomState() {
   }
   lightIcon.classList.add("status-pending");
   sendCmd('main', cmd, '').then((resp) => {
-    roomStateData.devices = [];
-    roomStateData.roomState = null;
+    App.roomStateData.devices = [];
+    App.roomStateData.roomState = null;
     lightIcon.classList.remove("status-error");
     lightIcon.classList.remove("status-pending");
     if (resp === null) {
@@ -240,24 +696,24 @@ async function showRoomState() {
       hideRoomState();
       return;
     } else {
-      roomStateData.roomState = resp.roomState;
-      roomStateData.devices = resp.devices;
-      if (roomStateData.roomState === true) {
+      App.roomStateData.roomState = resp.roomState;
+      App.roomStateData.devices = resp.devices;
+      if (App.roomStateData.roomState === true) {
         lightIcon.classList.remove("status-off");
         lightIcon.classList.add("status-on");
-      } else if (roomStateData.roomState === false) { 
+      } else if (App.roomStateData.roomState === false) { 
         lightIcon.classList.remove("status-on");
         lightIcon.classList.add("status-off");
       }
     }
-    container.style.setProperty('--spin-duration', `${REFRESH_INTERVAL}s`);    
+    container.style.setProperty('--spin-duration', `${App.REFRESH_INTERVAL}s`);    
     void container.offsetWidth; 
     requestAnimationFrame(() => {
       container.classList.add('status-loading');
-      roomStateData.timerID = setTimeout(() => {
-        roomStateData.isRunning = false;
-        showRoomState(REFRESH_INTERVAL);
-      }, REFRESH_INTERVAL * 1000);
+      App.roomStateData.timerID = setTimeout(() => {
+        App.roomStateData.isRunning = false;
+        showRoomState(App.REFRESH_INTERVAL);
+      }, App.REFRESH_INTERVAL * 1000);
     });
   });
 }
@@ -272,10 +728,10 @@ async function roomStateClick() {
   } 
   hideDropdowns();
   let menuData;
-  if (roomStateData.roomState === null) {
+  if (App.roomStateData.roomState === null) {
     menuData += `${menu}|redind|Error checking devices.\n`;
   } else {
-    for (const [deviceName, deviceState] of roomStateData.devices) {
+    for (const [deviceName, deviceState] of App.roomStateData.devices) {
       let indType;
       if (deviceState == '0') {
         indType = 'blkind';
@@ -292,20 +748,20 @@ async function roomStateClick() {
 /// server popup window ///
 
 async function serverSend() {
-  if (serverCmdData === null) {
+  if (App.serverCmdData === null) {
     // load log data
     document.getElementById("logTextBox").value = "select an option.";
   } else {
     // send command
-    sendCmd('main','server',serverCmdData);
+    sendCmd('main','server',App.serverCmdData);
     // display command sent
-    document.getElementById("logTextBox").value += "\n" + serverCmdData + " command sent.";
+    document.getElementById("logTextBox").value += "\n" + App.serverCmdData + " command sent.";
     // scroll to bottom of page
     let txtArea = document.getElementById("logTextBox");
     txtArea.scrollTop = txtArea.scrollHeight;
   }
   sendBtnAlert("off");
-  serverCmdData = null;
+  App.serverCmdData = null;
 }
 
 function sendBtnAlert(state) {
@@ -321,7 +777,7 @@ function sendBtnAlert(state) {
 
 function clearPendingCmd() {
   sendBtnAlert("off");
-  serverCmdData = null;
+  App.serverCmdData = null;
 }
 
 window.openServerOptions = openServerOptions;
@@ -358,9 +814,9 @@ function closeServerOptions(){
 window.setTextScrollTitle = setTextScrollTitle;
 function setTextScrollTitle(){
   let title = document.getElementById('textScrollTitle');
-  const color = ledScrollData[0];
-  const font = ledScrollData[1];
-  const speed = ledScrollData[2];
+  const color = App.ledScrollData[0];
+  const font = App.ledScrollData[1];
+  const speed = App.ledScrollData[2];
   title.style.color = '#' + color;
   title.textContent = "Textscroll " + font + ' ' + speed + 'x';
 }
@@ -394,19 +850,19 @@ function clearLEDsMessage(){
 
 window.setTextScrollColor = setTextScrollColor;
 function setTextScrollColor(color){
-  ledScrollData[0] = color;
+  App.ledScrollData[0] = color;
   setTextScrollTitle();
 }
 
 window.setTextScrollFont = setTextScrollFont;
 function setTextScrollFont(font){
-  ledScrollData[1] = font;
+  App.ledScrollData[1] = font;
   setTextScrollTitle();
 }
 
 window.setTextScrollSpeed = setTextScrollSpeed;
 function setTextScrollSpeed(speed){
-  ledScrollData[2] = speed;
+  App.ledScrollData[2] = speed;
   setTextScrollTitle();
 }
 
@@ -420,9 +876,9 @@ function sendTextScroll(){
   }
   textbox.placeholder = "Sending message..";
   textbox.value = '';
-  const color = ledScrollData[0];
-  const font = ledScrollData[1];
-  const speed = ledScrollData[2];
+  const color = App.ledScrollData[0];
+  const font = App.ledScrollData[1];
+  const speed = App.ledScrollData[2];
   const commands = `${message}|${color}|${font}|${speed}`;
   const encoded = base64URLSafeEncode(commands);
   sendCmd('leds', 'textscroll', encoded).then((data) => {
@@ -452,7 +908,7 @@ async function aboutPrompt(){
   // title
   let abouttext = document.createElement("div");
   abouttext.className = "about__title";
-  abouttext.innerHTML = sysModel;
+  abouttext.innerHTML = App.sysModel;
   aboutprompt.appendChild(abouttext); 
   // logo
   let img = document.createElement("img");
@@ -840,18 +1296,18 @@ function passwordPrompt(){
 /// Color Prompt ///
 
 function initColorGrid() {
-  if (isColorPromptInit) return;
+  if (App.isColorPromptInit) return;
   const grid = document.getElementById('preset-color-grid');
   if (!grid) return;
   grid.innerHTML = ''; 
-  PRESET_COLORS.forEach(color => {
+  App.PRESET_COLORS.forEach(color => {
     const swatch = document.createElement('div');
     swatch.className = 'color-swatch';
     swatch.style.backgroundColor = color;
     swatch.addEventListener('click', () => updateStateFromHex(color, true, true));
     grid.appendChild(swatch);
   });
-  isColorPromptInit = true;
+  App.isColorPromptInit = true;
 }
 
 window.colorPrompt = colorPrompt;
@@ -861,10 +1317,10 @@ function colorPrompt(initialColor) {
   if (!formattedColor.startsWith('#')) {
     formattedColor = '#' + formattedColor;
   }
-  const pendingLock = isColorCommandPending;
-  isColorCommandPending = true; 
+  const pendingLock = App.isColorCommandPending;
+  App.isColorCommandPending = true; 
   updateStateFromHex(formattedColor, true, false);
-  isColorCommandPending = pendingLock; 
+  App.isColorCommandPending = pendingLock; 
   document.getElementById('hex-color').addEventListener('input', handleHexInput);
   document.getElementById('slider-hue').addEventListener('input', handleHueInput);
   document.getElementById('color-map').addEventListener('pointerdown', startMapDrag);
@@ -881,14 +1337,14 @@ function closeColorPrompt() {
 }
 
 const throttledColorSend = requestThrottle((strippedHex) => {
-  if (isColorCommandPending) return; 
-  isColorCommandPending = true;
+  if (App.isColorCommandPending) return; 
+  App.isColorCommandPending = true;
   sendCmd('leds', 'hex', strippedHex)
     .catch(err => {
       console.error("Failed to send color command:", err);
     })
     .finally(() => {
-      isColorCommandPending = false;
+      App.isColorCommandPending = false;
     });
 }, 50);
 
@@ -898,12 +1354,12 @@ function dispatchColorCommand(hex) {
 }
 
 function updateUIFromHSV(triggerSend = true) {
-  let rgb = hsvToRgb(currentHSV.h, currentHSV.s, currentHSV.v);
+  let rgb = hsvToRgb(App.currentHSV.h, App.currentHSV.s, App.currentHSV.v);
   let hex = rgbToHex(rgb.r, rgb.g, rgb.b);
   document.getElementById('hex-color').value = hex;
-  colorPromptParser.style.color = hex;
+  App.colorPromptParser.style.color = hex;
   document.querySelectorAll('.color-swatch').forEach(swatch => {
-    if (swatch.style.backgroundColor === colorPromptParser.style.color) {
+    if (swatch.style.backgroundColor === App.colorPromptParser.style.color) {
       swatch.classList.add('active-swatch');
     } else {
       swatch.classList.remove('active-swatch');
@@ -914,12 +1370,12 @@ function updateUIFromHSV(triggerSend = true) {
 
 function updateStateFromHex(hex, updateMapUI = true, triggerSend = true) {
   let rgb = hexToRgb(hex);
-  currentHSV = rgbToHsv(rgb.r, rgb.g, rgb.b);
+  App.currentHSV = rgbToHsv(rgb.r, rgb.g, rgb.b);
   if (updateMapUI) {
-    document.getElementById('slider-hue').value = currentHSV.h;
-    document.getElementById('color-map-bg').style.background = `hsl(${currentHSV.h}, 100%, 50%)`;
-    document.getElementById('color-pointer').style.left = `${currentHSV.s * 100}%`;
-    document.getElementById('color-pointer').style.top = `${(1 - currentHSV.v) * 100}%`;
+    document.getElementById('slider-hue').value = App.currentHSV.h;
+    document.getElementById('color-map-bg').style.background = `hsl(${App.currentHSV.h}, 100%, 50%)`;
+    document.getElementById('color-pointer').style.left = `${App.currentHSV.s * 100}%`;
+    document.getElementById('color-pointer').style.top = `${(1 - App.currentHSV.v) * 100}%`;
   }
   document.getElementById('hex-color').value = hex.toUpperCase();
   updateUIFromHSV(triggerSend);
@@ -934,14 +1390,14 @@ function handleHexInput(e) {
 }
 
 function handleHueInput(e) {
-  currentHSV.h = parseFloat(e.target.value);
-  document.getElementById('color-map-bg').style.background = `hsl(${currentHSV.h}, 100%, 50%)`;
+  App.currentHSV.h = parseFloat(e.target.value);
+  document.getElementById('color-map-bg').style.background = `hsl(${App.currentHSV.h}, 100%, 50%)`;
   updateUIFromHSV(true);
 }
 
 // Map Dragging
 function startMapDrag(e) {
-  isColorDragMap = true;
+  App.isColorDragMap = true;
   updateMapPointer(e);
   window.addEventListener('pointermove', updateMapPointer);
   window.addEventListener('pointerup', stopMapDrag);
@@ -949,19 +1405,19 @@ function startMapDrag(e) {
 }
 
 function updateMapPointer(e) {
-  if (!isColorDragMap) return;
+  if (!App.isColorDragMap) return;
   const mapRect = document.getElementById('color-map').getBoundingClientRect();
   let x = Math.max(0, Math.min(e.clientX - mapRect.left, mapRect.width));
   let y = Math.max(0, Math.min(e.clientY - mapRect.top, mapRect.height));
   document.getElementById('color-pointer').style.left = `${(x / mapRect.width) * 100}%`;
   document.getElementById('color-pointer').style.top = `${(y / mapRect.height) * 100}%`;
-  currentHSV.s = x / mapRect.width;
-  currentHSV.v = 1 - (y / mapRect.height);
+  App.currentHSV.s = x / mapRect.width;
+  App.currentHSV.v = 1 - (y / mapRect.height);
   updateUIFromHSV(true);
 }
 
 function stopMapDrag() {
-  isColorDragMap = false;
+  App.isColorDragMap = false;
   window.removeEventListener('pointermove', updateMapPointer);
   window.removeEventListener('pointerup', stopMapDrag);
   window.removeEventListener('pointercancel', stopMapDrag);
@@ -976,13 +1432,13 @@ function relaxSend(_cmd) {
 // volume controls
 window.sendVol = sendVol;
 function sendVol(_cmd) {
-  if (ctlCommand == 'lr' ){
+  if (App.ctlCommand == 'lr' ){
     setAmpVolume(_cmd, 'lrxmit', 100); // living room system
   }
-  if (ctlCommand == 'subs' ){
+  if (App.ctlCommand == 'subs' ){
     sendCmd('main', 'lrxmit', 'sub' + _cmd); // living room subwoofers
   }  
-  if (ctlCommand == 'br' ){
+  if (App.ctlCommand == 'br' ){
     setAmpVolume(_cmd, 'brpi', 192); // bedroom system
   }
 }
@@ -1058,9 +1514,9 @@ function showVolumePopup(vol) {
       volbar.style.width = volstr;
   }
   // reset hide window timeout
-  clearTimeout(volPopupTimer);
+  clearTimeout(App.volPopupTimer);
   // hide window after delay
-  volPopupTimer = setTimeout(() => {
+  App.volPopupTimer = setTimeout(() => {
     if (volpopwin) { // window exists
       // fade out window
       volpopwin.classList.add('fade-out');
@@ -1076,7 +1532,7 @@ function showVolumePopup(vol) {
 
 window.roomOnOff = roomOnOff;
 function roomOnOff(action) {
-  sendCmd('main', ctlCommand + action, '');
+  sendCmd('main', App.ctlCommand + action, '');
 }
 
 // add / remove a class from a element
@@ -1104,7 +1560,7 @@ function subMode(_action) {
 // controls menu actions
 window.ctlsMenu = ctlsMenu;
 function ctlsMenu(_mode) {
-  ctlCommand = _mode; 
+  App.ctlCommand = _mode; 
   // living room controls
   if ((_mode === 'lr') || (_mode === 'subs')) {
     // disable bedroom grid
@@ -1149,7 +1605,7 @@ function showMenu(_menu) {
 window.showBookmarks = showBookmarks;
 function showBookmarks() {
   // hide menu if clicked while open
-  if (bookmarkState !== BKM_INACTIVE) {
+  if (App.bookmarkState !== App.BKM_INACTIVE) {
     hideDropdowns();
     return;
   }
@@ -1158,7 +1614,7 @@ function showBookmarks() {
   // show add / edit buttons
   classDisplay("bookmark-buttons", "block");
   // link open mode
-  bookmarkState = BKM_OPEN_MODE;
+  App.bookmarkState = App.BKM_OPEN_MODE;
 }
 
 function showBookmarkSearch() {
@@ -1255,7 +1711,7 @@ function removeBookmarkSearch() {
 window.editBookmark = editBookmark;
 function editBookmark() {
   // hide menu if clicked while open
-  if (bookmarkState === BKM_EDIT_MODE) {
+  if (App.bookmarkState === App.BKM_EDIT_MODE) {
     hideDropdowns();
     return;
   }
@@ -1267,7 +1723,7 @@ function addBookmark() {
   enableEditAddMode();
   // create new unique menu ID
   let _newid;
-  const _datalen = fileData.length;
+  const _datalen = App.fileData.length;
   if (_datalen <= 1) {
     if (_datalen == 1) {
       _newid = 1;
@@ -1278,7 +1734,7 @@ function addBookmark() {
     _newid = _datalen - 1;
   }
   // add temporary entry to menu array
-  fileData.push("placeholder");
+  App.fileData.push("placeholder");
   // create placeholder menu item
   const navElement = document.getElementById('bookmarks');
   const _elm = document.createElement('a');
@@ -1310,7 +1766,7 @@ function enableEditAddMode() {
   }
   // remove 
   removeBookmarkSearch();
-  bookmarkState = BKM_EDIT_MODE;
+  App.bookmarkState = App.BKM_EDIT_MODE;
   closeBookmarkPrompt();
 }
 
@@ -1320,13 +1776,13 @@ function clickBookmark(id) {
   const url = Object.values(elem.url).join("");
   const name = elem.innerText;
   if (elem) { 
-    if (bookmarkState === BKM_OPEN_MODE) {
+    if (App.bookmarkState === App.BKM_OPEN_MODE) {
       if (!(url === null || url == "" || url == "about:blank")) {
         // open URL in new tab
         window.open(url, "_blank");
       }
     }
-    if (bookmarkState === BKM_EDIT_MODE) {
+    if (App.bookmarkState === App.BKM_EDIT_MODE) {
       // edit bookmark item
       closeBookmarkPrompt();
       elem.classList.add("dd-selected"); // highlight selected item
@@ -1585,7 +2041,7 @@ function closeBookmarkPrompt() {
     elem1.style.pointerEvents = "";
   }); 
   // un-highlight selected item
-  for (var idx = 0; idx <= fileData.length; idx++) {
+  for (var idx = 0; idx <= App.fileData.length; idx++) {
     const _menuid = "menu-" + idx;
     const elem2 = document.getElementById(_menuid);
     if (elem2) {
@@ -1901,7 +2357,7 @@ function afterPOSTActions(action) {
 // load server action
 window.serverAction = serverAction;
 function serverAction(cmd) {
-  serverCmdData = cmd;
+  App.serverCmdData = cmd;
   // change color of send button
   sendBtnAlert("on");
 }
@@ -1946,7 +2402,7 @@ async function loadLog(file) {
     // This catches both the thrown HTTP error and any network errors
     showPopup("[loadLog] " + error.message);
   });
-  serverCmdData = null;
+  App.serverCmdData = null;
 }
 
 // transmit a command
@@ -2015,7 +2471,7 @@ async function loadMenu(url) {
       method: "GET"
     });
     // return response
-    return out = await response.json();
+    return await response.text();
   } catch (error) {
     showPopup("[loadMenu] " + error);
   }
@@ -2025,17 +2481,17 @@ async function loadMenu(url) {
 function drawMenu(data, menu) {
   // remove any current dynamic menus
   removeDynMenus();
-  if (!(data === null || data === "")) {
+  if (data && typeof data === 'string') {
     // erase global data
-    while (fileData.length) { 
-      fileData.pop(); 
+    while (App.fileData.length) { 
+      App.fileData.pop(); 
     }
-    let splitdat = data.split("\n");
+    let splitdat = data.replace(/^"|"$/g, '').replace(/\\n/g, '\n').split('\n');
     let rows = splitdat.length;
     for (let row = 0; row < rows; row++) {
       let line = splitdat[row];
       if (line != "") {
-        fileData.push(line); // write to array
+        App.fileData.push(line); // write to array
         const navElement = document.getElementById(menu);
         const linearr = line.split("|");
         // 0=Host, 1=Type, 2=Name
@@ -2044,11 +2500,11 @@ function drawMenu(data, menu) {
         const col2 = linearr[2].trim();
         // draw menu item
         navElement.appendChild(createListItem(col0, col1, col2, row));
-        dynMenuActive = 1;
+        App.dynMenuActive = 1;
       }
     }
     // store menu name at end of array
-    fileData.push(menu);
+    App.fileData.push(menu);
   } else {
     showPopup("[drawMenu] no data!");
   }
@@ -2135,12 +2591,12 @@ function createListItem(col0_in, col1, col2, menuid) {
       break;
     case 'hfsubs':
       // subwoofer volume toggle
-      if (ctlCommand == 'subs' ) {
+      if (App.ctlCommand == 'subs' ) {
         _elm.classList.add('submode_btn');
       }
       _elm.addEventListener("click", function() {
         // toggle subwoofer mode
-        if (ctlCommand == 'lr') {
+        if (App.ctlCommand == 'lr') {
           ctlsMenu('subs');
         } else {
           ctlsMenu('lr');
@@ -2247,8 +2703,8 @@ function drawCheckBoxItem(elm, url, boxid, state) {
 
 function boxChanged() {
   // loop through checkbox's state
-  for (var i = 0; i < (fileData.length - 1); i++) {
-    let line = fileData[i];
+  for (var i = 0; i < (App.fileData.length - 1); i++) {
+    let line = App.fileData[i];
     // split up into array (host,state,name)
     const linearr = line.split("|");
     // only write box state on 0/1 state items
@@ -2264,35 +2720,35 @@ function boxChanged() {
       // build new data
       let _outstr = linearr.join('|');
       // replace existing data
-      fileData[i] = _outstr;
+      App.fileData[i] = _outstr;
     }
   }
   // write checkbox changes to file (III)
-  let menuid = fileData[fileData.length - 1]; // extract menu ID
+  let menuid = App.fileData[App.fileData.length - 1]; // extract menu ID
   // remove last element of array
-  fileData.pop();
+  App.fileData.pop();
   // update file
   let fileout = "";
-  for (var row = 0; row < fileData.length; row++) {
-    fileout += fileData[row] + '\n';
+  for (var row = 0; row < App.fileData.length; row++) {
+    fileout += App.fileData[row] + '\n';
   }
   savePOST(menuid, fileout);
   // add menu ID back to array
-  fileData.push(menuid);
+  App.fileData.push(menuid);
 }
 
 function removeDynMenus() {
   // only if menu is on-screen 
-  if (dynMenuActive == 1) {
+  if (App.dynMenuActive == 1) {
     // remove dynamic menu elements (II)
-    for (var idx = 0; idx <= fileData.length; idx++) {
+    for (var idx = 0; idx <= App.fileData.length; idx++) {
       const _menuid = "menu-" + idx;
       const menuRemove = document.getElementById(_menuid);
       if (menuRemove != null) {
         menuRemove.remove();
       }
     }
-    dynMenuActive = 0;
+    App.dynMenuActive = 0;
   }
 }
 
@@ -2445,7 +2901,7 @@ function animatedBackground() {
     // Reset alpha for shooting stars
     ctx.globalAlpha = 1; 
     // 2. Only run the shooting star animation if the inactivity timer hasn't triggered
-    if (starsRunning) {
+    if (App.starsRunning) {
       for (let i = 0; i < shootingStars.length; i++) {
         shootingStars[i].update();
       }
