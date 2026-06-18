@@ -9,7 +9,7 @@ const { runSiteLookup } = require('./sitelookup');
 const execFileAsync = util.promisify(execFile);
 const execAsync = util.promisify(exec);
 
-const API_CALL_TIMEOUT = 1000; // in (ms)
+const API_CALL_TIMEOUT = 2500; // in (ms)
 const MAX_PING_WAIT = "0.5"; // in (sec)
 const LOCAL_DOMAIN = "home";
 const NET_RANGE = "192.168.1.0/24";
@@ -23,13 +23,22 @@ const IPs = {
 };
 let serialQueue = Promise.resolve();
 
-function containsNonZero(arr) {
-  for (let idx = 0; idx < arr.length; idx++) {
-    if (arr[idx] != '0' && arr[idx] != 0) {
-      return true;
+function isNumeric(value) {
+  return typeof value === 'string' && value.trim() !== '' && Number.isInteger(Number(value));
+}
+
+function extractResponse(str, delimiter) {
+    let outstr = str.replace(/[\\"\n]/g, '');
+    if (outstr === '') return '';
+    const firstPipe = outstr.indexOf(delimiter);
+    if (firstPipe !== -1) {
+        outstr = outstr.substring(firstPipe + 1);
     }
-  }
-  return false;
+    const lastPipe = outstr.lastIndexOf(delimiter);
+    if (lastPipe !== -1) {
+        outstr = outstr.substring(0, lastPipe);
+    }
+    return outstr;
 }
 
 async function localPing(ip) {
@@ -41,13 +50,29 @@ async function localPing(ip) {
     }
 }
 
-async function wakeBrpc() {
-    const ping = await localPing(IPs.brpc);
-    if (ping === "1") {
-        return "bedroom PC already online";
-    } else {
-        
-        return "OK";
+class RoomManager {
+    constructor() {
+        this.roomState = null;
+        this.devices = [];
+    }
+    addDevice(name, value) {
+        let _status = null;
+        if (value === 0 || value === '0') _status = false;
+        else if (isNumeric(value) === true) _status = true; 
+        this.devices.push({
+            name: name,
+            value: value,
+            status: _status
+        });
+    }
+    updateRoomState() {
+        this.roomState = this.devices.some(device => device.status === true);
+    }
+    getData() {
+        return {
+            roomState: this.roomState,
+            devices: this.devices
+        };
     }
 }
 
@@ -62,25 +87,11 @@ async function callApi(target, arg1, arg2 = "") {
             return "callApi: invalid response";
         }
         const raw_resp = await response.text();
-        const resp = extractResponse(raw_resp.replace(/[\\"\n]/g, ''), '|');
+        const resp = extractResponse(raw_resp, '|');
         return resp;
     } catch (error) {
         return "callApi exception: " + error.message;
     }
-}
-
-function extractResponse(str, delimiter) {
-    if (str === "") return "";
-    let outstr = str;
-    const firstPipe = outstr.indexOf(delimiter);
-    if (firstPipe !== -1) {
-        outstr = outstr.substring(firstPipe + 1);
-    }
-    const lastPipe = outstr.lastIndexOf(delimiter);
-    if (lastPipe !== -1) {
-        outstr = outstr.substring(0, lastPipe);
-    }
-    return outstr;
 }
 
 async function callPico(target, arg1, arg2 = "") {
@@ -101,22 +112,24 @@ async function callPico(target, arg1, arg2 = "") {
 }
 
 async function callSerial(host, cmd, out_pos = "") {
+    // FIFO execution
     const executeTask = async () => {
         let out;
         if (host === "lrxmit") {
             out = await callApi(IPs.lrxmit, "extcom", cmd);
         } 
         else if (host === "local") {
-            const { stdout } = await execFileAsync('/usr/bin/ztermcom', [cmd]);
-            out = extractResponse(stdout, '|');
-        } else return "host empty!";
+            try {
+                const { stdout } = await execFileAsync('/usr/bin/ztermcom', [cmd]);
+                out = extractResponse(stdout, '|');
+            } catch (error) {
+                out = error.message;
+            }
+        } else return null;
         if (out_pos === "") return out;
-        if (out && out.length === 3) {
-            return out[parseInt(out_pos)] === "9" ? "1" : "0";
-        } 
-        else if (out && out.length === 1) {
-            return out[0] === "1" ? "1" : "0";
-        } else return "X";
+        if (out && out.length === 3) return out[parseInt(out_pos)] === "9" ? "1" : "0";
+        else if (out && out.length === 1) return out[0] === "1" ? "1" : "0";
+        else return "X";
     };
     const task = serialQueue.then(() => executeTask());
     serialQueue = task.catch(() => {});
@@ -143,64 +156,39 @@ async function brXmit(cmd) {
         case "brtvoff":    return await callSerial("local", "01002");
         case "brtvon":     return await callSerial("local", "01001");
 
-        case "brpc": {
-            if (await localPing(IPs.brpc) === "1") return "pc_awake";
-            return "0";
-        }
+        case "brpc":       return await localPing(IPs.brpc);
         case "brpcoff": {
-            if (await localPing(IPs.brpc) === "1") {
-                return await callApi(IPs.brpc, "sleep");
-            } else {
-                return `${IPs.brpc} is already offline`;
-            }
-        }
+            if (await localPing(IPs.brpc) === "1") return await callApi(IPs.brpc, "sleep");
+            return `${IPs.brpc} is already offline`; }
         case "brpcon": {
-            if (await localPing(IPs.brpc) === "1") {
-                return `${IPs.brpc} is already online`;
-            } else {
-                await execFileAsync('/usr/bin/wakeonlan', [BRPC_MAC]);
-                return "OK";
-            }
-        }
+            if (await localPing(IPs.brpc) === "1") return `${IPs.brpc} is already online`;
+            return execFileAsync('/usr/bin/wakeonlan', [BRPC_MAC]); }
 
         default:  return "brXmit: invalid command";
     }
 }
 
-async function lrXmit(cmdIn) {
-    let cmd1 = cmdIn;
-    let cmd2 = "";
-    const sepIndex = cmdIn.indexOf("-");
-    if (sepIndex !== -1) {
-        cmd1 = cmdIn.substring(0, sepIndex);
-        cmd2 = cmdIn.substring(sepIndex + 1);
-    }
-    switch (cmd1) {
-        case "wl_leds":       return await callPico(IPs.picolamp1, "4", "0");
-        case "wl_ledsoff":
+async function lrXmit(arg1, arg2 = '') {
+    switch (arg1) {
+        case "wl1_dualoff":
         case "wl_led1off":    return await callPico(IPs.picolamp1, "1", "2");
-        case "wl_ledson":
+        case "wl1_dualon":
         case "wl_led1on":     return await callPico(IPs.picolamp1, "1", "3");
-        case "wl_leds_set":   return await callPico(IPs.picolamp1, "3", cmd2);
+        case "wl_led1":       return await callPico(IPs.picolamp1, "1", "0");
         case "wl_led2off":    return await callPico(IPs.picolamp1, "2", "0");
         case "wl_led2on":     return await callPico(IPs.picolamp1, "2", "1");
-        case "wl_led1":       return await callPico(IPs.picolamp1, "1", "0");
         case "wl_led2":       return await callPico(IPs.picolamp1, "2", "2");
+        case "wl1_dual_set":  return await callPico(IPs.picolamp1, "3", arg2);     
+        case "wl1_dual":      return await callPico(IPs.picolamp1, "4", "0");   
 
-        case "wkststate": {
-            const resp = await localPing(IPs.desk);
-            if (resp === "1") { return "pc_awake"; }
-            if (resp === "0") { return "0"; }
-            return "X";
-        }
+        case "wkststate":     return await localPing(IPs.desk);
         case "wkststateoff":
         case "wkststateon":   return await callApi(IPs.lrxmit, "pc_power");
-        case "hifistate":     return await callSerial("lrxmit", "15019");
 
+        case "hifistate":     return await callSerial("lrxmit", "15019");
         case "hifistateoff":  return await callSerial("lrxmit", "15018");
         case "hifistateon":   return await callSerial("lrxmit", "15017");
         case "hifitoggle":    return await callSerial("lrxmit", "15016");
-
         case "aux":           return await callSerial("lrxmit", "15002");
         case "phono":         return await callSerial("lrxmit", "15003");
         case "usb":           return await callSerial("lrxmit", "15001");
@@ -208,154 +196,129 @@ async function lrXmit(cmdIn) {
         case "opt":           return await callSerial("lrxmit", "15005");
         case "curinput":      return await callSerial("lrxmit", "15007");
         case "autodac":       return await callSerial("lrxmit", "15006");
-        
         case "vlimit":        return await callSerial("lrxmit", "15015");
         case "togglehpf":     return await callSerial("lrxmit", "15014");
         case "curhpfvollim":  return await callSerial("lrxmit", "15020");
-        
         case "voldisplay":    return await callSerial("lrxmit", "15013");
         case "volmute":       return await callSerial("lrxmit", "15012");
         case "voldwn":        return await callSerial("lrxmit", "15010");
         case "volup":         return await callSerial("lrxmit", "15011");
         case "voldwnc":       return await callSerial("lrxmit", "15008");
         case "volupc":        return await callSerial("lrxmit", "15009");
-        
         case "submute":       return await callSerial("lrxmit", "17001");
         case "subup":         return await callSerial("lrxmit", "17002");
         case "subdwn":        return await callSerial("lrxmit", "17003");
         case "subup_fast":    return await callSerial("lrxmit", "17004");
         case "subdwn_fast":   return await callSerial("lrxmit", "17005");
 
-        default:  return "lrXmit: invalid command";
+        default: return "lrXmit: invalid command";
     }
 }
 
-async function executeMain(ramDisk, firstArgIn, secondArgIn) {
-    let roomStateData = {
-      roomState: false,
-      devices: []
-    };
-    function isRoomActive() {
-        return roomStateData.devices.some(device => device[1] !== '0' && device[1] !== 0);
-    }
-    const firstArg = firstArgIn.replace(/\n/g, "");
-    const secondArg = secondArgIn.replace(/\n/g, "");
+async function executeMain(ramDisk, firstArg, secondArg) {
     switch (firstArg) {
-
-        // all lights
+        //// all lights ////
         case "lightson":
-            await lrXmit("wl_led1on");
-            await lrXmit("wl_led2on");
-            await brXmit("brlamp1on");
+            lrXmit("wl_led1on");
+            lrXmit("wl_led2on");
+            brXmit("brlamp1on");
             return "OK";
         case "lightsoff":
-            await lrXmit("wl_led1off");
-            await lrXmit("wl_led2off");
-            await brXmit("brlamp1off");
-            await OPCLEDparser(ramDisk, "stop", "");
+            lrXmit("wl_led1off");
+            lrXmit("wl_led2off");
+            brXmit("brlamp1off");
+            OPCLEDparser(ramDisk, "stop");
             return "OK";
-
-        // living room
-        case "lrxmit":
+        //// living room ////
+        case "lrxmit": 
             return await lrXmit(secondArg);
-        case "lrstatus":
-            try {
-                roomStateData.devices = [];
-                roomStateData.roomState = false;
-                roomStateData.devices.push(['Window Lamp',   await lrXmit("wl_led1")]);
-                roomStateData.devices.push(['Backlight',     await lrXmit("wl_led2")]);
-                roomStateData.devices.push(['Desktop PC',    await lrXmit("wkststate")]);
-                roomStateData.devices.push(['Stereo System', await lrXmit("hifistate")]);
-                if (isRoomActive()) roomStateData.roomState = true;
-                return roomStateData;
-            } catch (error) {
-                return "lrstatus error: " + error.message;
-            }
+        case "lrstatus": {
+            const lrRoom = new RoomManager();
+            lrRoom.addDevice('Window Lamp',   await lrXmit("wl_led1"));
+            lrRoom.addDevice('Backlight',     await lrXmit("wl_led2"));
+            lrRoom.addDevice('Desktop PC',    await lrXmit("wkststate"));
+            lrRoom.addDevice('Stereo System', await lrXmit("hifistate"));
+            lrRoom.updateRoomState();
+            return lrRoom.getData();
+        }
+        case "wl1_dual":
+            lrXmit(firstArg + '_set', secondArg);
+            return "OK";
         case "lrlightson":
-            await lrXmit("wl_led1on");
+            lrXmit("wl_led1on");
             return "OK";
         case "lrlightsoff":
-            await lrXmit("wl_led1off");
+            lrXmit("wl_led1off");
             return "OK";
         case "lron":
-            await lrXmit("wl_led1on");
-            await lrXmit("wl_led2on");
-            await OPCLEDparser(ramDisk, "abstract", "");
-            await lrXmit("wkststateon");
-            await lrXmit("hifistateon");
+            lrXmit("wl_led1on");
+            lrXmit("wl_led2on");
+            OPCLEDparser(ramDisk, "abstract");
+            lrXmit("wkststateon");
+            lrXmit("hifistateon");
             return "OK";
         case "lroff":
-            await lrXmit("wl_led1off");
-            await lrXmit("wl_led2off");
-            await OPCLEDparser(ramDisk, "stop", "");
-            await lrXmit("wkststateoff");
-            await lrXmit("hifistateoff");
+            lrXmit("wl_led1off");
+            lrXmit("wl_led2off");
+            OPCLEDparser(ramDisk, "stop");
+            lrXmit("wkststateoff");
+            lrXmit("hifistateoff");
             return "OK";
-
-        // bedroom
+        //// bedroom ////
         case "brxmit":
             return await brXmit(secondArg);
-        case "brstatus":
-            try {
-                roomStateData.devices = [];
-                roomStateData.roomState = false;
-                roomStateData.devices.push(['Desk Lamp',    await brXmit("brlamp1")]);
-                roomStateData.devices.push(['RetroPi CRT',  await brXmit("retropi")]);
-                roomStateData.devices.push(['Vintage Macs', await brXmit("brmacs")]);
-                roomStateData.devices.push(['Bedroom TV',   await brXmit("brtv")]);
-                roomStateData.devices.push(['Bedroom PC',   await brXmit("brpc")]);
-                roomStateData.devices.push(['Audio System', await callApi(IPs.brpi, "ampstate")]);
-                if (isRoomActive()) roomStateData.roomState = true;
-                return roomStateData;
-            } catch (error) {
-                return "brstatus error: " + error.message;
-            }
-
+        case "brstatus": {
+            const brRoom = new RoomManager();
+            brRoom.addDevice('Desk Lamp',    await brXmit("brlamp1"));
+            brRoom.addDevice('RetroPi CRT',  await brXmit("retropi"));
+            brRoom.addDevice('Vintage Macs', await brXmit("brmacs"));
+            brRoom.addDevice('Bedroom TV',   await brXmit("brtv"));
+            brRoom.addDevice('Bedroom PC',   await brXmit("brpc"));
+            brRoom.addDevice('Audio System', await callApi(IPs.brpi, "ampstate"));
+            brRoom.updateRoomState();
+            return brRoom.getData();
+        }
         case "bron":
-            await brXmit("brlamp1on");
-            await brXmit("retropion");
-            await brXmit("brmacson");
-            await brXmit("brtvon");
+            brXmit("brlamp1on");
+            brXmit("retropion");
+            brXmit("brmacson");
+            brXmit("brtvon");
+            brXmit("brpcon");
             await callApi(IPs.brpi, "ampstateon");
             return "OK";
         case "broff":
-            await brXmit("brlamp1off");
-            await brXmit("retropioff");
-            await brXmit("brmacsoff");
-            await brXmit("brtvoff");
-            await callApi(IPs.brpi, "ampstateoff");
+            brXmit("brlamp1off");
+            brXmit("retropioff");
+            brXmit("brmacsoff");
+            brXmit("brtvoff");
             await callApi(IPs.brpc, "sleep");
+            await callApi(IPs.brpi, "ampstateoff");
             return "OK";
         case "brpi":
             return await callApi(IPs.brpi, secondArg);
         case "relax":
-            await brXmit("brtvoff");
             await callApi(IPs.brpi, "relax", secondArg);
+            brXmit("brtvoff");
             await callApi(IPs.brpc, "sleep");
             return "OK";
         case "stop-br":
             return await callApi(IPs.brpi, "stoprelax");
-
-        // server functions
+        //// server functions ////
         case "localping":
             return await localPing(`${secondArg}.${LOCAL_DOMAIN}`);
         case "status": {
             try {
-                const status_list = await runStatusUpdate(ramDisk);
-                return status_list; 
+                return await runStatusUpdate(ramDisk); 
             } catch (exc) {
                 return "status update exception: " + exc.message;
             }
         }
         case "sitelookup": {
-            const site_title = await runSiteLookup(secondArg);
-            return site_title;
+            return await runSiteLookup(secondArg);
         }
         case "server": {
             const logFile = `${ramDisk}/sysout.txt`;
-            if (secondArg === "") {
-                return "empty server command!";
-            }
+            if (secondArg === "") return "empty server command!";
             if (secondArg === "netscan") {
                 await fsPromises.appendFile(logFile, `\nScanning network range ${NET_RANGE}...\n`);
                 const scanResult = await runScanNetwork(NET_RANGE);
@@ -366,7 +329,7 @@ async function executeMain(ramDisk, firstArgIn, secondArgIn) {
             await execAsync(`touch ${ramDisk}/${secondArg}.txt`);
             return "OK";
         }
-        default:  return "executeMain: invalid command";
+        default: return "executeMain: invalid command";
     }
 }
 

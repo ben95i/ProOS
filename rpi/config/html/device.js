@@ -1,4 +1,3 @@
-var deviceType = function() {
-   const str = 'Pi';
-   return str;
+export function deviceType() {
+   return 'Pi';
 }

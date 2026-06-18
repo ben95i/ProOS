@@ -56,6 +56,15 @@ export function removeWindow(id) {
   }
 }
 
+export function splitByDelimiter(str, delimiter = '-') {
+  if (!str) return ['', ''];
+  const parts = str.split(delimiter);
+  const before = parts[0] || '';
+  const after = parts.length > 1 ? parts.slice(1).join(delimiter) : '';
+  return [before, after];
+}
+
+
 export function cleanString(data) {
   if (data === null || data == undefined) {
     return null;
@@ -73,7 +82,9 @@ export function base64URLSafeEncode(buffer) {
 }
 
 export function isNumeric(value) {
-  return /^-?\d+$/.test(value);
+  // Coerce to number and check if it's an integer. 
+  // We check typeof to prevent empty strings ("") from converting to 0.
+  return typeof value === 'string' && value.trim() !== '' && Number.isInteger(Number(value));
 }
 
 export function mapNumber(num, inMin, inMax, outMin, outMax) {

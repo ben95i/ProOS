@@ -13,6 +13,7 @@ clouds|ledmenu|Clouds
 oscope|ledmenu|O-scope
 spectro|ledmenu|Spectro
 mario|ledmenu|Mario
+pokemon|ledmenu|Pokémon
 8bit|ledmenu|8-Bit
 stripes|ledmenu|Stripes
 bubbles|ledmenu|Bubbles

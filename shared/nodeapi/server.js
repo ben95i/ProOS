@@ -39,14 +39,6 @@ app.get('/api', [
     if (action === 'main') {
         respout = await executeMain(ramDisk, arg1, arg2);
         return res.status(200).json(respout);
-    } 
-    if (action === 'lrxmit') {
-        respout = await executeMain(ramDisk, 'lrxmit', arg1 + '-' + arg2);
-        return res.status(200).json(respout);
-    }
-    if (action === 'brxmit') {
-        respout = await executeMain(ramDisk, 'brxmit', arg1 + '-' + arg2);
-        return res.status(200).json(respout);
     }
     if (action === 'leds') {
         respout = await OPCLEDparser(ramDisk, arg1, arg2); 

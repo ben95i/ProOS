@@ -3,7 +3,7 @@
 
 import { requestThrottle, setTheme, classDisplay, checkElemIsVisibleByID,
   removeWindow, cleanString, base64URLSafeEncode, isNumeric, mapNumber,
-  hsvToRgb, rgbToHsv, hexToRgb, rgbToHex } from './utils.js';
+  hsvToRgb, rgbToHsv, hexToRgb, rgbToHex, splitByDelimiter } from './utils.js';
 import { deviceType } from './device.js';
 import { SSIDpwd } from './wifi.js';
 
@@ -14,6 +14,7 @@ window.App = {
   BKM_EDIT_MODE: 2,
   REFRESH_INTERVAL: 5,
   TIMEOUT_INTERVAL: 45,
+  activeSwitches: [],
   fileData: [],
   ctlCommand: null,
   serverCmdData: null,
@@ -45,466 +46,461 @@ window.App = {
   colorPromptParser: document.createElement('div')
 };
 
-// runs after DOM finishes loading
+// main entry point
 window.addEventListener("DOMContentLoaded", () => {
-  // on-click actions
   window.addEventListener('click', handleClicks, false);
-  // attach HTML button event listeners
   setupEventListeners();
-  // load content
   loadPage();
 });
 
 function setupEventListeners() {
-    const listeners = {
-        // Top Nav
-        'btn-dyn-mainmenu': 
-        () => showDynMenu('mainmenu'),
-
-        'btn-menu-pimainmenu': 
-        () => showMenu('pi-mainmenu'),
-
-        'btn-dyn-thememenu': 
-        () => showDynMenu('thememenu'),
-
-        'btn-show-bookmarks': 
-        () => showBookmarks(),
-
-        'btn-edit-bookmark': 
-        () => editBookmark(),
+  const listeners = {
+    // Top Nav
+    'btn-dyn-mainmenu': 
+    () => showDynMenu('mainmenu'),
+
+    'btn-menu-pimainmenu': 
+    () => showMenu('pi-mainmenu'),
+
+    'btn-dyn-thememenu': 
+    () => showDynMenu('thememenu'),
+
+    'btn-show-bookmarks': 
+    () => showBookmarks(),
+
+    'btn-edit-bookmark': 
+    () => editBookmark(),
 
-        'btn-add-bookmark': 
-        () => addBookmark(),
+    'btn-add-bookmark': 
+    () => addBookmark(),
 
-        'statusDropdownContainer': 
-        () => roomStateClick(),
-        
-        'nav_right_menu': 
-        () => showStatusMenu(),
-        
-        // Menus
-        'btn-about-main': 
-        () => aboutPrompt(),
-
-        'btn-about-pi': 
-        () => aboutPrompt(),
-
-        'btn-log-pi': 
-        () => openLogWindow(),
-
-        'btn-home-pi': 
-        () => GoToHomePage(),
-        
-        // Main Grid Left
-        'btn-dyn-ledcolormenu': 
-        () => showDynMenu('ledcolormenu'),
-
-        'btn-color-prompt': 
-        () => colorPrompt(),
-        'btn-dyn-ledeffectmenu': 
-        () => showDynMenu('ledeffectmenu'),
-
-        'btn-power-fc_leds': 
-        () => showPowerMenu('', 'fc_leds'),
-
-        'btn-cmd-leds-shuffle': 
-        () => sendCmd('leds', 'shuffle', ''),
-
-        'btn-cmd-leds-stop': 
-        () => sendCmd('leds', 'stop', ''),
-
-        'btn-cmd-leds-pause': 
-        () => sendCmd('leds', 'pause', ''),
-
-        'btn-cmd-leds-randcolor': 
-        () => sendCmd('leds', 'randcolor', ''),
-
-        'btn-show-temphumid': 
-        () => showTempHumidity(),
-        
-        'btn-menu-lightmenu': 
-        () => showMenu('lightmenu'),
-
-        'btn-cmd-lightson': 
-        () => sendCmd('main', 'lightson', ''),
-
-        'btn-cmd-lightsoff': 
-        () => sendCmd('main', 'lightsoff', ''),
-        
-        'btn-menu-allmenu': 
-        () => showMenu('allmenu'),
-
-        'btn-room-on': 
-        () => roomOnOff('on'),
-
-        'btn-room-off': 
-        () => roomOnOff('off'),
-
-        'btn-open-cam':
-        () => openCamWindow(),
-
-        'btn-open-log-svr': 
-        () => openLogWindow(),
-        
-        // Main Grid Right (Living Room)
-        'btn-power-wkststate': 
-        () => showPowerMenu('lrxmit', 'wkststate'),
-
-        'btn-menu-lrmenu': 
-        () => showMenu('lr-menu'),
-
-        'btn-ctls-br': 
-        () => ctlsMenu('br'),
-
-        'btn-power-wl_leds': 
-        () => showPowerMenu('lrxmit', 'wl_leds'),
-        
-        'voldwnbtn': 
-        () => sendVol('dwn'),
-
-        'volmutebtn': 
-        () => sendVol('mute'),
-
-        'volupbtn': 
-        () => sendVol('up'),
-
-        'btn-vol-dwnc': 
-        () => sendVol('dwnc'),
-
-        'btn-power-hifistate': 
-        () => showPowerMenu('lrxmit', 'hifistate'),
-
-        'btn-vol-upc': 
-        () => sendVol('upc'),
-
-        'btn-vol-display': 
-        () => sendVol('display'),
-        
-        'btn-show-hifi-amp': 
-        () => showHiFiAmpInput(),
-
-        'btn-show-hifi-more': 
-        () => showHiFiMoreMenu(),
-        
-        // Bedroom Grid
-        'btn-dyn-relaxmenu': 
-        () => showDynMenu('relaxmenu'),
-
-        'btn-cmd-stop-br': 
-        () => sendCmd('main', 'stop-br', ''),
-
-        'btn-menu-brmenu': 
-        () => showMenu('br-menu'),
-
-        'btn-ctls-lr': 
-        () => ctlsMenu('lr'),
-
-        'btn-power-brlamp1': 
-        () => showPowerMenu('brxmit', 'brlamp1'),
-        
-        'br-voldwnbtn': 
-        () => sendVol('dwn'),
-
-        'br-volmutebtn': 
-        () => sendVol('mute'),
-
-        'br-volupbtn': 
-        () => sendVol('up'),
-        
-        'btn-power-brtv': 
-        () => showPowerMenu('brxmit', 'brtv'),
-
-        'btn-power-ampstate': 
-        () => showPowerMenu('brpi', 'ampstate'),
-
-        'btn-power-brpc': 
-        () => showPowerMenu('brxmit', 'brpc'),
-
-        'btn-power-brmacs': 
-        () => showPowerMenu('brxmit', 'brmacs'),
-        
-        'btn-show-br-amp': 
-        () => showBedroomAmpInput(),
-
-        'btn-power-retropi':
-        () => showPowerMenu('brxmit', 'retropi'),
-        
-        // Server Options
-        'btn-menu-legacy': 
-        () => showMenu('legacy-menu'),
-
-        'btn-svr-startlegacy': 
-        () => serverAction('startlegacy'),
-
-        'btn-svr-stoplegacy': 
-        () => serverAction('stoplegacy'),
-        
-        'btn-menu-xana': 
-        () => showMenu('xana-menu'),
-
-        'btn-svr-startxana': 
-        () => serverAction('startxana'),
-
-        'btn-svr-stopxana': 
-        () => serverAction('stopxana'),
-
-        'btn-svr-restorexana': 
-        () => serverAction('restorexana'),
-        
-        'btn-menu-unifi': 
-        () => showMenu('unifi-menu'),
-
-        'btn-ext-unifi': 
-        () => GoToExtPage('unifi:11443/network/ff7gqlig/dashboard'),
-
-        'btn-svr-startunifi': 
-        () => serverAction('startunifi'),
-
-        'btn-svr-stopunifi': 
-        () => serverAction('stopunifi'),
-        
-        'btn-menu-svr': 
-        () => showMenu('svr-menu'),
-
-        'btn-ext-pve': 
-        () => GoToExtPage('pve:8006'),
+    'statusDropdownContainer': 
+    () => roomStateClick(),
+    
+    'nav_right_menu': 
+    () => showStatusMenu(),
+    
+    // Menus
+    'btn-about-main': 
+    () => aboutPrompt(),
+
+    'btn-about-pi': 
+    () => aboutPrompt(),
+
+    'btn-log-pi': 
+    () => openLogWindow(),
+
+    'btn-home-pi': 
+    () => GoToHomePage(),
+    
+    // Main Grid Left
+    'btn-dyn-ledcolormenu': 
+    () => showDynMenu('ledcolormenu'),
+
+    'btn-color-prompt': 
+    () => colorPrompt(),
+    'btn-dyn-ledeffectmenu': 
+    () => showDynMenu('ledeffectmenu'),
+
+    'btn-power-fc_leds': 
+    () => showPowerMenu('fc_leds'),
+
+    'btn-cmd-leds-shuffle': 
+    () => sendCmd('leds', 'shuffle', ''),
+
+    'btn-cmd-leds-stop': 
+    () => sendCmd('leds', 'stop', ''),
+
+    'btn-cmd-leds-pause': 
+    () => sendCmd('leds', 'pause', ''),
+
+    'btn-cmd-leds-randcolor': 
+    () => sendCmd('leds', 'randcolor', ''),
+
+    'btn-show-temphumid': 
+    () => showTempHumidity(),
+    
+    'btn-menu-lightmenu': 
+    () => showMenu('lightmenu'),
+
+    'btn-cmd-lightson': 
+    () => sendCmd('main', 'lightson', ''),
+
+    'btn-cmd-lightsoff': 
+    () => sendCmd('main', 'lightsoff', ''),
+    
+    'btn-menu-allmenu': 
+    () => showMenu('allmenu'),
+
+    'btn-room-on': 
+    () => roomOnOff('on'),
+
+    'btn-room-off': 
+    () => roomOnOff('off'),
+
+    'btn-open-cam':
+    () => openCamWindow(),
+
+    'btn-open-log-svr': 
+    () => openLogWindow(),
+    
+    // Main Grid Right (Living Room)
+    'btn-power-wkststate': 
+    () => showPowerMenu('lrxmit', 'wkststate'),
+
+    'btn-menu-lrmenu': 
+    () => showMenu('lr-menu'),
+
+    'btn-ctls-br': 
+    () => ctlsMenu('br'),
+
+    'btn-power-wl1_dual': 
+    () => showPowerMenu('lrxmit', 'wl1_dual'),
+    
+    'voldwnbtn': 
+    () => sendVol('dwn'),
+
+    'volmutebtn': 
+    () => sendVol('mute'),
+
+    'volupbtn': 
+    () => sendVol('up'),
+
+    'btn-vol-dwnc': 
+    () => sendVol('dwnc'),
+
+    'btn-power-hifistate': 
+    () => showPowerMenu('lrxmit', 'hifistate'),
+
+    'btn-vol-upc': 
+    () => sendVol('upc'),
+
+    'btn-vol-display': 
+    () => sendVol('display'),
+    
+    'btn-show-hifi-amp': 
+    () => showHiFiAmpInput(),
+
+    'btn-show-hifi-more': 
+    () => showHiFiMoreMenu(),
+    
+    // Bedroom Grid
+    'btn-dyn-relaxmenu': 
+    () => showDynMenu('relaxmenu'),
+
+    'btn-cmd-stop-br': 
+    () => sendCmd('main', 'stop-br', ''),
+
+    'btn-menu-brmenu': 
+    () => showMenu('br-menu'),
+
+    'btn-ctls-lr': 
+    () => ctlsMenu('lr'),
+
+    'btn-power-brlamp1': 
+    () => showPowerMenu('brxmit', 'brlamp1'),
+    
+    'br-voldwnbtn': 
+    () => sendVol('dwn'),
+
+    'br-volmutebtn': 
+    () => sendVol('mute'),
+
+    'br-volupbtn': 
+    () => sendVol('up'),
+    
+    'btn-power-brtv': 
+    () => showPowerMenu('brxmit', 'brtv'),
+
+    'btn-power-ampstate': 
+    () => showPowerMenu('brpi', 'ampstate'),
+
+    'btn-power-brpc': 
+    () => showPowerMenu('brxmit', 'brpc'),
+
+    'btn-power-brmacs': 
+    () => showPowerMenu('brxmit', 'brmacs'),
+    
+    'btn-show-br-amp': 
+    () => showBedroomAmpInput(),
+
+    'btn-power-retropi':
+    () => showPowerMenu('brxmit', 'retropi'),
+    
+    // Server Options
+    'btn-menu-legacy': 
+    () => showMenu('legacy-menu'),
+
+    'btn-svr-startlegacy': 
+    () => serverAction('startlegacy'),
+
+    'btn-svr-stoplegacy': 
+    () => serverAction('stoplegacy'),
+    
+    'btn-menu-xana': 
+    () => showMenu('xana-menu'),
+
+    'btn-svr-startxana': 
+    () => serverAction('startxana'),
+
+    'btn-svr-stopxana': 
+    () => serverAction('stopxana'),
+
+    'btn-svr-restorexana': 
+    () => serverAction('restorexana'),
+    
+    'btn-menu-unifi': 
+    () => showMenu('unifi-menu'),
+
+    'btn-ext-unifi': 
+    () => GoToExtPage('unifi:11443/network/ff7gqlig/dashboard'),
+
+    'btn-svr-startunifi': 
+    () => serverAction('startunifi'),
+
+    'btn-svr-stopunifi': 
+    () => serverAction('stopunifi'),
+    
+    'btn-menu-svr': 
+    () => showMenu('svr-menu'),
+
+    'btn-ext-pve': 
+    () => GoToExtPage('pve:8006'),
 
-        'btn-svr-syslog': 
-        () => serverAction('syslog'),
-        
-        'btn-menu-files': 
-        () => showMenu('files-menu'),
+    'btn-svr-syslog': 
+    () => serverAction('syslog'),
+    
+    'btn-menu-files': 
+    () => showMenu('files-menu'),
 
-        'btn-open-backup': 
-        () => openBackupOptions(),
+    'btn-open-backup': 
+    () => openBackupOptions(),
 
-        'btn-open-regions': 
-        () => openRegionsOptions(),
-        
-        'btn-menu-netwrk': 
-        () => showMenu('netwrk-menu'),
+    'btn-open-regions': 
+    () => openRegionsOptions(),
+    
+    'btn-menu-netwrk': 
+    () => showMenu('netwrk-menu'),
 
-        'btn-wifi-prompt': 
-        () => wifiPrompt(),
+    'btn-wifi-prompt': 
+    () => wifiPrompt(),
 
-        'btn-ext-edgeswitch': 
-        () => GoToExtPage('edgeswitch.home'),
+    'btn-ext-edgeswitch': 
+    () => GoToExtPage('edgeswitch.home'),
 
-        'btn-svr-netscan': 
-        () => serverAction('netscan'),
-        
-        'btn-close-svr-opt1': 
-        () => closeServerOptions(),
+    'btn-svr-netscan': 
+    () => serverAction('netscan'),
+    
+    'btn-close-svr-opt1': 
+    () => closeServerOptions(),
 
-        'btn-svr-files-clearlog': 
-        () => serverAction('files-clearlog'),
-        
-        'btn-menu-router': 
-        () => showMenu('router-menu'),
+    'btn-svr-files-clearlog': 
+    () => serverAction('files-clearlog'),
+    
+    'btn-menu-router': 
+    () => showMenu('router-menu'),
 
-        'btn-ext-router': 
-        () => GoToExtPage('router.home'),
+    'btn-ext-router': 
+    () => GoToExtPage('router.home'),
 
-        'btn-svr-rebootrouter': 
-        () => serverAction('rebootrouter'),
-        
-        // Backup
-        'btn-svr-last_backup_dates': 
-        () => serverAction('files-last_backup_dates'),
+    'btn-svr-rebootrouter': 
+    () => serverAction('rebootrouter'),
+    
+    // Backup
+    'btn-svr-last_backup_dates': 
+    () => serverAction('files-last_backup_dates'),
 
-        'btn-svr-backupchk': 
-        () => serverAction('files-backupchk'),
+    'btn-svr-backupchk': 
+    () => serverAction('files-backupchk'),
 
-        'btn-svr-pve_vmsbkp': 
-        () => serverAction('pve_vmsbkp'),
+    'btn-svr-pve_vmsbkp': 
+    () => serverAction('pve_vmsbkp'),
 
-        'btn-pwd-unlock': 
-        () => getPassword('pwd'),
+    'btn-pwd-unlock': 
+    () => getPassword('pwd'),
 
-        'btn-svr-backupstd': 
-        () => serverAction('files-backupstd'),
+    'btn-svr-backupstd': 
+    () => serverAction('files-backupstd'),
 
-        'btn-svr-detach_bkps': 
-        () => serverAction('detach_bkps'),
+    'btn-svr-detach_bkps': 
+    () => serverAction('detach_bkps'),
 
-        'btn-close-svr-opt2': 
-        () => closeServerOptions(),
+    'btn-close-svr-opt2': 
+    () => closeServerOptions(),
 
-        'btn-svr-pve_listsnaps': 
-        () => serverAction('pve_listsnaps'),
+    'btn-svr-pve_listsnaps': 
+    () => serverAction('pve_listsnaps'),
 
-        'btn-open-svr-opt1': 
-        () => openServerOptions(),
-        
-        // Archive
-        'btn-menu-archive': 
-        () => showMenu('archive-menu'),
+    'btn-open-svr-opt1': 
+    () => openServerOptions(),
+    
+    // Archive
+    'btn-menu-archive': 
+    () => showMenu('archive-menu'),
 
-        'btn-pwd-fusearch': 
-        () => getPassword('fusearch'),
+    'btn-pwd-fusearch': 
+    () => getPassword('fusearch'),
 
-        'btn-svr-unmnt_all_fuse': 
-        () => serverAction('files-unmnt_all_fuse'),
+    'btn-svr-unmnt_all_fuse': 
+    () => serverAction('files-unmnt_all_fuse'),
 
-        'btn-menu-external': 
-        () => showMenu('external-menu'),
+    'btn-menu-external': 
+    () => showMenu('external-menu'),
 
-        'btn-svr-mnt_ext_region': 
-        () => serverAction('files-mnt_ext_region'),
+    'btn-svr-mnt_ext_region': 
+    () => serverAction('files-mnt_ext_region'),
 
-        'btn-svr-unmnt_ext_region': 
-        () => serverAction('files-unmnt_ext_region'),
+    'btn-svr-unmnt_ext_region': 
+    () => serverAction('files-unmnt_ext_region'),
 
-        'btn-menu-snapshots': 
-        () => showMenu('snapshots-menu'),
+    'btn-menu-snapshots': 
+    () => showMenu('snapshots-menu'),
 
-        'btn-svr-mnt_snap_region': 
-        () => serverAction('files-mnt_snap_region'),
+    'btn-svr-mnt_snap_region': 
+    () => serverAction('files-mnt_snap_region'),
 
-        'btn-svr-unmnt_snap_region': 
-        () => serverAction('files-unmnt_snap_region'),
+    'btn-svr-unmnt_snap_region': 
+    () => serverAction('files-unmnt_snap_region'),
 
-        'btn-menu-ramdisk': 
-        () => showMenu('ramdisk-menu'),
+    'btn-menu-ramdisk': 
+    () => showMenu('ramdisk-menu'),
 
-        'btn-svr-mnt_ram_region': 
-        () => serverAction('files-mnt_ram_region'),
+    'btn-svr-mnt_ram_region': 
+    () => serverAction('files-mnt_ram_region'),
 
-        'btn-svr-unmnt_ram_region': 
-        () => serverAction('files-unmnt_ram_region'),
+    'btn-svr-unmnt_ram_region': 
+    () => serverAction('files-unmnt_ram_region'),
 
-        'btn-svr-unmnt_all': 
-        () => serverAction('files-unmnt_all'),
+    'btn-svr-unmnt_all': 
+    () => serverAction('files-unmnt_all'),
 
-        'btn-close-svr-opt3': 
-        () => closeServerOptions(),
+    'btn-close-svr-opt3': 
+    () => closeServerOptions(),
 
-        'btn-open-svr-opt2': 
-        () => openServerOptions(),
-        
-        // Pi Grid
-        'btn-menu-piwifi': 
-        () => showMenu('piwifi-menu'),
+    'btn-open-svr-opt2': 
+    () => openServerOptions(),
+    
+    // Pi Grid
+    'btn-menu-piwifi': 
+    () => showMenu('piwifi-menu'),
 
-        'btn-show-piwifiprompt': 
-        () => showPiWiFiPrompt(),
+    'btn-show-piwifiprompt': 
+    () => showPiWiFiPrompt(),
 
-        'btn-svr-client': 
-        () => serverAction('client'),
+    'btn-svr-client': 
+    () => serverAction('client'),
 
-        'btn-svr-apd': 
-        () => serverAction('apd'),
+    'btn-svr-apd': 
+    () => serverAction('apd'),
 
-        'btn-svr-wifiscan': 
-        () => serverAction('wifiscan'),
+    'btn-svr-wifiscan': 
+    () => serverAction('wifiscan'),
 
-        'btn-svr-showwpa': 
-        () => serverAction('showwpa'),
+    'btn-svr-showwpa': 
+    () => serverAction('showwpa'),
 
-        'btn-svr-temp': 
-        () => serverAction('temp'),
+    'btn-svr-temp': 
+    () => serverAction('temp'),
 
-        'btn-close-svr-opt4': 
-        () => closeServerOptions(),
+    'btn-close-svr-opt4': 
+    () => closeServerOptions(),
 
-        'btn-svr-clearlog': 
-        () => serverAction('clearlog'),
+    'btn-svr-clearlog': 
+    () => serverAction('clearlog'),
 
-        'btn-svr-resetbt': 
-        () => serverAction('resetbt'),
-        
-        // Text Scroll
-        'btn-menu-textscrollcolor': 
-        () => showMenu('textscrollcolor-menu'),
+    'btn-svr-resetbt': 
+    () => serverAction('resetbt'),
+    
+    // Text Scroll
+    'btn-menu-textscrollcolor': 
+    () => showMenu('textscrollcolor-menu'),
 
-        'btn-tscolor-1': 
-        () => setTextScrollColor('00FF00'),
+    'btn-tscolor-1': 
+    () => setTextScrollColor('00FF00'),
 
-        'btn-tscolor-2': 
-        () => setTextScrollColor('FF0000'),
+    'btn-tscolor-2': 
+    () => setTextScrollColor('FF0000'),
 
-        'btn-tscolor-3': 
-        () => setTextScrollColor('0000FF'),
+    'btn-tscolor-3': 
+    () => setTextScrollColor('0000FF'),
 
-        'btn-tscolor-4': 
-        () => setTextScrollColor('FFA500'),
+    'btn-tscolor-4': 
+    () => setTextScrollColor('FFA500'),
 
-        'btn-tscolor-5': 
-        () => setTextScrollColor('A020F0'),
+    'btn-tscolor-5': 
+    () => setTextScrollColor('A020F0'),
 
-        'btn-tscolor-6': 
-        () => setTextScrollColor('FFCC00'),
+    'btn-tscolor-6': 
+    () => setTextScrollColor('FFCC00'),
 
-        'btn-tscolor-7': 
-        () => setTextScrollColor('FFFFFF'),
+    'btn-tscolor-7': 
+    () => setTextScrollColor('FFFFFF'),
 
-        'btn-menu-textscrollfont': 
-        () => showMenu('textscrollfont-menu'),
+    'btn-menu-textscrollfont': 
+    () => showMenu('textscrollfont-menu'),
 
-        'btn-tsfont-8x8': 
-        () => setTextScrollFont('8x8'),
+    'btn-tsfont-8x8': 
+    () => setTextScrollFont('8x8'),
 
-        'btn-tsfont-5x7': 
-        () => setTextScrollFont('5x7'),
+    'btn-tsfont-5x7': 
+    () => setTextScrollFont('5x7'),
 
-        'btn-tsfont-3x5': 
-        () => setTextScrollFont('3x5'),
+    'btn-tsfont-3x5': 
+    () => setTextScrollFont('3x5'),
 
-        'btn-menu-textscrollspeed': 
-        () => showMenu('textscrollspeed-menu'),
+    'btn-menu-textscrollspeed': 
+    () => showMenu('textscrollspeed-menu'),
 
-        'btn-tsspeed-slowest': 
-        () => setTextScrollSpeed('3.0'),
+    'btn-tsspeed-slowest': 
+    () => setTextScrollSpeed('3.0'),
 
-        'btn-tsspeed-slow': 
-        () => setTextScrollSpeed('9.0'),
+    'btn-tsspeed-slow': 
+    () => setTextScrollSpeed('9.0'),
 
-        'btn-tsspeed-normal': 
-        () => setTextScrollSpeed('12.0'),
+    'btn-tsspeed-normal': 
+    () => setTextScrollSpeed('12.0'),
 
-        'btn-tsspeed-fast': 
-        () => setTextScrollSpeed('15.0'),
+    'btn-tsspeed-fast': 
+    () => setTextScrollSpeed('15.0'),
 
-        'btn-tsspeed-fastest': 
-        () => setTextScrollSpeed('20.0'),
+    'btn-tsspeed-fastest': 
+    () => setTextScrollSpeed('20.0'),
 
-        'btn-ts-close': 
-        () => closeTextScroll(),
+    'btn-ts-close': 
+    () => closeTextScroll(),
 
-        'btn-ts-clear': 
-        () => clearLEDsMessage(),
+    'btn-ts-clear': 
+    () => clearLEDsMessage(),
 
-        'btn-ts-send': 
-        () => sendTextScroll(),
-        
-        // Popups
-        'btn-log-close': 
-        () => closePopup(),
+    'btn-ts-send': 
+    () => sendTextScroll(),
+    
+    // Popups
+    'btn-log-close': 
+    () => closePopup(),
 
-        'btn-log-open-svr': 
-        () => openServerOptions(),
+    'btn-log-open-svr': 
+    () => openServerOptions(),
 
-        'btn-log-load': 
-        () => loadLog('sysout'),
+    'btn-log-load': 
+    () => loadLog('sysout'),
 
-        'sendButton': 
-        () => serverSend(),
+    'sendButton': 
+    () => serverSend(),
 
-        'btn-color-close': 
-        () => closeColorPrompt(),
+    'btn-color-close': 
+    () => closeColorPrompt(),
 
-        'btn-cam-close': 
-        () => closePopup(),
+    'btn-cam-close': 
+    () => closePopup(),
 
-        'btn-cam-fullscreen': 
-        () => goToContextRoot('cam1')
-    };
-
-    // Attach listeners safely
-    for (const [id, handler] of Object.entries(listeners)) {
-        const elem = document.getElementById(id);
-        if (elem) elem.addEventListener('click', handler);
-    }
+    'btn-cam-fullscreen': 
+    () => goToContextRoot('cam1')
+  };
+  for (const [id, handler] of Object.entries(listeners)) {
+    const elem = document.getElementById(id);
+    if (elem) elem.addEventListener('click', handler);
+  }
 }
 
 function loadPage() {
@@ -549,18 +545,9 @@ function handleClicks(event) {
     return;
   }
   // don't hide menus when clicking these elements
-  if (event.target.classList.contains('button') || // button clicks
-      event.target.classList.contains('button__text') || // button text clicks
-      event.target.classList.contains('nohide__click') || // no-hide clicks
-      event.target.classList.contains('bookmarked__item') || // bookmark menu clicks
-      event.target.classList.contains('chkbox') || // checkbox clicks
-      event.target.classList.contains('fad') || // duotone icon clicks
-      event.target.classList.contains('far') || // regular icon clicks
-      event.target.classList.contains('fab') || // brand icon clicks
-      event.target.classList.contains('fas')) { // solid icon clicks
-    return;
-  }
-  hideDropdowns();
+  const NO_HIDE_ELEMENTS = '.button, .topnav, .bookmarked__item, .chkbox, .toggle-switch';
+  if (event.target.closest(NO_HIDE_ELEMENTS)) return;
+  removeDropdowns();
 }
 
 function resetActivityTimer() {
@@ -575,10 +562,17 @@ function resetActivityTimer() {
   }, App.TIMEOUT_INTERVAL * 1000);
 }
 
-function hideDropdowns() {
-  // hide all dropdown menus
+function removeDropdowns() {
   classDisplay("dd-content", "none");
-  // hide / reset bookmarks menu
+  removeBookmarks();
+  removeDynMenus();
+  if (App.activeSwitches && App.activeSwitches.length > 0) {
+    App.activeSwitches.forEach(toggle => toggle.destroy());
+    App.activeSwitches = []; // Empty the array for next time
+  }
+}
+
+function removeBookmarks() {
   classDisplay("bookmark-buttons", "none");
   const elem = document.getElementById("bookmarks");
   if (elem) {
@@ -587,19 +581,15 @@ function hideDropdowns() {
   removeBookmarkSearch();
   closeBookmarkPrompt();
   App.bookmarkState = App.BKM_INACTIVE;
-  removeDynMenus();
 }
 
-
 // open URL in new tab
-window.GoToExtPage = GoToExtPage;
 function GoToExtPage(_path) {
   let url = "https://" + _path;   
   window.open(url, "_blank");
 }
 
 // back to home page 
-window.GoToHomePage = GoToHomePage;
 function GoToHomePage() {
   if (App.sysModel === App.MAIN_SITE) {
     hidePages();
@@ -718,7 +708,6 @@ async function showRoomState() {
   });
 }
 
-window.roomStateClick = roomStateClick;
 async function roomStateClick() {
   const menu = 'roomstatus';
   let _elem = document.getElementById(menu);
@@ -726,19 +715,23 @@ async function roomStateClick() {
     _elem.style.display = 'none';
     return;
   } 
-  hideDropdowns();
+  removeDropdowns();
   let menuData;
   if (App.roomStateData.roomState === null) {
-    menuData += `${menu}|redind|Error checking devices.\n`;
+    menuData += `${menu}|noind|Error checking devices.\n`;
   } else {
-    for (const [deviceName, deviceState] of App.roomStateData.devices) {
-      let indType;
-      if (deviceState == '0') {
-        indType = 'blkind';
+    for (const device of App.roomStateData.devices) {
+      const name = device.name;
+      const status = device.status;
+      let ind;
+      if (status === false) {
+        ind = 'blkind';
+      } else if (status === true) {
+        ind = 'grnind';
       } else {
-        indType = 'grnind';
+        ind = 'redind';
       }
-      menuData += `${menu}|${indType}|${deviceName}\n`;
+      menuData += `${menu}|${ind}|${name}\n`;
     }
   }
   drawMenu(menuData, menu);
@@ -780,7 +773,6 @@ function clearPendingCmd() {
   App.serverCmdData = null;
 }
 
-window.openServerOptions = openServerOptions;
 function openServerOptions(){
   closeServerOptions();
   classDisplay("svropt__prompt", "block");
@@ -799,9 +791,8 @@ function openBackupOptions(){
   classDisplay("svropt__backup", "block");
 }
 
-window.closeServerOptions = closeServerOptions;
 function closeServerOptions(){
-  hideDropdowns();
+  removeDropdowns();
   clearPendingCmd();
   classDisplay("svropt__prompt", "none");
   classDisplay("svropt__main", "none");
@@ -811,7 +802,6 @@ function closeServerOptions(){
 
 /////// LEDScroll ///////
 
-window.setTextScrollTitle = setTextScrollTitle;
 function setTextScrollTitle(){
   let title = document.getElementById('textScrollTitle');
   const color = App.ledScrollData[0];
@@ -821,52 +811,44 @@ function setTextScrollTitle(){
   title.textContent = "Textscroll " + font + ' ' + speed + 'x';
 }
 
-window.clearTextScrollBox = clearTextScrollBox;
 function clearTextScrollBox(){
   let textbox = document.getElementById('textScrollBox');
   textbox.placeholder = "Enter message";
   textbox.value = '';
 }
 
-window.openTextScroll = openTextScroll;
 function openTextScroll(){
   classDisplay("textscroll__prompt", "block");
   clearTextScrollBox();
   setTextScrollTitle();
 }
 
-window.closeTextScroll = closeTextScroll;
 function closeTextScroll(){
   classDisplay("textscroll__prompt", "none");
   clearTextScrollBox();
-  hideDropdowns();
+  removeDropdowns();
 }
 
-window.clearLEDsMessage = clearLEDsMessage;
 function clearLEDsMessage(){
   clearTextScrollBox();
   sendCmd('leds', 'stop', '');
 }
 
-window.setTextScrollColor = setTextScrollColor;
 function setTextScrollColor(color){
   App.ledScrollData[0] = color;
   setTextScrollTitle();
 }
 
-window.setTextScrollFont = setTextScrollFont;
 function setTextScrollFont(font){
   App.ledScrollData[1] = font;
   setTextScrollTitle();
 }
 
-window.setTextScrollSpeed = setTextScrollSpeed;
 function setTextScrollSpeed(speed){
   App.ledScrollData[2] = speed;
   setTextScrollTitle();
 }
 
-window.sendTextScroll = sendTextScroll;
 function sendTextScroll(){
   let textbox = document.getElementById('textScrollBox');
   const message = cleanString(textbox.value.replaceAll("|", "-"));
@@ -895,7 +877,6 @@ function sendTextScroll(){
 
 /////////////////////////
 
-window.aboutPrompt = aboutPrompt;
 async function aboutPrompt(){
   const _winid = 'about__prompt';
   // only allow one-instance of the window
@@ -947,7 +928,6 @@ async function aboutPrompt(){
 
 /// Temperature & Humidity ///
 
-window.showTempHumidity = showTempHumidity;
 async function showTempHumidity(){
   const _winid = 'temp__prompt';
   // only allow one-instance of the window
@@ -1085,14 +1065,13 @@ function pushTempErrorThermos(temp_elm, humd_elm) {
 
 /// END - Temperature & Humidity ///
 
-window.showPiWiFiPrompt = showPiWiFiPrompt;
 async function showPiWiFiPrompt() {
   const winid = "pinet__prompt";
   // only allow one-instance of the window
   if (document.getElementById(winid)) {
     return;
   }
-  hideDropdowns();
+  removeDropdowns();
   let result = await piWiFiPrompt(winid);
   if (result !== null) {  
     if (result !== '') {  
@@ -1189,7 +1168,6 @@ async function piWiFiPrompt(_winid){
   }); 
 }
 
-window.wifiPrompt = wifiPrompt;
 async function wifiPrompt(){
   const _winid = "wifi__prompt";
   // only allow one-instance of the window
@@ -1224,11 +1202,10 @@ async function wifiPrompt(){
   });   
 }
 
-window.getPassword = getPassword;
 async function getPassword(_type){
   let result;
   try{
-    hideDropdowns();
+    removeDropdowns();
     result = await passwordPrompt();
     if (result !== null) {  
       if (result !== '') {
@@ -1310,7 +1287,6 @@ function initColorGrid() {
   App.isColorPromptInit = true;
 }
 
-window.colorPrompt = colorPrompt;
 function colorPrompt(initialColor) {
   initColorGrid();
   let formattedColor = String(initialColor);
@@ -1327,7 +1303,6 @@ function colorPrompt(initialColor) {
   document.getElementById('color-popup').style.display = 'flex';
 }
 
-window.closeColorPrompt = closeColorPrompt;
 function closeColorPrompt() {
   document.getElementById('color-popup').style.display = 'none';
   document.getElementById('hex-color').removeEventListener('input', handleHexInput);
@@ -1430,7 +1405,6 @@ function relaxSend(_cmd) {
 }
 
 // volume controls
-window.sendVol = sendVol;
 function sendVol(_cmd) {
   if (App.ctlCommand == 'lr' ){
     setAmpVolume(_cmd, 'lrxmit', 100); // living room system
@@ -1530,7 +1504,6 @@ function showVolumePopup(vol) {
   }, 3000); // hide delay in (ms)
 }
 
-window.roomOnOff = roomOnOff;
 function roomOnOff(action) {
   sendCmd('main', App.ctlCommand + action, '');
 }
@@ -1558,7 +1531,6 @@ function subMode(_action) {
 }
 
 // controls menu actions
-window.ctlsMenu = ctlsMenu;
 function ctlsMenu(_mode) {
   App.ctlCommand = _mode; 
   // living room controls
@@ -1589,24 +1561,22 @@ function ctlsMenu(_mode) {
 }
 
 // toggle dropdown menu's
-window.showMenu = showMenu;
 function showMenu(_menu) {
   let _elem = document.getElementById(_menu);
   if (_elem.style.display === 'block') {
     _elem.style.display = 'none';
     return;
   }
-  hideDropdowns();
+  removeDropdowns();
   _elem.style.display = 'block';
 }
 
 //// Bookmarks Menu ////
 
-window.showBookmarks = showBookmarks;
 function showBookmarks() {
   // hide menu if clicked while open
   if (App.bookmarkState !== App.BKM_INACTIVE) {
-    hideDropdowns();
+    removeDropdowns();
     return;
   }
   // draw bookmarks
@@ -1626,12 +1596,12 @@ function showBookmarkSearch() {
     searchBox.autocorrect = "off";
     searchBox.autocapitalize = "none"; 
     searchBox.placeholder = "Search here...";
-    searchBox.classList.add('nohide__click');
+    searchBox.classList.add('nohide');
     searchBox.id = 'bookmark__search_txt';
     // draw menu container 
     let searchMenuItem = document.createElement('a');
     searchMenuItem.id = "bookmark__search";
-    searchMenuItem.classList.add('nohide__click');
+    searchMenuItem.classList.add('nohide');
     // draw search icon
     let searchIcon = document.createElement("div");
     searchIcon.id = "bookmark__search_icon";
@@ -1708,17 +1678,15 @@ function removeBookmarkSearch() {
   if (search) search.remove();
 }
 
-window.editBookmark = editBookmark;
 function editBookmark() {
   // hide menu if clicked while open
   if (App.bookmarkState === App.BKM_EDIT_MODE) {
-    hideDropdowns();
+    removeDropdowns();
     return;
   }
   enableEditAddMode();
 }
 
-window.addBookmark = addBookmark;
 function addBookmark() {
   enableEditAddMode();
   // create new unique menu ID
@@ -1894,7 +1862,7 @@ async function drawBookmarkPrompt(add, url, name, elem){
       // cancel button action
       if (btn_event.target === editFavCancelBtn) {
         editFavPrompt.removeEventListener('click', handleButtonClicks);
-        hideDropdowns();
+        removeDropdowns();
       }
       // lookup URL action
       if (btn_event.target === editFavLookupBtn) {
@@ -2056,7 +2024,6 @@ function closeBookmarkPrompt() {
   }  
 }
 
-window.showHiFiMoreMenu = showHiFiMoreMenu;
 function showHiFiMoreMenu() {
   const offcode = -1;
   const target = 'lrxmit';
@@ -2065,7 +2032,7 @@ function showHiFiMoreMenu() {
   if (_elem.style.display === 'block') {
     _elem.style.display = 'none';
   } else {
-    hideDropdowns();
+    removeDropdowns();
     _elem.style.display = 'block';
     // start spinner animation
     let btnText = document.getElementById(menuname + '-text');
@@ -2108,7 +2075,6 @@ function showHiFiMoreMenu() {
   }
 }
 
-window.showHiFiAmpInput = showHiFiAmpInput;
 function showHiFiAmpInput() {
   const offcode = -1;
   const target = 'lrxmit';
@@ -2117,7 +2083,7 @@ function showHiFiAmpInput() {
   if (_elem.style.display === 'block') {
     _elem.style.display = 'none';
   } else {
-    hideDropdowns();
+    removeDropdowns();
     _elem.style.display = 'block';
     // start spinner animation
     let btnText = document.getElementById(menuname + '-text');
@@ -2169,7 +2135,6 @@ function showHiFiAmpInput() {
   }
 }
 
-window.showBedroomAmpInput = showBedroomAmpInput;
 function showBedroomAmpInput() {
   const target = 'brpi';
   const menuname = 'brinpmenu';
@@ -2178,7 +2143,7 @@ function showBedroomAmpInput() {
   if (_elem.style.display === 'block') {
     _elem.style.display = 'none';
   } else {
-    hideDropdowns();
+    removeDropdowns();
     _elem.style.display = 'block';
     // start spinner animation
     let btnText = document.getElementById('ampinp-text');
@@ -2221,22 +2186,13 @@ function showBedroomAmpInput() {
   }
 }
 
-window.showPowerMenu = showPowerMenu;
-function showPowerMenu(target, menu) {
-  let arg1;
-  let arg2;
-  if (target == "") {
-    arg1 = menu;
-    arg2 = "";
-  } else {
-    arg1 = target;
-    arg2 = menu;
-  }
+function showPowerMenu(target, menu = null) {
+  if (menu == '' || menu == null) menu = target;
   let _elem = document.getElementById(menu + '-menu');
   if (_elem.style.display === 'block') {
     _elem.style.display = 'none';
   } else {
-    hideDropdowns();
+    removeDropdowns();
     // start spinner animation
     let btnText = document.getElementById(menu + '-text');
     let btnSpinner = document.getElementById(menu + '-spinner');
@@ -2247,60 +2203,22 @@ function showPowerMenu(target, menu) {
     // custom actions
     let action = 'main';
     if (menu == 'fc_leds') action = 'leds';
-    sendCmd(action, arg1, arg2).then((data) => { // GET request
-      const resp = cleanString(data); // remove newlines
-      const field = resp.split("~");
-      const pri_cmd = field[0]; 
-      const sub_cmd = field[1];
-      let error = false;
-      // draw menu items
-      let _indtype; // indicator type
-      let _title;   // menu button title
-      let _menudata = "";
-      // status display
-      switch(pri_cmd) {
-      case '0':
-        _indtype = 'blkind';
-        _title = "Offline";
-        break;
-      case '1':
-        _indtype = 'grnind';
-        _title = "Online";
-        break;
-      case 'pc_awake':
-        _indtype = 'grnind';
-        _title = "Online";
-        break;
-      default: // error response
-        _indtype = 'redind';
-        _title = "Error";
-        error = true;
-      }
-      // custom menus
-      switch(menu) {
-      case 'fc_leds':
-        // global fadecandy LEDs brightness
-        _menudata += pri_cmd + '~leds~fc|slider|\n';
-        break;
-      default: 
-        _menudata += target + '|' + _indtype + '|' + _title + '\n';
-        if (error === false) {
-          // power on/off buttons
-          if (pri_cmd == '1') { // online
-            _menudata += 'offcmd~' + target + '~' + menu + 'off|noind|Off\n';
-          }
-          if (pri_cmd == '0') { // offline
-            _menudata += 'oncmd~' + target + '~' + menu + 'on|noind|On\n';
-          }
-          // custom buttons / items
-          if (pri_cmd == 'pc_awake') {
-            _menudata += 'sleepmode~' + target + '~' + menu + 'off|noind|Sleep\n';
-          }
-          // window lamp slider
-          if (menu == 'wl_leds') {
-            _menudata += sub_cmd + '~' + target + '~wl_leds_set|slider|\n';
-          }
-        }  
+    // transmit request
+    sendCmd(action, target, menu).then((data) => {
+      let _menudata = '';
+      const [cmd1, cmd2] = splitByDelimiter(cleanString(data), '~');
+      if (isNumeric(cmd1) === false || data == null) {
+        _menudata += `${menu}-error|redind|Error\n`;
+      } else {
+        // power on/off toggle switch
+        if (cmd1 == '1' || cmd1 == '0')
+          _menudata += `${cmd1}~${target}~${menu}|toggle|\n`;
+        // dual LED lamps channel 1=ON/OFF 2=PWM
+        if (menu.endsWith('_dual')) 
+          _menudata += `${cmd2}~main~${menu}|slider|\n`;
+        // global LEDs brightness
+        if (menu == 'fc_leds') 
+          _menudata += `${cmd1}~leds~fc|slider|\n`;
       }
       // stop spinner animation
       btnText.style.visibility = 'visible';
@@ -2311,7 +2229,6 @@ function showPowerMenu(target, menu) {
   }
 }
 
-window.showStatusMenu = showStatusMenu;
 function showStatusMenu() {
   const _menu = 'statsmenu';
   let statIcon = document.getElementById('navstats-icon');
@@ -2323,7 +2240,7 @@ function showStatusMenu() {
     statIcon.style.visibility = 'visible';
     statSpinner.classList.remove('right-nav-spinner');
   } else {
-    hideDropdowns();
+    removeDropdowns();
     // start spinner animation
     statIcon.style.visibility = 'hidden';
     statSpinner.classList.add('right-nav-spinner');
@@ -2355,14 +2272,12 @@ function afterPOSTActions(action) {
 }
 
 // load server action
-window.serverAction = serverAction;
 function serverAction(cmd) {
   App.serverCmdData = cmd;
   // change color of send button
   sendBtnAlert("on");
 }
 
-window.openLogWindow = openLogWindow;
 function openLogWindow() {
   // open server log window
   closePopup();
@@ -2373,7 +2288,6 @@ function openLogWindow() {
 }
 
 // load entire text file
-window.loadLog = loadLog;
 async function loadLog(file) {
   // build URL / append data
   const url = location.protocol + "//" + location.hostname + "/api/read?file=" + file;
@@ -2406,7 +2320,6 @@ async function loadLog(file) {
 }
 
 // transmit a command
-window.sendCmd = sendCmd;
 async function sendCmd(act, arg1, arg2) {
   // construct API URL
   const url = location.protocol + "//"+ location.hostname + "/api?var=" + arg2 + "&arg=" + arg1 + "&action=" + act;
@@ -2446,13 +2359,12 @@ function savePOST(file, data) {
 
 //// Dynamic Menus ////
 
-window.showDynMenu = showDynMenu;
 function showDynMenu(menu) {
   let _elem = document.getElementById(menu);
   if (_elem.style.display === 'block') {
     _elem.style.display = 'none';
   } else {
-    hideDropdowns();
+    removeDropdowns();
      _elem.style.display = 'block';
     // build URL / append data
     const url = location.protocol+ "//" +location.hostname + "/api/read?file=" + menu;
@@ -2506,12 +2418,11 @@ function drawMenu(data, menu) {
     // store menu name at end of array
     App.fileData.push(menu);
   } else {
-    showPopup("[drawMenu] no data!");
+    showPopup("[drawMenu] no data");
   }
 }
 
 function createListItem(col0_in, col1, col2, menuid) {
-  //console.log(col0_in, col1, col2);
   let _elm = document.createElement('a');
   let _dot = document.createElement('span');
   let field = col0_in.split("~");
@@ -2576,6 +2487,7 @@ function createListItem(col0_in, col1, col2, menuid) {
       });
       _elm.appendChild(slider);
       _elm.classList.add('slider-wide_container');
+      _elm.classList.add('no-hover');
       break;
     case 'bkmrk': 
       // bookmarks menu 
@@ -2603,15 +2515,29 @@ function createListItem(col0_in, col1, col2, menuid) {
         } 
       });
       break;
+    case 'toggle':
+      // switch-like toggle menu
+      _elm.classList.add('no-hover');
+      const tgl_state = col0 === '1' ? true : false;
+      const tgl_obj = new ToggleSwitch(_elm, {
+        id: `${host}-${cmd}`,
+        checked: tgl_state,
+        cmdHost: host,
+        command: cmd,
+        onToggle: toggleSwitchCallback
+      });
+      tgl_obj.activate();
+      App.activeSwitches.push(tgl_obj);
+      break;
     case 'noind': 
       // no indicator type status menu
-      drawStatusItem(_elm, col0, host, cmd);
+      addStatusListener(_elm, col0, host, cmd);
       break;
     case 'blkind': 
       // black indicator type status menu
       _dot.classList.add('ind_dot');
       _dot.id = "ind-" + col2;
-      drawStatusItem(_elm, col0, host, cmd);
+      addStatusListener(_elm, col0, host, cmd);
       _elm.appendChild(_dot);
       break;
     case 'grnind': 
@@ -2619,7 +2545,7 @@ function createListItem(col0_in, col1, col2, menuid) {
       _dot.classList.add('ind_dot');
       _dot.classList.add('ind_dot_green');
       _dot.id = "ind-" + col2;
-      drawStatusItem(_elm, col0, host, cmd);
+      addStatusListener(_elm, col0, host, cmd);
       _elm.appendChild(_dot);
       break;
     case 'redind': 
@@ -2627,7 +2553,7 @@ function createListItem(col0_in, col1, col2, menuid) {
       _dot.classList.add('ind_dot');
       _dot.classList.add('ind_dot_red');
       _dot.id = "ind-" + col2;
-      drawStatusItem(_elm, col0, host, cmd);
+      addStatusListener(_elm, col0, host, cmd);
       _elm.appendChild(_dot);
       break;
     case 'ylwind': 
@@ -2635,53 +2561,24 @@ function createListItem(col0_in, col1, col2, menuid) {
       _dot.classList.add('ind_dot');
       _dot.classList.add('ind_dot_yellow');
       _dot.id = "ind-" + col2;
-      drawStatusItem(_elm, col0, host, cmd);
+      addStatusListener(_elm, col0, host, cmd);
       _elm.appendChild(_dot);
       break;
   }
   return _elm;
 }
 
-const throttledSliderSend = requestThrottle((host, cmd, val) => {
-  sendCmd(host, cmd, val);
-}, 50); // in (ms)
-
-function sendPowerCommand(host, cmd) {
-  sendCmd('main', host, cmd);
-}
-
-function drawStatusItem(elm, col0, host, cmd) {
-  const _icon = document.createElement('span');
-  if (col0 == 'oncmd') { // power-on remote API call on click
-    _icon.classList.add('fa');
-    _icon.classList.add('fa-toggle-on');
-    elm.appendChild(_icon);
-    elm.addEventListener("click", function() {
-      sendPowerCommand(host, cmd);
-    });
-  }
-  if (col0 == 'offcmd') { // power-off remote API call on click
-    _icon.classList.add('fa');
-    _icon.classList.add('fa-toggle-off');
-    elm.appendChild(_icon);
-    elm.addEventListener("click", function() {
-      sendPowerCommand(host, cmd);
-    });
-  }
-  if (col0 == 'sleepmode') { // sleep PC type menu
-    _icon.classList.add('fa');
-    _icon.classList.add('fa-moon');
-    elm.appendChild(_icon);
-    elm.addEventListener("click", function() {
-      sendPowerCommand(host, cmd);
-    });
-  }
+function addStatusListener(elm, col0, host, cmd) {
   if (col0 == 'cmd') { // generic remote API call on click
     elm.addEventListener("click", function() {
       sendCmd('main', host, cmd);
     });
   }
 }
+
+const throttledSliderSend = requestThrottle((host, cmd, val) => {
+  sendCmd(host, cmd, val);
+}, 50); // in (ms)
 
 function drawCheckBoxItem(elm, url, boxid, state) {
   const _cbox = document.createElement('input');
@@ -2755,21 +2652,18 @@ function removeDynMenus() {
 //// End Dynamic Menus ////
 
 // show camera form window
-window.openCamWindow = openCamWindow;
 function openCamWindow() {
   closePopup();
   document.getElementById("cam-popup").style.display = "block";
   document.getElementById("cam-display").src = "/cam1";
 }
 
-window.goToContextRoot = goToContextRoot;
 function goToContextRoot(_path) {
   closePopup();
   window.location = location.protocol + "//" + location.hostname + "/" + _path;
 }
 
 // close all popup windows
-window.closePopup = closePopup;
 function closePopup() {
   document.getElementById("logForm").style.display = "none";
   document.getElementById("cam-popup").style.display = "none";
@@ -2779,11 +2673,9 @@ function closePopup() {
 }
 
 function animatedBackground() {
-  const BG_COLOR = '#000';
-  // Background Stars
+  const BG_COLOR = '#010209';
   const BG_STAR_DENSITY = 2500;
   const BG_STAR_SIZE = 1.7;
-  // Shooting Stars
   const MAX_SH_STARS = 6;
   const SH_STAR_MIN_SPEED = 5;
   const SH_STAR_SPEED_VARIANCE = 10;
@@ -2800,8 +2692,6 @@ function animatedBackground() {
   let shootingStars = [];
 
   function resizeCanvas() {
-    // OPTIMIZATION: Cap the Device Pixel Ratio to 1.5 on low-end devices 
-    // to prevent mobile phones from rendering at 3x or 4x resolution unnecessarily.
     const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
     canvas.width = window.innerWidth * dpr;
     canvas.height = window.innerHeight * dpr;
@@ -2836,12 +2726,8 @@ function animatedBackground() {
       this.length = (Math.random() * SH_STAR_LENGTH_VARIANCE) + SH_STAR_MIN_LENGTH;
       this.thickness = (Math.random() * SH_STAR_THICKNESS_VARIANCE) + SH_STAR_MIN_THICKNESS;
       this.angle = SH_STAR_BASE_ANGLE + (Math.random() * (SH_STAR_ANGLE_VARIANCE * 2) - SH_STAR_ANGLE_VARIANCE); 
-      // OPTIMIZATION: Pre-calculate velocity vectors here so we don't 
-      // compute Math.sin() and Math.cos() 60 times a second per star.
       this.vx = speed * Math.cos(this.angle);
       this.vy = speed * Math.sin(this.angle);
-      // OPTIMIZATION: Cache the gradient. Instead of creating a new linear 
-      // gradient every frame, we create it once per star lifespan.
       this.gradient = ctx.createLinearGradient(0, 0, -this.length, 0);
       this.gradient.addColorStop(0, '#fff');
       this.gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
@@ -2852,7 +2738,6 @@ function animatedBackground() {
         this.delay--;
         return; 
       }
-      // Use pre-calculated velocities
       this.x += this.vx;
       this.y += this.vy;
       if (this.x > window.innerWidth + this.length || 
@@ -2877,7 +2762,6 @@ function animatedBackground() {
   function initBackgroundStars() {
     backgroundStars = [];
     shootingStars = [];
-    // Slight optimization using bitwise NOT for faster flooring
     const numStars = ~~((window.innerWidth * window.innerHeight) / BG_STAR_DENSITY);
     for (let i = 0; i < numStars; i++) {
       backgroundStars.push(new BackgroundStar());
@@ -2888,29 +2772,217 @@ function animatedBackground() {
   }
 
   function animateCanvas() {
-    // Clear the canvas and set the background color
     ctx.globalAlpha = 1; 
     ctx.fillStyle = BG_COLOR;
     ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
-    // OPTIMIZATION: Set fillStyle ONCE for all background stars
     ctx.fillStyle = '#fff';
-    // 1. Draw the static background stars (no twinkling)
     for (let i = 0; i < backgroundStars.length; i++) {
       backgroundStars[i].draw();
     }
-    // Reset alpha for shooting stars
     ctx.globalAlpha = 1; 
-    // 2. Only run the shooting star animation if the inactivity timer hasn't triggered
     if (App.starsRunning) {
       for (let i = 0; i < shootingStars.length; i++) {
         shootingStars[i].update();
       }
     }
-    // Continue the animation loop
     requestAnimationFrame(animateCanvas);
   }
 
   window.addEventListener('resize', resizeCanvas);
   resizeCanvas();
   animateCanvas();
+}
+
+class ToggleSwitch {
+  constructor(parent, config = {}) {
+    this.parent = typeof parent === 'string' ? document.getElementById(parent) : parent;
+    if (!this.parent) throw new Error(`Parent element not found`);
+    this.config = config;
+    this.toggleId = `input-${config.id}` || `input-${Math.random().toString(36).substr(2, 9)}`;
+    this.cmdHost = config.cmdHost || 'none';
+    this.command = config.command || 'none';
+    this.onToggleCallback = config.onToggle || null; 
+    this.state = {
+      isDragging: false,
+      hasMoved: false,
+      blockNextClick: false,
+      startX: 0,
+      startProgress: 0,
+      dragProgress: 0,
+      handleTravelDistance: 0,
+      height: 0,
+      handleSize: 0,
+      padding: 0
+    };
+    this.ticking = false; 
+    this.rafId = null; 
+    this.clickBlockTimeout = null;
+    this._render();
+  }
+
+  _render() {
+    this.wrapper = document.createElement('div');
+    this.wrapper.className = 'toggle-switch';
+    this.wrapper.style.contain = 'layout paint';
+    if (this.config.id) this.wrapper.id = this.config.id;
+    if (this.config.width) this.wrapper.style.setProperty('--local-width', this.config.width);
+    if (this.config.height) this.wrapper.style.setProperty('--local-height', this.config.height);
+    this.wrapper.innerHTML = `
+      <input type="checkbox" id="${this.toggleId}" class="toggle-input" ${this.config.checked ? 'checked' : ''}>
+      <label for="${this.toggleId}" class="toggle-label">
+          <div class="toggle-track">
+              <div class="toggle-handle">
+                  <span class="toggle-text-on">ON</span>
+                  <span class="toggle-text-off">OFF</span>
+              </div>
+          </div>
+      </label>
+    `;
+    this.parent.appendChild(this.wrapper);
+    this.checkbox = this.wrapper.querySelector('.toggle-input');
+    this.label = this.wrapper.querySelector('.toggle-label');
+    const track = this.wrapper.querySelector('.toggle-track');
+    track.style.transition = 'none';
+    track.style.backgroundColor = 'var(--local-color-on)';
+    void track.offsetHeight; 
+    track.style.backgroundColor = '';
+    track.style.transition = '';
+  }
+
+  activate() {
+    this.label.addEventListener('pointerdown', this);
+    this.label.addEventListener('click', this);
+    this.checkbox.addEventListener('change', this);
+  }
+
+  destroy() {
+    this.label.removeEventListener('pointerdown', this);
+    this.label.removeEventListener('click', this);
+    this.checkbox.removeEventListener('change', this);
+    window.removeEventListener('pointermove', this);
+    window.removeEventListener('pointerup', this);
+    window.removeEventListener('pointercancel', this);
+    if (this.rafId) cancelAnimationFrame(this.rafId); 
+    if (this.clickBlockTimeout) clearTimeout(this.clickBlockTimeout);
+    if (this.wrapper && this.wrapper.parentNode) {
+      this.wrapper.parentNode.removeChild(this.wrapper); 
+    }
+  }
+
+  handleEvent(event) {
+    switch (event.type) {
+      case 'pointercancel':
+      case 'pointerup': this._onPointerUp(event); break;
+      case 'pointerdown': this._onPointerDown(event); break;
+      case 'pointermove': this._onPointerMove(event); break;
+      case 'click': this._onClick(event); break;
+      case 'change': this._onChange(event); break;
+    }
+  }
+
+  _onPointerDown(e) {
+    if (e.button !== 0 && e.pointerType === 'mouse') return; 
+    this.state.blockNextClick = false;
+    clearTimeout(this.clickBlockTimeout);
+    this.state.handleTravelDistance = 0; 
+    this.state.startX = e.clientX;
+    this.state.isDragging = true;  
+    this.state.hasMoved = false;   
+    this.state.startProgress = this.checkbox.checked ? 1 : 0;
+    window.addEventListener('pointermove', this, { passive: true });
+    window.addEventListener('pointerup', this);
+    window.addEventListener('pointercancel', this);
+  }
+
+  _onPointerMove(e) {
+    if (!this.state.isDragging) return;
+    const deltaX = e.clientX - this.state.startX;
+    if (Math.abs(deltaX) > 3) {
+      this.state.hasMoved = true;
+      if (this.state.handleTravelDistance === 0) {
+        const trackRect = this.label.getBoundingClientRect();
+        this.state.height = trackRect.height;
+        this.state.handleSize = this.state.height * 0.85;
+        this.state.padding = this.state.height * 0.075;
+        this.state.handleTravelDistance = 
+          trackRect.width - this.state.handleSize - (2 * this.state.padding);
+      }
+      let progress = this.state.startProgress + (deltaX / this.state.handleTravelDistance);
+      this.state.dragProgress = Math.max(0, Math.min(1, progress));
+      let currentX = this.state.padding + (this.state.dragProgress * this.state.handleTravelDistance);
+      if (!this.ticking) {
+        this.rafId = window.requestAnimationFrame(() => {
+          if (!this.state.isDragging) {
+            this.ticking = false;
+            return; 
+          }
+          if (!this.wrapper.classList.contains('is-dragging')) {
+            this.wrapper.classList.add('is-dragging');
+            void this.wrapper.offsetWidth;
+          }
+          this.wrapper.style.setProperty('--drag-progress', this.state.dragProgress.toFixed(3));
+          this.wrapper.style.setProperty('--drag-x', `${currentX.toFixed(1)}px`);
+          this.ticking = false;
+        }); 
+        this.ticking = true;
+      }
+    }
+  }
+
+  _onPointerUp(e) {
+    if (!this.state.isDragging) return;
+    this.state.isDragging = false;
+    window.removeEventListener('pointermove', this);
+    window.removeEventListener('pointerup', this);
+    window.removeEventListener('pointercancel', this);
+    if (this.state.hasMoved) {
+      const newState = this.state.dragProgress >= 0.5;
+      if (this.checkbox.checked !== newState) {
+        this.checkbox.checked = newState; 
+        this.checkbox.dispatchEvent(new Event('change')); 
+      }
+      this.state.blockNextClick = true;
+      this.clickBlockTimeout = setTimeout(() => { this.state.blockNextClick = false; }, 300);
+      this.wrapper.style.setProperty('--drag-progress', newState ? '1' : '0');
+      this.rafId = window.requestAnimationFrame(() => {
+        this.rafId = window.requestAnimationFrame(() => {
+          this.wrapper.classList.remove('is-dragging');
+          this.wrapper.style.removeProperty('--drag-progress'); 
+          this.wrapper.style.removeProperty('--drag-x'); 
+        });
+      });
+    } else {
+      this.wrapper.classList.remove('is-dragging');
+      this.wrapper.style.removeProperty('--drag-progress'); 
+      this.wrapper.style.removeProperty('--drag-x'); 
+    }
+    this.state.hasMoved = false;
+  }
+
+  _onChange(e) {
+    const toggleState = e.target.checked ? 'on' : 'off';
+    const payload = {
+      host: this.cmdHost,
+      cmd: `${this.command}${toggleState}`
+    };
+    if (typeof this.onToggleCallback === 'function') {
+      this.onToggleCallback(payload);
+    }
+  }
+
+  _onClick(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (this.state.blockNextClick) {
+      this.state.blockNextClick = false; 
+      clearTimeout(this.clickBlockTimeout);
+      return;
+    }
+    this.checkbox.checked = !this.checkbox.checked;
+    this.checkbox.dispatchEvent(new Event('change'));
+  }
+}
+
+async function toggleSwitchCallback(payload) {
+  sendCmd('main', payload.host, payload.cmd);
 }
