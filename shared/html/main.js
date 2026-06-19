@@ -53,454 +53,240 @@ window.addEventListener("DOMContentLoaded", () => {
   loadPage();
 });
 
+window.addEventListener('beforeunload', () => {
+  if (App.activityTimeout) clearTimeout(App.activityTimeout);
+  if (App.messagePopupTimer) clearTimeout(App.messagePopupTimer);
+  if (App.volPopupTimer) clearTimeout(App.volPopupTimer);
+  if (App.roomStateData && App.roomStateData.timerID) {
+    clearInterval(App.roomStateData.timerID);
+  }
+  if (App.activeSwitches && App.activeSwitches.length > 0) {
+    App.activeSwitches.forEach(toggle => {
+      if (typeof toggle.destroy === 'function') toggle.destroy();
+    });
+    App.activeSwitches = [];
+  }
+});
+
 function setupEventListeners() {
   const listeners = {
     // Top Nav
-    'btn-dyn-mainmenu': 
-    () => showDynMenu('mainmenu'),
-
-    'btn-menu-pimainmenu': 
-    () => showMenu('pi-mainmenu'),
-
-    'btn-dyn-thememenu': 
-    () => showDynMenu('thememenu'),
-
-    'btn-show-bookmarks': 
-    () => showBookmarks(),
-
-    'btn-edit-bookmark': 
-    () => editBookmark(),
-
-    'btn-add-bookmark': 
-    () => addBookmark(),
-
-    'statusDropdownContainer': 
-    () => roomStateClick(),
-    
-    'nav_right_menu': 
-    () => showStatusMenu(),
-    
+    'btn-dyn-mainmenu': () => showDynMenu('mainmenu'),
+    'btn-menu-pimainmenu': () => showMenu('pi-mainmenu'),
+    'btn-dyn-thememenu': () => showDynMenu('thememenu'),
+    'btn-show-bookmarks': () => showBookmarks(),
+    'btn-edit-bookmark': () => editBookmark(),
+    'btn-add-bookmark': () => addBookmark(),
+    'statusDropdownContainer': () => roomStateClick(),
+    'nav_right_menu': () => showStatusMenu(),
     // Menus
-    'btn-about-main': 
-    () => aboutPrompt(),
-
-    'btn-about-pi': 
-    () => aboutPrompt(),
-
-    'btn-log-pi': 
-    () => openLogWindow(),
-
-    'btn-home-pi': 
-    () => GoToHomePage(),
-    
+    'btn-about-main': () => aboutPrompt(),
+    'btn-about-pi': () => aboutPrompt(),
+    'btn-log-pi': () => openLogWindow(),
+    'btn-home-pi': () => GoToHomePage(),
     // Main Grid Left
-    'btn-dyn-ledcolormenu': 
-    () => showDynMenu('ledcolormenu'),
-
-    'btn-color-prompt': 
-    () => colorPrompt(),
-    'btn-dyn-ledeffectmenu': 
-    () => showDynMenu('ledeffectmenu'),
-
-    'btn-power-fc_leds': 
-    () => showPowerMenu('fc_leds'),
-
-    'btn-cmd-leds-shuffle': 
-    () => sendCmd('leds', 'shuffle', ''),
-
-    'btn-cmd-leds-stop': 
-    () => sendCmd('leds', 'stop', ''),
-
-    'btn-cmd-leds-pause': 
-    () => sendCmd('leds', 'pause', ''),
-
-    'btn-cmd-leds-randcolor': 
-    () => sendCmd('leds', 'randcolor', ''),
-
-    'btn-show-temphumid': 
-    () => showTempHumidity(),
-    
-    'btn-menu-lightmenu': 
-    () => showMenu('lightmenu'),
-
-    'btn-cmd-lightson': 
-    () => sendCmd('main', 'lightson', ''),
-
-    'btn-cmd-lightsoff': 
-    () => sendCmd('main', 'lightsoff', ''),
-    
-    'btn-menu-allmenu': 
-    () => showMenu('allmenu'),
-
-    'btn-room-on': 
-    () => roomOnOff('on'),
-
-    'btn-room-off': 
-    () => roomOnOff('off'),
-
-    'btn-open-cam':
-    () => openCamWindow(),
-
-    'btn-open-log-svr': 
-    () => openLogWindow(),
-    
+    'btn-dyn-ledcolormenu': () => showDynMenu('ledcolormenu'),
+    'btn-color-prompt': () => colorPrompt(),
+    'btn-dyn-ledeffectmenu': () => showDynMenu('ledeffectmenu'),
+    'btn-power-fc_leds': () => showPowerMenu('fc_leds'),
+    'btn-cmd-leds-shuffle': () => sendCmd('leds', 'shuffle', ''),
+    'btn-cmd-leds-stop': () => sendCmd('leds', 'stop', ''),
+    'btn-cmd-leds-pause': () => sendCmd('leds', 'pause', ''),
+    'btn-cmd-leds-randcolor': () => sendCmd('leds', 'randcolor', ''),
+    'btn-show-temphumid': () => showTempHumidity(),
+    'btn-menu-lightmenu': () => showMenu('lightmenu'),
+    'btn-cmd-lightson': () => sendCmd('main', 'lightson', ''),
+    'btn-cmd-lightsoff': () => sendCmd('main', 'lightsoff', ''),
+    'btn-menu-allmenu': () => showMenu('allmenu'),
+    'btn-room-on': () => roomOnOff('on'),
+    'btn-room-off': () => roomOnOff('off'),
+    'btn-open-cam':() => openCamWindow(),
+    'btn-open-log-svr': () => openLogWindow(),
     // Main Grid Right (Living Room)
-    'btn-power-wkststate': 
-    () => showPowerMenu('lrxmit', 'wkststate'),
-
-    'btn-menu-lrmenu': 
-    () => showMenu('lr-menu'),
-
-    'btn-ctls-br': 
-    () => ctlsMenu('br'),
-
-    'btn-power-wl1_dual': 
-    () => showPowerMenu('lrxmit', 'wl1_dual'),
-    
-    'voldwnbtn': 
-    () => sendVol('dwn'),
-
-    'volmutebtn': 
-    () => sendVol('mute'),
-
-    'volupbtn': 
-    () => sendVol('up'),
-
-    'btn-vol-dwnc': 
-    () => sendVol('dwnc'),
-
-    'btn-power-hifistate': 
-    () => showPowerMenu('lrxmit', 'hifistate'),
-
-    'btn-vol-upc': 
-    () => sendVol('upc'),
-
-    'btn-vol-display': 
-    () => sendVol('display'),
-    
-    'btn-show-hifi-amp': 
-    () => showHiFiAmpInput(),
-
-    'btn-show-hifi-more': 
-    () => showHiFiMoreMenu(),
-    
+    'btn-power-wkststate': () => showPowerMenu('lrxmit', 'wkststate'),
+    'btn-menu-lrmenu': () => showMenu('lr-menu'),
+    'btn-ctls-br': () => ctlsMenu('br'),
+    'btn-power-wl1_dual': () => showPowerMenu('lrxmit', 'wl1_dual'),
+    'voldwnbtn': () => sendVol('dwn'),
+    'volmutebtn': () => sendVol('mute'),
+    'volupbtn': () => sendVol('up'),
+    'btn-vol-dwnc': () => sendVol('dwnc'),
+    'btn-power-hifistate': () => showPowerMenu('lrxmit', 'hifistate'),
+    'btn-vol-upc': () => sendVol('upc'),
+    'btn-vol-display': () => sendVol('display'),
+    'btn-show-hifi-amp': () => showHiFiAmpInput(),
+    'btn-show-hifi-more': () => showHiFiMoreMenu(),
     // Bedroom Grid
-    'btn-dyn-relaxmenu': 
-    () => showDynMenu('relaxmenu'),
-
-    'btn-cmd-stop-br': 
-    () => sendCmd('main', 'stop-br', ''),
-
-    'btn-menu-brmenu': 
-    () => showMenu('br-menu'),
-
-    'btn-ctls-lr': 
-    () => ctlsMenu('lr'),
-
-    'btn-power-brlamp1': 
-    () => showPowerMenu('brxmit', 'brlamp1'),
-    
-    'br-voldwnbtn': 
-    () => sendVol('dwn'),
-
-    'br-volmutebtn': 
-    () => sendVol('mute'),
-
-    'br-volupbtn': 
-    () => sendVol('up'),
-    
-    'btn-power-brtv': 
-    () => showPowerMenu('brxmit', 'brtv'),
-
-    'btn-power-ampstate': 
-    () => showPowerMenu('brpi', 'ampstate'),
-
-    'btn-power-brpc': 
-    () => showPowerMenu('brxmit', 'brpc'),
-
-    'btn-power-brmacs': 
-    () => showPowerMenu('brxmit', 'brmacs'),
-    
-    'btn-show-br-amp': 
-    () => showBedroomAmpInput(),
-
-    'btn-power-retropi':
-    () => showPowerMenu('brxmit', 'retropi'),
-    
+    'btn-dyn-relaxmenu': () => showDynMenu('relaxmenu'),
+    'btn-cmd-stop-br': () => sendCmd('main', 'stop-br', ''),
+    'btn-menu-brmenu': () => showMenu('br-menu'),
+    'btn-ctls-lr': () => ctlsMenu('lr'),
+    'btn-power-brlamp1': () => showPowerMenu('brxmit', 'brlamp1'),
+    'br-voldwnbtn': () => sendVol('dwn'),
+    'br-volmutebtn': () => sendVol('mute'),
+    'br-volupbtn': () => sendVol('up'),
+    'btn-power-brtv': () => showPowerMenu('brxmit', 'brtv'),
+    'btn-power-ampstate': () => showPowerMenu('brpi', 'ampstate'),
+    'btn-power-brpc': () => showPowerMenu('brxmit', 'brpc'),
+    'btn-power-brmacs': () => showPowerMenu('brxmit', 'brmacs'),
+    'btn-show-br-amp': () => showBedroomAmpInput(),
+    'btn-power-retropi': () => showPowerMenu('brxmit', 'retropi'),
     // Server Options
-    'btn-menu-legacy': 
-    () => showMenu('legacy-menu'),
-
-    'btn-svr-startlegacy': 
-    () => serverAction('startlegacy'),
-
-    'btn-svr-stoplegacy': 
-    () => serverAction('stoplegacy'),
-    
-    'btn-menu-xana': 
-    () => showMenu('xana-menu'),
-
-    'btn-svr-startxana': 
-    () => serverAction('startxana'),
-
-    'btn-svr-stopxana': 
-    () => serverAction('stopxana'),
-
-    'btn-svr-restorexana': 
-    () => serverAction('restorexana'),
-    
-    'btn-menu-unifi': 
-    () => showMenu('unifi-menu'),
-
-    'btn-ext-unifi': 
-    () => GoToExtPage('unifi:11443/network/ff7gqlig/dashboard'),
-
-    'btn-svr-startunifi': 
-    () => serverAction('startunifi'),
-
-    'btn-svr-stopunifi': 
-    () => serverAction('stopunifi'),
-    
-    'btn-menu-svr': 
-    () => showMenu('svr-menu'),
-
-    'btn-ext-pve': 
-    () => GoToExtPage('pve:8006'),
-
-    'btn-svr-syslog': 
-    () => serverAction('syslog'),
-    
-    'btn-menu-files': 
-    () => showMenu('files-menu'),
-
-    'btn-open-backup': 
-    () => openBackupOptions(),
-
-    'btn-open-regions': 
-    () => openRegionsOptions(),
-    
-    'btn-menu-netwrk': 
-    () => showMenu('netwrk-menu'),
-
-    'btn-wifi-prompt': 
-    () => wifiPrompt(),
-
-    'btn-ext-edgeswitch': 
-    () => GoToExtPage('edgeswitch.home'),
-
-    'btn-svr-netscan': 
-    () => serverAction('netscan'),
-    
-    'btn-close-svr-opt1': 
-    () => closeServerOptions(),
-
-    'btn-svr-files-clearlog': 
-    () => serverAction('files-clearlog'),
-    
-    'btn-menu-router': 
-    () => showMenu('router-menu'),
-
-    'btn-ext-router': 
-    () => GoToExtPage('router.home'),
-
-    'btn-svr-rebootrouter': 
-    () => serverAction('rebootrouter'),
-    
+    'btn-menu-legacy': () => showMenu('legacy-menu'),
+    'btn-svr-startlegacy': () => serverAction('startlegacy'),
+    'btn-svr-stoplegacy': () => serverAction('stoplegacy'),
+    'btn-menu-xana': () => showMenu('xana-menu'),
+    'btn-svr-startxana': () => serverAction('startxana'),
+    'btn-svr-stopxana': () => serverAction('stopxana'),
+    'btn-svr-restorexana': () => serverAction('restorexana'),
+    'btn-menu-unifi': () => showMenu('unifi-menu'),
+    'btn-ext-unifi': () => GoToExtPage('unifi:11443/network/ff7gqlig/dashboard'),
+    'btn-svr-startunifi': () => serverAction('startunifi'),
+    'btn-svr-stopunifi': () => serverAction('stopunifi'),
+    'btn-menu-svr': () => showMenu('svr-menu'),
+    'btn-ext-pve': () => GoToExtPage('pve:8006'),
+    'btn-svr-syslog': () => serverAction('syslog'),
+    'btn-menu-files': () => showMenu('files-menu'),
+    'btn-open-backup': () => openBackupOptions(),
+    'btn-open-regions': () => openRegionsOptions(),
+    'btn-menu-netwrk': () => showMenu('netwrk-menu'),
+    'btn-wifi-prompt': () => wifiPrompt(),
+    'btn-ext-edgeswitch': () => GoToExtPage('edgeswitch.home'),
+    'btn-svr-netscan': () => serverAction('netscan'),
+    'btn-close-svr-opt1': () => closeServerOptions(),
+    'btn-svr-files-clearlog': () => serverAction('files-clearlog'),
+    'btn-menu-router': () => showMenu('router-menu'),
+    'btn-ext-router': () => GoToExtPage('router.home'),
+    'btn-svr-rebootrouter': () => serverAction('rebootrouter'),
     // Backup
-    'btn-svr-last_backup_dates': 
-    () => serverAction('files-last_backup_dates'),
-
-    'btn-svr-backupchk': 
-    () => serverAction('files-backupchk'),
-
-    'btn-svr-pve_vmsbkp': 
-    () => serverAction('pve_vmsbkp'),
-
-    'btn-pwd-unlock': 
-    () => getPassword('pwd'),
-
-    'btn-svr-backupstd': 
-    () => serverAction('files-backupstd'),
-
-    'btn-svr-detach_bkps': 
-    () => serverAction('detach_bkps'),
-
-    'btn-close-svr-opt2': 
-    () => closeServerOptions(),
-
-    'btn-svr-pve_listsnaps': 
-    () => serverAction('pve_listsnaps'),
-
-    'btn-open-svr-opt1': 
-    () => openServerOptions(),
-    
+    'btn-svr-last_backup_dates': () => serverAction('files-last_backup_dates'),
+    'btn-svr-backupchk': () => serverAction('files-backupchk'),
+    'btn-svr-pve_vmsbkp': () => serverAction('pve_vmsbkp'),
+    'btn-pwd-unlock': () => getPassword('pwd'),
+    'btn-svr-backupstd': () => serverAction('files-backupstd'),
+    'btn-svr-detach_bkps': () => serverAction('detach_bkps'),
+    'btn-close-svr-opt2': () => closeServerOptions(),
+    'btn-svr-pve_listsnaps': () => serverAction('pve_listsnaps'),
+    'btn-open-svr-opt1': () => openServerOptions(),
     // Archive
-    'btn-menu-archive': 
-    () => showMenu('archive-menu'),
-
-    'btn-pwd-fusearch': 
-    () => getPassword('fusearch'),
-
-    'btn-svr-unmnt_all_fuse': 
-    () => serverAction('files-unmnt_all_fuse'),
-
-    'btn-menu-external': 
-    () => showMenu('external-menu'),
-
-    'btn-svr-mnt_ext_region': 
-    () => serverAction('files-mnt_ext_region'),
-
-    'btn-svr-unmnt_ext_region': 
-    () => serverAction('files-unmnt_ext_region'),
-
-    'btn-menu-snapshots': 
-    () => showMenu('snapshots-menu'),
-
-    'btn-svr-mnt_snap_region': 
-    () => serverAction('files-mnt_snap_region'),
-
-    'btn-svr-unmnt_snap_region': 
-    () => serverAction('files-unmnt_snap_region'),
-
-    'btn-menu-ramdisk': 
-    () => showMenu('ramdisk-menu'),
-
-    'btn-svr-mnt_ram_region': 
-    () => serverAction('files-mnt_ram_region'),
-
-    'btn-svr-unmnt_ram_region': 
-    () => serverAction('files-unmnt_ram_region'),
-
-    'btn-svr-unmnt_all': 
-    () => serverAction('files-unmnt_all'),
-
-    'btn-close-svr-opt3': 
-    () => closeServerOptions(),
-
-    'btn-open-svr-opt2': 
-    () => openServerOptions(),
-    
+    'btn-menu-archive': () => showMenu('archive-menu'),
+    'btn-pwd-fusearch': () => getPassword('fusearch'),
+    'btn-svr-unmnt_all_fuse': () => serverAction('files-unmnt_all_fuse'),
+    'btn-menu-external': () => showMenu('external-menu'),
+    'btn-svr-mnt_ext_region': () => serverAction('files-mnt_ext_region'),
+    'btn-svr-unmnt_ext_region': () => serverAction('files-unmnt_ext_region'),
+    'btn-menu-snapshots': () => showMenu('snapshots-menu'),
+    'btn-svr-mnt_snap_region': () => serverAction('files-mnt_snap_region'),
+    'btn-svr-unmnt_snap_region': () => serverAction('files-unmnt_snap_region'),
+    'btn-menu-ramdisk': () => showMenu('ramdisk-menu'),
+    'btn-svr-mnt_ram_region': () => serverAction('files-mnt_ram_region'),
+    'btn-svr-unmnt_ram_region': () => serverAction('files-unmnt_ram_region'),
+    'btn-svr-unmnt_all': () => serverAction('files-unmnt_all'),
+    'btn-close-svr-opt3': () => closeServerOptions(),
+    'btn-open-svr-opt2': () => openServerOptions(),
     // Pi Grid
-    'btn-menu-piwifi': 
-    () => showMenu('piwifi-menu'),
-
-    'btn-show-piwifiprompt': 
-    () => showPiWiFiPrompt(),
-
-    'btn-svr-client': 
-    () => serverAction('client'),
-
-    'btn-svr-apd': 
-    () => serverAction('apd'),
-
-    'btn-svr-wifiscan': 
-    () => serverAction('wifiscan'),
-
-    'btn-svr-showwpa': 
-    () => serverAction('showwpa'),
-
-    'btn-svr-temp': 
-    () => serverAction('temp'),
-
-    'btn-close-svr-opt4': 
-    () => closeServerOptions(),
-
-    'btn-svr-clearlog': 
-    () => serverAction('clearlog'),
-
-    'btn-svr-resetbt': 
-    () => serverAction('resetbt'),
-    
+    'btn-menu-piwifi': () => showMenu('piwifi-menu'),
+    'btn-show-piwifiprompt': () => showPiWiFiPrompt(),
+    'btn-svr-client': () => serverAction('client'),
+    'btn-svr-apd': () => serverAction('apd'),
+    'btn-svr-wifiscan': () => serverAction('wifiscan'),
+    'btn-svr-showwpa': () => serverAction('showwpa'),
+    'btn-svr-temp': () => serverAction('temp'),
+    'btn-close-svr-opt4': () => closeServerOptions(),
+    'btn-svr-clearlog': () => serverAction('clearlog'),
+    'btn-svr-resetbt': () => serverAction('resetbt'),
     // Text Scroll
-    'btn-menu-textscrollcolor': 
-    () => showMenu('textscrollcolor-menu'),
-
-    'btn-tscolor-1': 
-    () => setTextScrollColor('00FF00'),
-
-    'btn-tscolor-2': 
-    () => setTextScrollColor('FF0000'),
-
-    'btn-tscolor-3': 
-    () => setTextScrollColor('0000FF'),
-
-    'btn-tscolor-4': 
-    () => setTextScrollColor('FFA500'),
-
-    'btn-tscolor-5': 
-    () => setTextScrollColor('A020F0'),
-
-    'btn-tscolor-6': 
-    () => setTextScrollColor('FFCC00'),
-
-    'btn-tscolor-7': 
-    () => setTextScrollColor('FFFFFF'),
-
-    'btn-menu-textscrollfont': 
-    () => showMenu('textscrollfont-menu'),
-
-    'btn-tsfont-8x8': 
-    () => setTextScrollFont('8x8'),
-
-    'btn-tsfont-5x7': 
-    () => setTextScrollFont('5x7'),
-
-    'btn-tsfont-3x5': 
-    () => setTextScrollFont('3x5'),
-
-    'btn-menu-textscrollspeed': 
-    () => showMenu('textscrollspeed-menu'),
-
-    'btn-tsspeed-slowest': 
-    () => setTextScrollSpeed('3.0'),
-
-    'btn-tsspeed-slow': 
-    () => setTextScrollSpeed('9.0'),
-
-    'btn-tsspeed-normal': 
-    () => setTextScrollSpeed('12.0'),
-
-    'btn-tsspeed-fast': 
-    () => setTextScrollSpeed('15.0'),
-
-    'btn-tsspeed-fastest': 
-    () => setTextScrollSpeed('20.0'),
-
-    'btn-ts-close': 
-    () => closeTextScroll(),
-
-    'btn-ts-clear': 
-    () => clearLEDsMessage(),
-
-    'btn-ts-send': 
-    () => sendTextScroll(),
-    
+    'btn-menu-textscrollcolor': () => showMenu('textscrollcolor-menu'),
+    'btn-tscolor-1': () => setTextScrollColor('00FF00'),
+    'btn-tscolor-2': () => setTextScrollColor('FF0000'),
+    'btn-tscolor-3': () => setTextScrollColor('0000FF'),
+    'btn-tscolor-4': () => setTextScrollColor('FFA500'),
+    'btn-tscolor-5': () => setTextScrollColor('A020F0'),
+    'btn-tscolor-6': () => setTextScrollColor('FFCC00'),
+    'btn-tscolor-7': () => setTextScrollColor('FFFFFF'),
+    'btn-menu-textscrollfont': () => showMenu('textscrollfont-menu'),
+    'btn-tsfont-8x8': () => setTextScrollFont('8x8'),
+    'btn-tsfont-5x7': () => setTextScrollFont('5x7'),
+    'btn-tsfont-3x5': () => setTextScrollFont('3x5'),
+    'btn-menu-textscrollspeed': () => showMenu('textscrollspeed-menu'),
+    'btn-tsspeed-slowest': () => setTextScrollSpeed('3.0'),
+    'btn-tsspeed-slow': () => setTextScrollSpeed('9.0'),
+    'btn-tsspeed-normal': () => setTextScrollSpeed('12.0'),
+    'btn-tsspeed-fast': () => setTextScrollSpeed('15.0'),
+    'btn-tsspeed-fastest': () => setTextScrollSpeed('20.0'),
+    'btn-ts-close': () => closeTextScroll(),
+    'btn-ts-clear': () => clearLEDsMessage(),
+    'btn-ts-send': () => sendTextScroll(),
     // Popups
-    'btn-log-close': 
-    () => closePopup(),
-
-    'btn-log-open-svr': 
-    () => openServerOptions(),
-
-    'btn-log-load': 
-    () => loadLog('sysout'),
-
-    'sendButton': 
-    () => serverSend(),
-
-    'btn-color-close': 
-    () => closeColorPrompt(),
-
-    'btn-cam-close': 
-    () => closePopup(),
-
-    'btn-cam-fullscreen': 
-    () => goToContextRoot('cam1')
+    'btn-log-close': () => closePopup(),
+    'btn-log-open-svr': () => openServerOptions(),
+    'btn-log-load': () => loadLog('sysout'),
+    'sendButton': () => serverSend(),
+    'btn-color-close': () => closeColorPrompt(),
+    'btn-cam-close': () => closePopup(),
+    'btn-cam-fullscreen': () => goToContextRoot('cam1')
   };
-  for (const [id, handler] of Object.entries(listeners)) {
-    const elem = document.getElementById(id);
-    if (elem) elem.addEventListener('click', handler);
+  document.addEventListener('click', (event) => {
+    let current = event.target;
+    while (current && current !== document) {
+      if (current.id && listeners[current.id]) {
+        listeners[current.id]();
+        return;
+      }
+      current = current.parentNode;
+    }
+  });
+}
+
+// runs on-each mouse click
+function handleClicks(event) {
+  resetActivityTimer();
+  // disable click events when in bookmark edit mode
+  if (App.bookmarkState === App.BKM_EDIT_MODE) {
+    if (event.target.className !== "editFav__win") {
+      event.stopPropagation();
+    }
+    return;
   }
+  // don't hide menus when clicking these elements
+  const NO_HIDE_ELEMENTS = '.button, .topnav, .bookmarked__item, .chkbox, .toggle-switch';
+  if (event.target.closest(NO_HIDE_ELEMENTS)) return;
+  removeDropdowns();
+}
+
+function resetActivityTimer() {
+  // timeout reset actions
+  App.starsRunning = true;
+  if (App.sysModel === App.MAIN_SITE) showRoomState();
+  clearTimeout(App.activityTimeout);
+  App.activityTimeout = setTimeout(() => {
+    // timeout reached actions
+    App.starsRunning = false;
+    if (App.sysModel === App.MAIN_SITE) hideRoomState();
+  }, App.TIMEOUT_INTERVAL * 1000);
+}
+
+function removeDropdowns() {
+  classDisplay("dd-content", "none");
+  removeBookmarks();
+  removeDynMenus();
+  if (App.activeSwitches && App.activeSwitches.length > 0) {
+    App.activeSwitches.forEach(toggle => {
+      if (typeof toggle.destroy === 'function') toggle.destroy();
+    });
+    App.activeSwitches = [];
+  }
+}
+
+function removeBookmarks() {
+  classDisplay("bookmark-buttons", "none");
+  const elem = document.getElementById("bookmarks");
+  if (elem) {
+    elem.classList.remove("bookmark-editmode");
+  }
+  removeBookmarkSearch();
+  closeBookmarkPrompt();
+  App.bookmarkState = App.BKM_INACTIVE;
 }
 
 function loadPage() {
@@ -531,56 +317,6 @@ function loadPage() {
   }  
   setTheme(currentTheme);
   resetActivityTimer();
-}
-
-// runs on-each mouse click
-function handleClicks(event) {
-  resetActivityTimer();
-  // disable click events when in bookmark edit mode
-  if (App.bookmarkState === App.BKM_EDIT_MODE) {
-    if (event.target.className !== "editFav__win") {
-       // disable all clicks outside of window
-      event.stopPropagation();
-    }
-    return;
-  }
-  // don't hide menus when clicking these elements
-  const NO_HIDE_ELEMENTS = '.button, .topnav, .bookmarked__item, .chkbox, .toggle-switch';
-  if (event.target.closest(NO_HIDE_ELEMENTS)) return;
-  removeDropdowns();
-}
-
-function resetActivityTimer() {
-  // timeout reset actions
-  App.starsRunning = true;
-  if (App.sysModel === App.MAIN_SITE) showRoomState();
-  clearTimeout(App.activityTimeout);
-  App.activityTimeout = setTimeout(() => {
-    // timeout reached actions
-    App.starsRunning = false;
-    if (App.sysModel === App.MAIN_SITE) hideRoomState();
-  }, App.TIMEOUT_INTERVAL * 1000);
-}
-
-function removeDropdowns() {
-  classDisplay("dd-content", "none");
-  removeBookmarks();
-  removeDynMenus();
-  if (App.activeSwitches && App.activeSwitches.length > 0) {
-    App.activeSwitches.forEach(toggle => toggle.destroy());
-    App.activeSwitches = []; // Empty the array for next time
-  }
-}
-
-function removeBookmarks() {
-  classDisplay("bookmark-buttons", "none");
-  const elem = document.getElementById("bookmarks");
-  if (elem) {
-    elem.classList.remove("bookmark-editmode");
-  }
-  removeBookmarkSearch();
-  closeBookmarkPrompt();
-  App.bookmarkState = App.BKM_INACTIVE;
 }
 
 // open URL in new tab
@@ -644,18 +380,6 @@ function showPopup(message) {
   }, 4000); // hide delay in (ms)
 }
 
-function hideRoomState() {
-  if (App.roomStateData.isRunning === false) return;
-  clearTimeout(App.roomStateData.timerID);
-  App.roomStateData.isRunning = false;
-  let lightIcon = document.getElementById("trafficLightIcon");
-  let container = document.getElementById('statusDropdownContainer');
-  container.classList.remove('status-loading');
-  lightIcon.classList.remove("status-pending");
-  lightIcon.classList.remove("status-off");
-  lightIcon.classList.remove("status-on");
-}
-
 async function showRoomState() {
   if (App.roomStateData.isRunning === true) return;
   App.roomStateData.isRunning = true;
@@ -676,7 +400,7 @@ async function showRoomState() {
     return;
   }
   lightIcon.classList.add("status-pending");
-  sendCmd('main', cmd, '').then((resp) => {
+  return sendCmd('main', cmd, '').then((resp) => {
     App.roomStateData.devices = [];
     App.roomStateData.roomState = null;
     lightIcon.classList.remove("status-error");
@@ -714,9 +438,11 @@ async function roomStateClick() {
   if (_elem.style.display === 'block') {
     _elem.style.display = 'none';
     return;
-  } 
+  }
   removeDropdowns();
-  let menuData;
+  stopRoomStateTimer();
+  await showRoomState();
+  let menuData = '';
   if (App.roomStateData.roomState === null) {
     menuData += `${menu}|noind|Error checking devices.\n`;
   } else {
@@ -736,6 +462,23 @@ async function roomStateClick() {
   }
   drawMenu(menuData, menu);
   _elem.style.display = 'block';
+}
+
+function hideRoomState() {
+  stopRoomStateTimer();
+  let lightIcon = document.getElementById("trafficLightIcon");
+  let container = document.getElementById('statusDropdownContainer');
+  container.classList.remove('status-loading');
+  lightIcon.classList.remove("status-pending");
+  lightIcon.classList.remove("status-off");
+  lightIcon.classList.remove("status-on");
+}
+
+function stopRoomStateTimer() {
+  if (App.roomStateData.isRunning === false) 
+    return;
+  clearTimeout(App.roomStateData.timerID);
+  App.roomStateData.isRunning = false;
 }
 
 /// server popup window ///

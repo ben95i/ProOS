@@ -44,18 +44,16 @@ usermod --shell /sbin/nologin monitor
 ## Media user configuration
 M_HOMEDIR="/home/$M_USER"
 mkdir -p $M_HOMEDIR
-chown root:shared $M_HOMEDIR
+chown root:root $M_HOMEDIR
 usermod --home $M_HOMEDIR $M_USER
 usermod --shell /sbin/nologin $M_USER
 
 ## Ben user configuration
 B_HOMEDIR="/home/$B_USER"
 mkdir -p $B_HOMEDIR
-chown root:shared $B_HOMEDIR
+chown root:root $B_HOMEDIR
 usermod --home $B_HOMEDIR $B_USER
 usermod --shell /sbin/nologin $B_USER
-mkdir -p $B_HOMEDIR/SFTP
-chown $B_USER:shared $B_HOMEDIR/SFTP
 mkdir -p /mnt/regmnts
 chown $B_USER:shared /mnt/regmnts
 
@@ -107,6 +105,11 @@ cp /tmp/config/sysctl.conf /etc
 chmod 644 /etc/sysctl.conf
 chown root:root /etc/sysctl.conf
 
+## Bind Mounts
+cp -f /tmp/config/fstab /etc/fstab
+chmod 644 /etc/fstab
+chown root:root /etc/fstab
+
 ## Logrotate Fix for LXCs
 cp /tmp/config/logrotate.service /lib/systemd/system/
 chmod 644 /lib/systemd/system/logrotate.service
@@ -146,11 +149,6 @@ cp /tmp/config/smb.conf /etc/samba
 chmod 644 /etc/samba/smb.conf
 chown root:root /etc/samba/smb.conf
 
-## Bind Mounts
-cp -f /tmp/config/fstab /etc/fstab
-chmod 644 /etc/fstab
-chown root:root /etc/fstab
-
 ## Backup Drives List
 cp -f /tmp/config/drives.txt /opt/
 chmod 644 /opt/drives.txt
@@ -170,5 +168,5 @@ systemctl restart cron
 systemctl restart rsyslog
 
 ## Clean-up
-rm -r /tmp/config/
+rm -rf /tmp/config
 exit

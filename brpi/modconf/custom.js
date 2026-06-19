@@ -4,15 +4,42 @@ const execFileAsync = util.promisify(execFile);
 const execAsync = util.promisify(exec);
 const relaxCmd = '/usr/bin/sudo /opt/rpi/relaxrun.sh'
 
+let serialQueue = Promise.resolve();
 
-async function ztermCom(cmdData) {
-    try {
-        const { stdout } = await execFileAsync('/usr/bin/ztermcom', [cmdData]);
-        return stdout.trim();
-    } catch (error) {
-        console.error(`ztermcom command failed:`, error.message);
-        return "";
-    }
+/**
+ * Formats errors thrown by Node.js child_process operations
+ * * @param {Error|any} error - The caught error object.
+ * @param {string} [separator=' | '] - The string used to join the details. Use '\n' for multi-line.
+ * @returns {string} A comprehensively formatted error string.
+ */
+function processProgramError(error, separator = ' : ') {
+    if (!error) return 'Unknown error occurred';
+    if (typeof error === 'string') return error;
+    const stderr = (typeof error.stderr === 'string' ? error.stderr : '').trim();
+    const stdout = (typeof error.stdout === 'string' ? error.stdout : '').trim(); 
+    const code = error.code || 'UNKNOWN';
+    const signal = error.signal || 'NONE';
+    const baseMessage = (error.message || '').trim();
+    return [
+        `Command failed with code ${code} (Signal: ${signal})`,
+        baseMessage ? `Message: ${baseMessage}` : null,
+        stderr ? `stderr: ${stderr}` : null,
+        stdout ? `stdout: ${stdout}` : null
+    ].filter(Boolean).join(separator);
+}
+
+async function ztermCom(cmd) {
+    const executeTask = async () => {
+        try {
+            const { stdout } = await execFileAsync('/usr/bin/ztermcom', [cmd]);
+            return stdout;
+        } catch (error) {
+            return processProgramError(error);
+        }
+    };
+    const task = serialQueue.then(() => executeTask());
+    serialQueue = task.catch(() => {});
+    return task;
 }
 
 const optAMode = async () => await ztermCom("02002");
