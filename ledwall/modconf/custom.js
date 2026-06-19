@@ -1,7 +1,7 @@
 const { execFile } = require('child_process');
 const { OPCLEDparser } = require('./ledparser');
-
 const util = require('util');
+
 const execFileAsync = util.promisify(execFile);
 
 const PINS = {
@@ -10,12 +10,41 @@ const PINS = {
     pcPower: "16"
 };
 
-let serialQueue = Promise.resolve();
+const PROCESS_TIMEOUT = 3000;
+const MAX_QUEUE_SIZE = 50;
+
+// Fixed Memory Leak: Bounded Async FIFO Queue
+const fifoQueue = [];
+let isQueueProcessing = false;
+
+async function processQueue() {
+    if (isQueueProcessing) return;
+    isQueueProcessing = true;
+    while (fifoQueue.length > 0) {
+        const { executeTask, resolve, reject } = fifoQueue.shift();
+        try {
+            resolve(await executeTask());
+        } catch (error) {
+            reject(error);
+        }
+    }
+    isQueueProcessing = false;
+}
+
+function enqueueTask(executeTask) {
+    return new Promise((resolve, reject) => {
+        if (fifoQueue.length >= MAX_QUEUE_SIZE) {
+            return reject(new Error("Server busy: serial queue limit reached"));
+        }
+        fifoQueue.push({ executeTask, resolve, reject });
+        processQueue();
+    });
+}
 
 /**
  * Formats errors thrown by Node.js child_process operations
- * * @param {Error|any} error - The caught error object.
- * @param {string} [separator=' | '] - The string used to join the details. Use '\n' for multi-line.
+ * @param {Error|any} error - The caught error object.
+ * @param {string} [separator=' : '] - The string used to join the details.
  * @returns {string} A comprehensively formatted error string.
  */
 function processProgramError(error, separator = ' : ') {
@@ -37,15 +66,14 @@ function processProgramError(error, separator = ' : ') {
 async function ztermCom(cmd) {
     const executeTask = async () => {
         try {
-            const { stdout } = await execFileAsync('/usr/bin/ztermcom', [cmd]);
+            // Fixed Architecture: Timeout added to prevent deadlocks on hardware hang
+            const { stdout } = await execFileAsync('/usr/bin/ztermcom', [cmd], { timeout: PROCESS_TIMEOUT });
             return stdout;
         } catch (error) {
             return processProgramError(error);
         }
     };
-    const task = serialQueue.then(() => executeTask());
-    serialQueue = task.catch(() => {});
-    return task;
+    return enqueueTask(executeTask);
 }
 
 async function callGPIO(pin, state) {
@@ -54,51 +82,55 @@ async function callGPIO(pin, state) {
             signal: AbortSignal.timeout(500) 
         });
     } catch (error) {
-        console.error(`GPIO request failed for pin ${pin}:` + error.message);
+        console.error(`GPIO request failed for pin ${pin}: ${error.message}`);
     }
 }
+
+let isPcPowerToggling = false;
 
 async function exeCustom(ramDisk, firstArg, secondArg) {
     switch (firstArg) {
         case "front_btn":
-            // Front Panel Button Press
             await callGPIO(PINS.frontLed, "HIGH");
             try {
                 await OPCLEDparser(ramDisk, 'shuffle', '');
             } catch (e) {
-                return('leds shuffle script failed:', e.message);
+                // Fixed Syntax Bug: Proper string template usage
+                return `leds shuffle script failed: ${e.message}`;
             }
             await callGPIO(PINS.frontLed, "LOW");
-            return('OK');
+            return 'OK';
 
         case "whtledon":
-            // White Front LED On
             await callGPIO(PINS.whiteLed, "HIGH");
-            return('OK');
+            return 'OK';
 
         case "whtledoff":
-            // White Front LED Off
             await callGPIO(PINS.whiteLed, "LOW");
-            return('OK');
+            return 'OK';
 
         case "whtled":
-            // White Front LED Toggle
             await callGPIO(PINS.whiteLed, "TOGGLE");
-            return('OK');
+            return 'OK';
 
         case "extcom":
-            // Pass command to external serial port
             return await ztermCom(secondArg);
 
         case "pc_power":
-            // PC Power Trigger with 300ms delay
-            await callGPIO(PINS.pcPower, "HIGH");
-            await new Promise(resolve => setTimeout(resolve, 300)); // in ms
-            await callGPIO(PINS.pcPower, "LOW");
-            return('OK');
+            if (isPcPowerToggling) return 'Server busy: PC power sequence currently active';
+            isPcPowerToggling = true;
+            try {
+                await callGPIO(PINS.pcPower, "HIGH");
+                await new Promise(resolve => setTimeout(resolve, 300));
+                await callGPIO(PINS.pcPower, "LOW");
+            } finally {
+                // Guaranteed to release the lock even if the GPIO fetch fails
+                isPcPowerToggling = false; 
+            }
+            return 'OK';
 
         default:
-            return(`unrecognized LEDwall command: ${firstArg}`);
+            return `unrecognized LEDwall command: ${firstArg}`;
     }
 }
 

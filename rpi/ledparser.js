@@ -1,11 +1,7 @@
 const { spawn, execFile, exec } = require('child_process');
-const fs = require('fs');
 const fsPromises = require('fs/promises');
 const util = require('util');
 
-/**
- * CONSTANTS
- */
 const LOCALHOST_URL = "http://127.0.0.1";
 const BINARY_ROOT_PATH = "/opt/rpi";
 const LED_PROXY_URL = `${LOCALHOST_URL}:7892`;
@@ -18,149 +14,98 @@ const TERM_SIGNAL = "SIGKILL";
 const execFileAsync = util.promisify(execFile);
 const execAsync = util.promisify(exec);
 
-/**
- * PERSISTENT MEMORY STATE
- */
 let inMemoryState = {
     processId: null,
     effectName: null
 };
 
-/**
- * Centralized error logging utility.
- */
+// State Mutex to prevent zombie processes during rapid requests
+let isSwitchingEffect = false; 
+
 function logInternalError(functionName, errorMessage, identifier) {
-    const formattedMessage = `${functionName}: ${errorMessage}, ${identifier}`;
-    console.error(formattedMessage);
+    console.error(`${functionName}: ${errorMessage}, ${identifier}`);
 }
 
-/**
- * Updates the API's persistent memory with the current running effect.
- * @param {number|null} processId - The PID of the child process.
- * @param {string|null} effectName - The name of the effect being run.
- */
 function recordEffectState(processId, effectName) {
     inMemoryState.processId = processId;
     inMemoryState.effectName = effectName;
 }
 
-/**
- * Performs a broad system sweep to stop any process running in the effects directory.
- */
 async function forceKillOrphanedProcesses() {
     try {
-        const searchCommand = `pgrep -f ${EFFECTS_DIRECTORY_PATH}`;
-        const searchResult = await execAsync(searchCommand, { encoding: 'utf-8' });
-        const pidsOutput = searchResult.stdout;
-        const pidsList = pidsOutput.split('\n');
+        const searchResult = await execAsync(`pgrep -f ${EFFECTS_DIRECTORY_PATH}`, { encoding: 'utf-8' });
+        const pidsList = searchResult.stdout.split('\n');
 
-        for (let i = 0; i < pidsList.length; i = i + 1) {
-            const currentPidString = pidsList[i];
-            const trimmedPid = currentPidString.trim();
-
+        for (let i = 0; i < pidsList.length; i++) {
+            const trimmedPid = pidsList[i].trim();
             if (trimmedPid !== "") {
                 const pidToKill = parseInt(trimmedPid, 10);
-                const isValidNumber = Number.isNaN(pidToKill) === false;
-
-                if (isValidNumber === true) {
+                if (!Number.isNaN(pidToKill)) {
                     try {
-                        const checkNameCommand = `ps -p ${pidToKill} -o comm=`;
-                        const nameResult = await execAsync(checkNameCommand, { encoding: 'utf-8' });
+                        const nameResult = await execAsync(`ps -p ${pidToKill} -o comm=`, { encoding: 'utf-8' });
                         const processName = nameResult.stdout.trim();
-                        
                         const protectedProcesses = ["mp4toleds", "opcserver", "fcproxy", "fcserver"];
                         
-                        const isProtected = protectedProcesses.some((protectedName) => {
-                            return processName.includes(protectedName);
-                        });
-
-                        if (isProtected === false) {
+                        if (!protectedProcesses.some(name => processName.includes(name))) {
                             process.kill(pidToKill, TERM_SIGNAL);
                         }
-                    } catch (nameError) {
-                        // Process already exited
-                    }
+                    } catch (nameError) {} // Already exited
                 }
             }
         }
-    } catch (searchError) {
-        // No processes found
-    }
+    } catch (searchError) {}
 }
 
-/**
- * Stops any active effect by checking persistent memory AND sweeping the system.
- */
 async function stopActiveEffect() {
-    // 1. Signal MP4 API to stop
-    const stopApiUrl = `${MP4_LEDS_API_URL}/api?video=stop`;
     try {
-        await fetch(stopApiUrl, { signal: AbortSignal.timeout(1000) });
+        await fetch(`${MP4_LEDS_API_URL}/api?video=stop`, { signal: AbortSignal.timeout(1000) });
     } catch (networkError) {}
-    // 2. Terminate PID stored in persistent memory
-    const activePid = inMemoryState.processId;
-    if (activePid !== null) {
-        try {
-            process.kill(activePid, TERM_SIGNAL);
-        } catch (pidKillError) {}
+    
+    if (inMemoryState.processId !== null) {
+        try { process.kill(inMemoryState.processId, TERM_SIGNAL); } 
+        catch (pidKillError) {}
     }
-    // 3. Clear Memory
     recordEffectState(null, null);
 }
 
-/**
- * Spawns a new LED effect process and manages its lifecycle in memory.
- */
 async function executeEffectProcess(binaryPath, binaryArguments, effectName) {
-    await stopActiveEffect();
+    // Spinlock: wait for any current transition to finish
+    while (isSwitchingEffect) await new Promise(resolve => setTimeout(resolve, 50));
+    isSwitchingEffect = true;
+
     try {
+        await stopActiveEffect();
         console.log(`executeEffectProcess: ${effectName}`);
 
-        const processConfiguration = {
-            stdio: 'ignore',
-            detached: false,
-            cwd: EFFECTS_DIRECTORY_PATH
-        };
-
-        const newProcess = spawn(binaryPath, binaryArguments, processConfiguration);
-        const spawnedPid = newProcess.pid;
-
-        if (spawnedPid !== undefined) {
-            recordEffectState(spawnedPid, effectName);
+        const newProcess = spawn(binaryPath, binaryArguments, { stdio: 'ignore', detached: false, cwd: EFFECTS_DIRECTORY_PATH });
+        
+        if (newProcess.pid !== undefined) {
+            recordEffectState(newProcess.pid, effectName);
         }
 
         newProcess.on('close', () => {
-            // Only clear memory if the process that just closed is the one we are tracking
-            if (inMemoryState.processId === spawnedPid) {
-                recordEffectState(null, null);
-            }
+            if (inMemoryState.processId === newProcess.pid) recordEffectState(null, null);
         });
 
         newProcess.on('error', (spawnError) => {
             logInternalError("executeEffectProcess", "failed to spawn binary", spawnError.message);
             recordEffectState(null, null);
         });
-        
     } catch (spawnException) {
-        logInternalError("executeEffectProcess", "exception during process creation", spawnException.message);
+        logInternalError("executeEffectProcess", "exception", spawnException.message);
+    } finally {
+        isSwitchingEffect = false;
     }
 }
 
-/**
- * Reads the hardware LED configuration.
- */
 async function fetchLedHardwareType() {
     try {
-        const fileContent = await fsPromises.readFile(LED_TYPE_CONFIG_FILE, 'utf-8');
-        return fileContent.trim();
+        return (await fsPromises.readFile(LED_TYPE_CONFIG_FILE, 'utf-8')).trim();
     } catch (readError) {
         return DEFAULT_LED_HARDWARE_TYPE;
     }
 }
 
-/**
- * Initialization logic to ensure a clean start on API boot.
- */
 let isSystemInitialized = false;
 let systemStartupPromise = null;
 
@@ -168,49 +113,34 @@ async function initializeSystemOnStartup() {
     try {
         recordEffectState(null, null);
         await forceKillOrphanedProcesses();
-
         const hardwareType = await fetchLedHardwareType();
-        const clearBinary = `${EFFECTS_DIRECTORY_PATH}/writecolor`;
-        await executeEffectProcess(clearBinary, [hardwareType, "000000"], "startup_clear");
-
+        await executeEffectProcess(`${EFFECTS_DIRECTORY_PATH}/writecolor`, [hardwareType, "000000"], "startup_clear");
         isSystemInitialized = true;
     } catch (e) {
         logInternalError("initializeSystemOnStartup", "critical failure", e.message);
     }
 }
 
-/**
- * Main parser function.
- */
 async function OPCLEDparser(ramDiskPath, effectCommand = "", secondaryArgument = "") {
-    if (isSystemInitialized === false) {
-        if (systemStartupPromise === null) {
-            systemStartupPromise = initializeSystemOnStartup();
-        }
+    if (!isSystemInitialized) {
+        if (!systemStartupPromise) systemStartupPromise = initializeSystemOnStartup();
         await systemStartupPromise;
     }
 
-    if (effectCommand === "") {
-        return "no effect command";
-    }
-
+    if (effectCommand === "") return "no effect command";
     const currentLedHardware = await fetchLedHardwareType();
 
-    // 1. State Controls
     if (effectCommand === "pause") {
         await stopActiveEffect();
         await forceKillOrphanedProcesses();
-        console.log('OPCLEDparser: pausedEffect');
         return "paused";
     }
     if (effectCommand === "stop") {
-        const writeColorBinary = `${EFFECTS_DIRECTORY_PATH}/writecolor`;
-        await executeEffectProcess(writeColorBinary, [currentLedHardware, "000000"], "stop_clear");
+        await executeEffectProcess(`${EFFECTS_DIRECTORY_PATH}/writecolor`, [currentLedHardware, "000000"], "stop_clear");
         await forceKillOrphanedProcesses();
         return "stopped";
     }
 
-    // 2. Brightness Logic
     if (effectCommand === "fc" || effectCommand === "fc_leds") {
         let proxyRequestUrl = (effectCommand === "fc") 
             ? `${LED_PROXY_URL}/set?b=${encodeURIComponent(secondaryArgument)}`
@@ -223,7 +153,6 @@ async function OPCLEDparser(ramDiskPath, effectCommand = "", secondaryArgument =
         }
     }
 
-    // 3. Shuffle Selection
     if (effectCommand === "shuffle") {
         try {
             const shuffleContent = await fsPromises.readFile(`${EFFECTS_DIRECTORY_PATH}/shuffle.txt`, 'utf-8');
@@ -235,23 +164,14 @@ async function OPCLEDparser(ramDiskPath, effectCommand = "", secondaryArgument =
         }
     }
 
-    // 4. MP4 Video Stream Handling
     try {
         const videoFileName = `${effectCommand}.mp4`;
         await fsPromises.access(`${EFFECTS_DIRECTORY_PATH}/videos/${videoFileName}`);
-
         await stopActiveEffect();
-
         const apiResponse = await fetch(`${MP4_LEDS_API_URL}/api?video=${videoFileName}`, { signal: AbortSignal.timeout(1000) });
-        const apiText = await apiResponse.text();
-        console.log(`OPCLEDparser: ${apiText}`);
-        
-        return apiText;
-    } catch (e) {
-        // File not found, proceed to binary check
-    }
+        return await apiResponse.text();
+    } catch (e) {}
 
-    // 5. C++ Executable Effects
     const registeredCppEffects = ["orbits", "noise", "chase", "miami", "stripes", "spectro", "oscope", "textscroll"];
     if (registeredCppEffects.includes(effectCommand)) {
         let binaryArgs = [currentLedHardware];
@@ -286,23 +206,21 @@ async function OPCLEDparser(ramDiskPath, effectCommand = "", secondaryArgument =
           const tsSpeed = tsCommandArray[3]; 
           binaryArgs.push(tsMessage, tsColor, tsFont, tsSpeed);
         }
-        
+
+
         await executeEffectProcess(`${EFFECTS_DIRECTORY_PATH}/${effectCommand}`, binaryArgs, `cpp_${effectCommand}`);
         return `Binary Effect: ${effectCommand}`;
     }
 
-    // 6. Manual Hex Color
     if (effectCommand === "hex") {
         await executeEffectProcess(`${EFFECTS_DIRECTORY_PATH}/writecolor`, [currentLedHardware, secondaryArgument], "hex_color");
         return `Set Color To Hex: ${secondaryArgument}`;
     }
 
-    // 7. Named Color Lookup (Colorscan)
     try {
-        const scanResult = await execFileAsync(`${EFFECTS_DIRECTORY_PATH}/colorscan`, [effectCommand], { cwd: EFFECTS_DIRECTORY_PATH });
+        const scanResult = await execFileAsync(`${EFFECTS_DIRECTORY_PATH}/colorscan`, [effectCommand], { cwd: EFFECTS_DIRECTORY_PATH, timeout: 3000 });
         const hex = scanResult.stdout.trim();
         if (!/^[0-9A-Fa-f]{6}$/.test(hex)) throw new Error("Invalid Hex");
-
         await executeEffectProcess(`${EFFECTS_DIRECTORY_PATH}/writecolor`, [currentLedHardware, hex], `color_${effectCommand}`);
         return `Set Color To: ${effectCommand}`;
     } catch (e) {
@@ -311,6 +229,4 @@ async function OPCLEDparser(ramDiskPath, effectCommand = "", secondaryArgument =
     }
 }
 
-module.exports = {
-    OPCLEDparser
-};
+module.exports = { OPCLEDparser };

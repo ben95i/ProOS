@@ -1,17 +1,39 @@
-const { execFile, exec } = require('child_process');
+const { execFile } = require('child_process');
 const util = require('util');
 const execFileAsync = util.promisify(execFile);
-const execAsync = util.promisify(exec);
-const relaxCmd = '/usr/bin/sudo /opt/rpi/relaxrun.sh'
+const relaxScriptPath = '/opt/rpi/relaxrun.sh';
 
-let serialQueue = Promise.resolve();
+const PROCESS_TIMEOUT = 3000;
+const MAX_QUEUE_SIZE = 50;
 
-/**
- * Formats errors thrown by Node.js child_process operations
- * * @param {Error|any} error - The caught error object.
- * @param {string} [separator=' | '] - The string used to join the details. Use '\n' for multi-line.
- * @returns {string} A comprehensively formatted error string.
- */
+// Fixed Memory Leak: Bounded Async FIFO Queue
+const fifoQueue = [];
+let isQueueProcessing = false;
+
+async function processQueue() {
+    if (isQueueProcessing) return;
+    isQueueProcessing = true;
+    while (fifoQueue.length > 0) {
+        const { executeTask, resolve, reject } = fifoQueue.shift();
+        try {
+            resolve(await executeTask());
+        } catch (error) {
+            reject(error);
+        }
+    }
+    isQueueProcessing = false;
+}
+
+function enqueueTask(executeTask) {
+    return new Promise((resolve, reject) => {
+        if (fifoQueue.length >= MAX_QUEUE_SIZE) {
+            return reject(new Error("Server busy: serial queue limit reached"));
+        }
+        fifoQueue.push({ executeTask, resolve, reject });
+        processQueue();
+    });
+}
+
 function processProgramError(error, separator = ' : ') {
     if (!error) return 'Unknown error occurred';
     if (typeof error === 'string') return error;
@@ -31,15 +53,15 @@ function processProgramError(error, separator = ' : ') {
 async function ztermCom(cmd) {
     const executeTask = async () => {
         try {
-            const { stdout } = await execFileAsync('/usr/bin/ztermcom', [cmd]);
+            // Added timeout to prevent serial deadlocks
+            const { stdout } = await execFileAsync('/usr/bin/ztermcom', [cmd], { 
+                timeout: PROCESS_TIMEOUT });
             return stdout;
         } catch (error) {
             return processProgramError(error);
         }
     };
-    const task = serialQueue.then(() => executeTask());
-    serialQueue = task.catch(() => {});
-    return task;
+    return enqueueTask(executeTask);
 }
 
 const optAMode = async () => await ztermCom("02002");
@@ -54,41 +76,30 @@ async function decodeComResp(respCmd) {
     const lastDelim = ttyRaw.lastIndexOf('|');
     if (firstDelim !== -1 && lastDelim !== -1 && firstDelim !== lastDelim) {
         const ttyOut = ttyRaw.substring(firstDelim + 1, lastDelim);
-        if (ttyOut.length === 1) {
-            return ttyOut;
-        }
+        if (ttyOut.length === 1) return ttyOut;
     }
     return "X";
 }
 
-/**
- * Main amplifier controller to be called from automation.js
- * @param {string} ramDisk - The path of the primary RAM disk
- * @param {string} arg1 - The primary command (e.g., 'relax', 'opt-a')
- * @param {string} arg2 - The secondary argument (used for 'relax')
- */
 async function exeCustom(ramDisk, arg1, arg2 = "") {
     switch (arg1) {
         case "relax": {
-            // Turn on amp and set input
-            if (await powerStatus() === "1") {
-                // Amp is online (set to coax input)
-                await coaxMode();
-            } else {
-                // Amp is offline (power on then set to coax input)
-                await ztermCom("01003");
-            }
+            if (await powerStatus() === "1") await coaxMode();
+            else await ztermCom("01003");
+            
             try {
-                return(await execAsync(`${relaxCmd} ${arg2}`));
+                // Fixed Security Risk: No shell spawned, preventing command injection
+                const { stdout } = await execFileAsync('/usr/bin/sudo', [relaxScriptPath, arg2], { timeout: 10000 });
+                return stdout;
             } catch (e) {
-                return("relaxrun failed:", e.message);
+                return `relaxrun failed: ${e.message}`;
             }
         }
         case "stoprelax":
             try {
-                await execAsync(`${relaxCmd} stop`);
+                await execFileAsync('/usr/bin/sudo', [relaxScriptPath, 'stop'], { timeout: 5000 });
             } catch (e) {
-                return("Failed to stop relaxrun:", e.message);
+                return `Failed to stop relaxrun: ${e.message}`;
             }
             await optAMode();
             return "OK";
@@ -107,21 +118,18 @@ async function exeCustom(ramDisk, arg1, arg2 = "") {
         case "ampstateoff":
             await ztermCom("01002");
             try {
-                await execAsync(`${relaxCmd} stop`);
+                await execFileAsync('/usr/bin/sudo', [relaxScriptPath, 'stop'], { timeout: 5000 });
             } catch (e) {
-                return("Failed to stop relaxrun:", e.message);
+                return `Failed to stop relaxrun: ${e.message}`;
             }
             return "OK";
         case "amptogglepwr": {
-            if (await powerStatus() === "1") {
-                await ztermCom("01002"); // Off
-            } else {
-                await onLastInput(); // On (Last Input)
-            }
+            if (await powerStatus() === "1") await ztermCom("01002");
+            else await onLastInput();
             return "OK";
         }
         default:
-            return("Bedroom Pi - Enter valid command.");
+            return "Bedroom Pi - Enter valid command.";
     }
 }
 
