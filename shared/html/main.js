@@ -5,6 +5,7 @@ import { requestThrottle, setTheme, classDisplay, checkElemIsVisibleByID,
   removeWindow, cleanString, base64URLSafeEncode, isNumeric, mapNumber,
   hsvToRgb, rgbToHsv, hexToRgb, rgbToHex, splitByDelimiter, sendCmd } from './utils.js';
 import ToggleSwitch, { toggleSwitchCallback } from './switch.js';
+import RoomStateManager from './roomstate.js';
 import AnimatedBackground from './stars.js';
 import WeatherWidget from './weather.js';
 import { deviceType } from './device.js';
@@ -18,6 +19,7 @@ window.App = {
   REFRESH_INTERVAL: 5,
   TIMEOUT_INTERVAL: 45,
   starBackground: null,
+  roomStateManager: null,
   activeSwitches: [],
   fileData: [],
   ctlCommand: null,
@@ -28,12 +30,6 @@ window.App = {
   volPopupTimer: null,
   sysModel: null,
   activityTimeout: null,
-  roomStateData: {
-    timerID: null,
-    isRunning: false,
-    roomState: null,
-    devices: []
-  },
   ledScrollData: [
     '00FF00', '8x8', '12.0'
   ],
@@ -58,7 +54,6 @@ function setupEventListeners() {
     'btn-show-bookmarks': () => showBookmarks(),
     'btn-edit-bookmark': () => editBookmark(),
     'btn-add-bookmark': () => addBookmark(),
-    'statusDropdownContainer': () => roomStateClick(),
     'nav_stats_menu': () => showStatusMenu(),
     // Menus
     'btn-about-main': () => aboutPrompt(),
@@ -219,42 +214,11 @@ function setupEventListeners() {
   });
 }
 
-// runs before exit
-window.addEventListener('beforeunload', () => {
-  App.destroyAll();
-});
-
-App.destroyAll = function() {
-  console.log("Exiting...");
-  // 1. Clear timers
-  if (App.activityTimeout) clearTimeout(App.activityTimeout);
-  if (App.messagePopupTimer) clearTimeout(App.messagePopupTimer);
-  if (App.volPopupTimer) clearTimeout(App.volPopupTimer);
-  if (App.roomStateData && App.roomStateData.timerID) {
-    clearInterval(App.roomStateData.timerID);
-  }
-  // 2. Clean up toggle switches
-  if (App.activeSwitches && App.activeSwitches.length > 0) {
-    App.activeSwitches.forEach(toggle => {
-      if (typeof toggle.destroy === 'function') toggle.destroy();
-    });
-    App.activeSwitches = [];
-  }
-  // 3. Clean up animated background
-  if (typeof App.starBackground !== 'undefined' && App.starBackground) {
-    App.starBackground.destroy();
-  }
-  // 4. Clean up the weather Widget
-  if (window.weatherApp && typeof window.weatherApp.remove === 'function') {
-    window.weatherApp.remove();
-  }
-};
-
 // runs on page load
 window.addEventListener("DOMContentLoaded", () => {
   window.addEventListener('click', handleClicks, false);
-  setupEventListeners();
-  loadPage();
+  loadPage(); // first 
+  setupEventListeners(); // last
 });
 
 // runs on-each mouse click
@@ -268,7 +232,7 @@ function handleClicks(event) {
     return;
   }
   // don't hide menus when clicking these elements
-  const NO_HIDE_ELEMENTS = '.button, .topnav, .bookmarked__item, .chkbox, .toggle-switch';
+  const NO_HIDE_ELEMENTS = '.button, .topnav, .bookmarked__item, .roomstatus-svgs, .chkbox, .toggle-switch';
   if (event.target.closest(NO_HIDE_ELEMENTS)) return;
   removeDropdowns();
 }
@@ -285,8 +249,8 @@ function activityBegin() {
   if (typeof App.starBackground !== 'undefined' && App.starBackground) {
     App.starBackground.resume();
   }
-  if (App.sysModel === App.MAIN_SITE) {
-    showRoomState();
+  if (App.sysModel === App.MAIN_SITE && App.roomStateManager) {
+    App.roomStateManager.showRoomState();
   }
 }
 
@@ -294,9 +258,9 @@ function activityStop() {
   if (typeof App.starBackground !== 'undefined' && App.starBackground) { 
     App.starBackground.pause();
   }
-  if (App.sysModel === App.MAIN_SITE) {
-    hideRoomState();
-  }
+  if (App.sysModel === App.MAIN_SITE && App.roomStateManager) {
+    App.roomStateManager.hideRoomState();
+  }  
 }
 
 window.removeDropdowns = function() {
@@ -335,6 +299,9 @@ function loadPage() {
       _mode = 'lr'; 
     } // living room
     ctlsMenu(_mode);
+    // room status title-bar icon
+    App.roomStateManager = 
+      new RoomStateManager('statusDropdownContainer');
     // weather title-bar icon
     window.weatherWidget = new WeatherWidget();
     window.weatherWidget.activate();
@@ -420,107 +387,6 @@ function showPopup(message) {
       });
     }
   }, 4000); // hide delay in (ms)
-}
-
-async function showRoomState() {
-  if (App.roomStateData.isRunning === true) return;
-  App.roomStateData.isRunning = true;
-  let lightIcon = document.getElementById("trafficLightIcon");
-  let container = document.getElementById('statusDropdownContainer');
-  container.classList.remove('status-loading');
-  let room = null; let cmd = null;
-  if (App.ctlCommand == 'lr' || App.ctlCommand == 'subs') {
-    room = "living room"; 
-    cmd = 'lrstatus';
-  }
-  if (App.ctlCommand == 'br') {
-    room = "bedroom"; 
-    cmd = 'brstatus';
-  }
-  if (cmd === null) {
-    hideRoomState();
-    return;
-  }
-  lightIcon.classList.add("status-pending");
-  return sendCmd('main', cmd, '').then((resp) => {
-    App.roomStateData.devices = [];
-    App.roomStateData.roomState = null;
-    lightIcon.classList.remove("status-error");
-    lightIcon.classList.remove("status-pending");
-    if (resp === null) {
-      lightIcon.classList.add("status-error");
-      hideRoomState();
-      return;
-    } else {
-      App.roomStateData.roomState = resp.roomState;
-      App.roomStateData.devices = resp.devices;
-      if (App.roomStateData.roomState === true) {
-        lightIcon.classList.remove("status-off");
-        lightIcon.classList.add("status-on");
-      } else if (App.roomStateData.roomState === false) { 
-        lightIcon.classList.remove("status-on");
-        lightIcon.classList.add("status-off");
-      }
-    }
-    container.style.setProperty('--spin-duration', `${App.REFRESH_INTERVAL}s`);    
-    void container.offsetWidth; 
-    requestAnimationFrame(() => {
-      container.classList.add('status-loading');
-      App.roomStateData.timerID = setTimeout(() => {
-        App.roomStateData.isRunning = false;
-        showRoomState(App.REFRESH_INTERVAL);
-      }, App.REFRESH_INTERVAL * 1000);
-    });
-  });
-}
-
-async function roomStateClick() {
-  const menu = 'roomstatus';
-  let _elem = document.getElementById(menu);
-  if (_elem.style.display === 'block') {
-    _elem.style.display = 'none';
-    return;
-  }
-  removeDropdowns();
-  stopRoomStateTimer();
-  await showRoomState();
-  let menuData = '';
-  if (App.roomStateData.roomState === null) {
-    menuData += `${menu}|noind|Error checking devices.\n`;
-  } else {
-    for (const device of App.roomStateData.devices) {
-      const name = device.name;
-      const status = device.status;
-      let ind;
-      if (status === false) {
-        ind = 'blkind';
-      } else if (status === true) {
-        ind = 'grnind';
-      } else {
-        ind = 'redind';
-      }
-      menuData += `${menu}|${ind}|${name}\n`;
-    }
-  }
-  drawMenu(menuData, menu);
-  _elem.style.display = 'block';
-}
-
-function hideRoomState() {
-  stopRoomStateTimer();
-  let lightIcon = document.getElementById("trafficLightIcon");
-  let container = document.getElementById('statusDropdownContainer');
-  container.classList.remove('status-loading');
-  lightIcon.classList.remove("status-pending");
-  lightIcon.classList.remove("status-off");
-  lightIcon.classList.remove("status-on");
-}
-
-function stopRoomStateTimer() {
-  if (App.roomStateData.isRunning === false) 
-    return;
-  clearTimeout(App.roomStateData.timerID);
-  App.roomStateData.isRunning = false;
 }
 
 /// server popup window ///
@@ -2157,7 +2023,7 @@ async function loadMenu(url) {
 }
 
 // draws each menu item
-function drawMenu(data, menu) {
+window.drawMenu = function(data, menu) {
   // remove any current dynamic menus
   removeDynMenus();
   if (data && typeof data === 'string') {
@@ -2438,3 +2304,35 @@ function closePopup() {
   clearPendingCmd();
   closeServerOptions();
 }
+
+//// runs before exit ////
+window.addEventListener('beforeunload', () => {
+  App.destroyAll();
+});
+
+App.destroyAll = function() {
+  console.log("Exiting...");
+  // timers
+  if (App.activityTimeout) clearTimeout(App.activityTimeout);
+  if (App.messagePopupTimer) clearTimeout(App.messagePopupTimer);
+  if (App.volPopupTimer) clearTimeout(App.volPopupTimer);
+  // toggle switches
+  if (App.activeSwitches && App.activeSwitches.length > 0) {
+    App.activeSwitches.forEach(toggle => {
+      if (typeof toggle.destroy === 'function') toggle.destroy();
+    });
+    App.activeSwitches = [];
+  }
+  // room status display
+  if (App.roomStateManager) {
+    App.roomStateManager.stopRoomStateTimer();
+  }
+  // animated background
+  if (typeof App.starBackground !== 'undefined' && App.starBackground) {
+    App.starBackground.destroy();
+  }
+  // weather wigget
+  if (window.weatherApp && typeof window.weatherApp.remove === 'function') {
+    window.weatherApp.remove();
+  }
+};
