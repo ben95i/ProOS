@@ -3,7 +3,10 @@
 
 import { requestThrottle, setTheme, classDisplay, checkElemIsVisibleByID,
   removeWindow, cleanString, base64URLSafeEncode, isNumeric, mapNumber,
-  hsvToRgb, rgbToHsv, hexToRgb, rgbToHex, splitByDelimiter } from './utils.js';
+  hsvToRgb, rgbToHsv, hexToRgb, rgbToHex, splitByDelimiter, sendCmd } from './utils.js';
+import ToggleSwitch, { toggleSwitchCallback } from './switch.js';
+import AnimatedBackground from './stars.js';
+import WeatherWidget from './weather.js';
 import { deviceType } from './device.js';
 import { SSIDpwd } from './wifi.js';
 
@@ -14,11 +17,11 @@ window.App = {
   BKM_EDIT_MODE: 2,
   REFRESH_INTERVAL: 5,
   TIMEOUT_INTERVAL: 45,
+  starBackground: null,
   activeSwitches: [],
   fileData: [],
   ctlCommand: null,
   serverCmdData: null,
-  starsRunning: true,
   messagePopupTimer: null,
   dynMenuActive: 0,
   bookmarkState: 0,
@@ -46,28 +49,6 @@ window.App = {
   colorPromptParser: document.createElement('div')
 };
 
-// main entry point
-window.addEventListener("DOMContentLoaded", () => {
-  window.addEventListener('click', handleClicks, false);
-  setupEventListeners();
-  loadPage();
-});
-
-window.addEventListener('beforeunload', () => {
-  if (App.activityTimeout) clearTimeout(App.activityTimeout);
-  if (App.messagePopupTimer) clearTimeout(App.messagePopupTimer);
-  if (App.volPopupTimer) clearTimeout(App.volPopupTimer);
-  if (App.roomStateData && App.roomStateData.timerID) {
-    clearInterval(App.roomStateData.timerID);
-  }
-  if (App.activeSwitches && App.activeSwitches.length > 0) {
-    App.activeSwitches.forEach(toggle => {
-      if (typeof toggle.destroy === 'function') toggle.destroy();
-    });
-    App.activeSwitches = [];
-  }
-});
-
 function setupEventListeners() {
   const listeners = {
     // Top Nav
@@ -78,7 +59,7 @@ function setupEventListeners() {
     'btn-edit-bookmark': () => editBookmark(),
     'btn-add-bookmark': () => addBookmark(),
     'statusDropdownContainer': () => roomStateClick(),
-    'nav_right_menu': () => showStatusMenu(),
+    'nav_stats_menu': () => showStatusMenu(),
     // Menus
     'btn-about-main': () => aboutPrompt(),
     'btn-about-pi': () => aboutPrompt(),
@@ -238,6 +219,44 @@ function setupEventListeners() {
   });
 }
 
+// runs before exit
+window.addEventListener('beforeunload', () => {
+  App.destroyAll();
+});
+
+App.destroyAll = function() {
+  console.log("Exiting...");
+  // 1. Clear timers
+  if (App.activityTimeout) clearTimeout(App.activityTimeout);
+  if (App.messagePopupTimer) clearTimeout(App.messagePopupTimer);
+  if (App.volPopupTimer) clearTimeout(App.volPopupTimer);
+  if (App.roomStateData && App.roomStateData.timerID) {
+    clearInterval(App.roomStateData.timerID);
+  }
+  // 2. Clean up toggle switches
+  if (App.activeSwitches && App.activeSwitches.length > 0) {
+    App.activeSwitches.forEach(toggle => {
+      if (typeof toggle.destroy === 'function') toggle.destroy();
+    });
+    App.activeSwitches = [];
+  }
+  // 3. Clean up animated background
+  if (typeof App.starBackground !== 'undefined' && App.starBackground) {
+    App.starBackground.destroy();
+  }
+  // 4. Clean up the weather Widget
+  if (window.weatherApp && typeof window.weatherApp.remove === 'function') {
+    window.weatherApp.remove();
+  }
+};
+
+// runs on page load
+window.addEventListener("DOMContentLoaded", () => {
+  window.addEventListener('click', handleClicks, false);
+  setupEventListeners();
+  loadPage();
+});
+
 // runs on-each mouse click
 function handleClicks(event) {
   resetActivityTimer();
@@ -255,42 +274,58 @@ function handleClicks(event) {
 }
 
 function resetActivityTimer() {
-  // timeout reset actions
-  App.starsRunning = true;
-  if (App.sysModel === App.MAIN_SITE) showRoomState();
+  activityBegin();
   clearTimeout(App.activityTimeout);
   App.activityTimeout = setTimeout(() => {
-    // timeout reached actions
-    App.starsRunning = false;
-    if (App.sysModel === App.MAIN_SITE) hideRoomState();
+    activityStop();
   }, App.TIMEOUT_INTERVAL * 1000);
 }
 
-function removeDropdowns() {
+function activityBegin() {
+  if (typeof App.starBackground !== 'undefined' && App.starBackground) {
+    App.starBackground.resume();
+  }
+  if (App.sysModel === App.MAIN_SITE) {
+    showRoomState();
+  }
+}
+
+function activityStop() {
+  if (typeof App.starBackground !== 'undefined' && App.starBackground) { 
+    App.starBackground.pause();
+  }
+  if (App.sysModel === App.MAIN_SITE) {
+    hideRoomState();
+  }
+}
+
+window.removeDropdowns = function() {
   classDisplay("dd-content", "none");
-  removeBookmarks();
   removeDynMenus();
-  if (App.activeSwitches && App.activeSwitches.length > 0) {
-    App.activeSwitches.forEach(toggle => {
-      if (typeof toggle.destroy === 'function') toggle.destroy();
-    });
-    App.activeSwitches = [];
+  if (App.sysModel === App.MAIN_SITE) {
+    removeBookmarks();
+    if (App.activeSwitches && App.activeSwitches.length > 0) {
+      App.activeSwitches.forEach(toggle => {
+        if (typeof toggle.destroy === 'function') toggle.destroy();
+      });
+      App.activeSwitches = [];
+    }
+    if (window.weatherApp && typeof window.weatherApp.closeMenu === 'function') {
+      window.weatherApp.closeMenu();
+    }
   }
 }
 
 function removeBookmarks() {
-  classDisplay("bookmark-buttons", "none");
   const elem = document.getElementById("bookmarks");
-  if (elem) {
-    elem.classList.remove("bookmark-editmode");
-  }
+  if (elem) elem.classList.remove("bookmark-editmode");
+  classDisplay("bookmark-buttons", "none");
   removeBookmarkSearch();
   closeBookmarkPrompt();
   App.bookmarkState = App.BKM_INACTIVE;
 }
 
 function loadPage() {
-  animatedBackground();
   // read device type
   App.sysModel = deviceType(); 
   if (App.sysModel === App.MAIN_SITE) {
@@ -300,6 +335,9 @@ function loadPage() {
       _mode = 'lr'; 
     } // living room
     ctlsMenu(_mode);
+    // weather title-bar icon
+    window.weatherWidget = new WeatherWidget();
+    window.weatherWidget.activate();
     // server home page
     classDisplay('server-grid', 'block');
   } else if (App.sysModel === 'Pi') {
@@ -314,8 +352,12 @@ function loadPage() {
     currentTheme = "#1f2051"; // dark blue
   } else {
     currentTheme = localStorage.getItem("main-color");
-  }  
+  }
   setTheme(currentTheme);
+  // initialize background 
+  App.starBackground = new AnimatedBackground('star-canvas');
+  App.starBackground.init();
+  // activate timed services
   resetActivityTimer();
 }
 
@@ -2062,24 +2104,6 @@ async function loadLog(file) {
   App.serverCmdData = null;
 }
 
-// transmit a command
-async function sendCmd(act, arg1, arg2) {
-  // construct API URL
-  const url = location.protocol + "//"+ location.hostname + "/api?var=" + arg2 + "&arg=" + arg1 + "&action=" + act;
-  // send request
-  try {
-    const response = await fetch(url, {
-      method: 'GET'
-    });
-    // return response
-    let out = await response.json();
-    return out;
-  } catch (error) {
-    showPopup("[sendCmd] " + error);
-    return null;
-  }
-}
-
 // save file API POST call
 function savePOST(file, data) {
   const url = location.protocol + "//" + location.hostname + "/api/write?file=" + file;
@@ -2413,319 +2437,4 @@ function closePopup() {
   document.getElementById("cam-display").src = "";
   clearPendingCmd();
   closeServerOptions();
-}
-
-function animatedBackground() {
-  const BG_COLOR = '#010209';
-  const BG_STAR_DENSITY = 2500;
-  const BG_STAR_SIZE = 1.7;
-  const MAX_SH_STARS = 6;
-  const SH_STAR_MIN_SPEED = 5;
-  const SH_STAR_SPEED_VARIANCE = 10;
-  const SH_STAR_MIN_LENGTH = 50;
-  const SH_STAR_LENGTH_VARIANCE = 150;
-  const SH_STAR_MIN_THICKNESS = 0.3;
-  const SH_STAR_THICKNESS_VARIANCE = 1.2;
-  const SH_STAR_BASE_ANGLE = Math.PI / 4; 
-  const SH_STAR_ANGLE_VARIANCE = 0.05;
-  const SH_STAR_START_Y_OFFSET = -150;
-  const canvas = document.getElementById('star-canvas');
-  const ctx = canvas.getContext('2d');
-  let backgroundStars = [];
-  let shootingStars = [];
-
-  function resizeCanvas() {
-    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
-    canvas.width = window.innerWidth * dpr;
-    canvas.height = window.innerHeight * dpr;
-    canvas.style.width = `${window.innerWidth}px`;
-    canvas.style.height = `${window.innerHeight}px`;
-    ctx.scale(dpr, dpr);
-    initBackgroundStars();
-  }
-
-  class BackgroundStar {
-    constructor() {
-      this.x = Math.random() * window.innerWidth;
-      this.y = Math.random() * window.innerHeight;
-      this.size = Math.random() * BG_STAR_SIZE;
-      this.alpha = Math.random(); 
-    }
-    draw() {
-      ctx.globalAlpha = this.alpha;
-      ctx.fillRect(this.x, this.y, this.size, this.size);
-    }
-  }
-
-  class ShootingStar {
-    constructor() {
-      this.reset();
-      this.delay = Math.random() * 300; 
-    }
-    reset() {
-      this.x = Math.random() * window.innerWidth * 0.5 - (window.innerWidth * 0.2); 
-      this.y = Math.random() * SH_STAR_START_Y_OFFSET; 
-      const speed = (Math.random() * SH_STAR_SPEED_VARIANCE) + SH_STAR_MIN_SPEED; 
-      this.length = (Math.random() * SH_STAR_LENGTH_VARIANCE) + SH_STAR_MIN_LENGTH;
-      this.thickness = (Math.random() * SH_STAR_THICKNESS_VARIANCE) + SH_STAR_MIN_THICKNESS;
-      this.angle = SH_STAR_BASE_ANGLE + (Math.random() * (SH_STAR_ANGLE_VARIANCE * 2) - SH_STAR_ANGLE_VARIANCE); 
-      this.vx = speed * Math.cos(this.angle);
-      this.vy = speed * Math.sin(this.angle);
-      this.gradient = ctx.createLinearGradient(0, 0, -this.length, 0);
-      this.gradient.addColorStop(0, '#fff');
-      this.gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-      this.delay = Math.random() * 200 + 50; 
-    }
-    update() {
-      if (this.delay > 0) {
-        this.delay--;
-        return; 
-      }
-      this.x += this.vx;
-      this.y += this.vy;
-      if (this.x > window.innerWidth + this.length || 
-          this.y > window.innerHeight + this.length) {
-        this.reset();
-      } else {
-        ctx.save();
-        ctx.translate(this.x, this.y);
-        ctx.rotate(this.angle);
-        ctx.strokeStyle = this.gradient;
-        ctx.lineWidth = this.thickness;
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.lineTo(-this.length, 0);
-        ctx.stroke();
-        ctx.restore();
-      }
-    }
-  }
-
-  function initBackgroundStars() {
-    backgroundStars = [];
-    shootingStars = [];
-    const numStars = ~~((window.innerWidth * window.innerHeight) / BG_STAR_DENSITY);
-    for (let i = 0; i < numStars; i++) {
-      backgroundStars.push(new BackgroundStar());
-    }
-    for (let i = 0; i < MAX_SH_STARS; i++) {
-      shootingStars.push(new ShootingStar());
-    }
-  }
-
-  function animateCanvas() {
-    ctx.globalAlpha = 1; 
-    ctx.fillStyle = BG_COLOR;
-    ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
-    ctx.fillStyle = '#fff';
-    for (let i = 0; i < backgroundStars.length; i++) {
-      backgroundStars[i].draw();
-    }
-    ctx.globalAlpha = 1; 
-    if (App.starsRunning) {
-      for (let i = 0; i < shootingStars.length; i++) {
-        shootingStars[i].update();
-      }
-    }
-    requestAnimationFrame(animateCanvas);
-  }
-
-  window.addEventListener('resize', resizeCanvas);
-  resizeCanvas();
-  animateCanvas();
-}
-
-class ToggleSwitch {
-  constructor(parent, config = {}) {
-    this.parent = typeof parent === 'string' ? document.getElementById(parent) : parent;
-    if (!this.parent) throw new Error(`Parent element not found`);
-    this.config = config;
-    this.toggleId = `input-${config.id}` || `input-${Math.random().toString(36).substr(2, 9)}`;
-    this.cmdHost = config.cmdHost || 'none';
-    this.command = config.command || 'none';
-    this.onToggleCallback = config.onToggle || null; 
-    this.state = {
-      isDragging: false,
-      hasMoved: false,
-      blockNextClick: false,
-      startX: 0,
-      startProgress: 0,
-      dragProgress: 0,
-      handleTravelDistance: 0,
-      height: 0,
-      handleSize: 0,
-      padding: 0
-    };
-    this.ticking = false; 
-    this.rafId = null; 
-    this.clickBlockTimeout = null;
-    this._render();
-  }
-
-  _render() {
-    this.wrapper = document.createElement('div');
-    this.wrapper.className = 'toggle-switch';
-    this.wrapper.style.contain = 'layout paint';
-    if (this.config.id) this.wrapper.id = this.config.id;
-    if (this.config.width) this.wrapper.style.setProperty('--local-width', this.config.width);
-    if (this.config.height) this.wrapper.style.setProperty('--local-height', this.config.height);
-    this.wrapper.innerHTML = `
-      <input type="checkbox" id="${this.toggleId}" class="toggle-input" ${this.config.checked ? 'checked' : ''}>
-      <label for="${this.toggleId}" class="toggle-label">
-          <div class="toggle-track">
-              <div class="toggle-handle">
-                  <span class="toggle-text-on">ON</span>
-                  <span class="toggle-text-off">OFF</span>
-              </div>
-          </div>
-      </label>
-    `;
-    this.parent.appendChild(this.wrapper);
-    this.checkbox = this.wrapper.querySelector('.toggle-input');
-    this.label = this.wrapper.querySelector('.toggle-label');
-    const track = this.wrapper.querySelector('.toggle-track');
-    track.style.transition = 'none';
-    track.style.backgroundColor = 'var(--local-color-on)';
-    void track.offsetHeight; 
-    track.style.backgroundColor = '';
-    track.style.transition = '';
-  }
-
-  activate() {
-    this.label.addEventListener('pointerdown', this);
-    this.label.addEventListener('click', this);
-    this.checkbox.addEventListener('change', this);
-  }
-
-  destroy() {
-    this.label.removeEventListener('pointerdown', this);
-    this.label.removeEventListener('click', this);
-    this.checkbox.removeEventListener('change', this);
-    window.removeEventListener('pointermove', this);
-    window.removeEventListener('pointerup', this);
-    window.removeEventListener('pointercancel', this);
-    if (this.rafId) cancelAnimationFrame(this.rafId); 
-    if (this.clickBlockTimeout) clearTimeout(this.clickBlockTimeout);
-    if (this.wrapper && this.wrapper.parentNode) {
-      this.wrapper.parentNode.removeChild(this.wrapper); 
-    }
-  }
-
-  handleEvent(event) {
-    switch (event.type) {
-      case 'pointercancel':
-      case 'pointerup': this._onPointerUp(event); break;
-      case 'pointerdown': this._onPointerDown(event); break;
-      case 'pointermove': this._onPointerMove(event); break;
-      case 'click': this._onClick(event); break;
-      case 'change': this._onChange(event); break;
-    }
-  }
-
-  _onPointerDown(e) {
-    if (e.button !== 0 && e.pointerType === 'mouse') return; 
-    this.state.blockNextClick = false;
-    clearTimeout(this.clickBlockTimeout);
-    this.state.handleTravelDistance = 0; 
-    this.state.startX = e.clientX;
-    this.state.isDragging = true;  
-    this.state.hasMoved = false;   
-    this.state.startProgress = this.checkbox.checked ? 1 : 0;
-    window.addEventListener('pointermove', this, { passive: true });
-    window.addEventListener('pointerup', this);
-    window.addEventListener('pointercancel', this);
-  }
-
-  _onPointerMove(e) {
-    if (!this.state.isDragging) return;
-    const deltaX = e.clientX - this.state.startX;
-    if (Math.abs(deltaX) > 3) {
-      this.state.hasMoved = true;
-      if (this.state.handleTravelDistance === 0) {
-        const trackRect = this.label.getBoundingClientRect();
-        this.state.height = trackRect.height;
-        this.state.handleSize = this.state.height * 0.85;
-        this.state.padding = this.state.height * 0.075;
-        this.state.handleTravelDistance = 
-          trackRect.width - this.state.handleSize - (2 * this.state.padding);
-      }
-      let progress = this.state.startProgress + (deltaX / this.state.handleTravelDistance);
-      this.state.dragProgress = Math.max(0, Math.min(1, progress));
-      let currentX = this.state.padding + (this.state.dragProgress * this.state.handleTravelDistance);
-      if (!this.ticking) {
-        this.rafId = window.requestAnimationFrame(() => {
-          if (!this.state.isDragging) {
-            this.ticking = false;
-            return; 
-          }
-          if (!this.wrapper.classList.contains('is-dragging')) {
-            this.wrapper.classList.add('is-dragging');
-            void this.wrapper.offsetWidth;
-          }
-          this.wrapper.style.setProperty('--drag-progress', this.state.dragProgress.toFixed(3));
-          this.wrapper.style.setProperty('--drag-x', `${currentX.toFixed(1)}px`);
-          this.ticking = false;
-        }); 
-        this.ticking = true;
-      }
-    }
-  }
-
-  _onPointerUp(e) {
-    if (!this.state.isDragging) return;
-    this.state.isDragging = false;
-    window.removeEventListener('pointermove', this);
-    window.removeEventListener('pointerup', this);
-    window.removeEventListener('pointercancel', this);
-    if (this.state.hasMoved) {
-      const newState = this.state.dragProgress >= 0.5;
-      if (this.checkbox.checked !== newState) {
-        this.checkbox.checked = newState; 
-        this.checkbox.dispatchEvent(new Event('change')); 
-      }
-      this.state.blockNextClick = true;
-      this.clickBlockTimeout = setTimeout(() => { this.state.blockNextClick = false; }, 300);
-      this.wrapper.style.setProperty('--drag-progress', newState ? '1' : '0');
-      this.rafId = window.requestAnimationFrame(() => {
-        this.rafId = window.requestAnimationFrame(() => {
-          this.wrapper.classList.remove('is-dragging');
-          this.wrapper.style.removeProperty('--drag-progress'); 
-          this.wrapper.style.removeProperty('--drag-x'); 
-        });
-      });
-    } else {
-      this.wrapper.classList.remove('is-dragging');
-      this.wrapper.style.removeProperty('--drag-progress'); 
-      this.wrapper.style.removeProperty('--drag-x'); 
-    }
-    this.state.hasMoved = false;
-  }
-
-  _onChange(e) {
-    const toggleState = e.target.checked ? 'on' : 'off';
-    const payload = {
-      host: this.cmdHost,
-      cmd: `${this.command}${toggleState}`
-    };
-    if (typeof this.onToggleCallback === 'function') {
-      this.onToggleCallback(payload);
-    }
-  }
-
-  _onClick(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    if (this.state.blockNextClick) {
-      this.state.blockNextClick = false; 
-      clearTimeout(this.clickBlockTimeout);
-      return;
-    }
-    this.checkbox.checked = !this.checkbox.checked;
-    this.checkbox.dispatchEvent(new Event('change'));
-  }
-}
-
-async function toggleSwitchCallback(payload) {
-  sendCmd('main', payload.host, payload.cmd);
 }

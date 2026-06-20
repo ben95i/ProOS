@@ -129,7 +129,7 @@ body {
 }
 
 .no-hover:hover {
-    background-color: transparent !important;
+  background-color: transparent !important;
 }
 
 /*
@@ -429,11 +429,10 @@ input.chkbox {
  */
 
 .topnav {
+  margin: 5px;
+  overflow: hidden;
   border: none;
   outline: none;
-  margin: 5px;
-  line-height: 2.5;
-  overflow: hidden;
   background-color: var(--sec-black-20);
   border-radius: 25px;
   opacity: 65%;
@@ -441,19 +440,22 @@ input.chkbox {
 
 .topnav a {
   float: left;
-  border: none;
-  outline: none;
+  height: 60px;
   padding: 0px 12px;
-  text-decoration: none;
+  line-height: 2.5;
   text-align: center;
+  text-decoration: none;
   color: #fff; /* nav font color */
   text-shadow: 1px 1px 1px #000;
+}
+
+.topnav_right {
+  float: right !important;
 }
 
 .topnav a:hover {
   background-color: var(--main-black-40);
   opacity: 100%;
-  color: #fff;
 }
 
 /*
@@ -577,11 +579,6 @@ input.chkbox {
   right: 165px;
   position: absolute;
   display: block;
-}
-
-#nav_right_menu {
-  width: 75px;
-  float: right;
 }
 
 .dd-selected {
@@ -1544,3 +1541,49 @@ input.chkbox {
 }
 
 /* END - Toggle Switches */
+
+/* Weather Status */
+
+.weather-icon-container {
+  position: relative;
+  cursor: pointer;
+  height: 60px;
+  width: 55px;
+}
+
+.weather-icon-container .right-nav-spinner {
+  top: 50%;
+  left: 50%;
+  margin-top: -15px; /* Pull up by half the spinner's 30px height */
+  margin-left: -15px; /* Pull left by half the spinner's 30px width */
+}
+
+.weather-icon-container i {
+  line-height: 2.0;
+  text-decoration: none;
+  text-align: center;
+  font-size: 30px;
+}
+
+/* Floating Temperature Badge */
+.weather-badge {
+  position: absolute;
+  top: 7px;
+  right: 0px;
+  background-color: var(--main-color);
+  color: #fff;
+  font-size: 13px;
+  font-weight: bold;
+  line-height: 0.75;
+  padding: 3px 2px 1px 2px;
+  border-radius: 5px;
+  box-shadow: 0px 2px 4px rgba(0,0,0,0.5);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.weather-dropdown {
+  pointer-events: none;
+  min-width: 210px;
+  margin: 0 !important;
+}

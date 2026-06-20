@@ -1,5 +1,23 @@
 // Automate Website - JavaScript Utilities
 
+// transmit a command
+export async function sendCmd(act, arg1, arg2) {
+  // construct API URL
+  const url = location.protocol + "//"+ location.hostname + "/api?var=" + arg2 + "&arg=" + arg1 + "&action=" + act;
+  // send request
+  try {
+    const response = await fetch(url, {
+      method: 'GET'
+    });
+    // return response
+    let out = await response.json();
+    return out;
+  } catch (error) {
+    showPopup("[sendCmd] " + error);
+    return null;
+  }
+}
+
 // request rate limiter
 export function requestThrottle(func, limit) {
   let lastFunc;
