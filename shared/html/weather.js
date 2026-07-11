@@ -148,7 +148,7 @@ export default class WeatherWidget {
       return a;
     };
     this.dropdown.appendChild(createItem('fad fa-map-marker-alt', this.weatherData.location || 'Unknown'));
-    this.dropdown.appendChild(createItem('fad fa-thermometer-half', `${this.weatherData.temperature}° | ${this.weatherData.condition}`));
+    this.dropdown.appendChild(createItem('fad fa-thermometer-half', `${this.weatherData.temperature}°   ${this.weatherData.condition}`));
     this.dropdown.appendChild(createItem('fad fa-humidity', `${this.weatherData.humidity}% Humidity`));
   }
 

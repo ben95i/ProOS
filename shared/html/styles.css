@@ -16,6 +16,7 @@
   -webkit-box-sizing: border-box;
   -moz-box-sizing: border-box;
   box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
   font-family: JosefinSans, system-ui;
   font-size: 24px; /* default font size */
   --secondary-color: #36363d; /* nav bar and menus color */
@@ -24,13 +25,12 @@
   --yellow-ind: #ffd000; 
   --green-ind: #29b036;
   --red-ind: #6b1328;
+  --bookmark-edit: #fc3535;
 }
 
 :root {
-  --main-35-white: color-mix(in srgb, var(--main-color) 35%, #fff);
   --main-40-white: color-mix(in srgb, var(--main-color) 40%, #fff);
-  --main-70-white: color-mix(in srgb, var(--main-color) 70%, #fff);
-  --main-80-white: color-mix(in srgb, var(--main-color) 80%, #fff);
+  --main-75-white: color-mix(in srgb, var(--main-color) 75%, #fff);
   --main-white-50: color-mix(in srgb, var(--main-color), #fff 50%);
   --main-white-20: color-mix(in srgb, var(--main-color), #fff 20%);
   --main-20-black: color-mix(in srgb, var(--main-color) 20%, #000);
@@ -40,7 +40,6 @@
   --main-black-50: color-mix(in srgb, var(--main-color), #000 50%);
   --main-trans-35: color-mix(in srgb, var(--main-color), transparent 35%);
   --main-trans-50: color-mix(in srgb, var(--main-color), transparent 50%);
-  --main-trans-65: color-mix(in srgb, var(--main-color), transparent 65%);
   --sec-black-20: color-mix(in srgb, var(--secondary-color), #000 20%);
   --sec-black-40: color-mix(in srgb, var(--secondary-color), #000 40%);
   --sec-75-black: color-mix(in srgb, var(--secondary-color) 75%, #000);
@@ -77,38 +76,26 @@ body {
 }
 
 .server-grid {
-  margin: 0;
-  padding: 0px;
   display: none;
 }
 
 .led-grid {
-  margin: 0;
-  padding: 0px;
-  display: none; 
+  display: none;
 }
 
 .bedroom-grid {
-  margin: 0;
-  padding: 0px;
   display: none;
 }
 
 .hifi-grid {
-  margin: 0;
-  padding: 0px;
   display: none;
 }
 
 .ledpi-grid {
-  margin: 0;
-  padding: 0px;
-  display: none; 
+  display: none;
 }
 
 .pi-grid {
-  margin: 0;
-  padding: 0px;
   display: none;
 }
 
@@ -147,7 +134,7 @@ body {
 .spinner-path {
   transform-origin: center;
   transform: rotate(-90deg);
-  stroke: var(--main-35-white);
+  stroke: var(--main-40-white);
   stroke-width: 5px;
   stroke-dasharray: 100;
   stroke-dashoffset: 100; 
@@ -156,7 +143,7 @@ body {
   transition: opacity 0.5s ease, visibility 0.5s ease, stroke-dashoffset 0s; 
 }
 
-#statusDropdownContainer {
+#status_anchor {
   width: 50px;
   height: 60px;
   display: inline-flex !important;
@@ -166,7 +153,7 @@ body {
   padding: 0;
 }
 
-#statusDropdownContainer.status-loading .spinner-path {
+#status_anchor.status-loading .spinner-path {
   opacity: 1;
   visibility: visible;
   stroke-dashoffset: 0;
@@ -260,7 +247,7 @@ body {
 }
 
 .scroll-bar-style::-webkit-scrollbar-thumb {
-  background-color: var(--main-70-white);
+  background-color: var(--main-75-white);
   border-radius: 5px;
 }
 
@@ -397,7 +384,7 @@ input.chkbox {
 }
 
 .dark_btn {
-  background-color: var(--main-trans-65);
+  background-color: var(--main-trans-50);
 }
 
 .alert_btn {
@@ -429,33 +416,94 @@ input.chkbox {
  */
 
 .topnav {
+  display: flex;             /* Transforms the container into a flexbox */
+  align-items: center;       /* Vertically centers all the icons/links inside */
   margin: 5px;
   overflow: hidden;
   border: none;
   outline: none;
   background-color: var(--sec-black-20);
   border-radius: 25px;
-  opacity: 65%;
+  opacity: 70%;
+}
+
+.topnav > div[style*="block"] {
+  display: flex !important;
+  align-items: center;
+}
+
+.topnav i { /* Tint nav icons */
+  color: var(--main-40-white);
 }
 
 .topnav a {
-  float: left;
   height: 60px;
-  padding: 0px 12px;
+  padding: 0px 12px 0px 12px;
   line-height: 2.5;
   text-align: center;
   text-decoration: none;
   color: #fff; /* nav font color */
   text-shadow: 1px 1px 1px #000;
+  border: none;
+  outline: none;
 }
 
-.topnav_right {
-  float: right !important;
+@media (hover: hover) {
+  .topnav a:hover {
+    background-color: var(--main-black-30);
+    cursor: pointer;
+    border: none;
+    outline: none;
+  }
+  .topnav i:hover {
+    color: #fff;
+  }
 }
 
-.topnav a:hover {
-  background-color: var(--main-black-40);
-  opacity: 100%;
+#topnav-right {
+  margin-left: auto;
+}
+
+/* Weather Status */
+
+.weather-icon-container {
+  border: none;
+  outline: none;
+  position: relative;
+  height: 60px;
+  width: 55px;
+}
+
+.weather-icon-container .right-nav-spinner {
+  top: 50%;
+  left: 50%;
+  margin-top: -15px; /* Pull up by half the spinner's 30px height */
+  margin-left: -15px; /* Pull left by half the spinner's 30px width */
+}
+
+.weather-icon-container i {
+  text-decoration: none;
+  text-align: center;
+}
+
+.weather-badge {
+  position: absolute;
+  top: 7px;
+  right: 3px;
+  background-color: var(--main-color);
+  color: #fff;
+  font-size: 15px;
+  font-weight: bold;
+  line-height: 0.75;
+  padding: 3px 2px 1px 2px;
+  border-radius: 5px;
+  box-shadow: 0px 2px 4px rgba(0,0,0,0.5);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.weather-dropdown {
+  pointer-events: none; 
 }
 
 /*
@@ -622,11 +670,19 @@ input.chkbox {
   gap: 7px;
 }
 
-.dd-content a:hover {
+@media (hover: hover) {
+  .dd-content a:hover {
+    border-radius: 5px;
+    background-color: var(--main-white-50);
+    color: #000;
+  }
+}
+.dd-content a:active {
   border-radius: 5px;
   background-color: var(--main-white-50);
   color: #000;
 }
+
 
 /* Theme Menu */
 
@@ -670,8 +726,16 @@ input.chkbox {
   display: none;
 }
 
-.bookmark-editmode {
-  background-color: #853c2a;
+.bookmark-editmode a {
+    color: var(--bookmark-edit);
+    text-decoration: underline
+}
+
+.bookmark-editmode a:active,
+.bookmark-editmode a:hover,
+.bookmark-editmode a.dd-selected {
+    background-color: var(--bookmark-edit);
+    color: #eeeeee;
 }
 
 #bookmarks {
@@ -688,7 +752,7 @@ input.chkbox {
 }
 
 #bookmarks::-webkit-scrollbar-thumb {
-  background-color: var(--main-70-white);
+  background-color: var(--main-75-white);
   border-radius: 5px;
 }
 
@@ -1279,7 +1343,7 @@ input.chkbox {
   width: 30%;
   height: 100%;
   position: absolute;
-  background: linear-gradient(0deg, var(--main-color) 30%, var(--main-70-white) 100%);
+  background: linear-gradient(0deg, var(--main-color) 30%, var(--main-75-white) 100%);
   border-radius: 25px;
   transition: all 0.2s ease-in-out;
 }
@@ -1409,7 +1473,7 @@ input.chkbox {
   width: 30px;
   height: 100%; 
   background: var(--slider-background);
-  box-shadow: -200px 0 0 200px var(--main-80-white);
+  box-shadow: -200px 0 0 200px var(--main-75-white);
   border: 2px solid #3b3a3a;
 }
 
@@ -1418,7 +1482,7 @@ input.chkbox {
 .toggle-switch {
   --local-width: 130px;
   --local-height: 55px;
-  --local-color-on: var(--main-80-white);
+  --local-color-on: var(--main-75-white);
   --local-color-off: var(--main-20-black);
   --local-color-handle: var(--slider-background);
   --drag-progress: 0;
@@ -1541,49 +1605,3 @@ input.chkbox {
 }
 
 /* END - Toggle Switches */
-
-/* Weather Status */
-
-.weather-icon-container {
-  position: relative;
-  cursor: pointer;
-  height: 60px;
-  width: 55px;
-}
-
-.weather-icon-container .right-nav-spinner {
-  top: 50%;
-  left: 50%;
-  margin-top: -15px; /* Pull up by half the spinner's 30px height */
-  margin-left: -15px; /* Pull left by half the spinner's 30px width */
-}
-
-.weather-icon-container i {
-  line-height: 2.0;
-  text-decoration: none;
-  text-align: center;
-  font-size: 30px;
-}
-
-/* Floating Temperature Badge */
-.weather-badge {
-  position: absolute;
-  top: 7px;
-  right: 0px;
-  background-color: var(--main-color);
-  color: #fff;
-  font-size: 13px;
-  font-weight: bold;
-  line-height: 0.75;
-  padding: 3px 2px 1px 2px;
-  border-radius: 5px;
-  box-shadow: 0px 2px 4px rgba(0,0,0,0.5);
-  pointer-events: none;
-  z-index: 2;
-}
-
-.weather-dropdown {
-  pointer-events: none;
-  min-width: 210px;
-  margin: 0 !important;
-}

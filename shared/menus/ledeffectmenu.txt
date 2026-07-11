@@ -1,10 +1,12 @@
 textscroll|ledmenu|Textscroll
+triangles|ledmenu|Triangles
 abstract|ledmenu|Abstract
 flames|ledmenu|Flames
 tunnel|ledmenu|Tunnel
 warp|ledmenu|Warp
 rays|ledmenu|Rays
 noise|ledmenu|Noise
+flurry|ledmenu|Flurry
 orbits|ledmenu|Orbits
 miami|ledmenu|Miami
 plasma|ledmenu|Plasma

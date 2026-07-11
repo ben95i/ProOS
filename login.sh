@@ -4,7 +4,7 @@
 ###
 
 ## DNS domain name
-DOMAIN=".home"
+DOMAIN=""
 ## modules folder
 ROOTDIR="/mnt/ProOS"
 ## SSH keys folder

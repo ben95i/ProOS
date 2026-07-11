@@ -301,7 +301,7 @@ function loadPage() {
     ctlsMenu(_mode);
     // room status title-bar icon
     App.roomStateManager = 
-      new RoomStateManager('statusDropdownContainer');
+      new RoomStateManager('status_anchor');
     // weather title-bar icon
     window.weatherWidget = new WeatherWidget();
     window.weatherWidget.activate();
@@ -1233,7 +1233,7 @@ function showBookmarks() {
   // draw bookmarks
   showDynMenu('bookmarks');
   // show add / edit buttons
-  classDisplay("bookmark-buttons", "block");
+  classDisplay("bookmark-buttons", "flex");
   // link open mode
   App.bookmarkState = App.BKM_OPEN_MODE;
 }

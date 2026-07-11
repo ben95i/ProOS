@@ -21,7 +21,7 @@ echo "*"
 if [ ! -e /mnt/plex/Library ]; then
    echo "Plex Library Not Attached!"
 else
-   systemctl start plexmediaserver.service
+   #systemctl start plexmediaserver.service
 fi
 
 exit 0

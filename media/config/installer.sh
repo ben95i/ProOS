@@ -1,15 +1,10 @@
 #!/bin/bash
 ### ONLY RUN ON THE SERVER!!
-### AutoConfig - ProOS for Plex Container
+### AutoConfig - ProOS for Media Container
 ### by Ben Provenzano III
 ###
 
-## Add Plex Repo
-if [ ! -e "/etc/apt/sources.list.d/plexmediaserver.list" ]; then
-  rm -f /etc/apt/keyrings/plexmediaserver.v2.gpg
-  curl -L https://downloads.plex.tv/plex-keys/PlexSign.v2.key | gpg --yes --dearmor -o /etc/apt/keyrings/plexmediaserver.v2.gpg
-  echo "deb [signed-by=/etc/apt/keyrings/plexmediaserver.v2.gpg] https://repo.plex.tv/deb/ public main" | tee /etc/apt/sources.list.d/plexmediaserver.list
-fi
+cd /tmp/config
 
 ## Update Sources
 apt-get --yes update
@@ -17,8 +12,8 @@ apt-get --yes update
 ## Install Packages
 apt-get install -y --no-upgrade --ignore-missing unzip wget rsync curl screen \
  parallel ethtool aptitude sudo gnupg iptables libdbus-1-dev libdbus-glib-1-dev \
- locales apt-transport-https plexmediaserver bpytop htop binutils fastfetch \
- libncursesw5-dev autotools-dev autoconf automake build-essential
+ locales apt-transport-https bpytop htop binutils fastfetch autotools-dev \
+ autoconf automake build-essential
 
 ## Set Locale
 if [ ! -e "/etc/locales.generated" ]; then
@@ -26,23 +21,13 @@ if [ ! -e "/etc/locales.generated" ]; then
  touch /etc/locales.generated
 fi
 
-## Plex Service Configuration 
-mkdir -p /etc/systemd/system/plexmediaserver.service.d
-cp -r /tmp/config/override.conf /etc/systemd/system/plexmediaserver.service.d/
-chmod 644 /etc/systemd/system/plexmediaserver.service.d/override.conf
-chown root:root /etc/systemd/system/plexmediaserver.service.d/override.conf
-systemctl disable plexmediaserver.service
-
-## Plex SSL Certificate
-rm -f /tmp/config/plex.pfx
-rm -f /tmp/config/fullchain.crt
-cat /tmp/config/plex.crt /tmp/config/root_ca.crt > /tmp/config/fullchain.crt
-openssl pkcs12 -export -out /tmp/config/plex.pfx -inkey /tmp/config/plex.key \
- -in /tmp/config/fullchain.crt -name plex.home -passout pass:"" \
- -certpbe AES-256-CBC -keypbe AES-256-CBC -macalg SHA256
-cp -fv /tmp/config/plex.pfx /var/lib/plexmediaserver/certificate.pfx
-chown plex:plex /var/lib/plexmediaserver/certificate.pfx
-chmod 644 /var/lib/plexmediaserver/certificate.pfx
+## Install Jellyfin
+if [ ! -e "/etc/apt/sources.list.d/jellyfin.sources" ]; then
+  curl -s https://repo.jellyfin.org/install-debuntu.sh -O && \
+  curl -s https://repo.jellyfin.org/install-debuntu.sh.sha256sum -O && \
+  sha256sum -c install-debuntu.sh.sha256sum
+  bash install-debuntu.sh
+fi
 
 ## Auto SSH Login Key for root
 mkdir -p /root/.ssh
@@ -72,6 +57,12 @@ chown root:root /etc/sysctl.conf
 cp /tmp/config/logrotate.service /lib/systemd/system/
 chmod 644 /lib/systemd/system/logrotate.service
 chown root:root /lib/systemd/system/logrotate.service
+
+## Allow Unprivileged Users to Bind to Lower # Ports
+rm -f /etc/sysctl.d/50-unprivileged-ports.conf
+echo 'net.ipv4.ip_unprivileged_port_start=0' > /etc/sysctl.d/50-unprivileged-ports.conf
+chmod 644 /etc/sysctl.d/50-unprivileged-ports.conf
+chown root:root /etc/sysctl.d/50-unprivileged-ports.conf
 
 ## Startup Configuration
 cp -r /tmp/config/rc-local.service /etc/systemd/system/

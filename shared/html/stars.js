@@ -1,6 +1,6 @@
 // animated stars background canvas //
 
-const BG_COLOR = '#010209';
+const BG_COLOR = '#000000';
 const BG_STAR_DENSITY = 2500;
 const BG_STAR_SIZE = 1.7;
 const MAX_SH_STARS = 6;

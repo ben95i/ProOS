@@ -175,18 +175,18 @@ if [ -e "$TRIGGERS_DIR/pve_vmsbkp.txt" ]; then
   chmod 777 $VM_CONFS/mgmt/lxc.conf
   ### 
   echo " "
-  echo "Backing-up Plex LXC 104..."
-  vzdump 104 --mode snapshot --compress zstd --node pve --storage local \
-   --maxfiles 1 --remove 1 --exclude-path /mnt
-  cp -v /etc/pve/lxc/104.conf $VM_CONFS/plex/lxc.conf
-  chmod 777 $VM_CONFS/plex/lxc.conf
-  ###
-  echo " "
   echo "Backing-up Automate LXC 106..."
   vzdump 106 --mode snapshot --compress zstd --node pve --storage local \
    --maxfiles 1 --remove 1 --exclude-path /mnt --exclude-path /var/www/html
   cp -v /etc/pve/lxc/106.conf $VM_CONFS/automate/lxc.conf
   chmod 777 $VM_CONFS/automate/lxc.conf
+  ###
+  echo " "
+  echo "Backing-up Media LXC 108..."
+  vzdump 108 --mode snapshot --compress zstd --node pve --storage local \
+   --maxfiles 1 --remove 1 --exclude-path /mnt
+  cp -v /etc/pve/lxc/108.conf $VM_CONFS/media/lxc.conf
+  chmod 777 $VM_CONFS/media/lxc.conf
   ###
   ### Virtual Machine Backups
   ###

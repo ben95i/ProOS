@@ -18,7 +18,7 @@ bluetty=`tput setaf 4`
 resettty=`tput sgr0`
 
 echo "${ambertty}"
-echo "Plex LXC"
+echo "Media LXC"
 uname -m -n -s -o -r
 echo "${resettty}"
 
