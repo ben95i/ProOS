@@ -50,27 +50,14 @@ export default class RoomStateManager {
     this.isRunning = true;
     const lightIcon = document.getElementById("trafficLightIcon");
     this.container.classList.remove('status-loading');
-    let room = null; 
-    let cmd = null;
-    // Check global state for the command context
-    if (App.ctlCommand === 'lr' || App.ctlCommand === 'subs') {
-      room = "living room"; 
-      cmd = 'lrstatus';
-    } else if (App.ctlCommand === 'br') {
-      room = "bedroom"; 
-      cmd = 'brstatus';
-    }
-    if (cmd === null) {
-      this.hideRoomState();
-      return;
-    }
+    let cmd = App.currentRoom + 'status';
     lightIcon.classList.add("status-pending");
     try {
       const resp = await sendCmd('main', cmd, '');
       this.devices = [];
       this.roomState = null;
       lightIcon.classList.remove("status-error", "status-pending");
-      if (resp === null) {
+      if (resp.roomState === null) {
         lightIcon.classList.add("status-error");
         this.hideRoomState();
         return;

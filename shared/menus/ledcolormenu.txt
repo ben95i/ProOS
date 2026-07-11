@@ -1,3 +1,4 @@
+randcolor|ledmenu|Random
 candle|ledmenu|Candle
 tungsten|ledmenu|Tungsten
 halogen|ledmenu|Halogen

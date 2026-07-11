@@ -11,6 +11,28 @@ import WeatherWidget from './weather.js';
 import { deviceType } from './device.js';
 import { SSIDpwd } from './wifi.js';
 
+const ROOM_CONFIGS = {
+  'lr':   { 
+    name: 'Living Room',
+    gridId: 'lr-grid',
+    icon: '',         
+    target: 'lrxmit',     
+    maxvol: 100    
+  },
+  'br': { 
+    name: 'Bedroom',     
+    gridId: 'bedroom-grid',
+    icon: 'fas fa-bed',  
+    target: 'brpi', 
+    maxvol: 192
+  }
+};
+
+const PRESET_COLORS = [
+  '#FF0000', '#FF7F00', '#FFFF00', '#00FF00', '#00FFFF',
+  '#0000FF', '#7F00FF', '#FF00FF', '#FFFFFF', '#000000'
+];
+
 window.App = {
   MAIN_SITE: "Automate",
   BKM_INACTIVE: 0,
@@ -29,13 +51,10 @@ window.App = {
   bookmarkState: 0,
   volPopupTimer: null,
   sysModel: null,
+  subVolMode: false,
   activityTimeout: null,
   ledScrollData: [
     '00FF00', '8x8', '12.0'
-  ],
-  PRESET_COLORS: [
-    '#FF0000', '#FF7F00', '#FFFF00', '#00FF00', '#00FFFF',
-    '#0000FF', '#7F00FF', '#FF00FF', '#FFFFFF', '#000000'
   ],
   currentHSV: { h: 0, s: 1, v: 1 },
   pendingQueuedColor: null,
@@ -60,7 +79,7 @@ function setupEventListeners() {
     'btn-about-pi': () => aboutPrompt(),
     'btn-log-pi': () => openLogWindow(),
     'btn-home-pi': () => GoToHomePage(),
-    // Main Grid Left
+    // Main Grid
     'btn-dyn-ledcolormenu': () => showDynMenu('ledcolormenu'),
     'btn-color-prompt': () => colorPrompt(),
     'btn-dyn-ledeffectmenu': () => showDynMenu('ledeffectmenu'),
@@ -68,7 +87,6 @@ function setupEventListeners() {
     'btn-cmd-leds-shuffle': () => sendCmd('leds', 'shuffle', ''),
     'btn-cmd-leds-stop': () => sendCmd('leds', 'stop', ''),
     'btn-cmd-leds-pause': () => sendCmd('leds', 'pause', ''),
-    'btn-cmd-leds-randcolor': () => sendCmd('leds', 'randcolor', ''),
     'btn-show-temphumid': () => showTempHumidity(),
     'btn-menu-lightmenu': () => showMenu('lightmenu'),
     'btn-cmd-lightson': () => sendCmd('main', 'lightson', ''),
@@ -78,14 +96,14 @@ function setupEventListeners() {
     'btn-room-off': () => roomOnOff('off'),
     'btn-open-cam':() => openCamWindow(),
     'btn-open-log-svr': () => openLogWindow(),
-    // Main Grid Right (Living Room)
+    'main-room-dropdown-btn': () => openRoomDropdown(),
+    // Living Room Grid
+    'btn-menu-lr-backlight': () => showMenu('lr-backlight'),
     'btn-power-wkststate': () => showPowerMenu('lrxmit', 'wkststate'),
-    'btn-menu-lrmenu': () => showMenu('lr-menu'),
-    'btn-ctls-br': () => ctlsMenu('br'),
     'btn-power-wl1_dual': () => showPowerMenu('lrxmit', 'wl1_dual'),
-    'voldwnbtn': () => sendVol('dwn'),
-    'volmutebtn': () => sendVol('mute'),
-    'volupbtn': () => sendVol('up'),
+    'lr-voldwnbtn': () => sendVol('dwn'),
+    'lr-volmutebtn': () => sendVol('mute'),
+    'lr-volupbtn': () => sendVol('up'),
     'btn-vol-dwnc': () => sendVol('dwnc'),
     'btn-power-hifistate': () => showPowerMenu('lrxmit', 'hifistate'),
     'btn-vol-upc': () => sendVol('upc'),
@@ -93,10 +111,9 @@ function setupEventListeners() {
     'btn-show-hifi-amp': () => showHiFiAmpInput(),
     'btn-show-hifi-more': () => showHiFiMoreMenu(),
     // Bedroom Grid
+    'btn-menu-br-backlight': () => showMenu('br-backlight'),
     'btn-dyn-relaxmenu': () => showDynMenu('relaxmenu'),
     'btn-cmd-stop-br': () => sendCmd('main', 'stop-br', ''),
-    'btn-menu-brmenu': () => showMenu('br-menu'),
-    'btn-ctls-lr': () => ctlsMenu('lr'),
     'btn-power-brlamp1': () => showPowerMenu('brxmit', 'brlamp1'),
     'br-voldwnbtn': () => sendVol('dwn'),
     'br-volmutebtn': () => sendVol('mute'),
@@ -295,13 +312,9 @@ function loadPage() {
   if (App.sysModel === App.MAIN_SITE) {
     // load control menu saved state
     let _mode = localStorage.getItem("ctls-mode")
-    if (_mode === null || _mode === undefined || _mode === "") { 
-      _mode = 'lr'; 
-    } // living room
     ctlsMenu(_mode);
     // room status title-bar icon
-    App.roomStateManager = 
-      new RoomStateManager('status_anchor');
+    App.roomStateManager = new RoomStateManager('status_anchor');
     // weather title-bar icon
     window.weatherWidget = new WeatherWidget();
     window.weatherWidget.activate();
@@ -327,6 +340,56 @@ function loadPage() {
   // activate timed services
   resetActivityTimer();
 }
+
+
+function openRoomDropdown() {
+  const menuname = 'main-room-dropdown';
+  let _elem = document.getElementById(menuname);
+  if (_elem.style.display === 'block') {
+    _elem.style.display = 'none';
+  } else {
+    removeDropdowns();
+    // draw menu
+    let menuDataString = ""; 
+    for (const [roomKey, config] of Object.entries(ROOM_CONFIGS)) {
+      if (roomKey !== App.currentRoom) {
+        menuDataString += `${roomKey}|room|${config.name}\n`;
+      }
+    }
+    drawMenu(menuDataString, menuname);
+    // show dropdown
+    _elem.style.display = 'block';
+  }
+}
+
+function ctlsMenu(_mode) {
+  // load configuration
+  if (!ROOM_CONFIGS[_mode]) {
+    // load first if not defined
+    _mode = Object.keys(ROOM_CONFIGS)[0];
+  }
+  const config = ROOM_CONFIGS[_mode];
+  // select grid
+  document.querySelectorAll('.room-grid').forEach(grid => grid.style.display = 'none');
+  const activeGrid = document.getElementById(config.gridId);
+  if (activeGrid) activeGrid.style.display = 'block';
+  // update dropdown
+  const roomLabel = document.getElementById('current-room-label');
+  if (roomLabel) roomLabel.innerText = config.name;
+  const roomIcon = document.getElementById('current-room-icon');
+  if (roomIcon) {
+    if (config.icon) {
+      roomIcon.className = config.icon;
+      roomIcon.style.display = 'inline-block';
+    } else {
+      roomIcon.className = '';
+      roomIcon.style.display = 'none';
+    }
+  }
+  // save state
+  App.currentRoom = _mode;
+  localStorage.setItem("ctls-mode", _mode);
+};
 
 // open URL in new tab
 function GoToExtPage(_path) {
@@ -928,7 +991,7 @@ function initColorGrid() {
   const grid = document.getElementById('preset-color-grid');
   if (!grid) return;
   grid.innerHTML = ''; 
-  App.PRESET_COLORS.forEach(color => {
+  PRESET_COLORS.forEach(color => {
     const swatch = document.createElement('div');
     swatch.className = 'color-swatch';
     swatch.style.backgroundColor = color;
@@ -1057,14 +1120,12 @@ function relaxSend(_cmd) {
 
 // volume controls
 function sendVol(_cmd) {
-  if (App.ctlCommand == 'lr' ){
-    setAmpVolume(_cmd, 'lrxmit', 100); // living room system
-  }
-  if (App.ctlCommand == 'subs' ){
-    sendCmd('main', 'lrxmit', 'sub' + _cmd); // living room subwoofers
-  }  
-  if (App.ctlCommand == 'br' ){
-    setAmpVolume(_cmd, 'brpi', 192); // bedroom system
+  const room = App.currentRoom;
+  const config = ROOM_CONFIGS[room];
+  if (App.subVolMode === true) {
+    sendCmd('main', config.target, 'sub' + _cmd); // living room subwoofers
+  } else {
+    setAmpVolume(_cmd, config.target, config.maxvol); // living room system
   }
 }
 
@@ -1155,8 +1216,24 @@ function showVolumePopup(vol) {
   }, 3000); // hide delay in (ms)
 }
 
+function redVolumeButtons(enable) {
+  const className = 'red_btn_menu';
+  const elemIDs = ['voldwnbtn', 'volupbtn', 'volmutebtn'];
+  elemIDs.forEach(suffix => {
+    const elementId = `${App.currentRoom}-${suffix}`;
+    const element = document.getElementById(elementId);
+    if (element) {
+      if (enable === true) {
+        element.classList.add(className);
+      } else {
+        element.classList.remove(className);
+      }
+    }
+  });
+}
+
 function roomOnOff(action) {
-  sendCmd('main', App.ctlCommand + action, '');
+  sendCmd('main', App.currentRoom + action, '');
 }
 
 // add / remove a class from a element
@@ -1172,43 +1249,6 @@ function addClassToElem(_action, _elmid, _class) {
       _elm.classList.remove(_class);
     } 
   }
-}
-
-function subMode(_action) {
-  // hide subwoofer mode indicator
-  addClassToElem(_action, 'voldwnbtn', 'submode_btn');
-  addClassToElem(_action, 'volmutebtn', 'submode_btn');
-  addClassToElem(_action, 'volupbtn', 'submode_btn');
-}
-
-// controls menu actions
-function ctlsMenu(_mode) {
-  App.ctlCommand = _mode; 
-  // living room controls
-  if ((_mode === 'lr') || (_mode === 'subs')) {
-    // disable bedroom grid
-    classDisplay('bedroom-grid', 'none');
-    // enable hifi grid
-    classDisplay('hifi-grid', 'block');
-    if (_mode === 'lr') {
-      // hide subwoofer controls 
-      subMode('remove');
-    } else {
-      // subwoofer controls
-      subMode('add');
-    }
-  } 
-  // bedroom controls
-  if (_mode === 'br') { 
-    // disable hifi grid
-    classDisplay('hifi-grid', 'none');
-    // hide subwoofer controls 
-    subMode('remove');
-    // enable bedroom grid
-    classDisplay('bedroom-grid', 'block');
-  }
-  // save state 
-  localStorage.setItem("ctls-mode", _mode);
 }
 
 // toggle dropdown menu's
@@ -1704,7 +1744,7 @@ function showHiFiMoreMenu() {
           const limit_state = field[0]; 
           const hpf_state = field[1];
           // subwoofer volume toggle
-          _menudata += 'subsbutton|hfsubs|Subs Gain\n';       
+          _menudata += 'subs|subs|Subs Gain\n';       
           // low-cut filter toggle
           if (hpf_state == '0') { _indtype = 'blkind'; }
           if (hpf_state == '1') { _indtype = 'grnind'; }
@@ -2087,6 +2127,12 @@ function createListItem(col0_in, col1, col2, menuid) {
         }
       });
       break;
+    case 'room':
+      // room selector menu
+      _elm.addEventListener("click", function() {
+        ctlsMenu(col0);
+      });
+      break;
     case 'relaxmenu': 
       // relax menu
       _elm.addEventListener("click", function() {
@@ -2134,19 +2180,21 @@ function createListItem(col0_in, col1, col2, menuid) {
         clickBookmark(menuid);
       });
       break;
-    case 'hfsubs':
+    case 'subs':
       // subwoofer volume toggle
-      if (App.ctlCommand == 'subs' ) {
-        _elm.classList.add('submode_btn');
+      if (App.subVolMode === false) {
+        _elm.classList.remove('red_btn_menu');
+        _elm.addEventListener("click", function() {
+          redVolumeButtons(true);
+          App.subVolMode = true;
+        });
+      } else {
+        _elm.classList.add('red_btn_menu');
+        _elm.addEventListener("click", function() {
+          redVolumeButtons(false);
+          App.subVolMode = false;
+        });
       }
-      _elm.addEventListener("click", function() {
-        // toggle subwoofer mode
-        if (App.ctlCommand == 'lr') {
-          ctlsMenu('subs');
-        } else {
-          ctlsMenu('lr');
-        } 
-      });
       break;
     case 'toggle':
       // switch-like toggle menu

@@ -19,13 +19,13 @@
   -webkit-tap-highlight-color: transparent;
   font-family: JosefinSans, system-ui;
   font-size: 24px; /* default font size */
+  --alert-red: #fc3535;
   --secondary-color: #36363d; /* nav bar and menus color */
   --slider-background: #a3a1a1;
   --border-color: #878787;
   --yellow-ind: #ffd000; 
   --green-ind: #29b036;
   --red-ind: #6b1328;
-  --bookmark-edit: #fc3535;
 }
 
 :root {
@@ -43,7 +43,7 @@
   --sec-black-20: color-mix(in srgb, var(--secondary-color), #000 20%);
   --sec-black-40: color-mix(in srgb, var(--secondary-color), #000 40%);
   --sec-75-black: color-mix(in srgb, var(--secondary-color) 75%, #000);
-  --red-trans-35: color-mix(in srgb, #a52b2b, transparent 35%);
+  --red-trans-35: color-mix(in srgb, var(--alert-red), transparent 35%);
 }
 
 body {
@@ -72,7 +72,7 @@ body {
  */
 
 .pg-bottom {
-  padding-bottom: 50px; 
+  padding-bottom: 100px; 
 }
 
 .server-grid {
@@ -80,14 +80,6 @@ body {
 }
 
 .led-grid {
-  display: none;
-}
-
-.bedroom-grid {
-  display: none;
-}
-
-.hifi-grid {
   display: none;
 }
 
@@ -112,6 +104,14 @@ body {
 }
 
 .svropt__backup {
+  display: none;
+}
+
+#bedroom-grid {
+  display: none;
+}
+
+#lr-grid {
   display: none;
 }
 
@@ -180,6 +180,11 @@ body {
 
 #trafficLightIcon.status-off {
   fill: #000;
+}
+
+#current-room-icon {
+  margin-right: 3px; 
+  display: none;
 }
 
 /*
@@ -379,7 +384,7 @@ input.chkbox {
   transition: all 0.05s ease;
 }
 
-.submode_btn {
+.red_btn_menu {
   background-color: var(--red-trans-35);
 }
 
@@ -727,14 +732,14 @@ input.chkbox {
 }
 
 .bookmark-editmode a {
-    color: var(--bookmark-edit);
+    color: var(--alert-red);
     text-decoration: underline
 }
 
 .bookmark-editmode a:active,
 .bookmark-editmode a:hover,
 .bookmark-editmode a.dd-selected {
-    background-color: var(--bookmark-edit);
+    background-color: var(--alert-red);
     color: #eeeeee;
 }
 

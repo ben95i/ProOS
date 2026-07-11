@@ -80,8 +80,8 @@
 
 <div class="server-grid ledpi-grid">
   <div class="grid">
-  <div class="column-left">
-    <div class="dropdown">
+    <div class="column-left">
+      <div class="dropdown">
         <button type="button" class="button" id="btn-dyn-ledcolormenu">
           <span class="button__text"><i class="fad fa-brush"></i> Solid</span>
         </button>
@@ -114,9 +114,15 @@
       </button>
       <div class="server-grid">
         <p class="grid-sep"></p>
-        <button type="button" class="button" id="btn-cmd-leds-randcolor">
-          <span class="button__text"><i class="fad fa-tint"></i> Colors</span>
-        </button>
+        <div class="dropdown">
+          <button type="button" class="button" id="btn-menu-allmenu">
+            <span class="button__text"><i class="fas fa-power-off"></i> Room</span>
+          </button>  
+          <div class="dd-content dd-button" id="allmenu">
+            <a id="btn-room-on"> On<i class="fad fa-toggle-on"></i></a>
+            <a id="btn-room-off"> Off<i class="fad fa-toggle-off"></i></a>
+          </div>
+        </div>
         <button type="button" class="button" id="btn-show-temphumid">
           <span class="button__text">
             <i class="fad fa-temperature-hot large__icon"></i>
@@ -133,39 +139,37 @@
           </div>
         </div>
         <p class="grid-sep"></p>
-        <div class="dropdown">
-          <button type="button" class="button" id="btn-menu-allmenu">
-            <span class="button__text"><i class="fas fa-power-off"></i> Room</span>
-          </button>  
-          <div class="dd-content dd-button" id="allmenu">
-            <a id="btn-room-on"> All On<i class="fad fa-toggle-on"></i></a>
-            <a id="btn-room-off"> All Off<i class="fad fa-toggle-off"></i></a>
-          </div>
-        </div>
         <button type="button" class="button" id="btn-open-cam">   
           <span class="button__text"><i class="fad fa-door-open"></i> Doorway</span>
         </button>
+        <div class="dropdown">
+          <button id="main-room-dropdown-btn" type="button" class="dark_btn button">
+            <i id="current-room-icon"></i>
+            <span class="button__text" id="current-room-label"></span> 
+          </button>
+          <div class="dd-content dd-button" id="main-room-dropdown"></div>
+        </div>
         <button type="button" class="button" id="btn-open-log-svr">
           <span class="button__text"><i class="fad fa-terminal"></i> Server</span>
         </button>
       </div>
     </div>
     <div class="column-right">
-    <div class="hifi-grid">
+      <div id="lr-grid" class="room-grid">
+        <div class="dropdown">
+          <button type="button" class="button" id="btn-menu-lr-backlight">
+            <span class="button__text"><i class="fad fa-lightbulb"></i> Backlight</span>
+          </button>  
+          <div class="dd-content dd-button" id="lr-backlight">
+            <a>TBD</a>
+          </div>
+        </div>
         <div class="dropdown">
           <button type="button" class="button" id="btn-power-wkststate">
             <span class="button__text" id="wkststate-text"><i class="fad fa-desktop-alt"></i> Desktop</span>
             <span class="button__text" id="wkststate-spinner"></span>
           </button>
           <div class="dd-content ind-button" id="wkststate-menu"></div>
-        </div>
-        <div class="dropdown">
-          <button type="button" class="button dark_btn" id="btn-menu-lrmenu">
-            <span class="button__text"></i> Living Room</span>
-          </button>  
-          <div class="dd-content dd-button" id="lr-menu">
-            <a id="btn-ctls-br"><i class="fad fa-bed"></i> Bedroom</a>
-          </div>
         </div>
         <div class="dropdown">
           <button type="button" class="button" id="btn-power-wl1_dual">
@@ -175,13 +179,13 @@
           <div class="dd-content ind-button" id="wl1_dual-menu"></div>
         </div>
         <p class="grid-sep"></p>
-        <button type="button" class="button" id="voldwnbtn">
+        <button type="button" class="button" id="lr-voldwnbtn">
             <span class="button__text"><i class="fad fa-volume-down fa-lg"></i></span>
         </button>
-        <button type="button" class="button" id="volmutebtn">
+        <button type="button" class="button" id="lr-volmutebtn">
             <span class="button__text"><i class="fad fa-volume-mute fa-lg"></i></span>
         </button>
-        <button type="button" class="button" id="volupbtn">
+        <button type="button" class="button" id="lr-volupbtn">
             <span class="button__text"><i class="fad fa-volume-up fa-lg"></i></span>
         </button>
         <p class="grid-sep"></p>
@@ -217,21 +221,21 @@
           <div class="dd-content ind-button" id="hfmoremenu"></div>
         </div>
       </div>
-      <div class="bedroom-grid">
-      <div class="dropdown">
+      <div id="bedroom-grid" class="room-grid">
+        <div class="dropdown">
+          <button type="button" class="button" id="btn-menu-br-backlight">
+            <span class="button__text"><i class="fad fa-lightbulb"></i> Backlight</span>
+          </button>  
+          <div class="dd-content dd-button" id="br-backlight">
+            <a>TBD</a>
+          </div>
+        </div>
+        <div class="dropdown">
           <button type="button" class="button" id="btn-dyn-relaxmenu">
             <span class="button__text"><i class="fad fa-snooze"></i> Relax</span>
           </button>
           <div class="dd-content dd-button" id="relaxmenu">
             <a id="btn-cmd-stop-br"> Stop<i class="fad fa-stop"></i></a>
-          </div>
-        </div>
-        <div class="dropdown">
-          <button type="button" class="button dark_btn" id="btn-menu-brmenu">
-            <span class="button__text"><i class="fad fa-bed"></i> Bedroom</span>
-          </button>  
-          <div class="dd-content dd-button" id="br-menu">
-            <a id="btn-ctls-lr"></i> Living Room</a>
           </div>
         </div>
         <div class="dropdown">
