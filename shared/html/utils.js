@@ -54,6 +54,21 @@ export function classDisplay(_elem, _state) {
   }
 }
 
+// add / remove a class from a element
+export function addClassToElem(_action, _elmid, _class) {
+  let _elm = document.getElementById(_elmid);
+  if (_action === 'add') {
+    if (!(_elm.classList.contains(_class))) {
+      _elm.classList.add(_class);
+    }
+  }
+  if (_action === 'remove') {
+    if (_elm.classList.contains(_class)) {
+      _elm.classList.remove(_class);
+    } 
+  }
+}
+
 export function checkElemIsVisibleByID(id){
   let _elmvis = false;
   let _elem = document.getElementById(id);

@@ -2,7 +2,7 @@
 // by Ben Provenzano III
 
 import { requestThrottle, setTheme, classDisplay, checkElemIsVisibleByID,
-  removeWindow, cleanString, base64URLSafeEncode, isNumeric, mapNumber,
+  addClassToElem, removeWindow, cleanString, base64URLSafeEncode, isNumeric, mapNumber,
   hsvToRgb, rgbToHsv, hexToRgb, rgbToHex, splitByDelimiter, sendCmd } from './utils.js';
 import ToggleSwitch, { toggleSwitchCallback } from './switch.js';
 import RoomStateManager from './roomstate.js';
@@ -15,19 +15,25 @@ const ROOM_CONFIGS = {
   'lr':   { 
     name: 'Living Room',
     gridId: 'lr-grid',
-    icon: '',         
-    target: 'lrxmit',     
-    maxvol: 100    
+    icon: '',
+    voltarget: 'lrxmit',     
+    volmax: 100
   },
   'br': { 
     name: 'Bedroom',     
     gridId: 'bedroom-grid',
     icon: 'fas fa-bed',  
-    target: 'brpi', 
-    maxvol: 192
+    voltarget: 'brpi', 
+    volmax: 192
   }
 };
-
+const SUBWOOFER_CLASS = 
+  'red_btn_menu';
+const VOLUME_ACTIONS = {
+  'voldwnbtn': 'dwn',
+  'volmutebtn': 'mute',
+  'volupbtn': 'up'
+};
 const PRESET_COLORS = [
   '#FF0000', '#FF7F00', '#FFFF00', '#00FF00', '#00FFFF',
   '#0000FF', '#7F00FF', '#FF00FF', '#FFFFFF', '#000000'
@@ -51,7 +57,6 @@ window.App = {
   bookmarkState: 0,
   volPopupTimer: null,
   sysModel: null,
-  subVolMode: false,
   activityTimeout: null,
   ledScrollData: [
     '00FF00', '8x8', '12.0'
@@ -96,17 +101,14 @@ function setupEventListeners() {
     'btn-room-off': () => roomOnOff('off'),
     'btn-open-cam':() => openCamWindow(),
     'btn-open-log-svr': () => openLogWindow(),
-    'main-room-dropdown-btn': () => openRoomDropdown(),
+    'main-room-btn': () => openRoomDropdown(),
     // Living Room Grid
     'btn-menu-lr-backlight': () => showMenu('lr-backlight'),
     'btn-power-wkststate': () => showPowerMenu('lrxmit', 'wkststate'),
     'btn-power-wl1_dual': () => showPowerMenu('lrxmit', 'wl1_dual'),
-    'lr-voldwnbtn': () => sendVol('dwn'),
-    'lr-volmutebtn': () => sendVol('mute'),
-    'lr-volupbtn': () => sendVol('up'),
-    'btn-vol-dwnc': () => sendVol('dwnc'),
     'btn-power-hifistate': () => showPowerMenu('lrxmit', 'hifistate'),
     'btn-vol-upc': () => sendVol('upc'),
+    'btn-vol-dwnc': () => sendVol('dwnc'),
     'btn-vol-display': () => sendVol('display'),
     'btn-show-hifi-amp': () => showHiFiAmpInput(),
     'btn-show-hifi-more': () => showHiFiMoreMenu(),
@@ -115,9 +117,6 @@ function setupEventListeners() {
     'btn-dyn-relaxmenu': () => showDynMenu('relaxmenu'),
     'btn-cmd-stop-br': () => sendCmd('main', 'stop-br', ''),
     'btn-power-brlamp1': () => showPowerMenu('brxmit', 'brlamp1'),
-    'br-voldwnbtn': () => sendVol('dwn'),
-    'br-volmutebtn': () => sendVol('mute'),
-    'br-volupbtn': () => sendVol('up'),
     'btn-power-brtv': () => showPowerMenu('brxmit', 'brtv'),
     'btn-power-ampstate': () => showPowerMenu('brpi', 'ampstate'),
     'btn-power-brpc': () => showPowerMenu('brxmit', 'brpc'),
@@ -219,6 +218,9 @@ function setupEventListeners() {
     'btn-cam-close': () => closePopup(),
     'btn-cam-fullscreen': () => goToContextRoot('cam1')
   };
+  // click/touch listener
+  document.addEventListener('click', handleClicks, false);
+  // button listeners
   document.addEventListener('click', (event) => {
     let current = event.target;
     while (current && current !== document) {
@@ -229,14 +231,51 @@ function setupEventListeners() {
       current = current.parentNode;
     }
   });
+  // volume button listeners
+  setupVolumeListeners(ROOM_CONFIGS);
 }
 
 // runs on page load
 window.addEventListener("DOMContentLoaded", () => {
-  window.addEventListener('click', handleClicks, false);
-  loadPage(); // first 
-  setupEventListeners(); // last
+  loadPage();
 });
+
+function loadPage() {
+  // read device type
+  App.sysModel = deviceType(); 
+  if (App.sysModel === App.MAIN_SITE) {
+    // load control menu saved state
+    const room = localStorage.getItem("ctls-mode")
+    selectRoom(room);
+    // room status title-bar icon
+    App.roomStateManager = new RoomStateManager('status_anchor');
+    // weather title-bar icon
+    window.weatherWidget = new WeatherWidget();
+    window.weatherWidget.activate();
+    // server home page
+    classDisplay('server-grid', 'block');
+  } else if (App.sysModel === 'Pi') {
+    classDisplay('pi-grid', 'block');
+  } else if (App.sysModel === 'LEDpi') {
+    classDisplay('ledpi-grid', 'block');
+  }
+  // set theme
+  let currentTheme;
+  let _theme = localStorage.getItem("main-color")
+  if (_theme === null || _theme === undefined || _theme === "") {
+    currentTheme = "#1f2051"; // dark blue
+  } else {
+    currentTheme = localStorage.getItem("main-color");
+  }
+  setTheme(currentTheme);
+  // setup listeners
+  setupEventListeners();
+  // initialize background 
+  App.starBackground = new AnimatedBackground('star-canvas');
+  App.starBackground.activate();
+  // activate timed services
+  resetActivityTimer();
+}
 
 // runs on-each mouse click
 function handleClicks(event) {
@@ -280,6 +319,13 @@ function activityStop() {
   }  
 }
 
+async function refreshRoomState() {
+  if (App.sysModel === App.MAIN_SITE && App.roomStateManager) {
+    App.roomStateManager.hideRoomState();
+    App.roomStateManager.showRoomState();
+  }  
+}
+
 window.removeDropdowns = function() {
   classDisplay("dd-content", "none");
   removeDynMenus();
@@ -306,42 +352,6 @@ function removeBookmarks() {
   App.bookmarkState = App.BKM_INACTIVE;
 }
 
-function loadPage() {
-  // read device type
-  App.sysModel = deviceType(); 
-  if (App.sysModel === App.MAIN_SITE) {
-    // load control menu saved state
-    let _mode = localStorage.getItem("ctls-mode")
-    ctlsMenu(_mode);
-    // room status title-bar icon
-    App.roomStateManager = new RoomStateManager('status_anchor');
-    // weather title-bar icon
-    window.weatherWidget = new WeatherWidget();
-    window.weatherWidget.activate();
-    // server home page
-    classDisplay('server-grid', 'block');
-  } else if (App.sysModel === 'Pi') {
-    classDisplay('pi-grid', 'block');
-  } else if (App.sysModel === 'LEDpi') {
-    classDisplay('ledpi-grid', 'block');
-  }
-  // set theme
-  let currentTheme;
-  let _theme = localStorage.getItem("main-color")
-  if (_theme === null || _theme === undefined || _theme === "") {
-    currentTheme = "#1f2051"; // dark blue
-  } else {
-    currentTheme = localStorage.getItem("main-color");
-  }
-  setTheme(currentTheme);
-  // initialize background 
-  App.starBackground = new AnimatedBackground('star-canvas');
-  App.starBackground.init();
-  // activate timed services
-  resetActivityTimer();
-}
-
-
 function openRoomDropdown() {
   const menuname = 'main-room-dropdown';
   let _elem = document.getElementById(menuname);
@@ -362,7 +372,7 @@ function openRoomDropdown() {
   }
 }
 
-function ctlsMenu(_mode) {
+function selectRoom(_mode) {
   // load configuration
   if (!ROOM_CONFIGS[_mode]) {
     // load first if not defined
@@ -411,6 +421,17 @@ function hidePages() {
   classDisplay('pi-grid', 'none'); 
   classDisplay('ledpi-grid', 'none'); 
   classDisplay('server-grid', 'none');
+}
+
+// toggle dropdown menu's
+function showMenu(_menu) {
+  let _elem = document.getElementById(_menu);
+  if (_elem.style.display === 'block') {
+    _elem.style.display = 'none';
+    return;
+  }
+  removeDropdowns();
+  _elem.style.display = 'block';
 }
 
 function showPopup(message) {
@@ -472,7 +493,7 @@ async function serverSend() {
 }
 
 function sendBtnAlert(state) {
-  let _class = "alert_btn";
+  let _class = "selected_btn";
   let _elem = "sendButton";
   if (state === 'on') {
     addClassToElem('add', _elem, _class);
@@ -589,7 +610,7 @@ function sendTextScroll(){
   });
 }
 
-/////////////////////////
+/////// About Window ///////
 
 async function aboutPrompt(){
   const _winid = 'about__prompt';
@@ -777,7 +798,7 @@ function pushTempErrorThermos(temp_elm, humd_elm) {
   humd_elm.dataset.value = "--";
 }
 
-/// END - Temperature & Humidity ///
+/////// Pi Wi-Fi Window ///////
 
 async function showPiWiFiPrompt() {
   const winid = "pinet__prompt";
@@ -1112,21 +1133,80 @@ function stopMapDrag() {
   window.removeEventListener('pointercancel', stopMapDrag);
 }
 
-/// END DYNAMIC WINDOWS ///
+/////// Volume Controls ///////
 
-function relaxSend(_cmd) {
-  sendCmd('main', 'relax', _cmd);
+/**
+ * Iterates through the room configurations, locates the exact button elements 
+ * in the DOM, and attaches a 'click' event listener directly to each one.
+ * * @param {Object} roomConfigs - The configuration object for all rooms.
+ */
+function setupVolumeListeners(roomConfigs) {
+  const roomKeys = Object.keys(roomConfigs);
+  // Iterate over each room defined in the configuration
+  for (let index = 0; index < roomKeys.length; index++) {
+    const roomPrefix = roomKeys[index];
+    const roomData = roomConfigs[roomPrefix];
+    // Check if the voltarget property exists and is not an empty string
+    const isVolumeTargetPopulated = roomData.voltarget !== undefined && roomData.voltarget !== '';
+    if (isVolumeTargetPopulated) {
+      const actionKeys = Object.keys(VOLUME_ACTIONS);
+      // Dynamically generate the full ID, find the element, and attach the listener
+      for (let actionIndex = 0; actionIndex < actionKeys.length; actionIndex++) {
+        const buttonSuffix = actionKeys[actionIndex];
+        const actionCommand = VOLUME_ACTIONS[buttonSuffix];
+        // Construct the exact DOM element ID (e.g., 'lr-voldwnbtn')
+        const fullElementId = `${roomPrefix}-${buttonSuffix}`;
+        // Retrieve the actual DOM element
+        const buttonElement = document.getElementById(fullElementId);
+        // Verify the element exists
+        const DOMElementExists = buttonElement !== null;
+        if (DOMElementExists) {
+          // Attach the event listener to button
+          buttonElement.addEventListener('click', function() {
+            sendVol(actionCommand);
+          });
+        }
+      }
+    }
+  }
 }
 
-// volume controls
 function sendVol(_cmd) {
   const room = App.currentRoom;
   const config = ROOM_CONFIGS[room];
-  if (App.subVolMode === true) {
-    sendCmd('main', config.target, 'sub' + _cmd); // living room subwoofers
+  const submode = subwooferVolumeEnabled();
+  if (submode === true) {
+    sendCmd('main', config.voltarget, 'sub' + _cmd); // living room subwoofers
   } else {
-    setAmpVolume(_cmd, config.target, config.maxvol); // living room system
+    setAmpVolume(_cmd, config.voltarget, config.volmax); // living room system
   }
+}
+
+function subwooferVolumeEnabled() {
+  const volKeys = Object.keys(VOLUME_ACTIONS);
+  if (volKeys.length === 0) return false;
+  const firstKey = volKeys[0]; 
+  const elementId = `${App.currentRoom}-${firstKey}`; 
+  const element = document.getElementById(elementId);
+  if (element) {
+    return element.classList.contains(SUBWOOFER_CLASS);
+  }
+  return false;
+}
+
+function subwooferVolumeMode(enable) {
+  const volKeys = Object.keys(VOLUME_ACTIONS);
+  volKeys.forEach(key => {
+    const elementId = `${App.currentRoom}-${key}`;
+    const element = document.getElementById(elementId);
+    if (element) {
+      if (enable === true) {
+        element.classList.add(SUBWOOFER_CLASS);
+      } else {
+        element.classList.remove(SUBWOOFER_CLASS);
+      }
+    }
+  });
 }
 
 function setAmpVolume(_cmd, _device, _maxvol) {
@@ -1216,50 +1296,14 @@ function showVolumePopup(vol) {
   }, 3000); // hide delay in (ms)
 }
 
-function redVolumeButtons(enable) {
-  const className = 'red_btn_menu';
-  const elemIDs = ['voldwnbtn', 'volupbtn', 'volmutebtn'];
-  elemIDs.forEach(suffix => {
-    const elementId = `${App.currentRoom}-${suffix}`;
-    const element = document.getElementById(elementId);
-    if (element) {
-      if (enable === true) {
-        element.classList.add(className);
-      } else {
-        element.classList.remove(className);
-      }
-    }
-  });
-}
+///// Misc. Functions ////
 
 function roomOnOff(action) {
   sendCmd('main', App.currentRoom + action, '');
 }
 
-// add / remove a class from a element
-function addClassToElem(_action, _elmid, _class) {
-  let _elm = document.getElementById(_elmid);
-  if (_action === 'add') {
-    if (!(_elm.classList.contains(_class))) {
-      _elm.classList.add(_class);
-    }
-  }
-  if (_action === 'remove') {
-    if (_elm.classList.contains(_class)) {
-      _elm.classList.remove(_class);
-    } 
-  }
-}
-
-// toggle dropdown menu's
-function showMenu(_menu) {
-  let _elem = document.getElementById(_menu);
-  if (_elem.style.display === 'block') {
-    _elem.style.display = 'none';
-    return;
-  }
-  removeDropdowns();
-  _elem.style.display = 'block';
+function relaxSend(_cmd) {
+  sendCmd('main', 'relax', _cmd);
 }
 
 //// Bookmarks Menu ////
@@ -2130,7 +2174,8 @@ function createListItem(col0_in, col1, col2, menuid) {
     case 'room':
       // room selector menu
       _elm.addEventListener("click", function() {
-        ctlsMenu(col0);
+        selectRoom(col0);
+        refreshRoomState();
       });
       break;
     case 'relaxmenu': 
@@ -2182,17 +2227,16 @@ function createListItem(col0_in, col1, col2, menuid) {
       break;
     case 'subs':
       // subwoofer volume toggle
-      if (App.subVolMode === false) {
-        _elm.classList.remove('red_btn_menu');
+      const submode = subwooferVolumeEnabled();
+      if (submode === true) {
+        _elm.classList.add(SUBWOOFER_CLASS);
         _elm.addEventListener("click", function() {
-          redVolumeButtons(true);
-          App.subVolMode = true;
+          subwooferVolumeMode(false);
         });
       } else {
-        _elm.classList.add('red_btn_menu');
+        _elm.classList.remove(SUBWOOFER_CLASS);
         _elm.addEventListener("click", function() {
-          redVolumeButtons(false);
-          App.subVolMode = false;
+          subwooferVolumeMode(true);
         });
       }
       break;

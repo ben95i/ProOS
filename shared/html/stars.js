@@ -102,7 +102,7 @@ export default class AnimatedBackground {
     this.animateCanvas = this.animateCanvas.bind(this);
   }
 
-  init() {
+  activate() {
     window.addEventListener('resize', this.resizeCanvas);
     this.resizeCanvas();
     this.animateCanvas();

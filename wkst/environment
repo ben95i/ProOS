@@ -1,2 +1,2 @@
 PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin"
-export KWIN_FORCE_SW_CURSOR=1
+KWIN_FORCE_SW_CURSOR=1
