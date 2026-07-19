@@ -11,11 +11,11 @@ UUID=1b5d9265-2b47-440c-b698-586a7d2b6835 /              ext4    defaults   0  1
 UUID=e3ce5d70-8f2d-4f98-a81e-e5c1b94900af /mnt/Local     ext4    defaults   0  0
 /swapfile                                 swap           swap    defaults   0  0
 tmpfs                                     /tmp           tmpfs   defaults,noatime,mode=1777   0  0
-ben@files:/      /mnt/SFTP     fuse.sshfs identityfile=/root/files_sftp.rsa,default_permissions,allow_other,reconnect,ServerAliveInterval=15,ServerAliveCountMax=3,uid=1000,gid=1000   0  0
-//files/Data     /mnt/Data     cifs       _netdev,credentials=/root/smb.credentials,iocharset=utf8,vers=3.0,nofail,uid=1000,gid=1000   0  0
-//files/Media    /mnt/Media    cifs       _netdev,credentials=/root/smb.credentials,iocharset=utf8,vers=3.0,nofail,uid=1000,gid=1000   0  0
-//files/Scratch  /mnt/Scratch  cifs       _netdev,credentials=/root/smb.credentials,iocharset=utf8,vers=3.0,nofail,uid=1000,gid=1000   0  0
-//files/Cameras  /mnt/Cameras  cifs       _netdev,credentials=/root/smb.credentials,iocharset=utf8,vers=3.0,nofail,uid=1000,gid=1000   0  0
-//files/Regions  /mnt/Regions  cifs       _netdev,credentials=/root/smb.credentials,iocharset=utf8,vers=3.0,nofail,uid=1000,gid=1000   0  0
-//files/Games    /mnt/Games    cifs       _netdev,credentials=/root/smb.credentials,iocharset=utf8,vers=3.0,nofail,uid=1000,gid=1000   0  0
-
+ben@192.168.1.4:/      /mnt/SFTP     fuse.sshfs identityfile=/root/files_sftp.rsa,default_permissions,allow_other,reconnect,ServerAliveInterval=15,ServerAliveCountMax=3,uid=1000,gid=1000   0  0
+//192.168.1.4/Data     /mnt/Data     cifs       _netdev,credentials=/root/smb.credentials,iocharset=utf8,vers=3.0,nofail,uid=1000,gid=1000   0  0
+//192.168.1.4/Media    /mnt/Media    cifs       _netdev,credentials=/root/smb.credentials,iocharset=utf8,vers=3.0,nofail,uid=1000,gid=1000   0  0
+//192.168.1.4/Scratch  /mnt/Scratch  cifs       _netdev,credentials=/root/smb.credentials,iocharset=utf8,vers=3.0,nofail,uid=1000,gid=1000   0  0
+//192.168.1.4/Cameras  /mnt/Cameras  cifs       _netdev,credentials=/root/smb.credentials,iocharset=utf8,vers=3.0,nofail,uid=1000,gid=1000   0  0
+//192.168.1.4/Regions  /mnt/Regions  cifs       _netdev,credentials=/root/smb.credentials,iocharset=utf8,vers=3.0,nofail,uid=1000,gid=1000   0  0
+//192.168.1.4/Games    /mnt/Games    cifs       _netdev,credentials=/root/smb.credentials,iocharset=utf8,vers=3.0,nofail,uid=1000,gid=1000   0  0
+//192.168.1.4/iTunes   /mnt/iTunes   cifs       _netdev,credentials=/root/smb.credentials,iocharset=utf8,vers=3.0,nofail,uid=1000,gid=1000   0  0

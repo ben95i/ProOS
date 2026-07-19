@@ -14,9 +14,9 @@ apt-get --yes update
 ## Install Packages
 apt-get install -y --no-upgrade --ignore-missing unzip wget \
  rsync curl screen scrub ethtool aptitude sudo samba sshpass \
- libdbus-1-dev libdbus-glib-1-dev bc git locales mailutils \
  fastfetch apt-transport-https nmap bpytop binutils iperf3 cron \
- cron-daemon-common fuse gocryptfs inotify-tools htop
+ libdbus-1-dev libdbus-glib-1-dev bc git locales mailutils wsdd2 \
+ cron-daemon-common fuse gocryptfs inotify-tools htop avahi-daemon
 
 ## NeoFetch Alias
 ln -sf /usr/bin/fastfetch /usr/bin/neofetch
@@ -157,7 +157,7 @@ cp -f /opt/drives.txt /mnt/ramdisk/
 chmod 777 /mnt/ramdisk/drives.txt
 
 ## Disable Start on Boot
-systemctl disable nmbd smbd
+systemctl disable nmbd smbd avahi-daemon
 
 ## Reload Services
 systemctl daemon-reload

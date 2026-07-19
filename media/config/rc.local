@@ -11,17 +11,9 @@
 #
 # By default this script does nothing.
 
-
 echo "*"
 echo " Welcome to ProOS"
 echo " by Ben Provenzano III"
 echo "*"
-
-### Start Plex Server
-if [ ! -e /mnt/plex/Library ]; then
-   echo "Plex Library Not Attached!"
-else
-   #systemctl start plexmediaserver.service
-fi
 
 exit 0

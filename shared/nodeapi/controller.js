@@ -12,9 +12,9 @@ const API_CALL_TIMEOUT = 2500; // in (ms)
 const PROCESS_TIMEOUT = 3000;  // in (ms)
 const MAX_PING_WAIT = "0.5"; // in (sec)
 const LOCAL_DOMAIN = "home";
-const NET_RANGE = "192.168.1.0/24";
 const BRPC_MAC = "90:2e:16:46:86:43";
-const IPs = {
+const NET_RANGE = "192.168.1.0/24";
+const LOCAL_IP = {
     lrxmit: "192.168.1.12",
     desk: "192.168.1.14",
     brpi: "192.168.1.15",
@@ -160,7 +160,7 @@ async function callFIFO(host, cmd, out_pos = '') {
     const executeTask = async () => {
         let out = '';
         if (host === "lrxmit") {
-            out = await callApi(IPs.lrxmit, "extcom", cmd);
+            out = await callApi(LOCAL_IP.lrxmit, "extcom", cmd);
         } else if (host === "local") {
             try {
                 const { stdout } = await execFileAsync('/usr/bin/ztermcom', [cmd], { timeout: PROCESS_TIMEOUT });
@@ -195,37 +195,37 @@ async function brXmit(cmd) {
         case "brtv":       return await callFIFO("local", "01003", "0");
         case "brtvoff":    return await callFIFO("local", "01002");
         case "brtvon":     return await callFIFO("local", "01001");
-        case "brpc":       return await localPing(IPs.brpc);
+        case "brpc":       return await localPing(LOCAL_IP.brpc);
         case "brpcoff": 
-            if (await localPing(IPs.brpc) === "1") return await callApi(IPs.brpc, "sleep");
-            return `${IPs.brpc} is already offline`;
+            if (await localPing(LOCAL_IP.brpc) === "1") return await callApi(LOCAL_IP.brpc, "sleep");
+            return `${LOCAL_IP.brpc} is already offline`;
         case "brpcon": 
-            if (await localPing(IPs.brpc) === "1") return `${IPs.brpc} is already online`;
+            if (await localPing(LOCAL_IP.brpc) === "1") return `${LOCAL_IP.brpc} is already online`;
             return await execFileAsync('/usr/bin/wakeonlan', [BRPC_MAC], { timeout: PROCESS_TIMEOUT }).then(() => "OK").catch(e => processProgramError(e));
         default: return "brXmit: invalid command";
     }
 }
 
 async function windowLamp1Status() { 
-    return await callPico(IPs.picolamp1, "4", "0"); 
+    return await callPico(LOCAL_IP.picolamp1, "4", "0"); 
 }
 
 async function lrXmit(arg1, arg2 = '') {
     switch (arg1) {
         case "wl1_dual":      return await windowLamp1Status();
         case "wl1_dual_set":
-        case "wl1_led2set":   return await callPico(IPs.picolamp1, "3", arg2);     
+        case "wl1_led2set":   return await callPico(LOCAL_IP.picolamp1, "3", arg2);     
         case "wl1_dualoff":
-        case "wl1_led1off":   return await callPico(IPs.picolamp1, "1", "2");
+        case "wl1_led1off":   return await callPico(LOCAL_IP.picolamp1, "1", "2");
         case "wl1_dualon":
-        case "wl1_led1on":    return await callPico(IPs.picolamp1, "1", "3");
-        case "wl1_led1":      return await callPico(IPs.picolamp1, "1", "0");
-        case "wl1_led2off":   return await callPico(IPs.picolamp1, "2", "0");
-        case "wl1_led2on":    return await callPico(IPs.picolamp1, "2", "1");
-        case "wl1_led2":      return await callPico(IPs.picolamp1, "2", "2");
-        case "wkststate":     return await localPing(IPs.desk);
+        case "wl1_led1on":    return await callPico(LOCAL_IP.picolamp1, "1", "3");
+        case "wl1_led1":      return await callPico(LOCAL_IP.picolamp1, "1", "0");
+        case "wl1_led2off":   return await callPico(LOCAL_IP.picolamp1, "2", "0");
+        case "wl1_led2on":    return await callPico(LOCAL_IP.picolamp1, "2", "1");
+        case "wl1_led2":      return await callPico(LOCAL_IP.picolamp1, "2", "2");
+        case "wkststate":     return await localPing(LOCAL_IP.desk);
         case "wkststateoff":
-        case "wkststateon":   return await callApi(IPs.lrxmit, "pc_power");
+        case "wkststateon":   return await callApi(LOCAL_IP.lrxmit, "pc_power");
         case "hifistate":     return await callFIFO("lrxmit", "15019");
         case "hifistateoff":  return await callFIFO("lrxmit", "15018");
         case "hifistateon":   return await callFIFO("lrxmit", "15017");
@@ -283,7 +283,7 @@ async function executeMain(ramDisk, firstArg, secondArg) {
             ]);
             const [wl1, wl2] = splitByDelimiter(wlRaw, '~');
             lrRoom.addDevice('Window Lamp', wl1);
-            lrRoom.addDevice('Backlight', wl2);
+            lrRoom.addDevice('Lamp Backlight', wl2);
             lrRoom.addDevice('Desktop PC', wkst);
             lrRoom.addDevice('Stereo System', hifi);
             lrRoom.updateRoomState();
@@ -326,10 +326,10 @@ async function executeMain(ramDisk, firstArg, secondArg) {
                 brXmit("brmacs"),
                 brXmit("brtv"),
                 brXmit("brpc"),
-                callApi(IPs.brpi, "ampstate")
+                callApi(LOCAL_IP.brpi, "ampstate")
             ]);
             brRoom.addDevice('Desk Lamp', lamp);
-            brRoom.addDevice('RetroPi CRT', retro);
+            brRoom.addDevice('RetroPi TV', retro);
             brRoom.addDevice('Vintage Macs', macs);
             brRoom.addDevice('Bedroom TV', tv);
             brRoom.addDevice('Bedroom PC', pc);
@@ -344,7 +344,7 @@ async function executeMain(ramDisk, firstArg, secondArg) {
                 brXmit("brmacson"), 
                 brXmit("brtvon"), 
                 brXmit("brpcon"), 
-                callApi(IPs.brpi, "ampstateon")
+                callApi(LOCAL_IP.brpi, "ampstateon")
             ]).catch(() => {});
             return "OK";
         case "broff":
@@ -353,21 +353,21 @@ async function executeMain(ramDisk, firstArg, secondArg) {
                 brXmit("retropioff"), 
                 brXmit("brmacsoff"), 
                 brXmit("brtvoff"), 
-                callApi(IPs.brpc, "sleep"), 
-                callApi(IPs.brpi, "ampstateoff")
+                callApi(LOCAL_IP.brpc, "sleep"), 
+                callApi(LOCAL_IP.brpi, "ampstateoff")
             ]).catch(() => {});
             return "OK";
         case "brpi":
-            return await callApi(IPs.brpi, secondArg);
+            return await callApi(LOCAL_IP.brpi, secondArg);
         case "relax":
             Promise.all([
-                callApi(IPs.brpi, "relax", secondArg), 
+                callApi(LOCAL_IP.brpi, "relax", secondArg), 
                 brXmit("brtvoff"), 
-                callApi(IPs.brpc, "sleep")
+                callApi(LOCAL_IP.brpc, "sleep")
             ]).catch(() => {});
             return "OK";
         case "stop-br":
-            return await callApi(IPs.brpi, "stoprelax");
+            return await callApi(LOCAL_IP.brpi, "stoprelax");
         case "localping":
             return await localPing(`${secondArg}.${LOCAL_DOMAIN}`);
         case "status": {

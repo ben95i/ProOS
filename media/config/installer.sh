@@ -4,7 +4,9 @@
 ### by Ben Provenzano III
 ###
 
-cd /tmp/config
+TMPCFG="/tmp/config"
+
+cd "$TMPCFG"
 
 ## Update Sources
 apt-get --yes update
@@ -13,7 +15,7 @@ apt-get --yes update
 apt-get install -y --no-upgrade --ignore-missing unzip wget rsync curl screen \
  parallel ethtool aptitude sudo gnupg iptables libdbus-1-dev libdbus-glib-1-dev \
  locales apt-transport-https bpytop htop binutils fastfetch autotools-dev \
- autoconf automake build-essential
+ autoconf automake build-essential ffmpeg inotify-tools
 
 ## Set Locale
 if [ ! -e "/etc/locales.generated" ]; then
@@ -29,12 +31,32 @@ if [ ! -e "/etc/apt/sources.list.d/jellyfin.sources" ]; then
   bash install-debuntu.sh
 fi
 
+## Install Automatic Audio Converter
+adduser --disabled-password --shell /sbin/nologin --no-create-home --uid 1000 --gid 1000 media
+rm -f /usr/bin/mp3sync
+g++ -std=c++20 -O3 -Wall -Wextra $TMPCFG/mp3sync.cpp -o /usr/bin/mp3sync -lpthread
+chown root:root /usr/bin/mp3sync
+chmod +x /usr/bin/mp3sync
+cp -f /tmp/config/mp3sync-watch.sh /usr/bin/
+chmod +x /usr/bin/mp3sync-watch.sh
+chown root:root /usr/bin/mp3sync-watch.sh
+cp -f /tmp/config/mp3sync.env /opt/
+chmod 644 /opt/mp3sync.env
+chown root:root /opt/mp3sync.env
+cp -f /tmp/config/mp3sync.service /etc/systemd/system/
+chmod 644 /etc/systemd/system/mp3sync.service
+chown root:root /etc/systemd/system/mp3sync.service
+cp -f /tmp/config/mp3sync-watch.service /etc/systemd/system/
+chmod 644 /etc/systemd/system/mp3sync-watch.service
+chown root:root /etc/systemd/system/mp3sync-watch.service
+systemctl enable mp3sync-watch
+
 ## Auto SSH Login Key for root
 mkdir -p /root/.ssh
-cp -r /tmp/config/authorized_keys /root/.ssh/
+cp -r $TMPCFG/authorized_keys /root/.ssh/
 
 ## SSH Configuration
-cp -r /tmp/config/sshd_config /etc/ssh
+cp -r $TMPCFG/sshd_config /etc/ssh
 chmod 644 /etc/ssh/sshd_config
 chown root:root /etc/ssh/sshd_config
 
@@ -44,17 +66,17 @@ chmod 644 /root/.hushlogin
 chown root:root /root/.hushlogin
 
 ## Login Script
-cp /tmp/config/profile /root/.profile
+cp $TMPCFG/profile /root/.profile
 chown root:root /root/.profile
 chmod +x /root/.profile
 
 ## System Configuration
-cp -r /tmp/config/sysctl.conf /etc
+cp -r $TMPCFG/sysctl.conf /etc
 chmod 644 /etc/sysctl.conf
 chown root:root /etc/sysctl.conf
 
 ## Logrotate Fix for LXCs
-cp /tmp/config/logrotate.service /lib/systemd/system/
+cp $TMPCFG/logrotate.service /lib/systemd/system/
 chmod 644 /lib/systemd/system/logrotate.service
 chown root:root /lib/systemd/system/logrotate.service
 
@@ -65,17 +87,17 @@ chmod 644 /etc/sysctl.d/50-unprivileged-ports.conf
 chown root:root /etc/sysctl.d/50-unprivileged-ports.conf
 
 ## Startup Configuration
-cp -r /tmp/config/rc-local.service /etc/systemd/system/
+cp -r $TMPCFG/rc-local.service /etc/systemd/system/
 chmod 644 /etc/systemd/system/rc-local.service
 chown root:root /etc/systemd/system/rc-local.service
-cp -r /tmp/config/rc.local /etc/
+cp -r $TMPCFG/rc.local /etc/
 chmod 755 /etc/rc.local
 chown root:root /etc/rc.local
 systemctl enable rc-local
 
 ## Clean-up
 systemctl daemon-reload
-rm -r /tmp/config/
+rm -rf $TMPCFG/
 apt-get clean -y
 apt-get autoclean -y
 exit

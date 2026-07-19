@@ -1,0 +1,4 @@
+Scratch -fstype=cifs,noperm,dir_mode=0777,file_mode=0777,uid=1000,gid=1000,forcegid,forceuid,rw,credentials=/etc/auto.creds ://files.home/Scratch
+MP3s    -fstype=cifs,noperm,dir_mode=0777,file_mode=0777,uid=1000,gid=1000,forcegid,forceuid,rw,credentials=/etc/auto.creds ://files.home/MP3s
+Media   -fstype=cifs,noperm,dir_mode=0777,file_mode=0777,uid=1000,gid=1000,forcegid,forceuid,ro,credentials=/etc/auto.creds ://files.home/Media
+Data    -fstype=cifs,noperm,dir_mode=0777,file_mode=0777,uid=1000,gid=1000,forcegid,forceuid,ro,credentials=/etc/auto.creds ://files.home/Data

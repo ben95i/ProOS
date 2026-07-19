@@ -1,0 +1,24 @@
+[Unit]
+Description=Watch Audio Library and Trigger mp3sync on Settled Changes
+After=network.target
+
+[Service]
+Type=simple
+User=media
+Group=media
+EnvironmentFile=/opt/mp3sync.env
+ExecStart=/usr/bin/mp3sync-watch.sh
+Restart=always
+RestartSec=10
+ProtectSystem=strict
+ReadWritePaths=/mnt
+ProtectControlGroups=true
+ProtectKernelModules=true
+NoNewPrivileges=true
+
+[Unit]
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
+[Install]
+WantedBy=multi-user.target

@@ -18,6 +18,6 @@ bluetty=`tput setaf 4`
 resettty=`tput sgr0`
 
 echo "${ambertty}"
-echo "Legacy File Server LXC"
+echo "Legacy SMB Server LXC"
 uname -m -n -s -o -r
 echo "${resettty}"

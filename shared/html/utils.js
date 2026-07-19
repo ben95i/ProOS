@@ -124,49 +124,85 @@ export function mapNumber(num, inMin, inMax, outMin, outMax) {
   return (num - inMin) * (outMax - outMin) / (inMax - inMin) + outMin;
 }
 
-export function hsvToRgb(h, s, v) {
-  let r, g, b, i, f, p, q, t;
-  h /= 360;
-  i = Math.floor(h * 6);
-  f = h * 6 - i;
-  p = v * (1 - s);
-  q = v * (1 - f * s);
-  t = v * (1 - (1 - f) * s);
-  switch (i % 6) {
-    case 0: r = v, g = t, b = p; break;
-    case 1: r = q, g = v, b = p; break;
-    case 2: r = p, g = v, b = t; break;
-    case 3: r = p, g = q, b = v; break;
-    case 4: r = t, g = p, b = v; break;
-    case 5: r = v, g = p, b = q; break;
-  }
-  return { r: Math.round(r * 255), g: Math.round(g * 255), b: Math.round(b * 255) };
+// --- Mathematical Conversion Helpers (Verbose Implementation) --- //
+
+export function hexToRgb(hexString) {
+  const cleanHex = hexString.replace(/^#/, '');
+  const redDecimal = parseInt(cleanHex.substring(0, 2), 16);
+  const greenDecimal = parseInt(cleanHex.substring(2, 4), 16);
+  const blueDecimal = parseInt(cleanHex.substring(4, 6), 16);
+  return { red: redDecimal, green: greenDecimal, blue: blueDecimal };
 }
 
-export function rgbToHsv(r, g, b) {
-  r /= 255, g /= 255, b /= 255;
-  let max = Math.max(r, g, b), min = Math.min(r, g, b);
-  let h, s, v = max;
-  let d = max - min;
-  s = max === 0 ? 0 : d / max;
-  if (max === min) {
-    h = 0; 
-  } else {
-    switch (max) {
-      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-      case g: h = (b - r) / d + 2; break;
-      case b: h = (r - g) / d + 4; break;
+export function rgbToHex(red, green, blue) {
+  const redHex = red.toString(16).padStart(2, '0');
+  const greenHex = green.toString(16).padStart(2, '0');
+  const blueHex = blue.toString(16).padStart(2, '0');
+  const combinedHex = `#${redHex}${greenHex}${blueHex}`;
+  return combinedHex.toUpperCase();
+}
+
+export function rgbToHexFromStyle(rgbString) {
+  // Converts "rgb(255, 0, 0)" to "#FF0000"
+  const rgbValues = rgbString.match(/\d+/g);
+  if (!rgbValues || rgbValues.length < 3) return null;
+  const red = parseInt(rgbValues[0]);
+  const green = parseInt(rgbValues[1]);
+  const blue = parseInt(rgbValues[2]);
+  return rgbToHex(red, green, blue);
+}
+
+export function hsvToRgb(hue, saturation, value) {
+  const chroma = value * saturation;
+  const hueSegment = hue / 60;
+  const intermediateValue = chroma * (1 - Math.abs((hueSegment % 2) - 1));
+  const valueMatch = value - chroma;
+  let redRaw = 0;
+  let greenRaw = 0;
+  let blueRaw = 0;
+  if (hueSegment >= 0 && hueSegment < 1) {
+    redRaw = chroma; greenRaw = intermediateValue; blueRaw = 0;
+  } else if (hueSegment >= 1 && hueSegment < 2) {
+    redRaw = intermediateValue; greenRaw = chroma; blueRaw = 0;
+  } else if (hueSegment >= 2 && hueSegment < 3) {
+    redRaw = 0; greenRaw = chroma; blueRaw = intermediateValue;
+  } else if (hueSegment >= 3 && hueSegment < 4) {
+    redRaw = 0; greenRaw = intermediateValue; blueRaw = chroma;
+  } else if (hueSegment >= 4 && hueSegment < 5) {
+    redRaw = intermediateValue; greenRaw = 0; blueRaw = chroma;
+  } else if (hueSegment >= 5 && hueSegment < 6) {
+    redRaw = chroma; greenRaw = 0; blueRaw = intermediateValue;
+  }
+  const redFinal = Math.round((redRaw + valueMatch) * 255);
+  const greenFinal = Math.round((greenRaw + valueMatch) * 255);
+  const blueFinal = Math.round((blueRaw + valueMatch) * 255);
+  return { red: redFinal, green: greenFinal, blue: blueFinal };
+}
+
+export function rgbToHsv(red, green, blue) {
+  const redNormalized = red / 255;
+  const greenNormalized = green / 255;
+  const blueNormalized = blue / 255;
+  const maxColorComponent = Math.max(redNormalized, greenNormalized, blueNormalized);
+  const minColorComponent = Math.min(redNormalized, greenNormalized, blueNormalized);
+  const deltaColor = maxColorComponent - minColorComponent;
+  let hue = 0;
+  if (deltaColor !== 0) {
+    if (maxColorComponent === redNormalized) {
+      hue = 60 * (((greenNormalized - blueNormalized) / deltaColor) % 6);
+    } else if (maxColorComponent === greenNormalized) {
+      hue = 60 * (((blueNormalized - redNormalized) / deltaColor) + 2);
+    } else if (maxColorComponent === blueNormalized) {
+      hue = 60 * (((redNormalized - greenNormalized) / deltaColor) + 4);
     }
-    h /= 6;
   }
-  return { h: h * 360, s: s, v: v };
-}
-
-export function hexToRgb(hex) {
-  let bigint = parseInt(hex.replace('#', ''), 16);
-  return { r: (bigint >> 16) & 255, g: (bigint >> 8) & 255, b: bigint & 255 };
-}
-
-export function rgbToHex(r, g, b) {
-  return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase();
+  if (hue < 0) {
+    hue = hue + 360;
+  }
+  let saturation = 0;
+  if (maxColorComponent !== 0) {
+    saturation = deltaColor / maxColorComponent;
+  }
+  const value = maxColorComponent;
+  return { hue: hue, saturation: saturation, value: value };
 }

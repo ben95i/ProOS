@@ -29,4 +29,5 @@ iface vmbr0 inet static
         bridge-ports bond0
         bridge-stp off
         bridge-fd 0
+        bridge-mcsn 0
         dns-nameservers 192.168.1.1

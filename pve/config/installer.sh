@@ -40,6 +40,14 @@ cp -f $TMPDIR/sshd_config /etc/ssh/
 chmod 644 /etc/ssh/sshd_config
 chown root:root /etc/ssh/sshd_config
 
+## Permission Mappings
+cp -f $TMPDIR/subuid /etc/
+cp -f $TMPDIR/subgid /etc/
+chmod 644 /etc/subuid
+chmod 644 /etc/subgid
+chown root:root /etc/subuid
+chown root:root /etc/subgid
+
 ## Startup Configuration
 cp -f $TMPDIR/rc-local.service /etc/systemd/system/
 chmod 644 /etc/systemd/system/rc-local.service
@@ -91,11 +99,6 @@ fi
 cp -f $TMPDIR/fstab /etc/
 chmod 644 /etc/fstab
 chown root:root /etc/fstab
-
-## Restrict Proxmox Web UI Access
-cp -f $TMPDIR/pveproxy /etc/default/
-chmod 644 /etc/default/pveproxy
-chown root:root /etc/default/pveproxy
 
 ## Move Swapfile to Scratch Drive
 if [ ! -e "/dev/zvol/rpool/swap" ]; then
@@ -165,6 +168,10 @@ postfix reload
 cp -f $TMPDIR/99-arp_ignore.conf /etc/sysctl.d/
 chmod 644 /etc/sysctl.d/99-arp_ignore.conf
 chown root:root /etc/sysctl.d/99-arp_ignore.conf
+
+## Disable Firewall
+systemctl disable pve-firewall
+systemctl mask pve-firewall
 
 ## Drives List
 cp -f $TMPDIR/drives.txt /usr/lib/

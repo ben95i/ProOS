@@ -2,11 +2,12 @@
 // by Ben Provenzano III
 
 import { requestThrottle, setTheme, classDisplay, checkElemIsVisibleByID,
-  addClassToElem, removeWindow, cleanString, base64URLSafeEncode, isNumeric, mapNumber,
-  hsvToRgb, rgbToHsv, hexToRgb, rgbToHex, splitByDelimiter, sendCmd } from './utils.js';
+  addClassToElem, removeWindow, cleanString, base64URLSafeEncode, 
+  isNumeric, mapNumber, splitByDelimiter, sendCmd } from './utils.js';
 import ToggleSwitch, { toggleSwitchCallback } from './switch.js';
 import RoomStateManager from './roomstate.js';
 import AnimatedBackground from './stars.js';
+import ColorPrompt from './colorprompt.js';
 import WeatherWidget from './weather.js';
 import { deviceType } from './device.js';
 import { SSIDpwd } from './wifi.js';
@@ -34,23 +35,18 @@ const VOLUME_ACTIONS = {
   'volmutebtn': 'mute',
   'volupbtn': 'up'
 };
-const PRESET_COLORS = [
-  '#FF0000', '#FF7F00', '#FFFF00', '#00FF00', '#00FFFF',
-  '#0000FF', '#7F00FF', '#FF00FF', '#FFFFFF', '#000000'
-];
 
 window.App = {
   MAIN_SITE: "Automate",
   BKM_INACTIVE: 0,
   BKM_OPEN_MODE: 1,
   BKM_EDIT_MODE: 2,
-  REFRESH_INTERVAL: 5,
-  TIMEOUT_INTERVAL: 45,
+  REFRESH_INTERVAL: 10,
+  TIMEOUT_INTERVAL: 100,
   starBackground: null,
   roomStateManager: null,
   activeSwitches: [],
   fileData: [],
-  ctlCommand: null,
   serverCmdData: null,
   messagePopupTimer: null,
   dynMenuActive: 0,
@@ -60,13 +56,7 @@ window.App = {
   activityTimeout: null,
   ledScrollData: [
     '00FF00', '8x8', '12.0'
-  ],
-  currentHSV: { h: 0, s: 1, v: 1 },
-  pendingQueuedColor: null,
-  isColorPromptInit: false,
-  isColorCommandPending: false,
-  isColorDragMap: false,
-  colorPromptParser: document.createElement('div')
+  ]
 };
 
 function setupEventListeners() {
@@ -86,7 +76,7 @@ function setupEventListeners() {
     'btn-home-pi': () => GoToHomePage(),
     // Main Grid
     'btn-dyn-ledcolormenu': () => showDynMenu('ledcolormenu'),
-    'btn-color-prompt': () => colorPrompt(),
+    'btn-color-prompt': () => openColorPrompt(),
     'btn-dyn-ledeffectmenu': () => showDynMenu('ledeffectmenu'),
     'btn-power-fc_leds': () => showPowerMenu('fc_leds'),
     'btn-cmd-leds-shuffle': () => sendCmd('leds', 'shuffle', ''),
@@ -214,7 +204,6 @@ function setupEventListeners() {
     'btn-log-open-svr': () => openServerOptions(),
     'btn-log-load': () => loadLog('sysout'),
     'sendButton': () => serverSend(),
-    'btn-color-close': () => closeColorPrompt(),
     'btn-cam-close': () => closePopup(),
     'btn-cam-fullscreen': () => goToContextRoot('cam1')
   };
@@ -1005,134 +994,6 @@ function passwordPrompt(){
   }); 
 }
 
-/// Color Prompt ///
-
-function initColorGrid() {
-  if (App.isColorPromptInit) return;
-  const grid = document.getElementById('preset-color-grid');
-  if (!grid) return;
-  grid.innerHTML = ''; 
-  PRESET_COLORS.forEach(color => {
-    const swatch = document.createElement('div');
-    swatch.className = 'color-swatch';
-    swatch.style.backgroundColor = color;
-    swatch.addEventListener('click', () => updateStateFromHex(color, true, true));
-    grid.appendChild(swatch);
-  });
-  App.isColorPromptInit = true;
-}
-
-function colorPrompt(initialColor) {
-  initColorGrid();
-  let formattedColor = String(initialColor);
-  if (!formattedColor.startsWith('#')) {
-    formattedColor = '#' + formattedColor;
-  }
-  const pendingLock = App.isColorCommandPending;
-  App.isColorCommandPending = true; 
-  updateStateFromHex(formattedColor, true, false);
-  App.isColorCommandPending = pendingLock; 
-  document.getElementById('hex-color').addEventListener('input', handleHexInput);
-  document.getElementById('slider-hue').addEventListener('input', handleHueInput);
-  document.getElementById('color-map').addEventListener('pointerdown', startMapDrag);
-  document.getElementById('color-popup').style.display = 'flex';
-}
-
-function closeColorPrompt() {
-  document.getElementById('color-popup').style.display = 'none';
-  document.getElementById('hex-color').removeEventListener('input', handleHexInput);
-  document.getElementById('slider-hue').removeEventListener('input', handleHueInput);
-  document.getElementById('color-map').removeEventListener('pointerdown', startMapDrag);
-  stopMapDrag();
-}
-
-const throttledColorSend = requestThrottle((strippedHex) => {
-  if (App.isColorCommandPending) return; 
-  App.isColorCommandPending = true;
-  sendCmd('leds', 'hex', strippedHex)
-    .catch(err => {
-      console.error("Failed to send color command:", err);
-    })
-    .finally(() => {
-      App.isColorCommandPending = false;
-    });
-}, 50);
-
-function dispatchColorCommand(hex) {
-  let strippedHex = hex.replace('#', '');
-  throttledColorSend(strippedHex);
-}
-
-function updateUIFromHSV(triggerSend = true) {
-  let rgb = hsvToRgb(App.currentHSV.h, App.currentHSV.s, App.currentHSV.v);
-  let hex = rgbToHex(rgb.r, rgb.g, rgb.b);
-  document.getElementById('hex-color').value = hex;
-  App.colorPromptParser.style.color = hex;
-  document.querySelectorAll('.color-swatch').forEach(swatch => {
-    if (swatch.style.backgroundColor === App.colorPromptParser.style.color) {
-      swatch.classList.add('active-swatch');
-    } else {
-      swatch.classList.remove('active-swatch');
-    }
-  });
-  if (triggerSend) dispatchColorCommand(hex);
-}
-
-function updateStateFromHex(hex, updateMapUI = true, triggerSend = true) {
-  let rgb = hexToRgb(hex);
-  App.currentHSV = rgbToHsv(rgb.r, rgb.g, rgb.b);
-  if (updateMapUI) {
-    document.getElementById('slider-hue').value = App.currentHSV.h;
-    document.getElementById('color-map-bg').style.background = `hsl(${App.currentHSV.h}, 100%, 50%)`;
-    document.getElementById('color-pointer').style.left = `${App.currentHSV.s * 100}%`;
-    document.getElementById('color-pointer').style.top = `${(1 - App.currentHSV.v) * 100}%`;
-  }
-  document.getElementById('hex-color').value = hex.toUpperCase();
-  updateUIFromHSV(triggerSend);
-}
-
-function handleHexInput(e) {
-  let val = e.target.value;
-  if (!val.startsWith('#')) val = '#' + val;
-  if (/^#[0-9A-F]{6}$/i.test(val)) {
-    updateStateFromHex(val, true, true);
-  }
-}
-
-function handleHueInput(e) {
-  App.currentHSV.h = parseFloat(e.target.value);
-  document.getElementById('color-map-bg').style.background = `hsl(${App.currentHSV.h}, 100%, 50%)`;
-  updateUIFromHSV(true);
-}
-
-// Map Dragging
-function startMapDrag(e) {
-  App.isColorDragMap = true;
-  updateMapPointer(e);
-  window.addEventListener('pointermove', updateMapPointer);
-  window.addEventListener('pointerup', stopMapDrag);
-  window.addEventListener('pointercancel', stopMapDrag);
-}
-
-function updateMapPointer(e) {
-  if (!App.isColorDragMap) return;
-  const mapRect = document.getElementById('color-map').getBoundingClientRect();
-  let x = Math.max(0, Math.min(e.clientX - mapRect.left, mapRect.width));
-  let y = Math.max(0, Math.min(e.clientY - mapRect.top, mapRect.height));
-  document.getElementById('color-pointer').style.left = `${(x / mapRect.width) * 100}%`;
-  document.getElementById('color-pointer').style.top = `${(y / mapRect.height) * 100}%`;
-  App.currentHSV.s = x / mapRect.width;
-  App.currentHSV.v = 1 - (y / mapRect.height);
-  updateUIFromHSV(true);
-}
-
-function stopMapDrag() {
-  App.isColorDragMap = false;
-  window.removeEventListener('pointermove', updateMapPointer);
-  window.removeEventListener('pointerup', stopMapDrag);
-  window.removeEventListener('pointercancel', stopMapDrag);
-}
-
 /////// Volume Controls ///////
 
 /**
@@ -1606,7 +1467,7 @@ async function drawBookmarkPrompt(add, url, name, elem){
       // save button action
       if (btn_event.target === editFavSaveBtn) {
         // do not allow empty URL or name
-        var stopsave = false;
+        let stopsave = false;
         if (editFavName.value === null || editFavName.value == "") {
           editFavName.placeholder = "Name cannot be empty";
           stopsave = true;
@@ -1744,7 +1605,7 @@ function closeBookmarkPrompt() {
     elem1.style.pointerEvents = "";
   }); 
   // un-highlight selected item
-  for (var idx = 0; idx <= App.fileData.length; idx++) {
+  for (let idx = 0; idx <= App.fileData.length; idx++) {
     const _menuid = "menu-" + idx;
     const elem2 = document.getElementById(_menuid);
     if (elem2) {
@@ -2325,7 +2186,7 @@ function drawCheckBoxItem(elm, url, boxid, state) {
 
 function boxChanged() {
   // loop through checkbox's state
-  for (var i = 0; i < (App.fileData.length - 1); i++) {
+  for (let i = 0; i < (App.fileData.length - 1); i++) {
     let line = App.fileData[i];
     // split up into array (host,state,name)
     const linearr = line.split("|");
@@ -2333,7 +2194,7 @@ function boxChanged() {
     if (linearr[1] == 'chkon' || linearr[1] == 'chkoff') {
       // read elements checkbox then write state
       const box = "chkbox-" + linearr[2];
-      var boxelm = document.getElementById(box);
+      let boxelm = document.getElementById(box);
       if (boxelm.checked === true) {
         linearr[1] = 'chkon';
       } else {
@@ -2351,7 +2212,7 @@ function boxChanged() {
   App.fileData.pop();
   // update file
   let fileout = "";
-  for (var row = 0; row < App.fileData.length; row++) {
+  for (let row = 0; row < App.fileData.length; row++) {
     fileout += App.fileData[row] + '\n';
   }
   savePOST(menuid, fileout);
@@ -2363,15 +2224,25 @@ function removeDynMenus() {
   // only if menu is on-screen 
   if (App.dynMenuActive == 1) {
     // remove dynamic menu elements (II)
-    for (var idx = 0; idx <= App.fileData.length; idx++) {
-      const _menuid = "menu-" + idx;
-      const menuRemove = document.getElementById(_menuid);
-      if (menuRemove != null) {
+    for (let idx = 0; idx <= App.fileData.length; idx++) {
+      const menuRemove = document.getElementById('menu-' + idx);
+      if (menuRemove) {
         menuRemove.remove();
       }
     }
     App.dynMenuActive = 0;
   }
+}
+
+function openColorPrompt(formattedColor = '#000000') {
+  const colorPrompt = new ColorPrompt('color-popup', (strippedHex) => {
+    sendCmd('leds', 'hex', strippedHex)
+      .catch(err => {
+        showPopup("[ColorPrompt] failed to send color: " + err);
+      });
+  });
+  colorPrompt.show();
+  colorPrompt.updateStateFromHex(formattedColor, true, false);
 }
 
 //// End Dynamic Menus ////

@@ -1,0 +1,18 @@
+[Unit]
+Description=Audio Library Full Synchronization Pass (manual / scheduled)
+After=network.target
+
+[Service]
+Type=simple
+User=media
+Group=media
+EnvironmentFile=/opt/mp3sync.env
+ExecStart=/usr/bin/mp3sync $MP3SYNC_INPUT $MP3SYNC_OUTPUT $MP3SYNC_BITRATE $MP3SYNC_THREADS
+ProtectSystem=strict
+ReadWritePaths=/mnt
+ProtectControlGroups=true
+ProtectKernelModules=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

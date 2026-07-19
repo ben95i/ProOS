@@ -162,61 +162,52 @@ if [ -e "$TRIGGERS_DIR/pve_vmsbkp.txt" ]; then
   ###
   echo " "
   echo "Backing-up Files LXC 101..."
-  vzdump 101 --mode snapshot --compress zstd --node pve --storage local \
-   --maxfiles 1 --remove 1 --exclude-path /mnt --exclude-path /home/ben
+  vzdump 101 --mode snapshot --compress zstd --node pve --storage local --remove 1 --exclude-path /mnt --exclude-path /home/ben
   cp -v /etc/pve/lxc/101.conf $VM_CONFS/files/lxc.conf
   chmod 777 $VM_CONFS/files/lxc.conf
   ###
   echo " "
   echo "Backing-up Mgmt LXC 102..."
-  vzdump 102 --mode snapshot --compress zstd --node pve --storage local \
-   --maxfiles 1 --remove 1 --exclude-path /mnt
+  vzdump 102 --mode snapshot --compress zstd --node pve --storage local --remove 1 --exclude-path /mnt
   cp -v /etc/pve/lxc/102.conf $VM_CONFS/mgmt/lxc.conf
   chmod 777 $VM_CONFS/mgmt/lxc.conf
   ### 
   echo " "
   echo "Backing-up Automate LXC 106..."
-  vzdump 106 --mode snapshot --compress zstd --node pve --storage local \
-   --maxfiles 1 --remove 1 --exclude-path /mnt --exclude-path /var/www/html
+  vzdump 106 --mode snapshot --compress zstd --node pve --storage local --remove 1 --exclude-path /mnt --exclude-path /var/www/html
   cp -v /etc/pve/lxc/106.conf $VM_CONFS/automate/lxc.conf
   chmod 777 $VM_CONFS/automate/lxc.conf
   ###
   echo " "
   echo "Backing-up Media LXC 108..."
-  vzdump 108 --mode snapshot --compress zstd --node pve --storage local \
-   --maxfiles 1 --remove 1 --exclude-path /mnt
+  vzdump 108 --mode snapshot --compress zstd --node pve --storage local --remove 1 --exclude-path /mnt
   cp -v /etc/pve/lxc/108.conf $VM_CONFS/media/lxc.conf
   chmod 777 $VM_CONFS/media/lxc.conf
   ###
   ### Virtual Machine Backups
-  ###
-  echo " "
-  echo "Backing-up Unifi KVM 107..."
-  vzdump 107 --mode snapshot --compress zstd --node pve --storage local \
-    --maxfiles 1 --remove 1
-  cp -v /etc/pve/qemu-server/107.conf $VM_CONFS/pve/vmbkps/vzdump-qemu-107.conf
-  chmod 777 $VM_CONFS/pve/vmbkps/vzdump-qemu-107.conf
-  ###
   echo " "
   echo "Backing-up Router KVM 100..."
-  vzdump 100 --mode snapshot --compress zstd --node pve --storage local \
-    --maxfiles 1 --remove 1 --exclude-path /mnt
+  vzdump 100 --mode snapshot --compress zstd --node pve --storage local -remove 1 --exclude-path /mnt
   cp -v /etc/pve/qemu-server/100.conf $VM_CONFS/pve/vmbkps/vzdump-qemu-100.conf
   chmod 777 $VM_CONFS/pve/vmbkps/vzdump-qemu-100.conf
   ###
   echo " "
   echo "Backing-up Legacy KVM 103..."
-  vzdump 103 --mode snapshot --compress zstd --node pve --storage local \
-    --maxfiles 1 --remove 1 --exclude-path /mnt
+  vzdump 103 --mode snapshot --compress zstd --node pve --storage local --remove 1 --exclude-path /mnt
   cp -v /etc/pve/qemu-server/103.conf $VM_CONFS/legacy/qemu.conf
   chmod 777 $VM_CONFS/legacy/qemu.conf
   ###  
   echo " "
   echo "Backing-up Xana KVM 105..."
-  vzdump 105 --mode snapshot --compress zstd --node pve --storage local \
-    --maxfiles 1 --remove 1 --exclude-path /mnt
+  vzdump 105 --mode snapshot --compress zstd --node pve --storage local --remove 1 --exclude-path /mnt
   cp -v /etc/pve/qemu-server/105.conf $VM_CONFS/xana/qemu.conf
   chmod 777 $VM_CONFS/xana/qemu.conf
+  ###
+  echo " "
+  echo "Backing-up Unifi KVM 107..."
+  vzdump 107 --mode snapshot --compress zstd --node pve --storage local --remove 1
+  cp -v /etc/pve/qemu-server/107.conf $VM_CONFS/pve/vmbkps/vzdump-qemu-107.conf
+  chmod 777 $VM_CONFS/pve/vmbkps/vzdump-qemu-107.conf
   ###
   ### Copy to ZFS Pool
   ###

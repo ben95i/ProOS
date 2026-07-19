@@ -19,6 +19,9 @@ systemctl start file-monitor
 systemctl start cron
 ## SAMBA SMB Server
 systemctl start smbd
+systemctl start nmbd
+systemctl start wsdd2
+systemctl start avahi-daemon
 ## Clear Website Log
 runapi clearlog
 ######
