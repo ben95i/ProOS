@@ -136,16 +136,16 @@ function setupEventListeners() {
     'btn-ext-edgeswitch': () => GoToExtPage('edgeswitch.home'),
     'btn-svr-netscan': () => serverAction('netscan'),
     'btn-close-svr-opt1': () => closeServerOptions(),
-    'btn-svr-files-clearlog': () => serverAction('files-clearlog'),
+    'btn-svr-clearlog': () => serverAction('clearlog'),
     'btn-menu-router': () => showMenu('router-menu'),
     'btn-ext-router': () => GoToExtPage('router.home'),
     'btn-svr-rebootrouter': () => serverAction('rebootrouter'),
     // Backup
-    'btn-svr-last_backup_dates': () => serverAction('files-last_backup_dates'),
-    'btn-svr-backupchk': () => serverAction('files-backupchk'),
+    'btn-svr-last_backup_dates': () => serverAction('last_backup_dates'),
+    'btn-svr-backupchk': () => serverAction('backupchk'),
     'btn-svr-pve_vmsbkp': () => serverAction('pve_vmsbkp'),
     'btn-pwd-unlock': () => getPassword('pwd'),
-    'btn-svr-backupstd': () => serverAction('files-backupstd'),
+    'btn-svr-backupstd': () => serverAction('backupstd'),
     'btn-svr-detach_bkps': () => serverAction('detach_bkps'),
     'btn-close-svr-opt2': () => closeServerOptions(),
     'btn-svr-pve_listsnaps': () => serverAction('pve_listsnaps'),
@@ -153,17 +153,17 @@ function setupEventListeners() {
     // Archive
     'btn-menu-archive': () => showMenu('archive-menu'),
     'btn-pwd-fusearch': () => getPassword('fusearch'),
-    'btn-svr-unmnt_all_fuse': () => serverAction('files-unmnt_all_fuse'),
+    'btn-pwd-fusearch_unmnt': () => serverAction('unmnt_arch_region'),
     'btn-menu-external': () => showMenu('external-menu'),
-    'btn-svr-mnt_ext_region': () => serverAction('files-mnt_ext_region'),
-    'btn-svr-unmnt_ext_region': () => serverAction('files-unmnt_ext_region'),
+    'btn-svr-mnt_ext_region': () => serverAction('mnt_ext_region'),
+    'btn-svr-unmnt_ext_region': () => serverAction('unmnt_ext_region'),
     'btn-menu-snapshots': () => showMenu('snapshots-menu'),
-    'btn-svr-mnt_snap_region': () => serverAction('files-mnt_snap_region'),
-    'btn-svr-unmnt_snap_region': () => serverAction('files-unmnt_snap_region'),
+    'btn-svr-mnt_snap_region': () => serverAction('mnt_snap_region'),
+    'btn-svr-unmnt_snap_region': () => serverAction('unmnt_snap_region'),
     'btn-menu-ramdisk': () => showMenu('ramdisk-menu'),
-    'btn-svr-mnt_ram_region': () => serverAction('files-mnt_ram_region'),
-    'btn-svr-unmnt_ram_region': () => serverAction('files-unmnt_ram_region'),
-    'btn-svr-unmnt_all': () => serverAction('files-unmnt_all'),
+    'btn-svr-mnt_ram_region': () => serverAction('mnt_ram_region'),
+    'btn-svr-unmnt_ram_region': () => serverAction('unmnt_ram_region'),
+    'btn-svr-unmnt_all': () => serverAction('unmnt_all'),
     'btn-close-svr-opt3': () => closeServerOptions(),
     'btn-open-svr-opt2': () => openServerOptions(),
     // Pi Grid
@@ -1859,7 +1859,7 @@ function afterPOSTActions(action) {
     _send = true;
   }
   if (action === 'fusearch') {
-    serverAction('files-mnt_arch_region');
+    serverAction('mnt_arch_region');
     _send = true;
   }
   if (_send === true) {

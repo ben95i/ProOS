@@ -16,10 +16,10 @@ cd /tmp/config
 apt-get --yes update
 
 ## Install packages
-apt-get install -y --no-upgrade --ignore-missing unzip wget \
-  screen scrub ethtool aptitude sudo sshpass libdbus-1-dev \
-  libdbus-glib-1-dev locales apt-transport-https binutils \
-  fastfetch autofs htop cifs-utils nmap avahi-daemon
+apt-get install -y --no-upgrade --ignore-missing \
+  unzip wget screen scrub ethtool aptitude sudo sshpass \
+  libdbus-1-dev libdbus-glib-1-dev locales apt-transport-https \
+  binutils fastfetch autofs htop cifs-utils nmap avahi-daemon
 
 ## User configuration
 groupadd -g $SHRGID $SHRGROUP
@@ -71,8 +71,8 @@ mkdir -p /mnt/smb
 ## Reload services
 systemctl daemon-reload
 
-## Enable auto-starting services
-systemctl enable netatalk atalkd autofs avahi-daemon
+## Disable auto-starting services
+systemctl disable netatalk atalkd autofs avahi-daemon
 
 ## Set locale
 if [ ! -e "/etc/locales.generated" ]; then

@@ -5,6 +5,26 @@
 ###
 
 TMPDIR="/tmp/config"
+USER_NAME="tank"
+USER_UID=1000
+GROUP_NAME="shared"
+GROUP_GID=1000
+
+## Create the group if it doesn't already exist
+getent group "$GROUP_NAME" >/dev/null 2>&1 || 
+  groupadd -g "$GROUP_GID" "$GROUP_NAME"
+
+## Create the user with no home (-M) and no shell if it doesn't exist
+id -u "$USER_NAME" >/dev/null 2>&1 || 
+  useradd -u "$USER_UID" -g "$GROUP_GID" -M -s /sbin/nologin "$USER_NAME"
+
+## Permission Mappings
+cp -f $TMPDIR/subuid /etc/
+cp -f $TMPDIR/subgid /etc/
+chmod 644 /etc/subuid
+chmod 644 /etc/subgid
+chown root:root /etc/subuid
+chown root:root /etc/subgid
 
 ## PVE No-Subscription Enterprise Sources
 cp -f $TMPDIR/pve-enterprise.sources /etc/apt/sources.list.d/
@@ -19,7 +39,8 @@ apt-get --yes update
 ## Support Packages
 apt-get install -y --no-upgrade --ignore-missing rsync cron zip screen \
  libsasl2-modules intel-microcode postfix ethtool htop apt-transport-https \
- lm-sensors zfs-auto-snapshot smartmontools apcupsd chrony mailutils fastfetch
+ lm-sensors zfs-auto-snapshot smartmontools apcupsd chrony mailutils fastfetch \
+ fuse gocryptfs inotify-tools nmap curl
 
 ## Ethernet Interface Pinning
 cp -fvR $TMPDIR/50-pve-*.link /usr/local/lib/systemd/network/
@@ -40,14 +61,6 @@ cp -f $TMPDIR/sshd_config /etc/ssh/
 chmod 644 /etc/ssh/sshd_config
 chown root:root /etc/ssh/sshd_config
 
-## Permission Mappings
-cp -f $TMPDIR/subuid /etc/
-cp -f $TMPDIR/subgid /etc/
-chmod 644 /etc/subuid
-chmod 644 /etc/subgid
-chown root:root /etc/subuid
-chown root:root /etc/subgid
-
 ## Startup Configuration
 cp -f $TMPDIR/rc-local.service /etc/systemd/system/
 chmod 644 /etc/systemd/system/rc-local.service
@@ -56,26 +69,10 @@ cp -f $TMPDIR/rc.local /etc/
 chmod +x /etc/rc.local
 chown root:root /etc/rc.local
 
-## Actions Script Timer
-cp -f $TMPDIR/actiontrig.timer /etc/systemd/system/
-chmod 644 /etc/systemd/system/actiontrig.timer
-chown root:root /etc/systemd/system/actiontrig.timer
-cp -f $TMPDIR/actiontrig.service /etc/systemd/system/
-chmod 644 /etc/systemd/system/actiontrig.service
-chown root:root /etc/systemd/system/actiontrig.service
-cp -f $TMPDIR/actiontrig.sh /usr/bin/
-chmod +x /usr/bin/actiontrig.sh
-chown root:root /usr/bin/actiontrig.sh
-rm -f /usr/bin/actiontrig
-
 ## Hosts Configuration
 cp -f $TMPDIR/hosts /etc/hosts
 chmod 644 /etc/hosts
 chown root:root /etc/hosts
-
-## DNS Configuration
-echo "DNS settings set manually in PVE web UI."
-cat /etc/resolv.conf
 
 ## Enable Intel IO-MMU (MUST BE USING ZFS RPOOL AS ROOT !!)
 cp -f $TMPDIR/grub /etc/default/
@@ -101,25 +98,34 @@ chmod 644 /etc/fstab
 chown root:root /etc/fstab
 
 ## Move Swapfile to Scratch Drive
+SWAPFILE="/mnt/pve/scratch/swapfile"
 if [ ! -e "/dev/zvol/rpool/swap" ]; then
   echo "Swap file already moved."
 else
   echo "Moving Swapfile to Scratch Drive..."
   swapoff /dev/zvol/rpool/swap
   zfs destroy rpool/swap
-  fallocate -l 10G /mnt/pve/scratch/swapfile
-  chmod 0600 /mnt/pve/scratch/swapfile
-  chown root:root /mnt/pve/scratch/swapfile
-  mkswap /mnt/pve/scratch/swapfile
-  swapon /mnt/pve/scratch/swapfile
+  fallocate -l 10G $SWAPFILE
+  chmod 0600 $SWAPFILE
+  chown root:root $SWAPFILE
+  mkswap $SWAPFILE
+  swapon $SWAPFILE
 fi
 
-## Backup Mountpoints
+## Mountpoints
 if [ ! -e "/mnt/extbkps" ]; then
+  echo "Backup mountpoints do not exist."
   mkdir -p /mnt/extbkps
-else
-  echo "Backup mountpoints exist."
 fi
+if [ ! -e "/mnt/bindmnts" ]; then
+  echo "Bind mountpoints do not exist."
+  mkdir -p /mnt/bindmnts
+fi
+
+## Backup Drives
+cp -f $TMPDIR/bkpdrives.txt /opt/
+chmod 644 /opt/bkpdrives.txt
+chown root:root /opt/bkpdrives.txt
 
 ## System Check Script
 cp -f $TMPDIR/sys-check.sh /usr/bin/sys-check
@@ -130,6 +136,18 @@ chown root:root /usr/bin/sys-check
 cp -f $TMPDIR/kernelclean.sh /usr/bin/kernelclean
 chmod +x /usr/bin/kernelclean
 chown root:root /usr/bin/kernelclean
+
+## File Trigger Scripts
+cp -f $TMPDIR/file-monitor.service /etc/systemd/system/
+chmod +x /etc/systemd/system/file-monitor.service
+chown root:root /etc/systemd/system/file-monitor.service
+cp -f $TMPDIR/apicmds.sh /usr/bin/
+chmod +x /usr/bin/apicmds.sh
+chown root:root /usr/bin/apicmds.sh
+cp -f $TMPDIR/file-monitor.sh /usr/bin/
+chmod +x /usr/bin/file-monitor.sh
+chown root:root /usr/bin/file-monitor.sh
+systemctl enable file-monitor
 
 ## APC UPS Configuration
 cp -f $TMPDIR/apcupsd.conf /etc/apcupsd/
@@ -171,7 +189,6 @@ chown root:root /etc/sysctl.d/99-arp_ignore.conf
 
 ## Disable Firewall
 systemctl disable pve-firewall
-systemctl mask pve-firewall
 
 ## Drives List
 cp -f $TMPDIR/drives.txt /usr/lib/
@@ -222,6 +239,10 @@ chown root:root /etc/cron.d/zfsutils-linux
 rm -f /etc/cron.d/zfsutils-linux.dpkg-dist
 rm -f /etc/cron.d/rsnapshot
 
+## Delete Obsolete Services
+rm -f /etc/systemd/system/actiontrig.service
+rm -f /etc/systemd/system/actiontrig.timer
+
 ## Disable Replication Service
 systemctl mask pvesr.timer
 
@@ -232,13 +253,15 @@ systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
 systemctl daemon-reload
 
 ## Start Services on Boot
-systemctl enable rc-local smartmontools apcupsd actiontrig.timer
+systemctl enable rc-local smartmontools apcupsd file-monitor
 
 ## Restart Services
-systemctl restart cron smartmontools apcupsd actiontrig.timer
+systemctl restart cron smartmontools apcupsd file-monitor
 
 ## Clean-up
 apt-get --yes autoremove
 apt-get --yes clean
+rm -f /usr/bin/actiontrig.sh
+rm -f /usr/bin/lxc-mp.sh
 rm -r $TMPDIR
 exit

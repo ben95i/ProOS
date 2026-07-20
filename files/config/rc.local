@@ -8,22 +8,13 @@ echo "*"
 echo " Welcome to ProOS"
 echo " by Ben Provenzano III"
 echo "*"
-## Share Drives List
-cp -f /opt/drives.txt /mnt/ramdisk/
-chmod 777 /mnt/ramdisk/drives.txt
-## Restore Bookmarks
-/usr/bin/sudo -u ben /usr/bin/savebookmarks
-## File Monitor API Trigger
-systemctl start file-monitor
 ## Crontab Scheduler
 systemctl start cron
 ## SAMBA SMB Server
+systemctl start avahi-daemon
 systemctl start smbd
 systemctl start nmbd
 systemctl start wsdd2
-systemctl start avahi-daemon
-## Clear Website Log
-runapi clearlog
 ######
 exit 0
 ######

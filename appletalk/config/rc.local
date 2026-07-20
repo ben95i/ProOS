@@ -17,4 +17,14 @@ echo " Welcome to ProOS"
 echo " by Ben Provenzano III"
 echo "*"
 
+## Attach Shares
+sleep 10
+systemctl start autofs
+
+## Start AFP Server
+modprobe appletalk
+systemctl start atalkd
+sleep 10
+systemctl start netatalk avahi-daemon
+
 exit 0

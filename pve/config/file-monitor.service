@@ -1,0 +1,32 @@
+[Unit]
+Description=File Monitor Script Trigger
+After=local-fs.target network.target
+RequiresMountsFor=/mnt/ramdisk
+
+[Service]
+User=root
+Type=simple
+
+# all-writable by default
+UMask=0000
+
+# runs after the tmpfs is mounted, before the watcher starts.
+ExecStartPre=/bin/sh -c 'touch /mnt/ramdisk/sysout.txt && chmod 0666 /mnt/ramdisk/sysout.txt'
+ExecStartPre=-/bin/sh -c '/usr/bin/apicmds.sh clearlog /mnt/ramdisk >> /mnt/ramdisk/sysout.txt 2>&1'
+ExecStart=/usr/bin/file-monitor.sh
+
+LogLevelMax=notice
+Restart=on-failure
+RestartSec=5
+
+# stop the watcher AND every command it spawned
+KillMode=control-group
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+# jobs write to /mnt/ramdisk/sysout.txt, keep the journal quiet
+StandardOutput=null
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

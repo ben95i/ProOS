@@ -4,25 +4,29 @@
 ### by Ben Provenzano III
 ###
 
-## Usernames
-B_USER="ben"
-M_USER="media"
+USER1_NAME="ben"
+USER1_HOME="/home/$USER1_NAME"
+USER1_UID=1000
+USER2_NAME="media"
+USER2_UID=1005
+GROUP_NAME="shared"
+GROUP_GID=1000
 
 ## Update Sources
 apt-get --yes update
 
 ## Install Packages
 apt-get install -y --no-upgrade --ignore-missing unzip wget \
- rsync curl screen scrub ethtool aptitude sudo samba sshpass \
- fastfetch apt-transport-https nmap bpytop binutils iperf3 cron \
- libdbus-1-dev libdbus-glib-1-dev bc git locales mailutils wsdd2 \
- cron-daemon-common fuse gocryptfs inotify-tools htop avahi-daemon
+ screen scrub ethtool aptitude sudo samba sshpass fastfetch \
+ apt-transport-https bpytop binutils iperf3 cron libdbus-1-dev \
+ libdbus-glib-1-dev locales mailutils wsdd2 cron-daemon-common \
+ htop avahi-daemon
 
 ## NeoFetch Alias
 ln -sf /usr/bin/fastfetch /usr/bin/neofetch
 
 ## Set Locale
-if [ ! -e /etc/locales.generated ]; then
+if [ ! -e "/etc/locales.generated" ]; then
   dpkg-reconfigure locales
   touch /etc/locales.generated
 fi
@@ -35,60 +39,33 @@ chmod 644 /root/.ssh/authorized_keys
 
 ## Disable password login
 passwd -d root
-passwd -d ben
 
-## Monitor user configuration
-passwd -d monitor
-usermod --shell /sbin/nologin monitor
+## Create the shared group 
+getent group "$GROUP_NAME" >/dev/null 2>&1 || 
+  groupadd -g "$GROUP_GID" "$GROUP_NAME"
 
-## Media user configuration
-M_HOMEDIR="/home/$M_USER"
-mkdir -p $M_HOMEDIR
-chown root:root $M_HOMEDIR
-usermod --home $M_HOMEDIR $M_USER
-usermod --shell /sbin/nologin $M_USER
+## Create the user with no shell
+id -u "$USER1_NAME" >/dev/null 2>&1 || 
+  useradd -u "$USER1_UID" -g "$GROUP_GID" --home "$USER1_HOME" -s /sbin/nologin "$USER1_NAME"
 
-## Ben user configuration
-B_HOMEDIR="/home/$B_USER"
-mkdir -p $B_HOMEDIR
-chown root:root $B_HOMEDIR
-usermod --home $B_HOMEDIR $B_USER
-usermod --shell /sbin/nologin $B_USER
-mkdir -p /mnt/regmnts
-chown $B_USER:shared /mnt/regmnts
+## Create the user with no home (-M), no password and no shell
+id -u "$USER2_NAME" >/dev/null 2>&1 || 
+  useradd -u "$USER2_UID" -g "$GROUP_GID" -M -s /sbin/nologin "$USER2_NAME"
 
-## Permissions allow running scripts as elevated (ben) user
-rm -f /etc/sudoers.d/www-perms
-sh -c "touch /etc/sudoers.d/www-perms"
-sh -c "echo \"monitor ALL=(ben) NOPASSWD:/usr/bin/apicmds\" >> /etc/sudoers.d/www-perms"
-chown root:root /etc/sudoers.d/www-perms
-chmod u=rwx,g=rx,o=rx /etc/sudoers.d/www-perms
-chmod u=r,g=r,o= /etc/sudoers.d/www-perms
-rm -f /etc/sudoers.d/nobody-perms
-
-## API commands
-cp -f /tmp/config/apicmds.sh /usr/bin/apicmds
-chmod +x /usr/bin/apicmds
-chown root:root /usr/bin/apicmds
-cp -f /tmp/config/runapi.sh /usr/bin/runapi
-chmod +x /usr/bin/runapi
-chown root:root /usr/bin/runapi
-cp -f /tmp/config/file_monitor.sh /usr/bin/file_monitor
-chmod +x /usr/bin/file_monitor
-chown root:root /usr/bin/file_monitor
-cp -f /tmp/config/savebookmarks.sh /usr/bin/savebookmarks
-chmod +x /usr/bin/savebookmarks
-chown root:root /usr/bin/savebookmarks
+## Mountpoints
+if [ ! -e "/mnt/regmnts" ]; then
+  echo "Regions mountpoints do not exist."
+  mkdir -p /mnt/regmnts
+fi
+if [ ! -e "/mnt/fusemnts" ]; then
+  echo "FUSE mountpoints do not exist."
+  mkdir -p /mnt/fusemnts
+fi
 
 ## SSH Configuration
 cp /tmp/config/sshd_config /etc/ssh
 chmod 644 /etc/ssh/sshd_config
 chown root:root /etc/ssh/sshd_config
-
-## FUSE Configuration
-cp /tmp/config/fuse.conf /etc/fuse.conf
-chmod 644 /etc/fuse.conf
-chown root:root /etc/fuse.conf
 
 ## Quiet Login
 touch /root/.hushlogin
@@ -124,11 +101,6 @@ chmod +x /etc/rc.local
 chown root:root /etc/rc.local
 systemctl enable rc-local
 
-## Startup Configuration
-cp /tmp/config/file-monitor.service /etc/systemd/system/
-chmod 644 /etc/systemd/system/file-monitor.service
-chown root:root /etc/systemd/system/file-monitor.service
-
 ## Main Cron Timer
 cp /tmp/config/rootcron.sh /etc/cron.d/rootcron
 chmod 644 /etc/cron.d/rootcron
@@ -149,13 +121,6 @@ cp /tmp/config/smb.conf /etc/samba
 chmod 644 /etc/samba/smb.conf
 chown root:root /etc/samba/smb.conf
 
-## Backup Drives List
-cp -f /tmp/config/drives.txt /opt/
-chmod 644 /opt/drives.txt
-chown root:root /opt/drives.txt
-cp -f /opt/drives.txt /mnt/ramdisk/
-chmod 777 /mnt/ramdisk/drives.txt
-
 ## Disable Start on Boot
 systemctl disable nmbd smbd avahi-daemon
 
@@ -163,10 +128,15 @@ systemctl disable nmbd smbd avahi-daemon
 systemctl daemon-reload
 
 ## Restart Services
-systemctl restart file-monitor
 systemctl restart cron
-systemctl restart rsyslog
 
 ## Clean-up
+rm -f /opt/drives.txt
+rm -f /etc/sudoers.d/www-perms
+rm -f /etc/systemd/system/file-monitor.service
+rm -f /usr/bin/runapi
+rm -f /usr/bin/apicmds
+rm -f /usr/bin/file_monitor
+rm -f /usr/bin/savebookmarks
 rm -rf /tmp/config
 exit
