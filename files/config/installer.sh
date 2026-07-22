@@ -52,16 +52,6 @@ id -u "$USER1_NAME" >/dev/null 2>&1 ||
 id -u "$USER2_NAME" >/dev/null 2>&1 || 
   useradd -u "$USER2_UID" -g "$GROUP_GID" -M -s /sbin/nologin "$USER2_NAME"
 
-## Mountpoints
-if [ ! -e "/mnt/regmnts" ]; then
-  echo "Regions mountpoints do not exist."
-  mkdir -p /mnt/regmnts
-fi
-if [ ! -e "/mnt/fusemnts" ]; then
-  echo "FUSE mountpoints do not exist."
-  mkdir -p /mnt/fusemnts
-fi
-
 ## SSH Configuration
 cp /tmp/config/sshd_config /etc/ssh
 chmod 644 /etc/ssh/sshd_config

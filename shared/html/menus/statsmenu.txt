@@ -5,6 +5,7 @@ brpi.home|BrPi|ping
 xana.home|Xana|ping
 unifi.home|UniFi|ping
 legacy.home|Legacy|ping
+appletalk.home|AppleTalk|ping
 ledstrip.home|LEDstrip|ping
 ledgrid.home|LEDgrid|ping
 ledwall.home|LEDwall|ping

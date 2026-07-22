@@ -42,16 +42,6 @@ cp $TMPDIR/sysctl.conf /etc
 chmod 644 /etc/sysctl.conf
 chown root:root /etc/sysctl.conf
 
-## Menu Layouts
-rm -rf /opt/system
-mkdir -p /opt/system
-cp -r $TMPDIR/menus/*.txt /opt/system/
-if [ ! -e "$WWWPATH/ram/mainmenu.txt" ]; then
-  cp -r /opt/system/*menu.txt $WWWPATH/ram/
-  chmod -R 777 $WWWPATH/ram/*menu.txt
-  chown -R www-data:www-data $WWWPATH/ram/*menu.txt
-fi
-
 ## Install Arduino Support
 if [ ! -e "/usr/bin/arduino-cli" ]; then
   curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR=/usr/bin sh
@@ -173,13 +163,10 @@ touch /root/.hushlogin
 chmod 644 /root/.hushlogin
 chown root:root /root/.hushlogin
 
-## Set Permissions
-chmod -R +x /opt/system
-chown -R root:root /opt/system
-
 ## Clean-up
 systemctl daemon-reload
 rm -rf $TMPDIR
+rm -rf /opt/system
 apt-get autoremove -y
 apt-get clean -y
 apt-get autoclean -y

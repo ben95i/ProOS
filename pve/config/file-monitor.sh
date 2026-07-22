@@ -26,23 +26,10 @@ IGNORE=(
     "drives.txt"        # read by backupstd/backupchk
     "pwd.txt"           # ZFS load-key passphrase
     "fusearch.txt"      # gocryptfs passfile
+    "bookmarks.txt"     # bookmarks bind link
     "*.lock"            # backupsvr.lock / pvebackup.lock
     "*.tmp"
 )
-
-## Optional runtime additions, one pattern per line, '#' comments allowed.
-IGNORE_FILE="/opt/file-monitor.ignore"
-
-load_ignores() {
-    local line
-    [ -r "$IGNORE_FILE" ] || return 0
-    while IFS= read -r line || [ -n "$line" ]; do
-        line="${line%%#*}"                  # strip comment
-        line="${line#"${line%%[![:space:]]*}"}"   # ltrim
-        line="${line%"${line##*[![:space:]]}"}"   # rtrim
-        [ -n "$line" ] && IGNORE+=( "$line" )
-    done < "$IGNORE_FILE"
-}
 
 is_ignored() {
     local name="$1" pattern
@@ -56,7 +43,7 @@ is_ignored() {
 ## ---------------------------------------------------------------
 ## log permissions
 ## ---------------------------------------------------------------
-LOGOWNER="root:shared"
+LOGOWNER="tank:shared"
 LOGMODE="0666"
 
 ## Mode lives on the inode, so truncate/append preserve it -- it only
@@ -96,7 +83,6 @@ enforce_log_perms() {
 ## 0000, not 0002: 0002 masks the other-write bit, so any process in
 ## this tree that RECREATES the log gets 0664 instead of 0666.
 umask 0000
-load_ignores
 mkdir -p "$SPOOL"
 ensure_log
 
@@ -144,9 +130,9 @@ while IFS= read -r FILENAME; do
 
     ## only act on .txt triggers, skip dotfiles/editor temp files
     case "$FILENAME" in
-        .*|*~) continue ;;
         *.txt) ;;
-        *)     continue ;;
+        .*|*~) continue ;;
+            *) continue ;;
     esac
 
     ## ---- ignore list ------------------------------------------

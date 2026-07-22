@@ -255,7 +255,7 @@ async function lrXmit(arg1, arg2 = '') {
     }
 }
 
-async function executeMain(ramDisk, firstArg, secondArg) {
+async function executeMain(baseWWW, firstArg, secondArg) {
     switch (firstArg) {
         case "lightson":
             Promise.all([
@@ -270,7 +270,7 @@ async function executeMain(ramDisk, firstArg, secondArg) {
                 lrXmit("wl1_led2off"), 
                 brXmit("brlamp1off")
             ]).catch(() => {});
-            OPCLEDparser(ramDisk, "stop");
+            OPCLEDparser(baseWWW, "stop");
             return "OK";
         case "lrxmit": 
             return await lrXmit(secondArg);
@@ -305,7 +305,7 @@ async function executeMain(ramDisk, firstArg, secondArg) {
                 lrXmit("wkststateon"), 
                 lrXmit("hifistateon")
             ]).catch(() => {});
-            OPCLEDparser(ramDisk, "abstract");
+            OPCLEDparser(baseWWW, "abstract");
             return "OK";
         case "lroff":
             Promise.all([
@@ -314,7 +314,7 @@ async function executeMain(ramDisk, firstArg, secondArg) {
                 lrXmit("wkststateoff"), 
                 lrXmit("hifistateoff")
             ]).catch(() => {});
-            OPCLEDparser(ramDisk, "stop");
+            OPCLEDparser(baseWWW, "stop");
             return "OK";
         case "brxmit":
             return await brXmit(secondArg);
@@ -371,13 +371,13 @@ async function executeMain(ramDisk, firstArg, secondArg) {
         case "localping":
             return await localPing(`${secondArg}.${LOCAL_DOMAIN}`);
         case "status": {
-            try { return await runStatusUpdate(ramDisk); } 
+            try { return await runStatusUpdate(baseWWW); } 
             catch (exc) { return "status update exception: " + exc.message; }
         }
         case "sitelookup":
             return await runSiteLookup(secondArg);
         case "server": {
-            const logFile = path.join(ramDisk, 'sysout.txt');
+            const logFile = path.join(baseWWW, '/ram/sysout.txt');
             if (!secondArg) return "empty server command!";
             if (secondArg === "netscan") {
                 await fsPromises.appendFile(logFile, `\nScanning network range ${NET_RANGE}...\n`);
@@ -386,7 +386,7 @@ async function executeMain(ramDisk, firstArg, secondArg) {
                 return "OK";
             }
             await fsPromises.appendFile(logFile, `\n${secondArg} sent.\n`);
-            await fsPromises.writeFile(path.join(ramDisk, `${secondArg}.txt`), ''); 
+            await fsPromises.writeFile(path.join(baseWWW, `/ram/${secondArg}.txt`), ''); 
             return "OK";
         }
         case "weather": {

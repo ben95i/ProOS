@@ -20,11 +20,6 @@ echo "*"
 ## allow non-root user to ping hosts
 echo "0 65535" > /proc/sys/net/ipv4/ping_group_range
 
-## menu files
-cp -r /opt/system/*menu.txt /var/www/html/ram/
-chmod -R 777 /var/www/html/ram/*menu.txt
-chown -R www-data:www-data /var/www/html/ram/*menu.txt
-
 ## Xmit communication
 ln -sf /dev/USB-Xmit0 /dev/zterm-tty
 /usr/bin/ztermcom i

@@ -1,0 +1,11 @@
+[Unit]
+Description=Runs Hourly Script - Timer
+
+[Timer]
+# Run 3 minutes after the system boots
+OnBootSec=3min
+# Run every 1 hour after the service last activated
+OnUnitActiveSec=1h
+
+[Install]
+WantedBy=timers.target

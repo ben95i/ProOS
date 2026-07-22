@@ -19,4 +19,4 @@ ben@192.168.1.4:/      /mnt/SFTP     fuse.sshfs ssh_command=/root/sshfs_wrapper.
 //192.168.1.4/Regions  /mnt/Regions  cifs       _netdev,credentials=/root/smb.credentials,iocharset=utf8,vers=3.0,nofail,uid=1000,gid=1000   0  0
 //192.168.1.4/Games    /mnt/Games    cifs       _netdev,credentials=/root/smb.credentials,iocharset=utf8,vers=3.0,nofail,uid=1000,gid=1000   0  0
 //192.168.1.4/MP3s     /mnt/MP3s     cifs       _netdev,credentials=/root/smb.credentials,iocharset=utf8,vers=3.0,nofail,uid=1000,gid=1000   0  0
-//192.168.1.4/FUSE     /mnt/FUSE     cifs       _netdev,credentials=/root/smb.credentials,iocharset=utf8,vers=3.0,nofail,uid=1000,gid=1000   0  0
+//192.168.1.4/External /mnt/External cifs       _netdev,credentials=/root/smb.credentials,iocharset=utf8,vers=3.0,nofail,uid=1000,gid=1000   0  0

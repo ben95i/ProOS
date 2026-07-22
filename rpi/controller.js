@@ -5,7 +5,7 @@ const { exeCustom } = require('./custom');
 const execFileAsync = util.promisify(execFile);
 const PROCESS_TIMEOUT = 5000;
 
-async function executeMain(ramDisk, firstArg, secondArg) {
+async function executeMain(baseWWW, firstArg, secondArg) {
     if (firstArg === 'server') {
         try {
             const { stdout } = await execFileAsync('/usr/bin/sudo', ['/opt/rpi/servercmds.sh', secondArg], { timeout: PROCESS_TIMEOUT });
@@ -22,7 +22,7 @@ async function executeMain(ramDisk, firstArg, secondArg) {
             return `pi confwpa exception: ${error.message}|${error.stderr}`;
         }
     }
-    return await exeCustom(ramDisk, firstArg, secondArg);
+    return await exeCustom(baseWWW, firstArg, secondArg);
 }
 
 module.exports = { executeMain };

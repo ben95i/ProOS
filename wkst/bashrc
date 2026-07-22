@@ -1,4 +1,4 @@
 alias ll='ls -la'
 alias mgmt='ssh ben@mgmt -i /home/ben/.ssh/mgmt_ben.rsa'
 alias esp='source "/home/ben/.espressif/tools/activate_idf_v6.0.1.sh"; echo "switch to the projects directory, and then run:"; echo "idf.py -p /dev/ttyUSB0 flash"'
-fastfetch
+timeout 30 bash -c "fastfetch"

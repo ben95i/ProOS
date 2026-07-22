@@ -1,14 +1,11 @@
 #!/bin/bash
 ###########################################################
 ###########################################################
+### runs as root ###
 
 CMD="${1}"
 RAMDISK="${2}"
 
-RUNAS_USER="tank"
-RUNAS_GROUP="shared"
-
-FILES_CID="101"
 EXTBKPS="/mnt/extbkps"
 STATUSFILE="$EXTBKPS/status.txt"
 DRIVES_PATH="/opt/bkpdrives.txt"
@@ -28,20 +25,6 @@ function END_ROUTINE() {
   echo "$TRAILER"
   echo " "
   exit
-}
-
-function BKP_LED_ON () {
-  LEDWALL_LED "whtledon"
-}
-
-function BKP_LED_OFF () {
-  LEDWALL_LED "whtledoff"
-}
-
-function LEDWALL_LED () {
-  /usr/bin/curl --silent --fail --ipv4 --no-buffer --max-time 30 \
-    --retry 3 --retry-all-errors --retry-delay 1 --no-keepalive \
-      --url "http://ledwall.home/exec.php?var=&arg=$1&action=main" > /dev/null 2>&1 &
 }
 
 function PATHMOUNTED() { 
@@ -102,25 +85,6 @@ function UMOUNT_SNAP(){
   fi
 }
 
-function MOUNT_EXTREG(){
-  if ! PATHMOUNTED "$BINDMNTS/External"; then
-    echo "attaching external region..."
-    mkdir -p "$BINDMNTS/External"
-    mount --bind "$EXTBKPS" "$BINDMNTS/External"
-  else
-    echo "external already attached."
-  fi
-}
-function UMOUNT_EXTREG(){
-  if PATHMOUNTED "$BINDMNTS/External"; then
-    echo "detaching external region..."
-    umount -l "$BINDMNTS/External"
-    rmdir "$BINDMNTS/External"
-  else
-    echo "external not attached." 
-  fi
-}
-
 function MOUNT_RAMDSK(){
   if ! PATHMOUNTED "$BINDMNTS/RAM"; then
     echo "attaching RAM disk region..."
@@ -150,24 +114,9 @@ function SAVEBKPDATES () {
   CURBKPDTES+=( $_CURBKPLNE )
 }
 
-## Commands in this section change privileges to tank:shared
-case "$CMD" in
-  clearlog|backupstd|backupchk|last_backup_dates)
-    if [ "$(id -un)" != "$RUNAS_USER" ]; then
-      ## re-exec self as user:shared; stdout/stderr (the shared log
-      ## fd handed down by file-monitor.sh) are inherited unchanged.
-      exec setpriv --reuid "$RUNAS_USER" --regid "$RUNAS_GROUP" \
-        --init-groups --inh-caps=-all -- "$0" "$CMD" "$RAMDISK"
-      ## only reached if the exec above failed
-      echo "failed to drop privileges to $RUNAS_USER:$RUNAS_GROUP!"
-      END_ROUTINE
-    fi
-    ;;
-esac
-
 if [ "$CMD" == "clearlog" ]; then
   truncate -s 0 $RAMDISK/sysout.txt
-  fastfetch --pipe | sed 's/\x1B[@A-Z\\\]^_]\|\x1B\[0-9:;<=>?]*[-!"#$%&'"'"'()*+,.\/]*[][\\@A-Z^_`a-z{|}~]//g' 
+  timeout 30 bash -c "fastfetch --pipe | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g' | tr -cd '\11\12\15\40-\176'"
   END_ROUTINE
 fi
 
@@ -193,8 +142,6 @@ if [[ "$CMD" == "backupstd" || "$CMD" == "backupchk" ]]; then
   fi
   echo "****************** starting backup **********************"
   echo " "
-  ## Turn on LED
-  BKP_LED_ON
   ## Read Backup Drive Names
   readarray -t ZFSPOOLS < "$DRIVES_PATH"
   #######################
@@ -214,7 +161,8 @@ if [[ "$CMD" == "backupstd" || "$CMD" == "backupchk" ]]; then
             echo "Data' share not found!"
           else
             echo "syncing 'Data' share to $POOL drive..."
-            rsync $CHECKSUM -aP  --exclude="**CDs.zip" --exclude="**CDs.7z" \
+            nice -n 19 ionice -c 3 rsync $CHECKSUM -aP  \
+              --exclude="**CDs.zip" --exclude="**CDs.7z" \
               --exclude="**USB.img" --exclude="**USB.7z" --exclude="**USB.zip" \
               --exclude="**HD.img" --exclude="**HD.7z" --exclude="**HD.zip" \
               --exclude="**VM.img" --exclude="**VM.7z" --exclude="**VM.zip" \
@@ -225,7 +173,7 @@ if [[ "$CMD" == "backupstd" || "$CMD" == "backupchk" ]]; then
             echo "'Regions' share not found!"
           else
             echo "syncing 'Regions' share to $POOL drive..."
-            rsync $CHECKSUM -aP \
+            nice -n 19 ionice -c 3 rsync $CHECKSUM -aP \
               --exclude="Archive/ALUTqMiuxVtjfuair7WIgQ/" --exclude="Games/" \
                 $REGDATA/ $EXTBKPS/$POOL/.Regions/ -delete --delete-excluded
           fi
@@ -244,7 +192,7 @@ if [[ "$CMD" == "backupstd" || "$CMD" == "backupchk" ]]; then
             echo "Data' share not found!"
           else
             echo "syncing 'Data' share to $POOL drive..."
-            rsync $CHECKSUM -aP \
+            nice -n 19 ionice -c 3 rsync $CHECKSUM -aP \
               $TANK_DATA/ $EXTBKPS/$POOL/Data/ -delete --delete-excluded
           fi
           #### Regions Share ####
@@ -252,7 +200,7 @@ if [[ "$CMD" == "backupstd" || "$CMD" == "backupchk" ]]; then
             echo "'Regions' share not found!"
           else
             echo "syncing 'Regions' share to $POOL drive..."
-            rsync $CHECKSUM -aP \
+            nice -n 19 ionice -c 3 rsync $CHECKSUM -aP \
               $REGDATA/ $EXTBKPS/$POOL/.Regions/ -delete --delete-excluded
           fi
           #### Media Share ####
@@ -260,7 +208,7 @@ if [[ "$CMD" == "backupstd" || "$CMD" == "backupchk" ]]; then
             echo "'Media' share not found!"
           else
             echo "syncing 'Media' share to $POOL drive..."
-            rsync -aP \
+            nice -n 19 ionice -c 3 rsync -aP \
               $TANK_MEDIA/ $EXTBKPS/$POOL/Media/ -delete --delete-excluded
           fi
           ##### END BACKUP #####
@@ -322,14 +270,10 @@ if [[ "$CMD" == "backupstd" || "$CMD" == "backupchk" ]]; then
   ## Wait for drives to settle after backup complete ##
   echo "triggering drive detach in $WAIT_TIME second(s)."
   sleep $WAIT_TIME
-  ## Write drive detach trigger file
-  touch $RAMDISK/detach_bkps.txt
   ## Unlock State File
   rm -f $RAMDISK/backupsvr.lock
-  ## Wait for drives to detach
-  echo "wait $WAIT_TIME second(s) for drives to detach."
-  ## Turn off LED
-  BKP_LED_OFF
+  ## Write drive detach trigger file
+  touch $RAMDISK/detach_bkps.txt
   echo "****************** backup complete **********************"
   END_ROUTINE
 fi
@@ -344,12 +288,9 @@ if [ "$CMD" == "last_backup_dates" ]; then
   END_ROUTINE
 fi
 
-### End RUNAS_USER commands ###
-
 ## Detach All Regions
 if [ "$CMD" == "unmnt_all" ]; then
   UMOUNT_RAMDSK
-  UMOUNT_EXTREG
   UMOUNT_SNAP
   UMNT_FUSEFS "Archive"
   echo "detached all region(s)."
@@ -383,16 +324,6 @@ if [ "$CMD" == "mnt_snap_region" ]; then
 fi
 if [ "$CMD" == "unmnt_snap_region" ]; then
   UMOUNT_SNAP
-  END_ROUTINE
-fi
-
-## External Region 
-if [ "$CMD" == "mnt_ext_region" ]; then
-  MOUNT_EXTREG
-  END_ROUTINE
-fi
-if [ "$CMD" == "unmnt_ext_region" ]; then
-  UMOUNT_EXTREG
   END_ROUTINE
 fi
 
@@ -548,7 +479,7 @@ if [ "$CMD" == "pve_vmsbkp" ]; then
   ### 
   echo " "
   echo "Backing-up Legacy LXC 104..."
-  vzdump 106 --mode snapshot --compress zstd --node pve --storage local --remove 1 --exclude-path /mnt
+  vzdump 104 --mode snapshot --compress zstd --node pve --storage local --remove 1 --exclude-path /mnt
   cp -v /etc/pve/lxc/104.conf $PROOS_DIR/legacy/lxc.conf
   chmod 777 $PROOS_DIR/legacy/lxc.conf
   ###

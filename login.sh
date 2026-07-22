@@ -240,8 +240,8 @@ DEPLOY_PI(){
     else
         for run in {1..4}; do
           if ! ping -c 1 $HOST &> /dev/null ; then
-          echo "Host is down, waiting 10 more seconds..."
-          sleep 10
+            echo "Host is down, waiting 10 more seconds..."
+            sleep 10
           fi
         done
         if ping -c 1 $HOST &> /dev/null ; then
@@ -272,7 +272,6 @@ DEPLOY_PI(){
   rsync -e "ssh -o $SSH_ARGS" $RSYNC_ARGS $EXCLUDED $ROOTDIR/rpi root@$HOST:/opt/
   echo "Downloading shared software..."
   rsync -e "ssh -o $SSH_ARGS" $RSYNC_ARGS --mkpath $ROOTDIR/shared/html/ root@$HOST:/opt/rpi/config/html-base/
-  rsync -e "ssh -o $SSH_ARGS" $RSYNC_ARGS --mkpath $ROOTDIR/shared/menus/ root@$HOST:/opt/rpi/config/menus/
   rsync -e "ssh -o $SSH_ARGS" $RSYNC_ARGS --mkpath $ROOTDIR/shared/nodeapi/ root@$HOST:/opt/nodeapi/
   rsync -e "ssh -o $SSH_ARGS" $RSYNC_ARGS $ROOTDIR/shared/ztermcom.c root@$HOST:/opt/rpi/
   echo "Downloading module-specific software..."
@@ -297,7 +296,6 @@ DEPLOY_SERVER(){
   if [ "$MODULE" == "automate" ]; then
     echo "Copying shared software..."
     cp -rf $ROOTDIR/shared/html $TMPFLDR/config/
-    cp -rf $ROOTDIR/shared/menus $TMPFLDR/config/
     cp -rf $ROOTDIR/shared/nodeapi $TMPFLDR/config/
     cp -f $ROOTDIR/shared/ztermcom.c $TMPFLDR/config/
   fi
@@ -309,8 +307,7 @@ DEPLOY_SERVER(){
   echo "Uploading files..."
   scp -p $TMPFLDR/config.tar root@$HOST:/tmp/
   echo "Running $MODULE deployment script..."
-  ssh -t root@$HOST \
-  "cd /tmp/; tar -xmf config.tar; rm -f config.tar; chmod +x /tmp/config/installer.sh; /tmp/config/installer.sh"
+  ssh -t root@$HOST "cd /tmp/; tar -xmf config.tar; rm -f config.tar; chmod +x /tmp/config/installer.sh; /tmp/config/installer.sh"
   ## Clean-up installer files
   rm -r $TMPFLDR
   POST_DEPLOY_MENU

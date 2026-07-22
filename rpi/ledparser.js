@@ -121,7 +121,7 @@ async function initializeSystemOnStartup() {
     }
 }
 
-async function OPCLEDparser(ramDiskPath, effectCommand = "", secondaryArgument = "") {
+async function OPCLEDparser(baseWWW, effectCommand = "", secondaryArgument = "") {
     if (!isSystemInitialized) {
         if (!systemStartupPromise) systemStartupPromise = initializeSystemOnStartup();
         await systemStartupPromise;
@@ -158,7 +158,7 @@ async function OPCLEDparser(ramDiskPath, effectCommand = "", secondaryArgument =
             const shuffleContent = await fsPromises.readFile(`${EFFECTS_DIRECTORY_PATH}/shuffle.txt`, 'utf-8');
             const lines = shuffleContent.split('\n').filter(l => l.trim() !== "");
             const selected = lines[Math.floor(Math.random() * lines.length)].trim();
-            return await OPCLEDparser(ramDiskPath, selected, secondaryArgument);
+            return await OPCLEDparser(baseWWW, selected, secondaryArgument);
         } catch (e) {
             return "shuffle error";
         }

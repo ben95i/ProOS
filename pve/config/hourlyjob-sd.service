@@ -1,0 +1,16 @@
+[Unit]
+Description=Runs Hourly Script - Shutdown/Reboot
+Before=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=tank
+Group=shared
+ExecStart=/bin/true
+ExecStop=/usr/bin/hourly.sh
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

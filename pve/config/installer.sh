@@ -39,11 +39,11 @@ apt-get --yes update
 ## Support Packages
 apt-get install -y --no-upgrade --ignore-missing rsync cron zip screen \
  libsasl2-modules intel-microcode postfix ethtool htop apt-transport-https \
- lm-sensors zfs-auto-snapshot smartmontools apcupsd chrony mailutils fastfetch \
- fuse gocryptfs inotify-tools nmap curl
+ lm-sensors zfs-auto-snapshot smartmontools apcupsd chrony mailutils \
+ fastfetch fuse gocryptfs inotify-tools nmap curl
 
 ## Ethernet Interface Pinning
-cp -fvR $TMPDIR/50-pve-*.link /usr/local/lib/systemd/network/
+cp -fR $TMPDIR/50-pve-*.link /usr/local/lib/systemd/network/
 chmod -R 644 /usr/local/lib/systemd/network/*.link
 chown -R root:root /usr/local/lib/systemd/network/*.link
 
@@ -137,9 +137,23 @@ cp -f $TMPDIR/kernelclean.sh /usr/bin/kernelclean
 chmod +x /usr/bin/kernelclean
 chown root:root /usr/bin/kernelclean
 
+## Hourly Job Script
+cp -f $TMPDIR/hourly.sh /usr/bin/
+chmod +x /usr/bin/hourly.sh 
+chown root:root /usr/bin/hourly.sh 
+cp -f $TMPDIR/hourlyjob.service /etc/systemd/system/
+chmod 664 /etc/systemd/system/hourlyjob.service
+chown root:root /etc/systemd/system/hourlyjob.service
+cp -f $TMPDIR/hourlyjob.timer /etc/systemd/system/
+chmod 664 /etc/systemd/system/hourlyjob.timer 
+chown root:root /etc/systemd/system/hourlyjob.timer
+cp -f $TMPDIR/hourlyjob-sd.service /etc/systemd/system/
+chmod 664 /etc/systemd/system/hourlyjob-sd.service
+chown root:root /etc/systemd/system/hourlyjob-sd.service
+
 ## File Trigger Scripts
 cp -f $TMPDIR/file-monitor.service /etc/systemd/system/
-chmod +x /etc/systemd/system/file-monitor.service
+chmod 664 /etc/systemd/system/file-monitor.service
 chown root:root /etc/systemd/system/file-monitor.service
 cp -f $TMPDIR/apicmds.sh /usr/bin/
 chmod +x /usr/bin/apicmds.sh
@@ -253,15 +267,18 @@ systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
 systemctl daemon-reload
 
 ## Start Services on Boot
-systemctl enable rc-local smartmontools apcupsd file-monitor
-
-## Restart Services
-systemctl restart cron smartmontools apcupsd file-monitor
+systemctl enable rc-local
+systemctl enable smartmontools
+systemctl enable apcupsd
+systemctl enable file-monitor.service
+systemctl enable --now hourlyjob.timer
+systemctl enable --now hourlyjob-sd.service
 
 ## Clean-up
 apt-get --yes autoremove
 apt-get --yes clean
 rm -f /usr/bin/actiontrig.sh
+rm -f /usr/bin/savebookmarks.sh
 rm -f /usr/bin/lxc-mp.sh
 rm -r $TMPDIR
 exit

@@ -748,10 +748,6 @@ chown -R pi:pi /var/log/Xorg.0.log /var/log/Xorg.0.log.old /home/pi/.xsession-er
 chmod -R +x /opt/rpi
 chown -R root:root /opt/rpi
 
-## Install Menus
-echo "Installing menu items..."
-cp -rf $TMPDIR/menus/*.txt /var/www/html/ram/
-
 ## Clean systemd logs
 journalctl --flush --rotate
 journalctl -m --vacuum-time=300s

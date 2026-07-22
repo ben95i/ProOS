@@ -1,4 +1,3 @@
-const fs = require('fs');
 const fsPromises = require('fs/promises');
 const { execFile } = require('child_process');
 const util = require('util');
@@ -7,90 +6,106 @@ const execFileAsync = util.promisify(execFile);
 
 /**
  * Status Updater Module
+ *
+ * Reads STATS_FILE (read-only) and probes each host. Probes run in parallel
+ * with a bounded concurrency of MAX_PARALLEL. Output preserves the original
+ * file order and uses the format: HOST|STATE|NAME|ACTION
  */
 
-const STATS_FILE = "/opt/system/statsmenu.txt";
-const MAX_WAIT = "0.35";
+const MAX_WAIT = '0.5';
+const MAX_PARALLEL = 10;
+
+const ONLINE = 'grnind';  // green indicator
+const OFFLINE = 'blkind'; // black indicator
 
 /**
- * Replicates the ping logic to determine device state.
- * Returns "grnind" for online and "blkind" for offline.
+ * Action handlers. Add new probe types here; anything unknown yields "".
  */
-async function updateState(host, action) {
-    if (action === "ping") {
+const ACTIONS = {
+    async ping(host) {
         try {
-            await execFileAsync('/usr/bin/ping', ['-4', '-A', '-c', '1', '-i', MAX_WAIT, '-W', MAX_WAIT, host]);
-            return "grnind"; // Green indicator (Online)
-        } catch (error) {
-            return "blkind"; // Black indicator (Offline)
+            await execFileAsync(
+                '/usr/bin/ping',
+                ['-4', '-A', '-c', '1', '-i', MAX_WAIT, '-W', MAX_WAIT, host],
+                { timeout: 5000 }
+            );
+            return ONLINE;
+        } catch (err) {
+            return OFFLINE;
         }
-    }
-    return ""; 
+    },
+};
+
+async function updateState(host, action) {
+    const handler = ACTIONS[action];
+    if (!handler) return '';
+    return handler(host);
 }
 
 /**
- * Main function to update device statuses.
+ * Parse the stats file into ordered entry objects.
  */
-async function runStatusUpdate(ramDisk) {
-    const LOCK_FILE = ramDisk + "/status.lock";
-    // Instance Locking Logic
-    try {
-        if (fs.existsSync(LOCK_FILE)) {
-            const pid = fs.readFileSync(LOCK_FILE, 'utf8').trim();
+function parseEntries(data) {
+    return data
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line !== '' && !line.startsWith('#'))
+        .map(line => {
+            const [host, name, action] = line.split('|').map(f => (f || '').trim());
+            return { host, name, action };
+        })
+        .filter(e => e.host && e.name && e.action);
+}
+
+/**
+ * Run tasks with a fixed-size worker pool. Results are written back into
+ * `results` at the entry's original index, so ordering is preserved.
+ */
+async function runPool(entries, limit) {
+    const results = new Array(entries.length);
+    let cursor = 0;
+
+    async function worker() {
+        while (true) {
+            const i = cursor++;
+            if (i >= entries.length) return;
+            const { host, action } = entries[i];
             try {
-                // Check if process is still running
-                process.kill(pid, 0); 
-                return("already running, exiting...");
-            } catch (e) {
-                // Process not running, safe to remove lock
-                fs.unlinkSync(LOCK_FILE);
-            }
-        }
-        
-        // Write current PID to lock file
-        fs.writeFileSync(LOCK_FILE, process.pid.toString());
-
-        // Read statsmenu.txt into memory
-        if (!fs.existsSync(STATS_FILE)) {
-            return "File not found.";
-        }
-
-        const data = await fsPromises.readFile(STATS_FILE, 'utf8');
-        const lines = data.split('\n').filter(line => line.trim() !== "");
-        const output = [];
-
-        // Process each line
-        for (const line of lines) {
-            // Split by delimiter '|'
-            const [host, name, action] = line.split('|');
-
-            if (host && name && action) {
-                const state = await updateState(host, action);
-                
-                // Construct the NEWLINE: HOST|STATE|NAME|ACTION
-                const newLine = `${host}|${state}|${name}|${action}`;
-                output.push(newLine);
-            }
-        }
-
-        // Return the full output string
-        return output.join('\n');
-
-    } catch (err) {
-        console.error("Status update exception:", err.message);
-    } finally {
-        // Cleanup lock file
-        if (fs.existsSync(LOCK_FILE)) {
-            try {
-                const currentPid = fs.readFileSync(LOCK_FILE, 'utf8').trim();
-                if (currentPid === process.pid.toString()) {
-                    fs.unlinkSync(LOCK_FILE);
-                }
-            } catch (e) {
-                // Lock file might have been removed already
+                results[i] = await updateState(host, action);
+            } catch (err) {
+                results[i] = OFFLINE;
             }
         }
     }
+
+    const workers = [];
+    const count = Math.min(limit, entries.length);
+    for (let i = 0; i < count; i++) workers.push(worker());
+    await Promise.all(workers);
+
+    return results;
+}
+
+/**
+ * Main entry point. Returns the full output string; never writes to disk.
+ */
+async function runStatusUpdate(baseWWW) {
+    let data;
+    try {
+        data = await fsPromises.readFile(`${baseWWW}/menus/statsmenu.txt`, 'utf8');
+    } catch (err) {
+        if (err.code === 'ENOENT') return 'statsmenu.txt file not found.';
+        throw err;
+    }
+
+    const entries = parseEntries(data);
+    if (entries.length === 0) return '';
+
+    const states = await runPool(entries, MAX_PARALLEL);
+
+    return entries
+        .map((e, i) => `${e.host}|${states[i]}|${e.name}|${e.action}`)
+        .join('\n');
 }
 
 module.exports = { runStatusUpdate };

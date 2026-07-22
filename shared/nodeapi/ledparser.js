@@ -3,15 +3,15 @@ const fsPromises = require('fs/promises');
 /**
  * Parses mainmenu.txt and dispatches commands to LED hosts
  * 
- * @param {string} ramDisk - RAM disk path
+ * @param {string} baseWWW - RAM disk path
  * @param {string} varA - The primary command argument (e.g., 'level', 'preset_name')
  * @param {string} varB - The secondary variable argument
  * @returns {Promise<string|void>} - Returns the level string if varA is 'level', otherwise void.
  */
-async function OPCLEDparser(ramDisk, varA, varB = "") {
+async function OPCLEDparser(baseWWW, varA, varB = "") {
     let levelHost = "";
     try {
-        const data = await fsPromises.readFile(ramDisk + "/mainmenu.txt", 'utf-8');
+        const data = await fsPromises.readFile(baseWWW + "/menus/mainmenu.txt", 'utf-8');
         const lines = data.split('\n');
         const hosts = [];
         for (const line of lines) {

@@ -1,0 +1,10 @@
+[Unit]
+Description=Runs Hourly Script - Service
+
+[Service]
+Type=oneshot
+User=tank
+Group=shared
+StandardOutput=journal
+StandardError=journal
+ExecStart=/usr/bin/hourly.sh
