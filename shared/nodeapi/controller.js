@@ -8,7 +8,6 @@ const fsPromises = require('fs/promises');
 const path = require('path');
 const util = require('util');
 const execFileAsync = util.promisify(execFile);
-const API_CALL_TIMEOUT = 2500; // in (ms)
 const PROCESS_TIMEOUT = 3000;  // in (ms)
 const MAX_PING_WAIT = "0.5"; // in (sec)
 const LOCAL_DOMAIN = "home";
@@ -83,7 +82,9 @@ function extractResponse(str, delimiter = '|') {
 
 async function localPing(ip) {
     try {
-        await execFileAsync('/usr/bin/ping', ['-4', '-A', '-c', '1', '-i', MAX_PING_WAIT, '-W', MAX_PING_WAIT, ip], { timeout: PROCESS_TIMEOUT });
+        await execFileAsync('/usr/bin/ping', ['-4', '-A', '-c', '1', '-i', MAX_PING_WAIT, '-W', MAX_PING_WAIT, ip], { 
+            timeout: PROCESS_TIMEOUT 
+        });
         return "1"; 
     } catch (error) {
         return "0";
@@ -99,7 +100,7 @@ function processProgramError(error, separator = ' : ') {
     const signal = error.signal || 'NONE';
     const baseMessage = (error.message || '').trim();
     return [
-        `Command failed with code ${code} (Signal: ${signal})`,
+        `Command failed with code ${code} ,signal: ${signal}`,
         baseMessage ? `Message: ${baseMessage}` : null,
         stderr ? `stderr: ${stderr}` : null,
         stdout ? `stdout: ${stdout}` : null
@@ -135,7 +136,7 @@ class RoomManager {
 async function commonAPIRequest(server, delim) {
     try {
         const response = await fetch(server, { 
-            signal: AbortSignal.timeout(API_CALL_TIMEOUT) });
+            signal: AbortSignal.timeout(PROCESS_TIMEOUT)});
         if (!response.ok) 
             return "commonAPIRequest: invalid response";
         return extractResponse(await response.text(), delim);
@@ -163,7 +164,9 @@ async function callFIFO(host, cmd, out_pos = '') {
             out = await callApi(LOCAL_IP.lrxmit, "extcom", cmd);
         } else if (host === "local") {
             try {
-                const { stdout } = await execFileAsync('/usr/bin/ztermcom', [cmd], { timeout: PROCESS_TIMEOUT });
+                const { stdout } = await execFileAsync('/usr/bin/ztermcom', [cmd], { 
+                    timeout: PROCESS_TIMEOUT 
+                });
                 out = extractResponse(stdout);
             } catch (error) {
                 out = processProgramError(error);
@@ -201,7 +204,9 @@ async function brXmit(cmd) {
             return `${LOCAL_IP.brpc} is already offline`;
         case "brpcon": 
             if (await localPing(LOCAL_IP.brpc) === "1") return `${LOCAL_IP.brpc} is already online`;
-            return await execFileAsync('/usr/bin/wakeonlan', [BRPC_MAC], { timeout: PROCESS_TIMEOUT }).then(() => "OK").catch(e => processProgramError(e));
+            return await execFileAsync('/usr/bin/wakeonlan', [BRPC_MAC], { 
+                timeout: PROCESS_TIMEOUT 
+            }).then(() => "OK").catch(e => processProgramError(e));
         default: return "brXmit: invalid command";
     }
 }
@@ -380,7 +385,7 @@ async function executeMain(baseWWW, firstArg, secondArg) {
             const logFile = path.join(baseWWW, '/ram/sysout.txt');
             if (!secondArg) return "empty server command!";
             if (secondArg === "netscan") {
-                await fsPromises.appendFile(logFile, `\nScanning network range ${NET_RANGE}...\n`);
+                await fsPromises.appendFile(logFile, `Scanning network range ${NET_RANGE}...\n`);
                 const scanResult = await runScanNetwork(NET_RANGE);
                 await fsPromises.appendFile(logFile, `${scanResult}\n`);
                 return "OK";

@@ -132,14 +132,17 @@ if [[ "$CMD" == "backupstd" || "$CMD" == "backupchk" ]]; then
   fi
   ## Time to wait for PVE response
   WAIT_TIME=60
-  ### Lock file
-  if [ -f "$RAMDISK/backupsvr.lock" ]; then
+  ### Lock file -- noclobber makes create-if-absent atomic, so two
+  ### backup triggers arriving together cannot both pass the check.
+  if ! ( set -o noclobber; : > "$RAMDISK/backupsvr.lock" ) 2>/dev/null; then
     echo "already running!"
     echo "delete '$RAMDISK/backupsvr.lock' to remove lock if program failed"
     END_ROUTINE
-  else
-    touch $RAMDISK/backupsvr.lock
   fi
+  ## release the lock on any exit path; convert TERM/INT into a normal
+  ## exit so the EXIT trap fires instead of swallowing the signal
+  trap 'rm -f "$RAMDISK/backupsvr.lock"' EXIT
+  trap 'exit 143' TERM INT
   echo "****************** starting backup **********************"
   echo " "
   ## Read Backup Drive Names
@@ -166,7 +169,7 @@ if [[ "$CMD" == "backupstd" || "$CMD" == "backupchk" ]]; then
               --exclude="**USB.img" --exclude="**USB.7z" --exclude="**USB.zip" \
               --exclude="**HD.img" --exclude="**HD.7z" --exclude="**HD.zip" \
               --exclude="**VM.img" --exclude="**VM.7z" --exclude="**VM.zip" \
-                $TANK_DATA/ $EXTBKPS/$POOL/Data/ -delete --delete-excluded
+                $TANK_DATA/ $EXTBKPS/$POOL/Data/ --delete --delete-excluded
           fi
           #### Regions Share ####
           if [ ! -e "$REGDATA/DB" ]; then
@@ -175,7 +178,7 @@ if [[ "$CMD" == "backupstd" || "$CMD" == "backupchk" ]]; then
             echo "syncing 'Regions' share to $POOL drive..."
             nice -n 19 ionice -c 3 rsync $CHECKSUM -aP \
               --exclude="Archive/ALUTqMiuxVtjfuair7WIgQ/" --exclude="Games/" \
-                $REGDATA/ $EXTBKPS/$POOL/.Regions/ -delete --delete-excluded
+                $REGDATA/ $EXTBKPS/$POOL/.Regions/ --delete --delete-excluded
           fi
           ##### END BACKUP #####
           SAVEBKPDATES "$POOL"
@@ -193,7 +196,7 @@ if [[ "$CMD" == "backupstd" || "$CMD" == "backupchk" ]]; then
           else
             echo "syncing 'Data' share to $POOL drive..."
             nice -n 19 ionice -c 3 rsync $CHECKSUM -aP \
-              $TANK_DATA/ $EXTBKPS/$POOL/Data/ -delete --delete-excluded
+              $TANK_DATA/ $EXTBKPS/$POOL/Data/ --delete --delete-excluded
           fi
           #### Regions Share ####
           if [ ! -e "$REGDATA/DB" ]; then
@@ -201,7 +204,7 @@ if [[ "$CMD" == "backupstd" || "$CMD" == "backupchk" ]]; then
           else
             echo "syncing 'Regions' share to $POOL drive..."
             nice -n 19 ionice -c 3 rsync $CHECKSUM -aP \
-              $REGDATA/ $EXTBKPS/$POOL/.Regions/ -delete --delete-excluded
+              $REGDATA/ $EXTBKPS/$POOL/.Regions/ --delete --delete-excluded
           fi
           #### Media Share ####
           if [ ! -e "$TANK_MEDIA/Music" ]; then
@@ -209,7 +212,7 @@ if [[ "$CMD" == "backupstd" || "$CMD" == "backupchk" ]]; then
           else
             echo "syncing 'Media' share to $POOL drive..."
             nice -n 19 ionice -c 3 rsync -aP \
-              $TANK_MEDIA/ $EXTBKPS/$POOL/Media/ -delete --delete-excluded
+              $TANK_MEDIA/ $EXTBKPS/$POOL/Media/ --delete --delete-excluded
           fi
           ##### END BACKUP #####
           SAVEBKPDATES "$POOL"
@@ -457,14 +460,14 @@ if [ "$CMD" == "syslog" ]; then
 fi
   ###### Server VM Backup Script ######################
 if [ "$CMD" == "pve_vmsbkp" ]; then
-  ### Lock file
-  if [ -f "$RAMDISK/pvebackup.lock" ]; then
+  ### Lock file -- atomic create via noclobber (see backup lock above)
+  if ! ( set -o noclobber; : > "$RAMDISK/pvebackup.lock" ) 2>/dev/null; then
     echo "PVE backup already running!"
     echo "delete '$RAMDISK/pvebackup.lock' to remove lock if program aborted."
     END_ROUTINE
-  else
-    touch $RAMDISK/pvebackup.lock
   fi
+  trap 'rm -f "$RAMDISK/pvebackup.lock"' EXIT
+  trap 'exit 143' TERM INT
   echo " "
   echo "Backing-up Files LXC 101..."
   vzdump 101 --mode snapshot --compress zstd --node pve --storage local --remove 1 --exclude-path /mnt --exclude-path /home/ben
@@ -496,7 +499,7 @@ if [ "$CMD" == "pve_vmsbkp" ]; then
   chmod 777 $PROOS_DIR/media/lxc.conf
   echo " "
   echo "Backing-up Router KVM 100..."
-  vzdump 100 --mode snapshot --compress zstd --node pve --storage local -remove 1 --exclude-path /mnt
+  vzdump 100 --mode snapshot --compress zstd --node pve --storage local --remove 1 --exclude-path /mnt
   cp /etc/pve/qemu-server/100.conf $PROOS_DIR/pve/vmbkps/vzdump-qemu-100.conf
   chmod 777 $PROOS_DIR/pve/vmbkps/vzdump-qemu-100.conf
   ###

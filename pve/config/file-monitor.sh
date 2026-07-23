@@ -86,8 +86,10 @@ umask 0000
 mkdir -p "$SPOOL"
 ensure_log
 
-## clean up any triggers left over from an unclean shutdown
-rm -f "$SPOOL"/* 2>/dev/null
+## clean up any triggers left over from an unclean shutdown.
+## Locks too: KillMode=control-group means no job survives a service
+## stop, so any lock present at startup is by definition stale.
+rm -f "$SPOOL"/* "$RAMPATH"/*.lock 2>/dev/null
 
 ## on service stop, take the whole process group down with us
 shutdown() {
@@ -124,14 +126,30 @@ dispatch() {
 # moved_to     -> file dropped in via mv/rename
 # NOTE: 'create' is deliberately NOT watched. create + close_write both
 # fire for a normal write and would trigger the same file twice.
-inotifywait -m -q --format '%f' \
-    -e close_write -e moved_to "$RAMPATH" |
+## The event stream is the watcher PLUS a one-time catch-up scan.
+## inotify only reports events that happen while watching, so any
+## trigger dropped while the service was down (boot, RestartSec
+## window) would otherwise sit in the ramdisk forever. The scan runs
+## AFTER the watch is established; if the scan and a live event both
+## report the same file, the atomic mv -n claim below de-duplicates.
+{
+    inotifywait -m -q --format '%f' \
+        -e close_write -e moved_to "$RAMPATH" &
+    WATCHER=$!
+    sleep 1     # give inotifywait time to establish its watch
+    for _EXISTING in "$RAMPATH"/*.txt; do
+        [ -e "$_EXISTING" ] && printf '%s\n' "${_EXISTING##*/}"
+    done
+    wait "$WATCHER"
+} |
 while IFS= read -r FILENAME; do
 
     ## only act on .txt triggers, skip dotfiles/editor temp files
+    ## NOTE: the dotfile pattern MUST come before *.txt -- case takes
+    ## the first match, so '.hidden.txt' would otherwise dispatch.
     case "$FILENAME" in
-        *.txt) ;;
         .*|*~) continue ;;
+        *.txt) ;;
             *) continue ;;
     esac
 
@@ -163,4 +181,7 @@ while IFS= read -r FILENAME; do
 
 done
 
-exit
+## Reaching this point means the inotifywait stream ended, which is
+## always abnormal for a monitor. Exit nonzero so systemd restarts us
+## (belt-and-braces alongside Restart=always in the unit).
+exit 1

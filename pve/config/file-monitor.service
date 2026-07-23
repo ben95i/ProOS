@@ -16,7 +16,9 @@ ExecStartPre=-/bin/sh -c '/usr/bin/apicmds.sh clearlog /mnt/ramdisk >> /mnt/ramd
 ExecStart=/usr/bin/file-monitor.sh
 
 LogLevelMax=notice
-Restart=on-failure
+# always: if inotifywait dies for any reason the script can exit
+# cleanly, and on-failure would leave the monitor permanently dead.
+Restart=always
 RestartSec=5
 
 # stop the watcher AND every command it spawned
