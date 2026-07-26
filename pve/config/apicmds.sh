@@ -442,7 +442,7 @@ if [ "$CMD" == "startatalk" ]; then
   qm start 103
   END_ROUTINE
 fi
-if [ "$CMD" == "stoptatalk" ]; then
+if [ "$CMD" == "stopatalk" ]; then
   echo "shutting down AppleTalk server..."
   qm stop 103
   END_ROUTINE

@@ -1,5 +1,4 @@
 /*
- * Ben Provenzano III
  * -----------------
  * v1 - 03/24/2026
  * v2 - 06/20/2026
@@ -25,22 +24,21 @@ const char nullTrm = '\0';
 #define PWR_IO_3   7 // YELLOW TIP (RING 5v)
 #define PWR_IO_4   4 // WHITE TIP (RING 5v)
 
-// DHT humidity-temperature sensor
-#define DHT_SENSOR_TYPE DHT_TYPE_22
-static const int PWR_IO_2 = 8; // GREEN TIP (RING 5v)
-const unsigned long DHT_SAMPLE_DELAY = 15000ul; // 15-seconds
-DHT_nonblocking DHT_SENSOR(PWR_IO_2, DHT_SENSOR_TYPE);
-float dhtHumidity = 0.0;
-float dhtTemp = 0.0;
-bool dhtDataValid = false;
+// toggle switch inputs
+#define PWR_SWITCH_2 6 // BLUE TIP
+#define PWR_SWITCH_1 5 // BLUE RING
 
 // analog inputs
 #define ADC_IN_1  A0 // RED TIP
 #define ADC_IN_2  A1 // RED RING
 
-// toggle switch inputs
-#define PWR_SWITCH_2 6 // BLUE TIP
-#define PWR_SWITCH_1 5 // BLUE RING
+// DHT humidity-temperature sensor
+#define DHT_SENSOR_TYPE DHT_TYPE_22
+static const int PWR_IO_2 = 8; // GREEN TIP (RING 5v)
+const unsigned long DHT_SAMPLE_DELAY = 30000ul; // 30-seconds
+DHT_nonblocking DHT_SENSOR(PWR_IO_2, DHT_SENSOR_TYPE);
+
+// state tracking
 bool powerButton_1Last = 0;
 bool powerButton_1State = 0;
 uint32_t powerButton_1Millis;
@@ -50,6 +48,9 @@ uint32_t powerButton_2Millis;
 bool powerButton_3Last = 1;
 bool powerButton_3State = 1;
 uint32_t powerButton_3Millis;
+float dhtHumidity = 0.0;
+float dhtTemp = 0.0;
+bool dhtDataValid = false;
 
 // serial resources
 #define serialBaudRate 9600

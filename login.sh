@@ -21,6 +21,7 @@ SSH_TIMEOUT="450ms"
 SPACER="*********************"
 SSH_ARGS="ServerAliveInterval=5 -o ServerAliveCountMax=5"
 UPDATE_CMDS="apt update; apt upgrade; apt full-upgrade; apt autoremove; apt clean"
+SVR_INSTALL_CMD="cd /tmp/; tar -xmf config.tar; rm -f config.tar; chmod +x /tmp/config/installer.sh; /tmp/config/installer.sh"
 ## variables
 HOST_STATUS="offline"
 INTMODE=""
@@ -307,7 +308,7 @@ DEPLOY_SERVER(){
   echo "Uploading files..."
   scp -p $TMPFLDR/config.tar root@$HOST:/tmp/
   echo "Running $MODULE deployment script..."
-  ssh -t root@$HOST "cd /tmp/; tar -xmf config.tar; rm -f config.tar; chmod +x /tmp/config/installer.sh; /tmp/config/installer.sh"
+  ssh -t root@$HOST "$SVR_INSTALL_CMD"
   ## Clean-up installer files
   rm -r $TMPFLDR
   POST_DEPLOY_MENU

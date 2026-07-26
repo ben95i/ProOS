@@ -1,8 +1,48 @@
 const fsPromises = require('fs/promises');
 const { execFile } = require('child_process');
 const util = require('util');
+const net = require('net');
 
 const execFileAsync = util.promisify(execFile);
+
+const SSH_PORT = 22;
+const MAX_WAIT = '1.0';
+const MAX_PARALLEL = 12;
+const ONLINE = 'grnind';  // green indicator
+const OFFLINE = 'blkind'; // black indicator
+
+/**
+ * Probe a TCP port. A completed handshake is ONLINE; a definitive negative
+ * (RST/refused, unreachable, DNS failure) is OFFLINE immediately with no
+ * retry. Only a silent timeout is ambiguous — that's the wifi dropped-SYN
+ * case — so that alone is retried. Never rejects; only ONLINE/OFFLINE escape.
+ */
+function tcpProbe(host, port, timeout = 200, attempts = 2) {
+    const attempt = () => new Promise(resolve => {
+        const socket = new net.Socket();
+        let settled = false;
+        const finish = result => {
+            if (settled) return;
+            settled = true;
+            socket.destroy();
+            resolve(result);
+        };
+        socket.setTimeout(timeout);
+        socket.once('connect', () => finish(ONLINE));
+        socket.once('timeout', () => finish('timeout')); // ambiguous may retry
+        socket.on('error', () => finish(OFFLINE));        // definitive no retry
+        socket.connect({ host, port, family: 4 });
+    });
+    return (async () => {
+        for (let i = 0; i < attempts; i++) {
+            const result = await attempt();
+            if (result === ONLINE) return ONLINE;
+            if (result === OFFLINE) return OFFLINE; // RST/unreachable done
+            // 'timeout' silent, might be a dropped SYN loop and retry
+        }
+        return OFFLINE; // timed out on every attempt
+    })();
+}
 
 /**
  * Status Updater Module
@@ -11,12 +51,6 @@ const execFileAsync = util.promisify(execFile);
  * with a bounded concurrency of MAX_PARALLEL. Output preserves the original
  * file order and uses the format: HOST|STATE|NAME|ACTION
  */
-
-const MAX_WAIT = '0.5';
-const MAX_PARALLEL = 10;
-
-const ONLINE = 'grnind';  // green indicator
-const OFFLINE = 'blkind'; // black indicator
 
 /**
  * Action handlers. Add new probe types here; anything unknown yields "".
@@ -34,6 +68,9 @@ const ACTIONS = {
             return OFFLINE;
         }
     },
+    async ssh(host) {
+        return tcpProbe(host, SSH_PORT);
+    }
 };
 
 async function updateState(host, action) {
@@ -64,7 +101,6 @@ function parseEntries(data) {
 async function runPool(entries, limit) {
     const results = new Array(entries.length);
     let cursor = 0;
-
     async function worker() {
         while (true) {
             const i = cursor++;
@@ -77,12 +113,10 @@ async function runPool(entries, limit) {
             }
         }
     }
-
     const workers = [];
     const count = Math.min(limit, entries.length);
     for (let i = 0; i < count; i++) workers.push(worker());
     await Promise.all(workers);
-
     return results;
 }
 
@@ -97,12 +131,9 @@ async function runStatusUpdate(baseWWW) {
         if (err.code === 'ENOENT') return 'statsmenu.txt file not found.';
         throw err;
     }
-
     const entries = parseEntries(data);
     if (entries.length === 0) return '';
-
     const states = await runPool(entries, MAX_PARALLEL);
-
     return entries
         .map((e, i) => `${e.host}|${states[i]}|${e.name}|${e.action}`)
         .join('\n');

@@ -1,16 +1,17 @@
 [Unit]
 Description=Runs Hourly Script - Shutdown/Reboot
-Before=shutdown.target
+RequiresMountsFor=/mnt/ramdisk
+After=local-fs.target
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-User=tank
-Group=shared
-ExecStart=/bin/true
-ExecStop=/usr/bin/hourly.sh
+User=root
 StandardOutput=journal
 StandardError=journal
+ExecStart=/bin/true
+ExecStop=/usr/bin/hourly.sh
+TimeoutStopSec=120
 
 [Install]
 WantedBy=multi-user.target

@@ -147,14 +147,12 @@ async function commonAPIRequest(server, delim) {
 
 async function callApi(target, arg1, arg2 = '') {
     if (arg1 === "") return "callApi: argument cannot be empty";
-    const server = `http://${target}:80/api?var=${arg2}&arg=${arg1}&action=main`;
-    return await commonAPIRequest(server, '|');
+    return await commonAPIRequest(`http://${target}:80/api?var=${arg2}&arg=${arg1}&action=main`, '|');
 }
 
 async function callPico(target, arg1, arg2 = '') {
     if (arg1 === "") return "callPico: argument cannot be empty";
-    const server = `http://${target}:4000/api?${arg1},,${arg2}~`;
-    return await commonAPIRequest(server, null);
+    return await commonAPIRequest(`http://${target}:4000/api?${arg1},,${arg2}~`, null);
 }
 
 async function callFIFO(host, cmd, out_pos = '') {
@@ -174,10 +172,9 @@ async function callFIFO(host, cmd, out_pos = '') {
         } else {
             return 'invalid host';
         }
-
         if (out_pos === '') return out;
-        if (out && out.length === 3) return out[parseInt(out_pos)] === "9" ? "1" : "0";
         if (out && out.length === 1) return out;
+        if (out && out.length === 3) return out[parseInt(out_pos)] === "9" ? "1" : "0";
         return `invalid response: ${out}`;
     };
     return enqueueTask(executeTask);
@@ -295,7 +292,7 @@ async function executeMain(baseWWW, firstArg, secondArg) {
             return lrRoom.getData();
         }
         case "wl1_dual":
-            lrXmit(firstArg + '_set', secondArg);
+            lrXmit(`${firstArg}_set`, secondArg);
             return "OK";
         case "lrlightson":
             lrXmit("wl1_led1on");

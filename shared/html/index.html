@@ -39,7 +39,7 @@
         <i class="fad fa-edit"></i>
       </a>   
       <a id="btn-add-bookmark">
-        <i class="fas fa-plus"></i>
+        <i class="fad fa-folder-plus"></i>
       </a>
     </div>
     <a id="status_anchor">
@@ -116,7 +116,7 @@
         <p class="grid-sep"></p>
         <div class="dropdown">
           <button type="button" class="button" id="btn-menu-allmenu">
-            <span class="button__text"><i class="fas fa-power-off"></i> Room</span>
+            <span class="button__text"><i class="fad fa-power-off"></i> Room</span>
           </button>  
           <div class="dd-content dd-button" id="allmenu">
             <a id="btn-room-on"> On<i class="fad fa-toggle-on"></i></a>
@@ -204,7 +204,7 @@
         </button>
         <p class="grid-sep"></p>
         <button type="button" class="button" id="btn-vol-display">
-            <span class="button__text"><i class="far fa-volume-off fa-lg"></i> Volume</span>
+            <span class="button__text"><i class="fad fa-volume-off fa-lg"></i> Volume</span>
         </button>     
         <div class="dropdown">
           <button type="button" class="button btm-padding" id="btn-show-hifi-amp">
@@ -308,24 +308,23 @@
   <div class="server-grid">
     <div class="svropt__main">
       <div class="dropdown">
+        <button type="button" class="button svropt_button" id="btn-menu-atalk">
+          <span class="button__text"><i class="fab fa-apple"></i> AFP</span>
+        </button>  
+        <div class="dd-content dd-button" id="atalk-menu">
+          <a id="btn-svr-startatalk"><i class="fad fa-play"></i> Start</a> 
+          <a id="btn-svr-stopatalk"><i class="fad fa-stop"></i> Stop</a>
+        </div>
+      </div>
+      <div class="dropdown">
         <button type="button" class="button svropt_button" id="btn-menu-legacy">
-          <span class="button__text"><i class="fad fa-save"></i> Legacy</span>
+          <span class="button__text"><i class="fad fa-save"></i> CIFS</span>
         </button>  
         <div class="dd-content dd-button" id="legacy-menu">
           <a id="btn-svr-startlegacy"><i class="fad fa-play"></i> Start</a>
           <a id="btn-svr-stoplegacy"><i class="fad fa-stop"></i> Stop</a>      
         </div>
       </div>    
-      <div class="dropdown">
-        <button type="button" class="button svropt_button" id="btn-menu-xana">
-          <span class="button__text"><i class="fab fa-linux"></i> Xana</span>
-        </button>  
-        <div class="dd-content dd-button" id="xana-menu">
-          <a id="btn-svr-startxana"><i class="fad fa-play"></i> Start</a>
-          <a id="btn-svr-stopxana"><i class="fad fa-stop"></i> Stop</a>      
-          <a id="btn-svr-restorexana"><i class="fad fa-eraser"></i> Erase</a>
-        </div>
-      </div>
       <div class="dropdown">
         <button type="button" class="button svropt_button" id="btn-menu-unifi">
           <span class="button__text"><i class="fad fa-router"></i> UniFi</span>
@@ -341,42 +340,45 @@
           <span class="button__text"><i class="fad fa-microchip"></i> Server</span>
         </button>  
         <div class="dd-content dd-button" id="svr-menu">
-          <a id="btn-ext-pve"><i class="fad fa-link"></i> Open PVE-UI</a>
-          <a id="btn-svr-syslog"></i> Status Report</a>
+          <a id="btn-ext-pve"><i class="fad fa-link"></i> Open</a>
+          <a id="btn-open-backup"><i class="fad fa-sync"></i> Backup</a> 
+          <a id="btn-open-regions"><i class="fad fa-th"></i> Regions</a>
+          <a id="btn-svr-syslog"><i class="fad fa-tachometer"></i> Status</a>
         </div>
       </div>
       <div class="dropdown">
-        <button type="button" class="button svropt_button" id="btn-menu-files">
-          <span class="button__text"><i class="fad fa-database"></i> Files</span>
+        <button type="button" class="button svropt_button" id="btn-menu-xana">
+          <span class="button__text"><i class="fab fa-linux"></i> Xana</span>
         </button>  
-        <div class="dd-content dd-button" id="files-menu">
-          <a id="btn-open-backup"></i> Backup</a> 
-          <a id="btn-open-regions"></i> Regions</a>
+        <div class="dd-content dd-button" id="xana-menu">
+          <a id="btn-svr-startxana"><i class="fad fa-play"></i> Start</a>
+          <a id="btn-svr-stopxana"><i class="fad fa-stop"></i> Stop</a>      
+          <a id="btn-svr-restorexana"><i class="fad fa-eraser"></i> Erase</a>
         </div>
       </div>
-      <div class="dropdown">
-        <button type="button" class="button svropt_button" id="btn-menu-netwrk">
-          <span class="button__text"></i> Network</span>
-        </button>
-        <div class="dd-content dd-button" id="netwrk-menu">
-          <a id="btn-wifi-prompt"><i class="fad fa-wifi"></i> Access</a>  
-          <a id="btn-ext-edgeswitch"><i class="fad fa-network-wired"></i> Switch</a>
-          <a id="btn-svr-netscan"><i class="fad fa-chart-network"></i> LAN Scanner</a>
-        </div>
-      </div>
-      <button type="button" class="button svropt_button" id="btn-close-svr-opt1">
-        <span class="button__text"><i class="fas fa-times"></i> Close</span>
-      </button>
-      <button type="button" class="button svropt_button" id="btn-svr-clearlog">
-        <span class="button__text"> Clear Log</span>
-      </button>
       <div class="dropdown">
         <button type="button" class="button svropt_button" id="btn-menu-router">
-          <span class="button__text"><i class="fad fa-router"></i> Router</span>
+          <span class="button__text"><i class="fad fa-ethernet"></i> Router</span>
         </button>
         <div class="dd-content dd-button" id="router-menu">
           <a id="btn-ext-router"><i class="fad fa-link"></i> Open</a>
-          <a id="btn-svr-rebootrouter"><i class="fas fa-redo"></i> Reboot</a>
+          <a id="btn-svr-rebootrouter"><i class="fad fa-redo"></i> Reboot</a>
+        </div>
+      </div>
+      <button type="button" class="button svropt_button" id="btn-close-svr-opt1">
+        <span class="button__text"><i class="fad fa-times-octagon"></i> Close</span>
+      </button>
+      <button type="button" class="button svropt_button" id="btn-svr-clearlog">
+        <span class="button__text"><i class="fad fa-trash-alt"></i> Clear</span>
+      </button>
+      <div class="dropdown">
+        <button type="button" class="button svropt_button" id="btn-menu-netwrk">
+          <span class="button__text"><i class="fad fa-network-wired"></i> Network</span>
+        </button>
+        <div class="dd-content dd-button" id="netwrk-menu">
+          <a id="btn-wifi-prompt"><i class="fad fa-wifi"></i> Access</a>  
+          <a id="btn-ext-edgeswitch"><i class="fad fa-sitemap"></i> Switch</a>
+          <a id="btn-svr-netscan"><i class="fad fa-chart-network"></i> LAN Scanner</a>
         </div>
       </div>
     </div>
@@ -400,7 +402,7 @@
         <span class="button__text"><i class="fad fa-eject"></i> Eject</span>
       </button>  
       <button type="button" class="button svropt_button" id="btn-close-svr-opt2">
-        <span class="button__text"><i class="fas fa-times"></i> Close</span>
+        <span class="button__text"><i class="fad fa-times-octagon"></i> Close</span>
       </button>
       <button type="button" class="button svropt_button" id="btn-svr-pve_listsnaps">
         <span class="button__text"></i> Snapshots</span>
@@ -438,9 +440,9 @@
         </div>
       </div>
       <button type="button" class="button svropt_button" id="btn-close-svr-opt3">
-        <span class="button__text"><i class="fas fa-times"></i> Close</span>
+        <span class="button__text"><i class="fad fa-times-octagon"></i> Close</span>
       </button>
-      <button type="button" class="button svropt_button" id="btn-svr-unmnt_all">
+      <button type="button" class="button svropt_button dark_btn" id="btn-svr-unmnt_all">
         <span class="button__text"></i> Detach All</span>
       </button>
       <button type="button" class="button svropt_button" id="btn-open-svr-opt2">
@@ -467,7 +469,7 @@
       <span class="button__text"></i> Temperature</span>
     </button> 
     <button type="button" class="button svropt_button" id="btn-close-svr-opt4">
-      <span class="button__text"><i class="fas fa-times"></i> Close</span>
+      <span class="button__text"><i class="fad fa-times-octagon"></i> Close</span>
     </button>  
     <button type="button" class="button svropt_button" id="btn-svr-clearlog">
       <span class="button__text"></i> Clear Log</span>
@@ -520,7 +522,7 @@
       </div>
     </div>
     <button type="button" class="button button__sml" id="btn-ts-close">
-      <span class="button__text"><i class="fas fa-times"></i></span>
+      <span class="button__text"><i class="fad fa-times-octagon"></i></span>
     </button>
     <button type="button" class="button button__sml" id="btn-ts-clear">
       <span class="button__text"><i class="fad fa-trash-alt"></i></span>
@@ -536,7 +538,7 @@
     <textarea readonly class="scroll-bar-style" id="logTextBox" spellcheck="false"></textarea>
     <div class="popup-actions">
       <button type="button" class="button button_left_txtwin" id="btn-log-close">
-        <i class="fas fa-times"></i>
+        <i class="fad fa-times-octagon"></i>
       </button>
       <button type="button" class="button button_left_txtwin" id="btn-log-open-svr">
         <i class="fad fa-sliders-h"></i>
@@ -558,7 +560,7 @@
     <img id="cam-display"></img>
     <div class="popup-actions">
       <button type="button" class="button button_left_txtwin" id="btn-cam-close">
-        <i class="fas fa-times"></i>
+        <i class="fad fa-times-octagon"></i>
       </button>
       <button type="button" class="button button_right_txtwin" id="btn-cam-fullscreen">
         <span></i> Fullscreen</span>

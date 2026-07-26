@@ -23,7 +23,7 @@ const ROOM_CONFIGS = {
   'br': { 
     name: 'Bedroom',     
     gridId: 'bedroom-grid',
-    icon: 'fas fa-bed',  
+    icon: 'fad fa-bed',  
     voltarget: 'brpi', 
     volmax: 192
   }
@@ -114,6 +114,9 @@ function setupEventListeners() {
     'btn-show-br-amp': () => showBedroomAmpInput(),
     'btn-power-retropi': () => showPowerMenu('brxmit', 'retropi'),
     // Server Options
+    'btn-menu-atalk': () => showMenu('atalk-menu'),
+    'btn-svr-startatalk': () => serverAction('startatalk'),
+    'btn-svr-stopatalk': () => serverAction('stopatalk'),
     'btn-menu-legacy': () => showMenu('legacy-menu'),
     'btn-svr-startlegacy': () => serverAction('startlegacy'),
     'btn-svr-stoplegacy': () => serverAction('stoplegacy'),
@@ -128,7 +131,6 @@ function setupEventListeners() {
     'btn-menu-svr': () => showMenu('svr-menu'),
     'btn-ext-pve': () => GoToExtPage('pve:8006'),
     'btn-svr-syslog': () => serverAction('syslog'),
-    'btn-menu-files': () => showMenu('files-menu'),
     'btn-open-backup': () => openBackupOptions(),
     'btn-open-regions': () => openRegionsOptions(),
     'btn-menu-netwrk': () => showMenu('netwrk-menu'),
@@ -603,10 +605,7 @@ function sendTextScroll(){
 
 async function aboutPrompt(){
   const _winid = 'about__prompt';
-  // only allow one-instance of the window
-  if (document.getElementById(_winid)) {
-    return;
-  }
+  if (document.getElementById(_winid)) return;
   let aboutprompt = document.createElement("div"); 
   aboutprompt.id = _winid;
   aboutprompt.classList.add("prompt_win");
@@ -634,18 +633,29 @@ async function aboutPrompt(){
   aboutdets1.className = "about__text";
   aboutprompt.appendChild(aboutdets1);
   // cancel button
+  let aboutcancelicon = document.createElement("i"); 
+  aboutcancelicon.classList.add("fad");
+  aboutcancelicon.classList.add("fa-times-octagon");
+  aboutcancelicon.classList.add("right-padding");
+  let aboutcanceltxt = document.createElement("span"); 
+  aboutcanceltxt.classList.add("button__text");
+  aboutcanceltxt.innerHTML = "Close";
   let aboutcancelb = document.createElement("button");
   aboutcancelb.type = "button"; 
   aboutcancelb.classList.add("button");
-  aboutcancelb.innerHTML = "Close";
   aboutcancelb.id = "about__btn";
+  aboutcancelb.appendChild(aboutcancelicon);
+  aboutcancelb.appendChild(aboutcanceltxt);
   aboutprompt.appendChild(aboutcancelb); //append cancel-button
   document.body.appendChild(aboutprompt); //append the password-prompt so it gets visible
   new Promise(function() {
-    aboutprompt.addEventListener('click', function handleButtonClicks(btn_evnt) { //lets handle the buttons
-      if (btn_evnt.target.tagName !== 'BUTTON') { return; } //nothing to do - user clicked somewhere else
-      aboutprompt.removeEventListener('click', handleButtonClicks); //removes eventhandler on cancel or ok
-      document.body.removeChild(aboutprompt);  //as we are done clean up by removing the password-prompt
+    aboutprompt.addEventListener('click', function handleButtonClicks(btn_evnt) { 
+      // Check if the click target or its parent is a button
+      const clickedButton = btn_evnt.target.closest('button');
+      // If no button was found in the click path, exit
+      if (!clickedButton) { return; } 
+      aboutprompt.removeEventListener('click', handleButtonClicks); 
+      document.body.removeChild(aboutprompt);  
     });
   });   
 }
@@ -654,10 +664,7 @@ async function aboutPrompt(){
 
 async function showTempHumidity(){
   const _winid = 'temp__prompt';
-  // only allow one-instance of the window
-  if (document.getElementById(_winid)) {
-    return;
-  }
+  if (document.getElementById(_winid)) return;
   // create window
   let tempprompt = document.createElement("div"); 
   tempprompt.id = _winid;
@@ -696,8 +703,8 @@ async function showTempHumidity(){
   let tempcancelb = document.createElement("button");
   tempcancelb.classList.add("button");
   tempcancelb.classList.add("temp__btn");
-  tempcancelb.classList.add("fas");
-  tempcancelb.classList.add("fa-times");
+  tempcancelb.classList.add("fad");
+  tempcancelb.classList.add("fa-times-octagon");
   tempcancelb.type = "button";
   btnscon.appendChild(tempcancelb);
   // refresh button
@@ -791,10 +798,7 @@ function pushTempErrorThermos(temp_elm, humd_elm) {
 
 async function showPiWiFiPrompt() {
   const winid = "pinet__prompt";
-  // only allow one-instance of the window
-  if (document.getElementById(winid)) {
-    return;
-  }
+  if (document.getElementById(winid)) return;
   removeDropdowns();
   let result = await piWiFiPrompt(winid);
   if (result !== null) {  
@@ -894,7 +898,6 @@ async function piWiFiPrompt(_winid){
 
 async function wifiPrompt(){
   const _winid = "wifi__prompt";
-  // only allow one-instance of the window
   if (document.getElementById(_winid)) return;
   let wifiprompt = document.createElement("div");
   wifiprompt.id = _winid;
@@ -1261,8 +1264,8 @@ function showBookmarkSearchIcon(searchIcon) {
 
 function showCancelSearchIcon(searchIcon) {
   searchIcon.className = "";
-  searchIcon.classList.add("fas");
-  searchIcon.classList.add("fa-times");
+  searchIcon.classList.add("fad");
+  searchIcon.classList.add("fa-times-octagon");
 }
 
 function removeBookmarkSearch() {
@@ -1393,8 +1396,8 @@ async function drawBookmarkPrompt(add, url, name, elem){
   let editFavCancelBtn = document.createElement("button");
   editFavCancelBtn.classList.add("editFav__button");
   editFavCancelBtn.classList.add("button");
-  editFavCancelBtn.classList.add("fas");
-  editFavCancelBtn.classList.add("fa-times");
+  editFavCancelBtn.classList.add("fad");
+  editFavCancelBtn.classList.add("fa-times-octagon");
   editFavCancelBtn.type = "button";
   // lookup favorites
   let editFavLookupBtn = document.createElement("button");

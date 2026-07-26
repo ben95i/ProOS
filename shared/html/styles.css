@@ -471,6 +471,14 @@ input.chkbox {
   margin-left: auto;
 }
 
+.left-padding {
+  padding-left: 8px;
+}
+
+.right-padding {
+  padding-right: 8px;
+}
+
 /* Weather Status */
 
 .weather-icon-container {

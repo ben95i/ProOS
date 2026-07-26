@@ -80,7 +80,7 @@ export default class ColorPrompt {
 
         <div class="color-popup-actions">
           <button type="button" class="button button_left_txtwin color-popup-btn" id="btn-color-close">
-            <i class="fas fa-times"></i> Close
+            <i class="fad fa-times-octagon"></i> Close
           </button>
         </div>
       </div>
