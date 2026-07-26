@@ -2,7 +2,8 @@
  * -----------------
  * v1 - 03/24/2026
  * v2 - 06/20/2026
- * Automate Hub #1
+ * v3 - 07/26/2026 - dual external serial ports (ExtSerial1 / ExtSerial2)
+ * Bedroom Hub #1
  * -----------------
  */
 
@@ -19,8 +20,6 @@ const uint32_t buttonHoldTime = 1500; // in ms
 const char nullTrm = '\0';
 
 // power control I/O
-#define PWR_TRIG_1 9 // TRIGGER TIP
-#define PWR_SENS_1 2 // SENSE RING
 #define PWR_IO_3   7 // YELLOW TIP (RING 5v)
 #define PWR_IO_4   4 // WHITE TIP (RING 5v)
 
@@ -54,9 +53,22 @@ bool dhtDataValid = false;
 
 // serial resources
 #define serialBaudRate 9600
-#define TX_PIN 11 // 232-TX TIP
-#define RX_PIN 10 // 232-RX RING
-SoftwareSerial ExtSerial(RX_PIN, TX_PIN); 
+#define EXT1_TX_PIN 11 // 232-TX TIP  (external port #1)
+#define EXT1_RX_PIN 10 // 232-RX RING (external port #1)
+#define EXT2_TX_PIN 2  // 232-TX      (external port #2)
+#define EXT2_RX_PIN 9  // 232-RX      (external port #2)
+SoftwareSerial ExtSerial1(EXT1_RX_PIN, EXT1_TX_PIN);
+SoftwareSerial ExtSerial2(EXT2_RX_PIN, EXT2_TX_PIN);
+// NOTE: SoftwareSerial can only RECEIVE on one port at a time. The pointer
+// below tracks which external port is currently selected; routeMessage()
+// calls listen() on the target port before transmitting so the response
+// is always captured on the correct port.
+SoftwareSerial* activeExtSerial = &ExtSerial1;
+// register ranges used to select the external serial port
+const uint8_t extSerial1RegMin = 2;  // registers 2-10  -> ExtSerial1
+const uint8_t extSerial1RegMax = 10;
+const uint8_t extSerial2RegMin = 11; // registers 11-20 -> ExtSerial2
+const uint8_t extSerial2RegMax = 20;
 const uint8_t maxMessage = 32;
 const uint8_t cmdRegLen = 2; // register length (99***)
 const uint8_t cmdDatLen = 3; // data length (**999)
@@ -75,48 +87,21 @@ Neotimer maxFwrdRead = Neotimer();
 ///////////////////////////////////////
 
 // main control functions
+// Executes commands addressed to register 1 (this device):
+//   1 = power on, 2 = power off, 3 = report power status,
+//   4 = toggle power, 5 = report temperature & humidity.
+// Status responses are placed in serialMessageOut.
 void internalFunctions(uint16_t command) {
-  // power trigger #1 
-  if (command >= 1 && command <= 4) {
-    int state = powerSense(PWR_SENS_1);
-    if (command == 3) { // status
-      // write status back to serial
-      switch (state) {
-        case 1: // power off (inverted)
-          sprintf(serialMessageOut ,"0");
-          break;
-        case 0: // power on (inverted)
-          sprintf(serialMessageOut ,"1");
-          break;
-        default: // invalid response
-          sprintf(serialMessageOut ,"X");
-          break;
-      }
-    } else {
-      if (state == 0) { // device on
-        if (command == 2) { // power off
-          powerPulse(PWR_TRIG_1);
-        }
-      } else { // device off
-        if (command == 1) { // power on
-          powerPulse(PWR_TRIG_1);
-        }
-      }
-      if (command == 4) { // toggle power
-        powerPulse(PWR_TRIG_1);
-      }
-    }
-  }
   if (command == 5) {
     // rooms temperature & humidity
     writeTempHumidity();
   }
 }
 
-// return average digital input reading
+// Samples a digital input pin 16 times back-to-back and returns a
+// debounced consensus reading: 1 = all samples high, 0 = all samples low,
 int powerSense(int powerSensePin) {
   const int inputReadings = 16;
-  int readings[inputReadings];
   int total = 0;
   for (int idx = 0; idx < inputReadings; idx++) {
     // read then add the reading to the total
@@ -135,38 +120,49 @@ int powerSense(int powerSensePin) {
   }
 }
 
+// Generates a 250 ms active-high pulse on the given output pin,
+// used to press the power trigger of an attached device.
 void powerPulse(int _powerPin) {
   digitalWrite(_powerPin, HIGH);
   delay(250);
   digitalWrite(_powerPin, LOW);
 }
 
+// Formats the most recent temperature/humidity readings as
+// "TT.T~HH.H" into serialMessageOut, or "X" when no valid
+// measurement has been taken yet.
 void writeTempHumidity() {
   if (dhtDataValid == true) {
     char temperatureString[8];
     char humidityString[8];
     dtostrf(dhtTemp, 3, 1, temperatureString);
     dtostrf(dhtHumidity, 3, 1, humidityString);
-    snprintf(serialMessageOut, maxMessage, "%s~%s", temperatureString, humidityString);
+    snprintf(serialMessageOut, sizeof(serialMessageOut), "%s~%s", temperatureString, humidityString);
   } else {
-    snprintf(serialMessageOut, maxMessage, "X");
+    snprintf(serialMessageOut, sizeof(serialMessageOut), "X");
   }
 }
 
+// Polls the DHT sensor (non-blocking, rate-limited) and, on a successful
+// measurement, converts the temperature to Fahrenheit and stores the
+// results in the dhtTemp / dhtHumidity globals.
 void readTempHumidity() {
   float tempTemperature = 0.0;
   float tempHumidity = 0.0;
   bool isMeasurementSuccessful = measureDHT(&tempTemperature, &tempHumidity);
   if (isMeasurementSuccessful == true) {
     float multipliedByNine = tempTemperature * 9.0;
-    float addedThreeNumerator = multipliedByNine + 3.0;
-    float dividedByFive = addedThreeNumerator / 5.0;
+    float dividedByFive = multipliedByNine / 5.0;
     float fahrenheitTemperature = dividedByFive + 32.0;
     dhtTemp = fahrenheitTemperature;
     dhtHumidity = tempHumidity;
   }
 }
 
+// Attempts a DHT measurement no more often than DHT_SAMPLE_DELAY.
+// Writes the raw Celsius temperature and relative humidity through the
+// supplied pointers and returns true only when a new measurement
+// completed; also latches dhtDataValid on the first success.
 static bool measureDHT(float *temperature, float *humidity) {
   if (temperature == nullptr || humidity == nullptr) return false;
   static unsigned long lastMeasurementTimestamp = millis();
@@ -187,20 +183,20 @@ static bool measureDHT(float *temperature, float *humidity) {
 
 /// initialization routines ///
 
+// Arduino entry point: configures GPIO, timers and all serial ports.
 void setup() {
   initGPIO();
   initTimers();
   initSerial();
 }
 
+// Configures every I/O pin (outputs low, inputs with pull-ups) and
+// flashes the activity LED during the 500 ms startup delay.
 void initGPIO() {
   // activity LED
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, HIGH);
-  // 3.5mm digital I/O ports
-  pinMode(PWR_TRIG_1, OUTPUT);
-  digitalWrite(PWR_TRIG_1, LOW);
-  pinMode(PWR_SENS_1, INPUT_PULLUP);
+  // 3.5mm digital input ports
   pinMode(PWR_IO_3, INPUT_PULLUP);
   pinMode(PWR_IO_4, INPUT_PULLUP);
   // 3.5mm analog in port
@@ -214,25 +210,37 @@ void initGPIO() {
   digitalWrite(LED_BUILTIN, LOW);
 }
 
+// Places the external-serial response timeout timer in a known
+// stopped state.
 void initTimers() {
   maxFwrdRead.reset();
   maxFwrdRead.stop();
 }
 
+// Starts the main hardware serial port and both external software
+// serial ports, selects ExtSerial1 as the default listening port,
+// and clears the message buffers.
 void initSerial() {
   Serial.begin(serialBaudRate);
-  ExtSerial.begin(serialBaudRate);
+  ExtSerial1.begin(serialBaudRate);
+  ExtSerial2.begin(serialBaudRate);
+  // SoftwareSerial receives on one port at a time; default to port #1
+  activeExtSerial = &ExtSerial1;
+  activeExtSerial->listen();
   serialMessageIn[0] = nullTrm;
   serialMessageOut[0] = nullTrm;
 }
 
 /// superloop ///
 
+// Main loop: services the serial state machine and the local inputs.
 void loop() {
   serialProcess();
   readDigitalInputs();
 }
 
+// Reads all local digital inputs (buttons/switches) and polls the
+// temperature/humidity sensor.
 void readDigitalInputs() {
   readPowerButton_1();
   readPowerButton_2();
@@ -240,6 +248,8 @@ void readDigitalInputs() {
   readTempHumidity();
 }
 
+// Debounces toggle switch #1 and, on a press (rising edge), routes a
+// local "toggle lamp" command to register 10 (external port #1).
 void readPowerButton_1() {
   // read pin state
   bool reading = digitalRead(PWR_SWITCH_1);
@@ -260,6 +270,9 @@ void readPowerButton_1() {
   powerButton_1Last = reading;
 }
 
+// Monitors toggle switch #2 for a long press (buttonHoldTime) and, when
+// held, routes a local "toggle macs power" command to register 10;
+// fires once per hold until the switch is released.
 void readPowerButton_2() {
   // read pin state
   bool reading = digitalRead(PWR_SWITCH_2);
@@ -284,6 +297,8 @@ void readPowerButton_2() {
   powerButton_2Last = reading;
 }
 
+// Debounces the button on PWR_IO_4 and, on a press (falling edge),
+// routes a local "toggle retropi" command to register 10.
 void readPowerButton_3() {
   // read pin state
   bool reading = digitalRead(PWR_IO_4);
@@ -306,18 +321,26 @@ void readPowerButton_3() {
 
 //// RS-232 logic ////
 
+// Clears both serial message buffers and the end-of-message flag,
+// preparing the state machine for the next message.
 void flushSerialBuffers() {
   serialMessageOut[0] = nullTrm;
   serialMessageIn[0] = nullTrm;
   serialMsgEnd = 0;
 }
 
+// Leaves external-response forwarding mode and stops/clears the
+// response timeout timer.
 void disableFwrdMode() {
   serialFwrdMode = 0;
   maxFwrdRead.reset();
   maxFwrdRead.stop();
 }
 
+// Serial state machine: reads commands from the main serial port,
+// decodes and routes them, and while in forwarding mode relays the
+// response from the currently selected external port (activeExtSerial)
+// back to the main serial port. Enforces the external response timeout.
 void serialProcess() {
   // read main serial port
   if (serialFwrdMode == 0) {
@@ -335,10 +358,10 @@ void serialProcess() {
   }
   // forwarding mode enabled
   if (serialFwrdMode == 1) {
-    // listen to external serial port when in forwarding mode
+    // listen to the selected external serial port when in forwarding mode
     if (serialMsgEnd == 0) {
-      if (ExtSerial.available()) {
-        readSerialData(ExtSerial.read(), respDelimiter, respDelimiter);
+      if (activeExtSerial->available()) {
+        readSerialData(activeExtSerial->read(), respDelimiter, respDelimiter);
       }
     } else {
       // forward external serial reponse to main serial
@@ -351,11 +374,20 @@ void serialProcess() {
   if (maxFwrdRead.done()) {
     Serial.print("*EXT-232 MAX WAIT EXCEEDED!*\n");
     Serial.flush();
+    // FIX: reset the character reader state as well, otherwise a timeout
+    // that hits mid-response leaves serialReading/serialCurPos dirty and
+    // corrupts parsing of the next main-serial message
+    serialReading = 0;
+    serialCurPos = 0;
     disableFwrdMode();
     flushSerialBuffers();
   }  
 }
 
+// Character-by-character framed reader: waits for startInd, buffers
+// characters into serialMessageIn (overflow-safe), and sets serialMsgEnd
+// when endInd is received. Used for both main-serial commands ('<'/'>')
+// and external-serial responses ('|'/'|').
 void readSerialData(char rc, char startInd ,char endInd) {
   if (serialReading == 1) {
     // end-of-reading
@@ -386,6 +418,10 @@ void readSerialData(char rc, char startInd ,char endInd) {
   }
 }
 
+// Writes a delimiter-framed ("|...|\n") response to the main serial
+// port while blinking the activity LED. InOut selects the source:
+// 1 = relay serialMessageIn (external response), 0 = serialMessageOut
+// (local response).
 void writeSerialData(bool InOut) {
   digitalWrite(LED_BUILTIN, HIGH);
   Serial.print(respDelimiter);
@@ -408,7 +444,9 @@ void writeSerialData(bool InOut) {
   digitalWrite(LED_BUILTIN, LOW);
 }
 
-// decode serial message
+// Validates and decodes a received main-serial message of the form
+// "9,9,RRDDD": verifies the delimiter count and the leading "9" prefix,
+// then hands the position of the command payload to processCmdData().
 void decodeMessage() {
   // count delimiters
   uint8_t _delims = 0;
@@ -481,7 +519,9 @@ void decodeMessage() {
   }
 }
 
-// process register and command data
+// Extracts the fixed-length numeric control code from the message
+// starting at messageStart, splits it into the 2-digit register select
+// and 3-digit command data, then routes the command via routeMessage().
 void processCmdData(uint8_t messageStart) {
   uint8_t _numcnt = 0;
   uint8_t _cmdlen = cmdRegLen + cmdDatLen;
@@ -514,9 +554,12 @@ void processCmdData(uint8_t messageStart) {
   _regarr[_regidx] = nullTrm;
   uint8_t _register = atoi(_regarr); 
   // extract control data
+  // FIX: start at cmdRegLen (the character AFTER the register field).
+  // The old start index (cmdDatLen - 1) only worked because both
+  // constants happen to equal 2; changing either would have broken it.
   char _datarr[cmdDatLen + 1];
   uint8_t _dataidx = 0;
-  for(uint8_t _idx = (cmdDatLen - 1); _idx < _cmdlen; _idx++) {
+  for(uint8_t _idx = cmdRegLen; _idx < _cmdlen; _idx++) {
     _datarr[_dataidx] = _cmdarr[_idx];
     _dataidx++;
   }
@@ -526,6 +569,18 @@ void processCmdData(uint8_t messageStart) {
   routeMessage(0,_register,_ctldata);
 }
 
+// Routes a decoded command by its register select value:
+//   register 1     -> internalFunctions() on this device
+//   registers 2-10 -> forwarded to ExtSerial1
+//   registers 11-20-> forwarded to ExtSerial2
+//   anything else  -> rejected with *INVALID REGISTER!* (main-serial origin)
+// origin: 0 = message from main serial (forward serialMessageIn verbatim),
+//         1 = message from a local device (build "RRDDD" payload with the
+//             "9,9," prefix first). Local-origin messages are blocked while
+//             a serial message is being received/processed/forwarded.
+// Selects and listens on the target external port before transmitting so
+// its response is captured (SoftwareSerial receives on one port at a time),
+// then arms the response timeout and enters forwarding mode.
 void routeMessage(bool origin, uint8_t reg, uint16_t ctldata) {
   // 0 = message from main serial
   // 1 = message from local device
@@ -544,17 +599,26 @@ void routeMessage(bool origin, uint8_t reg, uint16_t ctldata) {
   /// route data by register ///
   if (reg == 1) {
     internalFunctions(ctldata);
-  } else {
+  } else if ((reg >= extSerial1RegMin && reg <= extSerial1RegMax) ||
+             (reg >= extSerial2RegMin && reg <= extSerial2RegMax)) {
+    // select the target external serial port by register range
+    if (reg <= extSerial1RegMax) {
+      activeExtSerial = &ExtSerial1;
+    } else {
+      activeExtSerial = &ExtSerial2;
+    }
+    // receive on the selected port (SoftwareSerial listens to one port at a time)
+    activeExtSerial->listen();
     if (origin == 1) {
       // combine fixed-length register and command data
       serialMessageIn[0] = nullTrm;
       uint8_t totalMsgLength = cmdRegLen + cmdDatLen + 1;
       snprintf(serialMessageIn, totalMsgLength, "%02d%03d", reg, ctldata);
     }
-    /// send message to external serial port ///
-    ExtSerial.print(serialDataStart);
+    /// send message to the selected external serial port ///
+    activeExtSerial->print(serialDataStart);
     if (origin == 1) {
-      ExtSerial.print("9,9,"); // static characters
+      activeExtSerial->print("9,9,"); // static characters
     }
     for(uint8_t _idx = 0; _idx < maxMessage; _idx++) {  
       char _vchr;
@@ -562,14 +626,20 @@ void routeMessage(bool origin, uint8_t reg, uint16_t ctldata) {
       if (_vchr == nullTrm) {
         break;
       }
-      ExtSerial.print(_vchr);
+      activeExtSerial->print(_vchr);
     }
-    ExtSerial.print(serialDataEnd);
-    ExtSerial.print('\n');
+    activeExtSerial->print(serialDataEnd);
+    activeExtSerial->print('\n');
     Serial.flush();
     // listen for external serial reponse
     serialFwrdMode = 1;
     maxFwrdRead.set(maxFwrdWait);
     maxFwrdRead.start();
+  } else {
+    // register outside all defined ranges (0 or 21+)
+    if (origin == 0) {
+      Serial.print("*INVALID REGISTER!*");
+      Serial.flush();
+    }
   }
 }

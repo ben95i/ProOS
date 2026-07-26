@@ -11,7 +11,8 @@
 /// 03/15/2026 v7 ///
 /// 04/06/2026 v8 ///
 /// 05/31/2026 v9 ///
-/////////////////////
+/// 07/26/2026 v10 ///
+//////////////////////
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -28,9 +29,18 @@
 // --- Configuration Constants ---
 const char TARGET_CHAR = '\n';
 const char DEVICE_PATH[] = "/dev/zterm-tty";
-const int MAX_WAIT_TIME_MS = 500; 
-const int MIN_LOCK_TIME_MS = 15;   
-const int MAX_TRANSMIT_ATTEMPTS = 3; 
+const int MAX_WAIT_TIME_MS = 800; // needs to be greater then 500ms
+const int MIN_LOCK_TIME_MS = 15;
+const int MAX_TRANSMIT_ATTEMPTS = 3;
+
+// Response line from the hub that must trigger an automatic
+// re-transmission, exactly as if the response had timed out.
+const char RETRY_TRIGGER_MESSAGE[] = "*EXT-232 MAX WAIT EXCEEDED!*";
+
+// Maximum number of characters of a single response line that are
+// retained for retry-trigger matching (excess is still printed,
+// just not matched against the trigger message).
+#define RESPONSE_LINE_BUFFER_SIZE 256
 
 // --- Data Structures ---
 /**
@@ -46,10 +56,33 @@ typedef struct {
 
 // --- Function Prototypes ---
 void cleanupAndClosePort(SerialContext* context);
+long elapsedMillisecondsSince(const struct timespec* startTime);
 int writeToSerial(int fileDescriptor, const char* payload);
 int readFromSerial(int fileDescriptor);
 int transmitCommandWithRetries(int fileDescriptor, const char* payload, int maximumAttempts);
 
+
+/**
+ * Computes the number of whole milliseconds elapsed on the monotonic
+ * clock since the supplied start time.
+ * * @param startTime Pointer to the reference monotonic timestamp.
+ * @return Elapsed time in milliseconds.
+ */
+long elapsedMillisecondsSince(const struct timespec* startTime) {
+    struct timespec currentTime;
+    int clockResult = clock_gettime(CLOCK_MONOTONIC, &currentTime);
+    (void)clockResult;
+
+    // Break down the elapsed time calculation for clarity
+    time_t secondsDifference = currentTime.tv_sec - startTime->tv_sec;
+    long millisecondsFromSeconds = (long)secondsDifference * 1000;
+
+    long nanosecondsDifference = currentTime.tv_nsec - startTime->tv_nsec;
+    long millisecondsFromNanoseconds = nanosecondsDifference / 1000000;
+
+    long totalElapsedMilliseconds = millisecondsFromSeconds + millisecondsFromNanoseconds;
+    return totalElapsedMilliseconds;
+}
 
 /**
  * Safely releases file locks, manages the minimum execution delay, 
@@ -69,18 +102,7 @@ void cleanupAndClosePort(SerialContext* context) {
         bool isPortCurrentlyLocked = (context->isPortLocked == true);
         if (isPortCurrentlyLocked == true) {
             
-            struct timespec currentTime;
-            int clockResult = clock_gettime(CLOCK_MONOTONIC, &currentTime);
-            (void)clockResult; // explicitly cast to void to silence unused warning
-            
-            // Break down the elapsed time calculation for clarity
-            time_t secondsDifference = currentTime.tv_sec - context->lockAcquiredTime.tv_sec;
-            long millisecondsFromSeconds = secondsDifference * 1000;
-            
-            long nanosecondsDifference = currentTime.tv_nsec - context->lockAcquiredTime.tv_nsec;
-            long millisecondsFromNanoseconds = nanosecondsDifference / 1000000;
-            
-            long totalElapsedMilliseconds = millisecondsFromSeconds + millisecondsFromNanoseconds;
+            long totalElapsedMilliseconds = elapsedMillisecondsSince(&context->lockAcquiredTime);
             
             // Check if we need to wait to satisfy the minimum lock time constraint
             bool isExecutionTooFast = (totalElapsedMilliseconds < MIN_LOCK_TIME_MS);
@@ -108,7 +130,10 @@ void cleanupAndClosePort(SerialContext* context) {
 
 /**
  * Packages the payload string into the protocol format and transmits 
- * it over the provided serial file descriptor.
+ * it over the provided serial file descriptor. Handles partial writes
+ * and transient EAGAIN conditions caused by the non-blocking port by
+ * waiting for the descriptor to become writable and continuing until
+ * every byte has been handed to the kernel.
  * * @param fileDescriptor The active file descriptor for the serial port.
  * @param payload The null-terminated command string to send.
  * @return 0 on successful write, 1 on error.
@@ -148,25 +173,63 @@ int writeToSerial(int fileDescriptor, const char* payload) {
 
     // Subtract the null terminator to only send the actual string content
     size_t bytesToWrite = totalBufferLength - nullTerminatorLength;
-    ssize_t bytesWritten = write(fileDescriptor, rawDataBuffer, bytesToWrite);
-    
+    size_t totalBytesWritten = 0;
+
+    while (totalBytesWritten < bytesToWrite) {
+        const char* remainingDataPointer = rawDataBuffer + totalBytesWritten;
+        size_t remainingByteCount = bytesToWrite - totalBytesWritten;
+
+        ssize_t bytesWritten = write(fileDescriptor, remainingDataPointer, remainingByteCount);
+
+        bool isWriteFailed = (bytesWritten < 0);
+        if (isWriteFailed == true) {
+            bool isInterrupted = (errno == EINTR);
+            bool isWouldBlock = (errno == EAGAIN) || (errno == EWOULDBLOCK);
+
+            if (isInterrupted == true) {
+                // Signal interrupted the call before any bytes moved, retry
+                continue;
+            }
+
+            if (isWouldBlock == true) {
+                // Kernel transmit buffer is full, wait until writable
+                struct pollfd writePollDescriptor;
+                writePollDescriptor.fd = fileDescriptor;
+                writePollDescriptor.events = POLLOUT;
+                writePollDescriptor.revents = 0;
+
+                int pollResult = poll(&writePollDescriptor, 1, MAX_WAIT_TIME_MS);
+                bool isPortWritable = (pollResult > 0);
+                if (isPortWritable == false) {
+                    printf("Serial port not writable, transmit aborted!\n");
+                    free(rawDataBuffer);
+                    return 1;
+                }
+                continue;
+            }
+
+            perror("Error writing to serial port!");
+            free(rawDataBuffer);
+            return 1;
+        }
+
+        totalBytesWritten = totalBytesWritten + (size_t)bytesWritten;
+    }
+
     // Free immediately after transmission buffer is consumed to prevent leaks
     free(rawDataBuffer);
 
-    bool isWriteFailed = (bytesWritten < 0);
-    if (isWriteFailed == true) {
-        perror("Error writing to serial port!");
-        return 1;
-    }
-    
     return 0;
 }
 
 /**
  * Polls the serial file descriptor for incoming data until the TARGET_CHAR 
- * is received or the maximum timeout is exceeded.
+ * is received, the maximum overall timeout is exceeded, or the device
+ * reports an error/disconnect condition. Each received line is compared
+ * against RETRY_TRIGGER_MESSAGE; a match is reported as a timeout so the
+ * caller re-transmits the command automatically.
  * * @param fileDescriptor The active file descriptor for the serial port.
- * @return 0 on success, 1 on unrecoverable error, 2 on timeout.
+ * @return 0 on success, 1 on unrecoverable error, 2 on timeout or retry-trigger.
  */
 int readFromSerial(int fileDescriptor) {
     printf("Waiting for response...\n");
@@ -175,14 +238,44 @@ int readFromSerial(int fileDescriptor) {
     fileDescriptorArray[0].fd = fileDescriptor;
     fileDescriptorArray[0].events = POLLIN; 
 
+    // Overall deadline: the timeout no longer resets on every received
+    // byte, so a stream of data without a terminator cannot hang forever
+    struct timespec readStartTime;
+    int clockResult = clock_gettime(CLOCK_MONOTONIC, &readStartTime);
+    (void)clockResult;
+
+    // Accumulates the current response line for retry-trigger matching
+    char responseLineBuffer[RESPONSE_LINE_BUFFER_SIZE];
+    size_t responseLineLength = 0;
+    responseLineBuffer[0] = '\0';
+
     char readBufferCharacter;
     
     while (true) {
-        int pollResult = poll(fileDescriptorArray, 1, MAX_WAIT_TIME_MS);
+        long totalElapsedMilliseconds = elapsedMillisecondsSince(&readStartTime);
+        long remainingTimeoutMilliseconds = MAX_WAIT_TIME_MS - totalElapsedMilliseconds;
+
+        bool isDeadlineExceeded = (remainingTimeoutMilliseconds <= 0);
+        if (isDeadlineExceeded == true) {
+            printf("\nMax response wait time exceeded (%d ms)\n", MAX_WAIT_TIME_MS);
+            return 2; // Timeout code
+        }
+
+        fileDescriptorArray[0].revents = 0;
+        int pollResult = poll(fileDescriptorArray, 1, (int)remainingTimeoutMilliseconds);
 
         bool isPollSuccessful = (pollResult > 0);
         if (isPollSuccessful == true) {
             
+            // A hangup or error event means the device vanished or faulted;
+            // without this check the loop would spin at full CPU forever
+            int errorEventMask = POLLERR | POLLHUP | POLLNVAL;
+            bool isErrorEvent = ((fileDescriptorArray[0].revents & errorEventMask) != 0);
+            if (isErrorEvent == true) {
+                printf("\nSerial device disconnected or faulted!\n");
+                return 1; // Error
+            }
+
             // Check if the specific event returned indicates data is ready to read
             bool isDataReadyEvent = ((fileDescriptorArray[0].revents & POLLIN) != 0);
             
@@ -195,9 +288,29 @@ int readFromSerial(int fileDescriptor) {
                     
                     bool isCharacterTarget = (readBufferCharacter == TARGET_CHAR);
                     if (isCharacterTarget == true) {
+
+                        // Terminate the accumulated line and test the retry trigger
+                        responseLineBuffer[responseLineLength] = '\0';
+                        char* triggerMatchPointer = strstr(responseLineBuffer, RETRY_TRIGGER_MESSAGE);
+                        bool isRetryTriggerReceived = (triggerMatchPointer != NULL);
+
+                        if (isRetryTriggerReceived == true) {
+                            printf("\nExternal device wait exceeded, retrying...\n");
+                            return 2; // Treat exactly like a timeout so caller retries
+                        }
+
                         printf("\n(OK)\n");
                         return 0; // Success
                     } else {
+
+                        // Accumulate the character for retry-trigger matching
+                        // (leave room for the null terminator)
+                        bool isLineBufferSpaceAvailable = (responseLineLength < (RESPONSE_LINE_BUFFER_SIZE - 1));
+                        if (isLineBufferSpaceAvailable == true) {
+                            responseLineBuffer[responseLineLength] = readBufferCharacter;
+                            responseLineLength = responseLineLength + 1;
+                        }
+
                         printf("%c", readBufferCharacter);
                         int flushResult = fflush(stdout); 
                         (void)flushResult; 
@@ -213,6 +326,10 @@ int readFromSerial(int fileDescriptor) {
                             perror("Failed to read serial port!");
                             return 1; // Error
                         }
+                    } else {
+                        // read() returned 0: end-of-file, device is gone
+                        printf("\nSerial device closed the connection!\n");
+                        return 1; // Error
                     }
                 }
             }
@@ -224,6 +341,11 @@ int readFromSerial(int fileDescriptor) {
                 printf("\nMax response wait time exceeded (%d ms)\n", MAX_WAIT_TIME_MS);
                 return 2; // Timeout code
             } else {
+                bool isPollInterrupted = (errno == EINTR);
+                if (isPollInterrupted == true) {
+                    // Signal interrupted the wait, loop and recompute remaining time
+                    continue;
+                }
                 perror("Serial polling failed!");
                 return 1; // Error code
             }
@@ -233,7 +355,8 @@ int readFromSerial(int fileDescriptor) {
 
 /**
  * Manages the high-level transmission workflow. Attempts to write and read 
- * from the serial device, automatically re-transmitting if a timeout occurs.
+ * from the serial device, automatically re-transmitting if a timeout occurs
+ * or if the hub reports the external-device wait-exceeded message.
  * * @param fileDescriptor The active file descriptor for the serial port.
  * @param payload The command string to send.
  * @param maximumAttempts The maximum number of transmission attempts allowed.
@@ -279,7 +402,7 @@ int transmitCommandWithRetries(int fileDescriptor, const char* payload, int maxi
             
             bool isReadTimeout = (readStatus == 2);
             if (isReadTimeout == true) {
-                 // Continue loop to retry
+                 // Continue loop to retry (timeout or retry-trigger message)
                  continue;
             } else {
                  // Fatal read error
@@ -307,7 +430,7 @@ int main(int argumentCount, char *argumentVector[]) {
     bool isArgumentCountValid = (argumentCount == requiredArgumentCount);
     
     if (isArgumentCountValid == false) {
-        printf("Z-Terminal Xmit v9\n");
+        printf("Z-Terminal Xmit v10\n");
         printf("Usage: %s <message>\n", argumentVector[0]);
         return 1; 
     }
@@ -399,6 +522,16 @@ int main(int argumentCount, char *argumentVector[]) {
     // Set to raw mode (disable echo, etc.)
     int rawModeFlags = ICANON | ECHO | ECHOE | ISIG;
     terminalSettings.c_lflag = terminalSettings.c_lflag & (~rawModeFlags); 
+
+    // Disable input translation so the kernel cannot rewrite received
+    // bytes: no CR<->NL mapping (would fake the '\n' terminator) and
+    // no XON/XOFF software flow control (would silently eat 0x11/0x13)
+    int inputTranslationFlags = ICRNL | INLCR | IGNCR | IXON | IXOFF | IXANY;
+    terminalSettings.c_iflag = terminalSettings.c_iflag & (~inputTranslationFlags);
+
+    // Disable output post-processing so the transmitted '\n' is never
+    // expanded to "\r\n" by the tty layer
+    terminalSettings.c_oflag = terminalSettings.c_oflag & (~OPOST);
 
     int hardwareActionFlag = TCSANOW;
     int setAttributesResult = tcsetattr(applicationContext.fileDescriptor, hardwareActionFlag, &terminalSettings);

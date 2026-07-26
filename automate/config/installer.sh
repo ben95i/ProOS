@@ -52,7 +52,7 @@ if [ ! -e "/usr/bin/arduino-cli" ]; then
 fi
 
 ## Arduino Firmware
-FWNME="AutomateHub_1"
+FWNME="BedroomHub"
 rm -rf /opt/$FWNME
 mkdir -p /opt/$FWNME
 cp -r $TMPDIR/$FWNME/* /opt/$FWNME/
@@ -163,8 +163,11 @@ touch /root/.hushlogin
 chmod 644 /root/.hushlogin
 chown root:root /root/.hushlogin
 
-## Clean-up
+## Reload Services
 systemctl daemon-reload
+/etc/rc.local
+
+## Clean-up
 rm -rf $TMPDIR
 rm -rf /opt/system
 apt-get autoremove -y

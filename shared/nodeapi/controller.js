@@ -192,9 +192,9 @@ async function brXmit(cmd) {
         case "retropion":  return await callFIFO("local", "10006");
         case "retropioff": return await callFIFO("local", "10005");
         case "roomth":     return await callFIFO("local", "01005");
-        case "brtv":       return await callFIFO("local", "01003", "0");
-        case "brtvoff":    return await callFIFO("local", "01002");
-        case "brtvon":     return await callFIFO("local", "01001");
+        case "brtv":       return await callFIFO("local", "17003", "0");
+        case "brtvoff":    return await callFIFO("local", "17002");
+        case "brtvon":     return await callFIFO("local", "17001");
         case "brpc":       return await localPing(LOCAL_IP.brpc);
         case "brpcoff": 
             if (await localPing(LOCAL_IP.brpc) === "1") return await callApi(LOCAL_IP.brpc, "sleep");

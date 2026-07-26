@@ -2,7 +2,7 @@
  * Ben Provenzano III
  * -----------------
  * v1.0 - 07/20/2025
- * Automate Hub #2 (Living Room)
+ * Infrared Remote Hub
  * -----------------
  */
 
