@@ -181,7 +181,15 @@ function handleClicks(event) {
     return;
   }
   // don't hide menus when clicking these elements
-  const NO_HIDE_ELEMENTS = '.button, .topnav, .bookmarked__item, .roomstatus-svgs, .chkbox, .toggle-switch';
+  const NO_HIDE_ELEMENTS = [
+      '.button',
+      '.topnav',
+      '.bookmarked__item',
+      '.bookmark__search_icon',
+      '.roomstatus-svgs',
+      '.chkbox',
+      '.toggle-switch',
+    ].join(', ');
   if (event.target.closest(NO_HIDE_ELEMENTS)) return;
   removeDropdowns();
 }
@@ -625,8 +633,8 @@ function bedroomGridTemplate() {
       <a id="btn-bed-adjprompt"> Adjust<i class="fad fa-sort-circle-up"></i></a>
       <a id="bed_leds-colorprompt"> Picker<i class="fad fa-palette"></i></a>
       <a id="bed_leds-rainbow"> Rainbow</a>
-      <a id="bed_leds-colorcycle"> Colors</a>
-      <a id="bed_leds-pause"> Pause<i class="fad fa-pause"></i></a>
+      <a id="bed_leds-colorcycle"> Cycle</a>
+      <a id="bed_leds-sweep"> Sweep</a>
       <a id="bed_leds-stop"> Stop<i class="fad fa-stop"></i></a>
     </div>
   </div>
@@ -707,7 +715,7 @@ registerListeners({
   'bed_leds-colorprompt': () => openColorPrompt('brxmit', 'bed_leds_hex_set'),
   'bed_leds-rainbow':     () => sendCmd('main', 'brxmit', 'bed_leds_rb'),
   'bed_leds-colorcycle':  () => sendCmd('main', 'brxmit', 'bed_leds_cs'),
-  'bed_leds-pause':       () => sendCmd('main', 'brxmit', 'bed_leds_pause'),
+  'bed_leds-sweep':       () => sendCmd('main', 'brxmit', 'bed_leds_sw'),
   'bed_leds-stop':        () => sendCmd('main', 'brxmit', 'bed_leds_off'),
   'btn-dyn-relaxmenu':    () => showDynMenu('relaxmenu'),
   'btn-cmd-stop-br':      () => sendCmd('main', 'stop-br', ''),
