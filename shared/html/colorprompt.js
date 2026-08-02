@@ -87,14 +87,14 @@ export default class ColorPrompt {
     `;
 
     // Cache DOM references
-    this.popupContent = this.anchorElement.querySelector('.color-popup-content');
-    this.colorMapElement = this.anchorElement.querySelector('#color-map');
+    this.popupContent              = this.anchorElement.querySelector('.color-popup-content');
+    this.colorMapElement           = this.anchorElement.querySelector('#color-map');
     this.colorMapBackgroundElement = this.anchorElement.querySelector('#color-map-bg');
-    this.colorPointerElement = this.anchorElement.querySelector('#color-pointer');
-    this.hueSliderElement = this.anchorElement.querySelector('#slider-hue');
-    this.presetGridElement = this.anchorElement.querySelector('#preset-color-grid');
-    this.hexInputElement = this.anchorElement.querySelector('#hex-color');
-    this.closeButtonElement = this.anchorElement.querySelector('#btn-color-close');
+    this.colorPointerElement       = this.anchorElement.querySelector('#color-pointer');
+    this.hueSliderElement          = this.anchorElement.querySelector('#slider-hue');
+    this.presetGridElement         = this.anchorElement.querySelector('#preset-color-grid');
+    this.hexInputElement           = this.anchorElement.querySelector('#hex-color');
+    this.closeButtonElement        = this.anchorElement.querySelector('#btn-color-close');
 
     this.buildPresetGrid();
     this.bindEvents();

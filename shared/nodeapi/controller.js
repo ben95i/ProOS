@@ -80,6 +80,18 @@ function extractResponse(str, delimiter = '|') {
         : outstr.substring(first + 1);
 }
 
+function padOctet(value) {
+  return String(value).padStart(3, "0");
+}
+
+function hexToRgb(hexString) {
+  const cleanHex = hexString.replace(/^#/, '');
+  const redDecimal = padOctet(parseInt(cleanHex.substring(0, 2), 16));
+  const greenDecimal = padOctet(parseInt(cleanHex.substring(2, 4), 16));
+  const blueDecimal = padOctet(parseInt(cleanHex.substring(4, 6), 16));
+  return { red: redDecimal, green: greenDecimal, blue: blueDecimal };
+}
+
 async function localPing(ip) {
     try {
         await execFileAsync('/usr/bin/ping', ['-4', '-A', '-c', '1', '-i', MAX_PING_WAIT, '-W', MAX_PING_WAIT, ip], { 
@@ -180,30 +192,70 @@ async function callFIFO(host, cmd, out_pos = '') {
     return enqueueTask(executeTask);
 }
 
-async function brXmit(cmd) {
-    switch (cmd) {
-        case "brlamp1":    return await callFIFO("local", "10007", "0");
-        case "brlamp1on":  return await callFIFO("local", "10002");
-        case "brlamp1off": return await callFIFO("local", "10001");
-        case "brmacs":     return await callFIFO("local", "10007", "1");
-        case "brmacson":   return await callFIFO("local", "10004");
-        case "brmacsoff":  return await callFIFO("local", "10003");
-        case "retropi":    return await callFIFO("local", "10007", "2");
-        case "retropion":  return await callFIFO("local", "10006");
-        case "retropioff": return await callFIFO("local", "10005");
-        case "roomth":     return await callFIFO("local", "01005");
-        case "brtv":       return await callFIFO("local", "17003", "0");
-        case "brtvoff":    return await callFIFO("local", "17002");
-        case "brtvon":     return await callFIFO("local", "17001");
-        case "brpc":       return await localPing(LOCAL_IP.brpc);
+function parseInputData(input, marker = '_set') {
+  const idx = input.indexOf(marker);
+  if (idx !== -1) {
+    const var1 = input.slice(0, idx + marker.length);       // includes marker
+    const var2 = input.slice(idx + marker.length + 1);      // skip marker + "_"
+    return { var1, var2 };
+  }
+  return { var1: input, var2: '' };
+}
+
+async function brXmit(arg1, arg2 = '') {
+    switch (arg1) {
+        case "bed_adj_up":       return await callFIFO("local", "11041");
+        case "bed_adj_dwn":      return await callFIFO("local", "11042");
+        case "bed_adj_stop":     return await callFIFO("local", "11043");
+        case "bed_adj_sts":      return await callFIFO("local", "11044");
+
+        case "bed_leds":         return await callFIFO("local", "11009");
+        case "bed_leds_sts":     return await callFIFO("local", "11008");
+        case "bed_leds_rb":      return await callFIFO("local", "11004");
+        case "bed_leds_cs":      return await callFIFO("local", "11005");
+        case "bed_leds_off":     return await callFIFO("local", "11000");
+        case "bed_leds_pause":   return await callFIFO("local", "11006");
+        case "bed_leds_set":     return await callFIFO("local", `16${padOctet(arg2)}`);
+        case "bed_leds_hex_set": {
+            const rgb = hexToRgb(arg2);
+            await callFIFO("local", `12${rgb.red}`);
+            await callFIFO("local", `13${rgb.green}`);
+            await callFIFO("local", `14${rgb.blue}`);
+            return await callFIFO("local", "11002");
+        }
+    
+        case "brlamp1":        return await callFIFO("local", "10007", "0");
+        case "brlamp1on":      return await callFIFO("local", "10002");
+        case "brlamp1off":     return await callFIFO("local", "10001");
+
+        case "brmacs":         return await callFIFO("local", "10007", "1");
+        case "brmacson":       return await callFIFO("local", "10004");
+        case "brmacsoff":      return await callFIFO("local", "10003");
+
+        case "retropi":        return await callFIFO("local", "10007", "2");
+        case "retropion":      return await callFIFO("local", "10006");
+        case "retropioff":     return await callFIFO("local", "10005");
+
+        case "roomth":         return await callFIFO("local", "01005");
+
+        case "brtv":           return await callFIFO("local", "11033", "0");
+        case "brtvoff":        return await callFIFO("local", "11032");
+        case "brtvon":         return await callFIFO("local", "11031");
+
+        case "brpc":           return await localPing(LOCAL_IP.brpc);
         case "brpcoff": 
-            if (await localPing(LOCAL_IP.brpc) === "1") return await callApi(LOCAL_IP.brpc, "sleep");
+            if (await localPing(LOCAL_IP.brpc) === "1") {
+              return await callApi(LOCAL_IP.brpc, "sleep");
+            }
             return `${LOCAL_IP.brpc} is already offline`;
         case "brpcon": 
-            if (await localPing(LOCAL_IP.brpc) === "1") return `${LOCAL_IP.brpc} is already online`;
+            if (await localPing(LOCAL_IP.brpc) === "1") {
+              return `${LOCAL_IP.brpc} is already online`;
+            }
             return await execFileAsync('/usr/bin/wakeonlan', [BRPC_MAC], { 
                 timeout: PROCESS_TIMEOUT 
             }).then(() => "OK").catch(e => processProgramError(e));
+
         default: return "brXmit: invalid command";
     }
 }
@@ -211,23 +263,30 @@ async function brXmit(cmd) {
 async function windowLamp1Status() { 
     return await callPico(LOCAL_IP.picolamp1, "4", "0"); 
 }
+async function windowLamp1Off() { 
+    return await callPico(LOCAL_IP.picolamp1, "1", "2");
+}
+async function windowLamp1On() { 
+    return await callPico(LOCAL_IP.picolamp1, "1", "3");
+}
 
 async function lrXmit(arg1, arg2 = '') {
     switch (arg1) {
         case "wl1_dual":      return await windowLamp1Status();
-        case "wl1_dual_set":
-        case "wl1_led2set":   return await callPico(LOCAL_IP.picolamp1, "3", arg2);     
-        case "wl1_dualoff":
-        case "wl1_led1off":   return await callPico(LOCAL_IP.picolamp1, "1", "2");
-        case "wl1_dualon":
-        case "wl1_led1on":    return await callPico(LOCAL_IP.picolamp1, "1", "3");
+        case "wl1_dual_set":  return await callPico(LOCAL_IP.picolamp1, "3", arg2);     
+        case "wl1_dualoff":   return await windowLamp1Off();
+        case "wl1_dualon":    return await windowLamp1On();
+        case "wl1_led1off":   return await windowLamp1Off();
+        case "wl1_led1on":    return await windowLamp1On();
         case "wl1_led1":      return await callPico(LOCAL_IP.picolamp1, "1", "0");
         case "wl1_led2off":   return await callPico(LOCAL_IP.picolamp1, "2", "0");
         case "wl1_led2on":    return await callPico(LOCAL_IP.picolamp1, "2", "1");
         case "wl1_led2":      return await callPico(LOCAL_IP.picolamp1, "2", "2");
+
         case "wkststate":     return await localPing(LOCAL_IP.desk);
-        case "wkststateoff":
+        case "wkststateoff":  return await callApi(LOCAL_IP.lrxmit, "pc_power");
         case "wkststateon":   return await callApi(LOCAL_IP.lrxmit, "pc_power");
+
         case "hifistate":     return await callFIFO("lrxmit", "15019");
         case "hifistateoff":  return await callFIFO("lrxmit", "15018");
         case "hifistateon":   return await callFIFO("lrxmit", "15017");
@@ -263,19 +322,22 @@ async function executeMain(baseWWW, firstArg, secondArg) {
             Promise.all([
                 lrXmit("wl1_led1on"), 
                 lrXmit("wl1_led2on"), 
-                brXmit("brlamp1on")
+                brXmit("brlamp1on"),
+                brXmit("bed_leds_rb"),
             ]).catch(() => {});
             return "OK";
         case "lightsoff":
             Promise.all([
                 lrXmit("wl1_led1off"), 
                 lrXmit("wl1_led2off"), 
-                brXmit("brlamp1off")
+                brXmit("brlamp1off"),
+                brXmit("bed_leds_off"),
             ]).catch(() => {});
             OPCLEDparser(baseWWW, "stop");
             return "OK";
         case "lrxmit": 
-            return await lrXmit(secondArg);
+            const lrcmds = parseInputData(secondArg);
+            return await lrXmit(lrcmds.var1, lrcmds.var2);
         case "lrstatus": {
             const lrRoom = new RoomManager();
             const [wlRaw, wkst, hifi] = await Promise.all([
@@ -291,9 +353,6 @@ async function executeMain(baseWWW, firstArg, secondArg) {
             lrRoom.updateRoomState();
             return lrRoom.getData();
         }
-        case "wl1_dual":
-            lrXmit(`${firstArg}_set`, secondArg);
-            return "OK";
         case "lrlightson":
             lrXmit("wl1_led1on");
             return "OK";
@@ -319,11 +378,13 @@ async function executeMain(baseWWW, firstArg, secondArg) {
             OPCLEDparser(baseWWW, "stop");
             return "OK";
         case "brxmit":
-            return await brXmit(secondArg);
+            const brcmds = parseInputData(secondArg);
+            return await brXmit(brcmds.var1, brcmds.var2);
         case "brstatus": {
             const brRoom = new RoomManager();
-            const [lamp, retro, macs, tv, pc, amp] = await Promise.all([
+            const [lamp, bedleds, retro, macs, tv, pc, amp] = await Promise.all([
                 brXmit("brlamp1"),
+                brXmit("bed_leds_sts"),
                 brXmit("retropi"),
                 brXmit("brmacs"),
                 brXmit("brtv"),
@@ -331,6 +392,7 @@ async function executeMain(baseWWW, firstArg, secondArg) {
                 callApi(LOCAL_IP.brpi, "ampstate")
             ]);
             brRoom.addDevice('Desk Lamp', lamp);
+            brRoom.addDevice('Bed Lights', bedleds);
             brRoom.addDevice('RetroPi TV', retro);
             brRoom.addDevice('Vintage Macs', macs);
             brRoom.addDevice('Bedroom TV', tv);
@@ -341,6 +403,7 @@ async function executeMain(baseWWW, firstArg, secondArg) {
         }
         case "bron":
             Promise.all([
+                brXmit("bed_leds_rb"),
                 brXmit("brlamp1on"), 
                 brXmit("retropion"),
                 brXmit("brmacson"), 
@@ -351,6 +414,7 @@ async function executeMain(baseWWW, firstArg, secondArg) {
             return "OK";
         case "broff":
             Promise.all([
+                brXmit("bed_leds_off"),
                 brXmit("brlamp1off"), 
                 brXmit("retropioff"), 
                 brXmit("brmacsoff"), 

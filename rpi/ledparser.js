@@ -121,7 +121,20 @@ async function initializeSystemOnStartup() {
     }
 }
 
-async function OPCLEDparser(baseWWW, effectCommand = "", secondaryArgument = "") {
+function parseInputData(input, marker = 'fc_set') {
+  const idx = input.indexOf(marker);
+  if (idx !== -1) {
+    const var1 = input.slice(0, idx + marker.length);       // includes marker
+    const var2 = input.slice(idx + marker.length + 1);      // skip marker + "_"
+    return { var1, var2 };
+  }
+  return { var1: input, var2: '' };
+}
+
+async function OPCLEDparser(baseWWW, CommandIn = "", secondaryArgument = "") {
+    const parsedOut = parseInputData(CommandIn);
+    const effectCommand = parsedOut.var1;
+
     if (!isSystemInitialized) {
         if (!systemStartupPromise) systemStartupPromise = initializeSystemOnStartup();
         await systemStartupPromise;
@@ -141,9 +154,10 @@ async function OPCLEDparser(baseWWW, effectCommand = "", secondaryArgument = "")
         return "stopped";
     }
 
-    if (effectCommand === "fc" || effectCommand === "fc_leds") {
-        let proxyRequestUrl = (effectCommand === "fc") 
-            ? `${LED_PROXY_URL}/set?b=${encodeURIComponent(secondaryArgument)}`
+    if (effectCommand === "fc_set" || effectCommand === "fc_leds") {
+        const brightnessLevel = parsedOut.var2;
+        let proxyRequestUrl = (effectCommand === "fc_set") 
+            ? `${LED_PROXY_URL}/set?b=${brightnessLevel}`
             : `${LED_PROXY_URL}/brightness`;
         try {
             const proxyResponse = await fetch(proxyRequestUrl, { signal: AbortSignal.timeout(1000) });

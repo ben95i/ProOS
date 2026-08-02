@@ -1,13 +1,11 @@
 [Unit]
 Description=Auto hotspot if Wi-Fi down
-Conflicts=shutdown.target
-Before=shutdown.target
+After=NetworkManager.service
+Wants=NetworkManager.service
 
 [Service]
 Type=oneshot
-LogLevelMax=notice
-StandardOutput=append:/tmp/netstat.txt
-TimeoutStartSec=300
-ExecStartPre=/bin/sleep 60
 ExecStart=-/etc/netmode.sh netdetect
-RemainAfterExit=yes
+TimeoutStartSec=300
+StandardOutput=append:/tmp/netstat.txt
+LogLevelMax=notice

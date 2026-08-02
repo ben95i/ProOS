@@ -15,17 +15,17 @@ import { SSIDpwd } from './wifi.js';
 const ROOM_CONFIGS = {
   'lr':   { 
     name: 'Living Room',
-    gridId: 'lr-grid',
     icon: '',
     voltarget: 'lrxmit',     
-    volmax: 100
+    volmax: 100,
+    template: livingRoomGridTemplate
   },
   'br': { 
     name: 'Bedroom',     
-    gridId: 'bedroom-grid',
     icon: 'fad fa-bed',  
     voltarget: 'brpi', 
-    volmax: 192
+    volmax: 192,
+    template: bedroomGridTemplate
   }
 };
 const SUBWOOFER_CLASS = 
@@ -35,6 +35,8 @@ const VOLUME_ACTIONS = {
   'volmutebtn': 'mute',
   'volupbtn': 'up'
 };
+
+const DELEGATED_LISTENERS = {};
 
 window.App = {
   MAIN_SITE: "Automate",
@@ -54,186 +56,92 @@ window.App = {
   volPopupTimer: null,
   sysModel: null,
   activityTimeout: null,
+  listenersReady: false,
   ledScrollData: [
     '00FF00', '8x8', '12.0'
   ]
 };
-
-function setupEventListeners() {
-  const listeners = {
-    // Top Nav
-    'btn-dyn-mainmenu': () => showDynMenu('mainmenu'),
-    'btn-menu-pimainmenu': () => showMenu('pi-mainmenu'),
-    'btn-dyn-thememenu': () => showDynMenu('thememenu'),
-    'btn-show-bookmarks': () => showBookmarks(),
-    'btn-edit-bookmark': () => editBookmark(),
-    'btn-add-bookmark': () => addBookmark(),
-    'nav_stats_menu': () => showStatusMenu(),
-    // Menus
-    'btn-about-main': () => aboutPrompt(),
-    'btn-about-pi': () => aboutPrompt(),
-    'btn-log-pi': () => openLogWindow(),
-    'btn-home-pi': () => GoToHomePage(),
-    // Main Grid
-    'btn-dyn-ledcolormenu': () => showDynMenu('ledcolormenu'),
-    'btn-color-prompt': () => openColorPrompt(),
-    'btn-dyn-ledeffectmenu': () => showDynMenu('ledeffectmenu'),
-    'btn-power-fc_leds': () => showPowerMenu('fc_leds'),
-    'btn-cmd-leds-shuffle': () => sendCmd('leds', 'shuffle', ''),
-    'btn-cmd-leds-stop': () => sendCmd('leds', 'stop', ''),
-    'btn-cmd-leds-pause': () => sendCmd('leds', 'pause', ''),
-    'btn-show-temphumid': () => showTempHumidity(),
-    'btn-menu-lightmenu': () => showMenu('lightmenu'),
-    'btn-cmd-lightson': () => sendCmd('main', 'lightson', ''),
-    'btn-cmd-lightsoff': () => sendCmd('main', 'lightsoff', ''),
-    'btn-menu-allmenu': () => showMenu('allmenu'),
-    'btn-room-on': () => roomOnOff('on'),
-    'btn-room-off': () => roomOnOff('off'),
-    'btn-open-cam':() => openCamWindow(),
-    'btn-open-log-svr': () => openLogWindow(),
-    'main-room-btn': () => openRoomDropdown(),
-    // Living Room Grid
-    'btn-menu-lr-backlight': () => showMenu('lr-backlight'),
-    'btn-power-wkststate': () => showPowerMenu('lrxmit', 'wkststate'),
-    'btn-power-wl1_dual': () => showPowerMenu('lrxmit', 'wl1_dual'),
-    'btn-power-hifistate': () => showPowerMenu('lrxmit', 'hifistate'),
-    'btn-vol-upc': () => sendVol('upc'),
-    'btn-vol-dwnc': () => sendVol('dwnc'),
-    'btn-vol-display': () => sendVol('display'),
-    'btn-show-hifi-amp': () => showHiFiAmpInput(),
-    'btn-show-hifi-more': () => showHiFiMoreMenu(),
-    // Bedroom Grid
-    'btn-menu-br-backlight': () => showMenu('br-backlight'),
-    'btn-dyn-relaxmenu': () => showDynMenu('relaxmenu'),
-    'btn-cmd-stop-br': () => sendCmd('main', 'stop-br', ''),
-    'btn-power-brlamp1': () => showPowerMenu('brxmit', 'brlamp1'),
-    'btn-power-brtv': () => showPowerMenu('brxmit', 'brtv'),
-    'btn-power-ampstate': () => showPowerMenu('brpi', 'ampstate'),
-    'btn-power-brpc': () => showPowerMenu('brxmit', 'brpc'),
-    'btn-power-brmacs': () => showPowerMenu('brxmit', 'brmacs'),
-    'btn-show-br-amp': () => showBedroomAmpInput(),
-    'btn-power-retropi': () => showPowerMenu('brxmit', 'retropi'),
-    // Server Options
-    'btn-menu-atalk': () => showMenu('atalk-menu'),
-    'btn-svr-startatalk': () => serverAction('startatalk'),
-    'btn-svr-stopatalk': () => serverAction('stopatalk'),
-    'btn-menu-legacy': () => showMenu('legacy-menu'),
-    'btn-svr-startlegacy': () => serverAction('startlegacy'),
-    'btn-svr-stoplegacy': () => serverAction('stoplegacy'),
-    'btn-menu-xana': () => showMenu('xana-menu'),
-    'btn-svr-startxana': () => serverAction('startxana'),
-    'btn-svr-stopxana': () => serverAction('stopxana'),
-    'btn-svr-restorexana': () => serverAction('restorexana'),
-    'btn-menu-unifi': () => showMenu('unifi-menu'),
-    'btn-ext-unifi': () => GoToExtPage('unifi:11443/network/ff7gqlig/dashboard'),
-    'btn-svr-startunifi': () => serverAction('startunifi'),
-    'btn-svr-stopunifi': () => serverAction('stopunifi'),
-    'btn-menu-svr': () => showMenu('svr-menu'),
-    'btn-ext-pve': () => GoToExtPage('pve:8006'),
-    'btn-svr-syslog': () => serverAction('syslog'),
-    'btn-open-backup': () => openBackupOptions(),
-    'btn-open-regions': () => openRegionsOptions(),
-    'btn-menu-netwrk': () => showMenu('netwrk-menu'),
-    'btn-wifi-prompt': () => wifiPrompt(),
-    'btn-ext-edgeswitch': () => GoToExtPage('edgeswitch.home'),
-    'btn-svr-netscan': () => serverAction('netscan'),
-    'btn-close-svr-opt1': () => closeServerOptions(),
-    'btn-svr-clearlog': () => serverAction('clearlog'),
-    'btn-menu-router': () => showMenu('router-menu'),
-    'btn-ext-router': () => GoToExtPage('router.home'),
-    'btn-svr-rebootrouter': () => serverAction('rebootrouter'),
-    // Backup
-    'btn-svr-last_backup_dates': () => serverAction('last_backup_dates'),
-    'btn-svr-backupchk': () => serverAction('backupchk'),
-    'btn-svr-pve_vmsbkp': () => serverAction('pve_vmsbkp'),
-    'btn-pwd-unlock': () => getPassword('pwd'),
-    'btn-svr-backupstd': () => serverAction('backupstd'),
-    'btn-svr-detach_bkps': () => serverAction('detach_bkps'),
-    'btn-close-svr-opt2': () => closeServerOptions(),
-    'btn-svr-pve_listsnaps': () => serverAction('pve_listsnaps'),
-    'btn-open-svr-opt1': () => openServerOptions(),
-    // Archive
-    'btn-menu-archive': () => showMenu('archive-menu'),
-    'btn-pwd-fusearch': () => getPassword('fusearch'),
-    'btn-pwd-fusearch_unmnt': () => serverAction('unmnt_arch_region'),
-    'btn-menu-external': () => showMenu('external-menu'),
-    'btn-svr-mnt_ext_region': () => serverAction('mnt_ext_region'),
-    'btn-svr-unmnt_ext_region': () => serverAction('unmnt_ext_region'),
-    'btn-menu-snapshots': () => showMenu('snapshots-menu'),
-    'btn-svr-mnt_snap_region': () => serverAction('mnt_snap_region'),
-    'btn-svr-unmnt_snap_region': () => serverAction('unmnt_snap_region'),
-    'btn-menu-ramdisk': () => showMenu('ramdisk-menu'),
-    'btn-svr-mnt_ram_region': () => serverAction('mnt_ram_region'),
-    'btn-svr-unmnt_ram_region': () => serverAction('unmnt_ram_region'),
-    'btn-svr-unmnt_all': () => serverAction('unmnt_all'),
-    'btn-close-svr-opt3': () => closeServerOptions(),
-    'btn-open-svr-opt2': () => openServerOptions(),
-    // Pi Grid
-    'btn-menu-piwifi': () => showMenu('piwifi-menu'),
-    'btn-show-piwifiprompt': () => showPiWiFiPrompt(),
-    'btn-svr-client': () => serverAction('client'),
-    'btn-svr-apd': () => serverAction('apd'),
-    'btn-svr-wifiscan': () => serverAction('wifiscan'),
-    'btn-svr-showwpa': () => serverAction('showwpa'),
-    'btn-svr-temp': () => serverAction('temp'),
-    'btn-close-svr-opt4': () => closeServerOptions(),
-    'btn-svr-clearlog': () => serverAction('clearlog'),
-    'btn-svr-resetbt': () => serverAction('resetbt'),
-    // Text Scroll
-    'btn-menu-textscrollcolor': () => showMenu('textscrollcolor-menu'),
-    'btn-tscolor-1': () => setTextScrollColor('00FF00'),
-    'btn-tscolor-2': () => setTextScrollColor('FF0000'),
-    'btn-tscolor-3': () => setTextScrollColor('0000FF'),
-    'btn-tscolor-4': () => setTextScrollColor('FFA500'),
-    'btn-tscolor-5': () => setTextScrollColor('A020F0'),
-    'btn-tscolor-6': () => setTextScrollColor('FFCC00'),
-    'btn-tscolor-7': () => setTextScrollColor('FFFFFF'),
-    'btn-menu-textscrollfont': () => showMenu('textscrollfont-menu'),
-    'btn-tsfont-8x8': () => setTextScrollFont('8x8'),
-    'btn-tsfont-5x7': () => setTextScrollFont('5x7'),
-    'btn-tsfont-3x5': () => setTextScrollFont('3x5'),
-    'btn-menu-textscrollspeed': () => showMenu('textscrollspeed-menu'),
-    'btn-tsspeed-slowest': () => setTextScrollSpeed('3.0'),
-    'btn-tsspeed-slow': () => setTextScrollSpeed('9.0'),
-    'btn-tsspeed-normal': () => setTextScrollSpeed('12.0'),
-    'btn-tsspeed-fast': () => setTextScrollSpeed('15.0'),
-    'btn-tsspeed-fastest': () => setTextScrollSpeed('20.0'),
-    'btn-ts-close': () => closeTextScroll(),
-    'btn-ts-clear': () => clearLEDsMessage(),
-    'btn-ts-send': () => sendTextScroll(),
-    // Popups
-    'btn-log-close': () => closePopup(),
-    'btn-log-open-svr': () => openServerOptions(),
-    'btn-log-load': () => loadLog('sysout'),
-    'sendButton': () => serverSend(),
-    'btn-cam-close': () => closePopup(),
-    'btn-cam-fullscreen': () => goToContextRoot('cam1')
-  };
-  // click/touch listener
-  document.addEventListener('click', handleClicks, false);
-  // button listeners
-  document.addEventListener('click', (event) => {
-    let current = event.target;
-    while (current && current !== document) {
-      if (current.id && listeners[current.id]) {
-        listeners[current.id]();
-        return;
-      }
-      current = current.parentNode;
-    }
-  });
-  // volume button listeners
-  setupVolumeListeners(ROOM_CONFIGS);
-}
 
 // runs on page load
 window.addEventListener("DOMContentLoaded", () => {
   loadPage();
 });
 
+// Each template below registers its own button handlers with
+// registerListeners() directly beneath its markup; the groups merge into
+// this one map, which the delegated dispatcher in
+// registerDelegatedListeners() looks up on click. Delegation means handlers
+// keep working for markup rendered later (room grids, bookmark buttons,
+// svropt panels) and never need re-attaching after a re-render.
+function registerListeners(listeners) {
+  for (const [id, handler] of Object.entries(listeners)) {
+    if (!(id in DELEGATED_LISTENERS)) {
+      DELEGATED_LISTENERS[id] = handler;
+    }
+  }
+}
+
+function setupEventListeners() {
+  if (!App.listenersReady) {
+    App.listenersReady = true;
+    // click/touch listener
+    document.addEventListener('click', handleClicks, false);
+    // button dispatcher for every group registered next to its template
+    document.addEventListener('click', (event) => {
+      let current = event.target;
+      while (current && current !== document) {
+        if (current.id && DELEGATED_LISTENERS[current.id]) {
+          DELEGATED_LISTENERS[current.id]();
+          return;
+        }
+        current = current.parentNode;
+      }
+    });
+  }
+}
+
+function buildPageHTML(model) {
+  const f = {
+    isServer: model === App.MAIN_SITE,
+    isPi: model === 'Pi',
+    isLedPi: model === 'LEDpi'
+  };
+  f.isPiLike = f.isPi || f.isLedPi;         // Pi-style pages (Pi + LEDpi)
+  f.isLedCapable = f.isServer || f.isLedPi; // pages with LED controls
+  return [
+    '<canvas id="star-canvas" data-app-injected></canvas>',
+    topNavTemplate(f),
+    navDropdownsTemplate(f),
+    '<p data-app-injected></p>',
+    mainGridTemplate(f),
+    serverOptionsTemplate(f),
+    textScrollTemplate(f),
+    logFormTemplate(),
+    '<div id="color-popup" data-app-injected></div>',
+    camPopupTemplate(),
+    '<p class="pg-bottom" data-app-injected></p>'
+  ].filter(Boolean).join('\n');
+}
+
+// injects the markup for the given model, replacing any previous render;
+// injected sections are visible by default -- no marker-class reveal needed
+function renderPage(model) {
+  removeInjectedPage();
+  document.body.insertAdjacentHTML('afterbegin', buildPageHTML(model));
+}
+
+// removes every node injected by renderPage() -- full DOM cleanup
+function removeInjectedPage() {
+  document.querySelectorAll('[data-app-injected]').forEach((node) => {
+    node.remove();
+  });
+}
+
 function loadPage() {
   // read device type
   App.sysModel = deviceType(); 
+  destroyPageServices();
+  renderPage(App.sysModel);
   if (App.sysModel === App.MAIN_SITE) {
     // load control menu saved state
     const room = localStorage.getItem("ctls-mode")
@@ -243,12 +151,6 @@ function loadPage() {
     // weather title-bar icon
     window.weatherWidget = new WeatherWidget();
     window.weatherWidget.activate();
-    // server home page
-    classDisplay('server-grid', 'block');
-  } else if (App.sysModel === 'Pi') {
-    classDisplay('pi-grid', 'block');
-  } else if (App.sysModel === 'LEDpi') {
-    classDisplay('ledpi-grid', 'block');
   }
   // set theme
   let currentTheme;
@@ -328,8 +230,8 @@ window.removeDropdowns = function() {
       });
       App.activeSwitches = [];
     }
-    if (window.weatherApp && typeof window.weatherApp.closeMenu === 'function') {
-      window.weatherApp.closeMenu();
+    if (window.weatherWidget && typeof window.weatherWidget.closeMenu === 'function') {
+      window.weatherWidget.closeMenu();
     }
   }
 }
@@ -337,7 +239,8 @@ window.removeDropdowns = function() {
 function removeBookmarks() {
   const elem = document.getElementById("bookmarks");
   if (elem) elem.classList.remove("bookmark-editmode");
-  classDisplay("bookmark-buttons", "none");
+  const bkmButtons = document.getElementById("bookmark-buttons");
+  if (bkmButtons) bkmButtons.remove();
   removeBookmarkSearch();
   closeBookmarkPrompt();
   App.bookmarkState = App.BKM_INACTIVE;
@@ -370,10 +273,12 @@ function selectRoom(_mode) {
     _mode = Object.keys(ROOM_CONFIGS)[0];
   }
   const config = ROOM_CONFIGS[_mode];
-  // select grid
-  document.querySelectorAll('.room-grid').forEach(grid => grid.style.display = 'none');
-  const activeGrid = document.getElementById(config.gridId);
-  if (activeGrid) activeGrid.style.display = 'block';
+  const container = document.getElementById('room-grid-container');
+  if (container) {
+    // all of the grid's buttons (volume included) are handled by the
+    // delegated dispatcher, so rendering the markup is all that's needed
+    container.innerHTML = config.template();
+  }
   // update dropdown
   const roomLabel = document.getElementById('current-room-label');
   if (roomLabel) roomLabel.innerText = config.name;
@@ -401,17 +306,11 @@ function GoToExtPage(_path) {
 // back to home page 
 function GoToHomePage() {
   if (App.sysModel === App.MAIN_SITE) {
-    hidePages();
+    removeInjectedPage();
     loadPage();
   } else {
     window.location = 'https://' + App.MAIN_SITE + '.home';   
   }
-}
-
-function hidePages() {
-  classDisplay('pi-grid', 'none'); 
-  classDisplay('ledpi-grid', 'none'); 
-  classDisplay('server-grid', 'none');
 }
 
 // toggle dropdown menu's
@@ -425,43 +324,848 @@ function showMenu(_menu) {
   _elem.style.display = 'block';
 }
 
-function showPopup(message) {
-  let msgtext;
-  let win_name = "msg-popup";
-  let text_name = "msg-text";
-  let msgpopwin = document.getElementById(win_name);
-  if (!msgpopwin) { // window does not exist
-    // draw window
-    msgpopwin = document.createElement("div");
-    msgpopwin.classList.add("popup-alert");
-    msgpopwin.id = win_name;
-    // volume text box
-    msgtext = document.createElement("div");
-    msgtext.id = text_name;
-    msgpopwin.appendChild(msgtext);
-    // add to page
-    document.body.appendChild(msgpopwin);
-  } else {
-    // select elements in existing window
-    msgtext = document.getElementById(text_name);
-  }
-  // set error text
-  msgtext.innerHTML = message;
-  // reset hide window timeout
-  clearTimeout(App.messagePopupTimer);
-  // hide window after delay
-  App.messagePopupTimer = setTimeout(() => {
-    if (msgpopwin) { // window exists
-      // fade out window
-      msgpopwin.classList.add('fade-out');
-      // wait for the transition to end before removing window
-      msgpopwin.addEventListener("animationend", function (event) {
-        if (event && msgpopwin) {
-          document.body.removeChild(msgpopwin);
-        }
-      });
+//// page templates ////
+
+function topNavTemplate(f) {
+  return `
+<div class="topnav" data-app-injected>
+  ${f.isServer ? `
+  <a id="btn-dyn-mainmenu">
+    <i class="fad fa-list"></i>
+  </a>` : ''}
+  ${f.isPiLike ? `
+  <a id="btn-menu-pimainmenu">
+    <i class="fad fa-list"></i>
+  </a>` : ''}
+  <a id="btn-dyn-thememenu">
+    <i class="fad fa-palette"></i>
+  </a>
+  ${f.isServer ? `
+  <a id="btn-show-bookmarks">
+    <i class="fad fa-star"></i>
+  </a>
+  <a id="status_anchor">
+  </a>
+  <div id="topnav-right">
+    <a id="weather_anchor">
+    </a>
+    <a id="nav_stats_menu">
+      <i id="navstats-icon" class="fad fa-chart-network"></i>
+      <i id="navstats-spinner"></i>
+    </a>
+  </div>` : ''}
+</div>`;
+}
+registerListeners({
+  'btn-dyn-mainmenu':    () => showDynMenu('mainmenu'),
+  'btn-menu-pimainmenu': () => showMenu('pi-mainmenu'),
+  'btn-dyn-thememenu':   () => showDynMenu('thememenu'),
+  'btn-show-bookmarks':  () => showBookmarks(),
+  'nav_stats_menu':      () => showStatusMenu()
+});
+
+// bookmark edit/add buttons -- rendered on demand by showBookmarks() right
+// after the bookmarks star, and removed by removeBookmarks(); same
+// render-only pattern as the room grids, no show/hide toggling
+function bookmarkButtonsTemplate() {
+  return `
+  <div class="bookmark-buttons" id="bookmark-buttons">
+    <a id="btn-edit-bookmark">
+      <i class="fad fa-edit"></i>
+    </a>
+    <a id="btn-add-bookmark">
+      <i class="fad fa-folder-plus"></i>
+    </a>
+  </div>`;
+}
+registerListeners({
+  'btn-edit-bookmark': () => editBookmark(),
+  'btn-add-bookmark':  () => addBookmark()
+});
+
+function navDropdownsTemplate(f) {
+  // mainmenu / pi-mainmenu are direct children of .nav_dd_left, exactly like
+  // thememenu / bookmarks / roomstatus always were (their old wrapper divs
+  // only existed to carry the removed marker classes)
+  return `
+<div class="nav_dd_left" data-app-injected>
+  ${f.isServer ? `
+  <div class="dd-content dd-menu" id="mainmenu">
+    <a id="btn-about-main"> About<i class="fad fa-info"></i></a>
+  </div>` : ''}
+  ${f.isPiLike ? `
+  <div class="dd-content dd-menu" id="pi-mainmenu">
+    <a id="btn-about-pi"> About<i class="fad fa-info"></i></a>
+    <a id="btn-log-pi"> System<i class="fad fa-wrench"></i></a>
+    <a id="btn-home-pi"> Home<i class="fad fa-home"></i></a>
+  </div>` : ''}
+  <div class="dd-content dd-menu" id="thememenu"></div>
+  <div class="dd-content dd-menu" id="bookmarks"></div>
+  <div class="dd-content dd-menu" id="roomstatus"></div>
+</div>
+<div class="nav_dd_right" data-app-injected>
+  <div class="dd-content dd-menu ind-button" id="statsmenu"></div>
+</div>`;
+}
+registerListeners({
+  'btn-about-main': () => aboutPrompt(),
+  'btn-about-pi':   () => aboutPrompt(),
+  'btn-log-pi':     () => openLogWindow(),
+  'btn-home-pi':    () => GoToHomePage()
+});
+
+// main control grid (server + LEDpi); the room power / temperature / lights /
+// doorway / room selector block inside column-left is server-only
+function mainGridTemplate(f) {
+  if (!f.isLedCapable) return '';
+  return `
+<div data-app-injected>
+  <div class="grid">
+    <div class="column-left">
+      <div class="dropdown">
+        <button type="button" class="button" id="btn-dyn-ledcolormenu">
+          <span class="button__text"><i class="fad fa-brush"></i> Solid</span>
+        </button>
+        <div class="dd-content dd-button" id="ledcolormenu">
+          <a id="btn-fc-color-prompt"> Picker<i class="fad fa-tint"></i></a>
+        </div>
+      </div>
+      <div class="dropdown">
+        <button type="button" class="button" id="btn-dyn-ledeffectmenu">
+          <span class="button__text"><i class="fad fa-film"></i> Animated</span>
+        </button>
+        <div class="dd-content dd-button" id="ledeffectmenu"></div>
+      </div>
+      <div class="dropdown">
+        <button type="button" class="button" id="btn-power-fc_leds">
+          <span class="button__text" id="fc_leds-text"><i class="fad fa-sun"></i> Brightness</span>
+          <span class="button__text" id="fc_leds-spinner"></span>
+        </button>
+        <div class="dd-content ind-button" id="fc_leds-menu"></div>
+      </div>
+      <p class="grid-sep"></p>
+      <button type="button" class="button" id="btn-cmd-leds-shuffle">
+        <span class="button__text"><i class="fad fa-random"></i> Shuffle</span>
+      </button>
+      <button type="button" class="button" id="btn-cmd-leds-stop">
+        <span class="button__text"><i class="fad fa-stop"></i> Stop</span>
+      </button>
+      <button type="button" class="button" id="btn-cmd-leds-pause">
+        <span class="button__text"><i class="fad fa-pause"></i> Pause</span>
+      </button>
+      ${f.isServer ? roomControlsTemplate() : ''}
+    </div>
+    <!-- the active room's grid is rendered into this container on demand by
+         selectRoom(); inactive rooms have no markup in the DOM at all -->
+    <div class="column-right" id="room-grid-container"></div>
+  </div>
+</div>`;
+}
+registerListeners({
+  'btn-dyn-ledcolormenu':  () => showDynMenu('ledcolormenu'),
+  'btn-fc-color-prompt':   () => openColorPrompt('leds', 'hex', true),
+  'btn-dyn-ledeffectmenu': () => showDynMenu('ledeffectmenu'),
+  'btn-power-fc_leds':     () => showPowerMenu('fc_leds'),
+  'btn-cmd-leds-shuffle':  () => sendCmd('leds', 'shuffle', ''),
+  'btn-cmd-leds-stop':     () => sendCmd('leds', 'stop', ''),
+  'btn-cmd-leds-pause':    () => sendCmd('leds', 'pause', '')
+});
+
+// server-only block inside the main grid's left column
+function roomControlsTemplate() {
+  return `
+<div>
+  <p class="grid-sep"></p>
+  <div class="dropdown">
+    <button type="button" class="button" id="btn-menu-allmenu">
+      <span class="button__text"><i class="fad fa-power-off"></i> Room</span>
+    </button>
+    <div class="dd-content dd-button" id="allmenu">
+      <a id="btn-room-on"> On<i class="fad fa-toggle-on"></i></a>
+      <a id="btn-room-off"> Off<i class="fad fa-toggle-off"></i></a>
+    </div>
+  </div>
+  <button type="button" class="button" id="btn-show-temphumid">
+    <span class="button__text">
+      <i class="fad fa-temperature-hot large__icon"></i>
+      <i class="fad fa-humidity large__icon"></i>
+    </span>
+  </button>
+  <div class="dropdown">
+    <button type="button" class="button" id="btn-menu-lightmenu">
+      <span class="button__text"><i class="fad fa-lightbulb"></i> Lights</span>
+    </button>
+    <div class="dd-content dd-button" id="lightmenu">
+      <a id="btn-cmd-lightson"> All On<i class="fad fa-toggle-on"></i></a>
+      <a id="btn-cmd-lightsoff"> All Off<i class="fad fa-toggle-off"></i></a>
+    </div>
+  </div>
+  <p class="grid-sep"></p>
+  <button type="button" class="button" id="btn-open-cam">
+    <span class="button__text"><i class="fad fa-door-open"></i> Doorway</span>
+  </button>
+  <div class="dropdown">
+    <button type="button" class="button dark_btn" id="main-room-btn">
+      <i id="current-room-icon"></i>
+      <span class="button__text" id="current-room-label"></span>
+    </button>
+    <div class="dd-content dd-button" id="main-room-dropdown"></div>
+  </div>
+  <button type="button" class="button" id="btn-open-log-svr">
+    <span class="button__text"><i class="fad fa-terminal"></i> Server</span>
+  </button>
+</div>`;
+}
+registerListeners({
+  'btn-menu-allmenu':   () => showMenu('allmenu'),
+  'btn-room-on':        () => roomOnOff('on'),
+  'btn-room-off':       () => roomOnOff('off'),
+  'btn-show-temphumid': () => showTempHumidity(),
+  'btn-menu-lightmenu': () => showMenu('lightmenu'),
+  'btn-cmd-lightson':   () => sendCmd('main', 'lightson', ''),
+  'btn-cmd-lightsoff':  () => sendCmd('main', 'lightsoff', ''),
+  'btn-open-cam':       () => openCamWindow(),
+  'main-room-btn':      () => openRoomDropdown(),
+  'btn-open-log-svr':   () => openLogWindow()
+});
+
+function livingRoomGridTemplate() {
+  return `
+<div>
+  <div class="dropdown">
+    <button type="button" class="button" id="btn-menu-lr-backlight">
+      <span class="button__text"><i class="fad fa-lightbulb"></i> Backlight</span>
+    </button>
+    <div class="dd-content dd-button" id="lr-backlight">
+      <a>TBD</a>
+    </div>
+  </div>
+  <div class="dropdown">
+    <button type="button" class="button" id="btn-power-wkststate">
+      <span class="button__text" id="wkststate-text"><i class="fad fa-desktop-alt"></i> Desktop</span>
+      <span class="button__text" id="wkststate-spinner"></span>
+    </button>
+    <div class="dd-content ind-button" id="wkststate-menu"></div>
+  </div>
+  <div class="dropdown">
+    <button type="button" class="button" id="btn-power-wl1_dual">
+      <span class="button__text" id="wl1_dual-text"><i class="fad fa-lamp-floor"></i> Window</span>
+      <span class="button__text" id="wl1_dual-spinner"></span>
+    </button>
+    <div class="dd-content ind-button" id="wl1_dual-menu"></div>
+  </div>
+  <p class="grid-sep"></p>
+  <button type="button" class="button" id="lr-voldwnbtn">
+      <span class="button__text"><i class="fad fa-volume-down fa-lg"></i></span>
+  </button>
+  <button type="button" class="button" id="lr-volmutebtn">
+      <span class="button__text"><i class="fad fa-volume-mute fa-lg"></i></span>
+  </button>
+  <button type="button" class="button" id="lr-volupbtn">
+      <span class="button__text"><i class="fad fa-volume-up fa-lg"></i></span>
+  </button>
+  <p class="grid-sep"></p>
+  <button type="button" class="button" id="btn-vol-dwnc">
+      <span class="button__text"><i class="fad fa-volume-down"></i> -5%</span>
+  </button>
+  <div class="dropdown">
+    <button type="button" class="button" id="btn-power-hifistate">
+      <span class="button__text" id="hifistate-text"><i class="fad fa-speakers"></i> Stereo</span>
+      <span class="button__text" id="hifistate-spinner"></span>
+    </button>
+    <div class="dd-content ind-button" id="hifistate-menu"></div>
+  </div>
+  <button type="button" class="button" id="btn-vol-upc">
+      <span class="button__text"><i class="fad fa-volume-up"></i> +5%</span>
+  </button>
+  <p class="grid-sep"></p>
+  <button type="button" class="button" id="btn-vol-display">
+      <span class="button__text"><i class="fad fa-volume-off fa-lg"></i> Volume</span>
+  </button>
+  <div class="dropdown">
+    <button type="button" class="button btm-padding" id="btn-show-hifi-amp">
+      <span class="button__text" id="hfinmenu-text"><i class="fad fa-sliders-v"></i> Inputs</span>
+      <span class="button__text" id="hfinmenu-spinner"></span>
+    </button>
+    <div class="dd-content ind-button" id="hfinmenu"></div>
+  </div>
+  <div class="dropdown">
+    <button type="button" class="button btm-padding" id="btn-show-hifi-more">
+      <span class="button__text" id="hfmoremenu-text"><i class="fad fa-list-music"></i> More...</span>
+      <span class="button__text" id="hfmoremenu-spinner"></span>
+    </button>
+    <div class="dd-content ind-button" id="hfmoremenu"></div>
+  </div>
+</div>`;
+}
+registerListeners({
+  'btn-menu-lr-backlight': () => showMenu('lr-backlight'),
+  'btn-power-wkststate':   () => showPowerMenu('lrxmit', 'wkststate'),
+  'btn-power-wl1_dual':    () => showPowerMenu('lrxmit', 'wl1_dual'),
+  'lr-voldwnbtn':          () => sendVol(VOLUME_ACTIONS.voldwnbtn),
+  'lr-volmutebtn':         () => sendVol(VOLUME_ACTIONS.volmutebtn),
+  'lr-volupbtn':           () => sendVol(VOLUME_ACTIONS.volupbtn),
+  'btn-vol-dwnc':          () => sendVol('dwnc'),
+  'btn-power-hifistate':   () => showPowerMenu('lrxmit', 'hifistate'),
+  'btn-vol-upc':           () => sendVol('upc'),
+  'btn-vol-display':       () => sendVol('display'),
+  'btn-show-hifi-amp':     () => showHiFiAmpInput(),
+  'btn-show-hifi-more':    () => showHiFiMoreMenu()
+});
+
+function bedroomGridTemplate() {
+  return `
+<div>
+  <div class="dropdown">
+    <button type="button" class="button" id="btn-menu-br-bed">
+      <span class="button__text" id="bed_leds-text"><i class="fad fa-bed-alt"></i> Bed</span>
+      <span class="button__text" id="bed_leds-spinner"></span>
+    </button>
+    <div class="dd-content dd-button" id="bed_leds-menu">
+      <a id="btn-bed-adjprompt"> Adjust<i class="fad fa-sort-circle-up"></i></a>
+      <a id="bed_leds-colorprompt"> Picker<i class="fad fa-palette"></i></a>
+      <a id="bed_leds-rainbow"> Rainbow</a>
+      <a id="bed_leds-colorcycle"> Colors</a>
+      <a id="bed_leds-pause"> Pause<i class="fad fa-pause"></i></a>
+      <a id="bed_leds-stop"> Stop<i class="fad fa-stop"></i></a>
+    </div>
+  </div>
+  <div class="dropdown">
+    <button type="button" class="button" id="btn-dyn-relaxmenu">
+      <span class="button__text"><i class="fad fa-snooze"></i> Relax</span>
+    </button>
+    <div class="dd-content dd-button" id="relaxmenu">
+      <a id="btn-cmd-stop-br"> Stop<i class="fad fa-stop"></i></a>
+    </div>
+  </div>
+  <div class="dropdown">
+    <button type="button" class="button" id="btn-power-brlamp1">
+      <span class="button__text" id="brlamp1-text"><i class="fad fa-lamp-desk"></i> Dresser</span>
+      <span class="button__text" id="brlamp1-spinner"></span>
+    </button>
+    <div class="dd-content ind-button" id="brlamp1-menu"></div>
+  </div>
+  <p class="grid-sep"></p>
+  <button type="button" class="button" id="br-voldwnbtn">
+    <span class="button__text"><i class="fad fa-volume-down fa-lg"></i></span>
+  </button>
+  <button type="button" class="button" id="br-volmutebtn">
+      <span class="button__text"><i class="fad fa-volume-mute fa-lg"></i></span>
+  </button>
+  <button type="button" class="button" id="br-volupbtn">
+      <span class="button__text"><i class="fad fa-volume-up fa-lg"></i></span>
+  </button>
+  <p class="grid-sep"></p>
+  <div class="dropdown">
+    <button type="button" class="button" id="btn-power-brtv">
+      <span class="button__text" id="brtv-text"><i class="fad fa-tv-retro"></i> TV</span>
+      <span class="button__text" id="brtv-spinner"></span>
+    </button>
+    <div class="dd-content ind-button" id="brtv-menu"></div>
+  </div>
+  <div class="dropdown">
+    <button type="button" class="button" id="btn-power-ampstate">
+      <span class="button__text" id="ampstate-text"><i class="fad fa-waveform"></i> Audio</span>
+      <span class="button__text" id="ampstate-spinner"></span>
+    </button>
+    <div class="dd-content ind-button" id="ampstate-menu"></div>
+  </div>
+  <div class="dropdown">
+    <button type="button" class="button" id="btn-power-brpc">
+      <span class="button__text" id="brpc-text"><i class="fad fa-mouse"></i> PC</span>
+      <span class="button__text" id="brpc-spinner"></span>
+    </button>
+    <div class="dd-content ind-button" id="brpc-menu"></div>
+  </div>
+  <p class="grid-sep"></p>
+  <div class="dropdown">
+    <button type="button" class="button" id="btn-power-brmacs">
+      <span class="button__text" id="brmacs-text"><i class="fad fa-computer-classic"></i> Macs</span>
+      <span class="button__text" id="brmacs-spinner"></span>
+    </button>
+    <div class="dd-content ind-button" id="brmacs-menu"></div>
+  </div>
+  <div class="dropdown">
+    <button type="button" class="button btm-padding" id="btn-show-br-amp">
+      <span class="button__text" id="ampinp-text"><i class="fad fa-sliders-v"></i> Inputs</span>
+      <span class="button__text" id="ampinp-spinner"></span>
+    </button>
+    <div class="dd-content ind-button" id="brinpmenu"></div>
+  </div>
+  <div class="dropdown">
+    <button type="button" class="button" id="btn-power-retropi">
+      <span class="button__text" id="retropi-text"><i class="fad fa-gamepad"></i> RetroPi</span>
+      <span class="button__text" id="retropi-spinner"></span>
+    </button>
+    <div class="dd-content ind-button" id="retropi-menu"></div>
+  </div>
+</div>`;
+}
+registerListeners({
+  'btn-menu-br-bed':      () => showPowerMenu('brxmit', 'bed_leds'),
+  'btn-bed-adjprompt':    () => bedPrompt(),
+  'bed_leds-colorprompt': () => openColorPrompt('brxmit', 'bed_leds_hex_set'),
+  'bed_leds-rainbow':     () => sendCmd('main', 'brxmit', 'bed_leds_rb'),
+  'bed_leds-colorcycle':  () => sendCmd('main', 'brxmit', 'bed_leds_cs'),
+  'bed_leds-pause':       () => sendCmd('main', 'brxmit', 'bed_leds_pause'),
+  'bed_leds-stop':        () => sendCmd('main', 'brxmit', 'bed_leds_off'),
+  'btn-dyn-relaxmenu':    () => showDynMenu('relaxmenu'),
+  'btn-cmd-stop-br':      () => sendCmd('main', 'stop-br', ''),
+  'btn-power-brlamp1':    () => showPowerMenu('brxmit', 'brlamp1'),
+  'br-voldwnbtn':         () => sendVol(VOLUME_ACTIONS.voldwnbtn),
+  'br-volmutebtn':        () => sendVol(VOLUME_ACTIONS.volmutebtn),
+  'br-volupbtn':          () => sendVol(VOLUME_ACTIONS.volupbtn),
+  'btn-power-brtv':       () => showPowerMenu('brxmit', 'brtv'),
+  'btn-power-ampstate':   () => showPowerMenu('brpi', 'ampstate'),
+  'btn-power-brpc':       () => showPowerMenu('brxmit', 'brpc'),
+  'btn-power-brmacs':     () => showPowerMenu('brxmit', 'brmacs'),
+  'btn-show-br-amp':      () => showBedroomAmpInput(),
+  'btn-power-retropi':    () => showPowerMenu('brxmit', 'retropi')
+});
+
+function serverOptionsTemplate(f) {
+  return `
+<div class="svropt__prompt prompt_win" data-app-injected>
+  ${f.isServer ? `
+  <div id="svropt-panel-container"></div>` : ''}
+  ${f.isPiLike ? piOptionsTemplate() : ''}
+</div>`;
+}
+
+function svrOptMainTemplate() {
+  return `
+<div class="svropt__main">
+  <div class="dropdown">
+    <button type="button" class="button svropt_button" id="btn-menu-atalk">
+      <span class="button__text"><i class="fab fa-apple"></i> AFP</span>
+    </button>
+    <div class="dd-content dd-button" id="atalk-menu">
+      <a id="btn-svr-startatalk"><i class="fad fa-play"></i> Start</a>
+      <a id="btn-svr-stopatalk"><i class="fad fa-stop"></i> Stop</a>
+    </div>
+  </div>
+  <div class="dropdown">
+    <button type="button" class="button svropt_button" id="btn-menu-legacy">
+      <span class="button__text"><i class="fad fa-save"></i> CIFS</span>
+    </button>
+    <div class="dd-content dd-button" id="legacy-menu">
+      <a id="btn-svr-startlegacy"><i class="fad fa-play"></i> Start</a>
+      <a id="btn-svr-stoplegacy"><i class="fad fa-stop"></i> Stop</a>
+    </div>
+  </div>
+  <div class="dropdown">
+    <button type="button" class="button svropt_button" id="btn-menu-unifi">
+      <span class="button__text"><i class="fad fa-router"></i> UniFi</span>
+    </button>
+    <div class="dd-content dd-button" id="unifi-menu">
+      <a id="btn-ext-unifi"><i class="fad fa-link"></i> Open</a>
+      <a id="btn-svr-startunifi"><i class="fad fa-play"></i> Start</a>
+      <a id="btn-svr-stopunifi"><i class="fad fa-stop"></i> Stop</a>
+    </div>
+  </div>
+  <div class="dropdown">
+    <button type="button" class="button svropt_button" id="btn-menu-xana">
+      <span class="button__text"><i class="fab fa-linux"></i> Xana</span>
+    </button>
+    <div class="dd-content dd-button" id="xana-menu">
+      <a id="btn-svr-startxana"><i class="fad fa-play"></i> Start</a>
+      <a id="btn-svr-stopxana"><i class="fad fa-stop"></i> Stop</a>
+      <a id="btn-svr-restorexana"><i class="fad fa-eraser"></i> Erase</a>
+    </div>
+  </div>
+  <div class="dropdown">
+    <button type="button" class="button svropt_button" id="btn-menu-svr">
+      <span class="button__text"><i class="fad fa-microchip"></i> Server</span>
+    </button>
+    <div class="dd-content dd-button" id="svr-menu">
+      <a id="btn-ext-pve"><i class="fad fa-link"></i> Open</a>
+      <a id="btn-open-regions"><i class="fad fa-th"></i> Regions</a>
+      <a id="btn-open-backup"><i class="fad fa-sync"></i> Backup</a>
+      <a id="btn-svr-syslog"><i class="fad fa-tachometer"></i> Status</a>
+    </div>
+  </div>
+  <div class="dropdown">
+    <button type="button" class="button svropt_button" id="btn-menu-netwrk">
+      <span class="button__text"><i class="fad fa-network-wired"></i> Network</span>
+    </button>
+    <div class="dd-content dd-button" id="netwrk-menu">
+      <a id="btn-wifi-prompt"><i class="fad fa-wifi"></i> Access</a>
+      <a id="btn-ext-edgeswitch"><i class="fad fa-sitemap"></i> Switch</a>
+      <a id="btn-svr-netscan"><i class="fad fa-chart-network"></i> LAN Scanner</a>
+    </div>
+  </div>
+  <button type="button" class="button svropt_button" id="btn-close-svr-opt1">
+    <span class="button__text"><i class="fad fa-times-octagon"></i> Close</span>
+  </button>
+  <button type="button" class="button svropt_button" id="btn-svr-clearlog">
+    <span class="button__text"><i class="fad fa-trash-alt"></i> Clear</span>
+  </button>
+  <div class="dropdown">
+    <button type="button" class="button svropt_button" id="btn-menu-router">
+      <span class="button__text"><i class="fad fa-ethernet"></i> Router</span>
+    </button>
+    <div class="dd-content dd-button" id="router-menu">
+      <a id="btn-ext-router"><i class="fad fa-link"></i> Open</a>
+      <a id="btn-svr-rebootrouter"><i class="fad fa-redo"></i> Reboot</a>
+    </div>
+  </div>
+</div>`;
+}
+registerListeners({
+  'btn-menu-atalk':       () => showMenu('atalk-menu'),
+  'btn-svr-startatalk':   () => serverAction('startatalk'),
+  'btn-svr-stopatalk':    () => serverAction('stopatalk'),
+  'btn-menu-legacy':      () => showMenu('legacy-menu'),
+  'btn-svr-startlegacy':  () => serverAction('startlegacy'),
+  'btn-svr-stoplegacy':   () => serverAction('stoplegacy'),
+  'btn-menu-unifi':       () => showMenu('unifi-menu'),
+  'btn-ext-unifi':        () => GoToExtPage('unifi:11443/network/ff7gqlig/dashboard'),
+  'btn-svr-startunifi':   () => serverAction('startunifi'),
+  'btn-svr-stopunifi':    () => serverAction('stopunifi'),
+  'btn-menu-xana':        () => showMenu('xana-menu'),
+  'btn-svr-startxana':    () => serverAction('startxana'),
+  'btn-svr-stopxana':     () => serverAction('stopxana'),
+  'btn-svr-restorexana':  () => serverAction('restorexana'),
+  'btn-menu-svr':         () => showMenu('svr-menu'),
+  'btn-ext-pve':          () => GoToExtPage('pve:8006'),
+  'btn-open-backup':      () => openServerPanel(svrOptBackupTemplate),
+  'btn-open-regions':     () => openServerPanel(svrOptRegionsTemplate),
+  'btn-svr-syslog':       () => serverAction('syslog'),
+  'btn-menu-netwrk':      () => showMenu('netwrk-menu'),
+  'btn-wifi-prompt':      () => wifiPrompt(),
+  'btn-ext-edgeswitch':   () => GoToExtPage('edgeswitch.home'),
+  'btn-svr-netscan':      () => serverAction('netscan'),
+  'btn-close-svr-opt1':   () => closeServerOptions(),
+  'btn-svr-clearlog':     () => serverAction('clearlog'),
+  'btn-menu-router':      () => showMenu('router-menu'),
+  'btn-ext-router':       () => GoToExtPage('router.home'),
+  'btn-svr-rebootrouter': () => serverAction('rebootrouter')
+});
+
+function svrOptBackupTemplate() {
+  return `
+<div class="svropt__backup">
+  <button type="button" class="button svropt_button" id="btn-svr-last_backup_dates">
+    <span class="button__text"><i class="fad fa-history"></i> History</span>
+  </button>
+  <button type="button" class="button svropt_button" id="btn-svr-backupchk">
+    <span class="button__text"> Checksum</span>
+  </button>
+  <button type="button" class="button svropt_button" id="btn-svr-pve_vmsbkp">
+    <span class="button__text"> VMs/LXCs</span>
+  </button>
+  <button type="button" class="button svropt_button" id="btn-pwd-unlock">
+    <span class="button__text"><i class="fad fa-lock-open"></i> Unlock</span>
+  </button>
+  <button type="button" class="button svropt_button" id="btn-svr-backupstd">
+    <span class="button__text"> Standard</span>
+  </button>
+  <button type="button" class="button svropt_button" id="btn-svr-detach_bkps">
+    <span class="button__text"><i class="fad fa-eject"></i> Eject</span>
+  </button>
+  <button type="button" class="button svropt_button" id="btn-close-svr-opt2">
+    <span class="button__text"><i class="fad fa-times-octagon"></i> Close</span>
+  </button>
+  <button type="button" class="button svropt_button" id="btn-svr-pve_listsnaps">
+    <span class="button__text"> Snapshots</span>
+  </button>
+  <button type="button" class="button svropt_button" id="btn-open-svr-opt1">
+    <span class="button__text"><i class="fad fa-arrow-left"></i> Back</span>
+  </button>
+</div>`;
+}
+registerListeners({
+  'btn-svr-last_backup_dates': () => serverAction('last_backup_dates'),
+  'btn-svr-backupchk':         () => serverAction('backupchk'),
+  'btn-svr-pve_vmsbkp':        () => serverAction('pve_vmsbkp'),
+  'btn-pwd-unlock':            () => getPassword('pwd'),
+  'btn-svr-backupstd':         () => serverAction('backupstd'),
+  'btn-svr-detach_bkps':       () => serverAction('detach_bkps'),
+  'btn-close-svr-opt2':        () => closeServerOptions(),
+  'btn-svr-pve_listsnaps':     () => serverAction('pve_listsnaps'),
+  'btn-open-svr-opt1':         () => openServerPanel(svrOptMainTemplate)
+});
+
+function svrOptRegionsTemplate() {
+  return `
+<div class="svropt__regions">
+  <div class="dropdown">
+    <button type="button" class="button svropt_button" id="btn-menu-archive">
+      <span class="button__text"> Archive</span>
+    </button>
+    <div class="dd-content dd-button" id="archive-menu">
+      <a id="btn-pwd-fusearch"><i class="fad fa-link"></i> Attach</a>
+      <a id="btn-pwd-fusearch_unmnt"><i class="fad fa-eject"></i> Detach</a>
+    </div>
+  </div>
+  <div class="dropdown">
+    <button type="button" class="button svropt_button" id="btn-menu-snapshots">
+      <span class="button__text"> Snapshots</span>
+    </button>
+    <div class="dd-content dd-button" id="snapshots-menu">
+      <a id="btn-svr-mnt_snap_region"><i class="fad fa-link"></i> Attach</a>
+      <a id="btn-svr-unmnt_snap_region"><i class="fad fa-eject"></i> Detach</a>
+    </div>
+  </div>
+  <div class="dropdown">
+    <button type="button" class="button svropt_button" id="btn-menu-ramdisk">
+      <span class="button__text"> RAM Disk</span>
+    </button>
+    <div class="dd-content dd-button" id="ramdisk-menu">
+      <a id="btn-svr-mnt_ram_region"><i class="fad fa-link"></i> Attach</a>
+      <a id="btn-svr-unmnt_ram_region"><i class="fad fa-eject"></i> Detach</a>
+    </div>
+  </div>
+  <button type="button" class="button svropt_button" id="btn-close-svr-opt3">
+    <span class="button__text"><i class="fad fa-times-octagon"></i> Close</span>
+  </button>
+  <button type="button" class="button svropt_button dark_btn" id="btn-svr-unmnt_all">
+    <span class="button__text"> Detach All</span>
+  </button>
+  <button type="button" class="button svropt_button" id="btn-open-svr-opt2">
+    <span class="button__text"><i class="fad fa-arrow-left"></i> Back</span>
+  </button>
+</div>`;
+}
+registerListeners({
+  'btn-menu-archive':          () => showMenu('archive-menu'),
+  'btn-pwd-fusearch':          () => getPassword('fusearch'),
+  'btn-pwd-fusearch_unmnt':    () => serverAction('unmnt_arch_region'),
+  'btn-menu-snapshots':        () => showMenu('snapshots-menu'),
+  'btn-svr-mnt_snap_region':   () => serverAction('mnt_snap_region'),
+  'btn-svr-unmnt_snap_region': () => serverAction('unmnt_snap_region'),
+  'btn-menu-ramdisk':          () => showMenu('ramdisk-menu'),
+  'btn-svr-mnt_ram_region':    () => serverAction('mnt_ram_region'),
+  'btn-svr-unmnt_ram_region':  () => serverAction('unmnt_ram_region'),
+  'btn-close-svr-opt3':        () => closeServerOptions(),
+  'btn-svr-unmnt_all':         () => serverAction('unmnt_all'),
+  'btn-open-svr-opt2':         () => openServerPanel(svrOptMainTemplate),
+  'btn-svr-mnt_ext_region':    () => serverAction('mnt_ext_region'),
+  'btn-svr-unmnt_ext_region':  () => serverAction('unmnt_ext_region')
+});
+
+function piOptionsTemplate() {
+  return `
+<div>
+  <div class="dropdown">
+    <button type="button" class="button svropt_button" id="btn-menu-piwifi">
+      <span class="button__text"><i class="fad fa-wifi"></i> WiFi</span>
+    </button>
+    <div class="dd-content dd-button" id="piwifi-menu">
+      <a id="btn-show-piwifiprompt"> Setup WiFi</a>
+      <a id="btn-svr-client"> Client Mode</a>
+      <a id="btn-svr-apd"> Hotspot Mode</a>
+      <a id="btn-svr-wifiscan"> WiFi Scanner</a>
+    </div>
+  </div>
+  <button type="button" class="button svropt_button" id="btn-svr-showwpa">
+    <span class="button__text"> Network</span>
+  </button>
+  <button type="button" class="button svropt_button" id="btn-svr-temp">
+    <span class="button__text"> Temperature</span>
+  </button>
+  <button type="button" class="button svropt_button" id="btn-close-svr-opt4">
+    <span class="button__text"><i class="fad fa-times-octagon"></i> Close</span>
+  </button>
+  <button type="button" class="button svropt_button" id="btn-svr-pi-clearlog">
+    <span class="button__text"> Clear Log</span>
+  </button>
+  <button type="button" class="button svropt_button" id="btn-svr-resetbt">
+    <span class="button__text"><i class="fab fa-bluetooth"></i> Reset</span>
+  </button>
+</div>`;
+}
+registerListeners({
+  'btn-menu-piwifi':       () => showMenu('piwifi-menu'),
+  'btn-show-piwifiprompt': () => showPiWiFiPrompt(),
+  'btn-svr-client':        () => serverAction('client'),
+  'btn-svr-apd':           () => serverAction('apd'),
+  'btn-svr-wifiscan':      () => serverAction('wifiscan'),
+  'btn-svr-showwpa':       () => serverAction('showwpa'),
+  'btn-svr-temp':          () => serverAction('temp'),
+  'btn-close-svr-opt4':    () => closeServerOptions(),
+  'btn-svr-pi-clearlog':   () => serverAction('clearlog'),
+  'btn-svr-resetbt':       () => serverAction('resetbt')
+});
+
+// LED text scroller prompt (server + LEDpi)
+function textScrollTemplate(f) {
+  if (!f.isLedCapable) return '';
+  return `
+<div data-app-injected>
+  <div class="textscroll__prompt prompt_win">
+    <div id="textScrollTitle">TextScroll</div>
+    <textarea class="scroll-bar-style" id="textScrollBox" spellcheck="false"></textarea>
+    <div class="dropdown">
+      <button type="button" class="button button__sml" id="btn-menu-textscrollcolor">
+        <span class="button__text"> Color</span>
+      </button>
+      <div class="dd-content dd-button" id="textscrollcolor-menu">
+        <a id="btn-tscolor-1"> Green</a>
+        <a id="btn-tscolor-2"> Red</a>
+        <a id="btn-tscolor-3"> Blue</a>
+        <a id="btn-tscolor-4"> Orange</a>
+        <a id="btn-tscolor-5"> Purple</a>
+        <a id="btn-tscolor-6"> Yellow</a>
+        <a id="btn-tscolor-7"> White</a>
+      </div>
+    </div>
+    <div class="dropdown">
+      <button type="button" class="button button__sml" id="btn-menu-textscrollfont">
+        <span class="button__text"> Font</span>
+      </button>
+      <div class="dd-content dd-button" id="textscrollfont-menu">
+        <a id="btn-tsfont-8x8"> Large</a>
+        <a id="btn-tsfont-5x7"> Small</a>
+        <a id="btn-tsfont-3x5"> Narrow</a>
+      </div>
+    </div>
+    <div class="dropdown">
+      <button type="button" class="button button__sml" id="btn-menu-textscrollspeed">
+        <span class="button__text"> Speed</span>
+      </button>
+      <div class="dd-content dd-button" id="textscrollspeed-menu">
+        <a id="btn-tsspeed-slowest"> Slowest</a>
+        <a id="btn-tsspeed-slow"> Slow</a>
+        <a id="btn-tsspeed-normal"> Normal</a>
+        <a id="btn-tsspeed-fast"> Fast</a>
+        <a id="btn-tsspeed-fastest"> Fastest</a>
+      </div>
+    </div>
+    <button type="button" class="button button__sml" id="btn-ts-close">
+      <span class="button__text"><i class="fad fa-times-octagon"></i></span>
+    </button>
+    <button type="button" class="button button__sml" id="btn-ts-clear">
+      <span class="button__text"><i class="fad fa-trash-alt"></i></span>
+    </button>
+    <button type="button" class="button button__sml" id="btn-ts-send">
+      <span class="button__text"><i class="fad fa-upload"></i></span>
+    </button>
+  </div>
+</div>`;
+}
+registerListeners({
+  'btn-menu-textscrollcolor': () => showMenu('textscrollcolor-menu'),
+  'btn-tscolor-1':            () => setTextScrollColor('00FF00'),
+  'btn-tscolor-2':            () => setTextScrollColor('FF0000'),
+  'btn-tscolor-3':            () => setTextScrollColor('0000FF'),
+  'btn-tscolor-4':            () => setTextScrollColor('FFA500'),
+  'btn-tscolor-5':            () => setTextScrollColor('A020F0'),
+  'btn-tscolor-6':            () => setTextScrollColor('FFCC00'),
+  'btn-tscolor-7':            () => setTextScrollColor('FFFFFF'),
+  'btn-menu-textscrollfont':  () => showMenu('textscrollfont-menu'),
+  'btn-tsfont-8x8':           () => setTextScrollFont('8x8'),
+  'btn-tsfont-5x7':           () => setTextScrollFont('5x7'),
+  'btn-tsfont-3x5':           () => setTextScrollFont('3x5'),
+  'btn-menu-textscrollspeed': () => showMenu('textscrollspeed-menu'),
+  'btn-tsspeed-slowest':      () => setTextScrollSpeed('3.0'),
+  'btn-tsspeed-slow':         () => setTextScrollSpeed('9.0'),
+  'btn-tsspeed-normal':       () => setTextScrollSpeed('12.0'),
+  'btn-tsspeed-fast':         () => setTextScrollSpeed('15.0'),
+  'btn-tsspeed-fastest':      () => setTextScrollSpeed('20.0'),
+  'btn-ts-close':             () => closeTextScroll(),
+  'btn-ts-clear':             () => clearLEDsMessage(),
+  'btn-ts-send':              () => sendTextScroll()
+});
+
+// server log popup window (all models -- Pi opens it via the System menu)
+function logFormTemplate() {
+  return `
+<div class="log-popup popup-win" id="logForm" data-app-injected>
+  <div class="popup-ctn">
+    <textarea readonly class="scroll-bar-style" id="logTextBox" spellcheck="false"></textarea>
+    <div class="popup-actions">
+      <button type="button" class="button button_left_txtwin" id="btn-log-close">
+        <i class="fad fa-times-octagon"></i>
+      </button>
+      <button type="button" class="button button_left_txtwin" id="btn-log-open-svr">
+        <i class="fad fa-sliders-h"></i>
+      </button>
+      <button type="button" class="button button_left_txtwin" id="btn-log-load">
+        <i class="fad fa-sync-alt"></i>
+      </button>
+      <button type="button" class="button button_right_txtwin" id="sendButton">
+        <i class="fad fa-upload"></i>
+      </button>
+    </div>
+  </div>
+</div>`;
+}
+registerListeners({
+  'btn-log-close':    () => closePopup(),
+  'btn-log-open-svr': () => openServerPanel(svrOptMainTemplate),
+  'btn-log-load':     () => loadLog('sysout'),
+  'sendButton':       () => serverSend()
+});
+
+function camPopupTemplate() {
+  return `
+<div class="popup-win" id="cam-popup" data-app-injected>
+  <div class="popup-ctn">
+    <img id="cam-display">
+    <div class="popup-actions">
+      <button type="button" class="button button_left_txtwin" id="btn-cam-close">
+        <i class="fad fa-times-octagon"></i>
+      </button>
+      <button type="button" class="button button_right_txtwin" id="btn-cam-fullscreen">
+        <span> Fullscreen</span>
+      </button>
+    </div>
+  </div>
+</div>`;
+}
+registerListeners({
+  'btn-cam-close':      () => closePopup(),
+  'btn-cam-fullscreen': () => goToContextRoot('cam1')
+});
+
+/////// Bed Adjustment Window ///////
+
+// separate throttles so up/down each get their own 250ms window
+const throttledBedUp = requestThrottle(() => {
+  sendCmd('main', 'brxmit', 'bed_adj_up');
+}, 250); // in (ms)
+
+const throttledBedDown = requestThrottle(() => {
+  sendCmd('main', 'brxmit', 'bed_adj_dwn');
+}, 250); // in (ms)
+
+async function bedPrompt() {
+  const _winid = 'bed__prompt';
+  if (document.getElementById(_winid)) return;
+  const promptHTML = `
+  <div id="${_winid}" class="prompt_win">
+    <div class="bed__title">Bed Adjustment</div>
+    <button type="button" class="button bed__btn" id="bed__btn-up">
+      <i class="fad fa-arrow-up bed__icon"></i>
+    </button>
+    <button type="button" class="button bed__btn" id="bed__btn-down">
+      <i class="fad fa-arrow-down bed__icon"></i>
+    </button>
+    <button type="button" class="button" id="bed__btn-close">
+      <i class="fad fa-times-octagon right-padding"></i>
+      <span class="button__text">Close</span>
+    </button>
+  </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', promptHTML);
+  const bedprompt = document.getElementById(_winid);
+  bedprompt.addEventListener('click', function handleButtonClicks(btn_evnt) {
+    const clickedButton = btn_evnt.target.closest('button');
+    if (!clickedButton) return;
+    switch (clickedButton.id) {
+      case 'bed__btn-up':
+        throttledBedUp();
+        break;
+      case 'bed__btn-down':
+        throttledBedDown();
+        break;
+      case 'bed__btn-close':
+        bedprompt.removeEventListener('click', handleButtonClicks);
+        bedprompt.remove();
+        break;
     }
-  }, 4000); // hide delay in (ms)
+  });
 }
 
 /// server popup window ///
@@ -499,31 +1203,24 @@ function clearPendingCmd() {
   App.serverCmdData = null;
 }
 
-function openServerOptions(){
+function openServerPanel(panelTemplate) {
   closeServerOptions();
+  const container = document.getElementById("svropt-panel-container");
+  if (container) {
+    container.innerHTML = panelTemplate();
+  }
   classDisplay("svropt__prompt", "block");
-  classDisplay("svropt__main", "block");
-}
-
-function openRegionsOptions(){
-  closeServerOptions();
-  classDisplay("svropt__prompt", "block");
-  classDisplay("svropt__regions", "block");
-}
-
-function openBackupOptions(){
-  closeServerOptions();
-  classDisplay("svropt__prompt", "block");
-  classDisplay("svropt__backup", "block");
 }
 
 function closeServerOptions(){
   removeDropdowns();
   clearPendingCmd();
   classDisplay("svropt__prompt", "none");
-  classDisplay("svropt__main", "none");
-  classDisplay("svropt__regions", "none");
-  classDisplay("svropt__backup", "none");
+  // remove the rendered panel markup entirely
+  const container = document.getElementById("svropt-panel-container");
+  if (container) {
+    container.innerHTML = "";
+  }
 }
 
 /////// LEDScroll ///////
@@ -603,437 +1300,35 @@ function sendTextScroll(){
 
 /////// About Window ///////
 
-async function aboutPrompt(){
+async function aboutPrompt() {
   const _winid = 'about__prompt';
   if (document.getElementById(_winid)) return;
-  let aboutprompt = document.createElement("div"); 
-  aboutprompt.id = _winid;
-  aboutprompt.classList.add("prompt_win");
-  // title
-  let abouttext = document.createElement("div");
-  abouttext.className = "about__title";
-  abouttext.innerHTML = App.sysModel;
-  aboutprompt.appendChild(abouttext); 
-  // logo
-  let img = document.createElement("img");
-  img.src = "img/automate.png";
-  img.id = "about__img";
-  aboutprompt.appendChild(img);
-  // version details
-  let aboutdets2 = document.createElement("div"); 
-  aboutdets2.innerHTML = "by Ben Provenzano III";
-  aboutdets2.className = "about__text";
-  aboutprompt.appendChild(aboutdets2);
-  let aboutdets1 = document.createElement("div");
   const curDate = new Date();
   const curYear = curDate.getFullYear();
-  const curMonth = curDate.getMonth() + 1;
-  const curQtr = Math.ceil(curMonth / 3); // round up to the nearest integer
-  aboutdets1.innerHTML = curYear + '.' + curQtr + " Release";
-  aboutdets1.className = "about__text";
-  aboutprompt.appendChild(aboutdets1);
-  // cancel button
-  let aboutcancelicon = document.createElement("i"); 
-  aboutcancelicon.classList.add("fad");
-  aboutcancelicon.classList.add("fa-times-octagon");
-  aboutcancelicon.classList.add("right-padding");
-  let aboutcanceltxt = document.createElement("span"); 
-  aboutcanceltxt.classList.add("button__text");
-  aboutcanceltxt.innerHTML = "Close";
-  let aboutcancelb = document.createElement("button");
-  aboutcancelb.type = "button"; 
-  aboutcancelb.classList.add("button");
-  aboutcancelb.id = "about__btn";
-  aboutcancelb.appendChild(aboutcancelicon);
-  aboutcancelb.appendChild(aboutcanceltxt);
-  aboutprompt.appendChild(aboutcancelb); //append cancel-button
-  document.body.appendChild(aboutprompt); //append the password-prompt so it gets visible
-  new Promise(function() {
-    aboutprompt.addEventListener('click', function handleButtonClicks(btn_evnt) { 
-      // Check if the click target or its parent is a button
-      const clickedButton = btn_evnt.target.closest('button');
-      // If no button was found in the click path, exit
-      if (!clickedButton) { return; } 
-      aboutprompt.removeEventListener('click', handleButtonClicks); 
-      document.body.removeChild(aboutprompt);  
-    });
-  });   
-}
-
-/// Temperature & Humidity ///
-
-async function showTempHumidity(){
-  const _winid = 'temp__prompt';
-  if (document.getElementById(_winid)) return;
-  // create window
-  let tempprompt = document.createElement("div"); 
-  tempprompt.id = _winid;
-  tempprompt.classList.add("prompt_win");
-  // top window text
-  let temptext = document.createElement("div");
-  temptext.innerHTML = 'Temperature/Humidity';
-  temptext.id = 'temp_top_text';
-  tempprompt.appendChild(temptext);
-  // thermometer container
-  let tempcon = document.createElement("div");
-  tempcon.id = 'temp_therm_grid';
-  // temperature thermometer 
-  let tmeter = document.createElement("div"); 
-  tmeter.className = "thermometer";
-  let tdisplay = document.createElement("div"); 
-  tdisplay.className = "temperature";
-  tdisplay.id = "thermo__1";
-  tdisplay.dataset.value = "--°";
-  tmeter.appendChild(tdisplay); 
-  tempcon.appendChild(tmeter); 
-  // humidity thermometer 
-  let hmeter = document.createElement("div"); 
-  hmeter.className = "thermometer";
-  let hdisplay = document.createElement("div"); 
-  hdisplay.className = "temperature";
-  hdisplay.id = "thermo__2";
-  hdisplay.dataset.value = "--%";
-  hmeter.appendChild(hdisplay);
-  tempcon.appendChild(hmeter); 
-  // add thermo container to window
-  tempprompt.appendChild(tempcon);
-  // buttons container
-  let btnscon = document.createElement("div");
-  // cancel button
-  let tempcancelb = document.createElement("button");
-  tempcancelb.classList.add("button");
-  tempcancelb.classList.add("temp__btn");
-  tempcancelb.classList.add("fad");
-  tempcancelb.classList.add("fa-times-octagon");
-  tempcancelb.type = "button";
-  btnscon.appendChild(tempcancelb);
-  // refresh button
-  let temprefreshb = document.createElement("button");
-  temprefreshb.classList.add("button");
-  temprefreshb.classList.add("temp__btn");
-  temprefreshb.classList.add("fad");
-  temprefreshb.classList.add("fa-sync");
-  temprefreshb.type = "button";
-  btnscon.appendChild(temprefreshb);
-  // add buttons container to window
-  tempprompt.appendChild(btnscon);
-  // add window to DOM
-  document.body.appendChild(tempprompt);
-  // call API for data
-  getTemperatureData();
-  // button actions
-  new Promise(function() {
-    tempprompt.addEventListener('click', function handleButtonClicks(btn_evnt) {
-      if (btn_evnt.target.tagName !== 'BUTTON') { return; } 
-        // close button
-        if (btn_evnt.target === tempcancelb) {
-          tempprompt.removeEventListener('click', handleButtonClicks); 
-          document.body.removeChild(tempprompt);  
-        }
-        // refresh button
-        if (btn_evnt.target === temprefreshb) {
-          getTemperatureData();
-        }
-    });
+  const curQtr = Math.ceil((curDate.getMonth() + 1) / 3);
+  const promptHTML = `
+  <div id="${_winid}" class="prompt_win">
+    <div class="about__title">${App.sysModel}</div>
+    <img src="img/automate.png" id="about__img" />
+    <div class="about__text">by Ben Provenzano III</div>
+    <div class="about__text">${curYear}.${curQtr} Release</div>
+    <button type="button" class="button" id="about__btn">
+      <i class="fad fa-times-octagon right-padding"></i>
+      <span class="button__text">Close</span>
+    </button>
+  </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', promptHTML);
+  const aboutprompt = document.getElementById(_winid);
+  aboutprompt.addEventListener('click', function handleButtonClicks(btn_evnt) { 
+    const clickedButton = btn_evnt.target.closest('button');
+    if (!clickedButton) return; 
+    aboutprompt.removeEventListener('click', handleButtonClicks); 
+    aboutprompt.remove();
   });
-}
-
-function getTemperatureData() {
-  sendCmd('main', 'brxmit', 'roomth').then((data) => {
-    const resp = cleanString(data);
-    // extract numerics
-    const resp_arr = resp.split("~");
-    let temp_elm = document.getElementById("thermo__1");
-    let humd_elm = document.getElementById("thermo__2");
-    if (resp_arr.length == 2) {
-      // valid response
-      pushTempDataToThermos(resp_arr, temp_elm, humd_elm);
-    } else {
-      pushTempErrorThermos(temp_elm, humd_elm);
-    }
-  });
-}
-
-function pushTempDataToThermos(resp_arr, temp_elm, humd_elm) {
-  // thermometer limits
-  const minTemp = 25;
-  const maxTemp = 100;
-  const minHumidity = 5;
-  const maxHumitidy = 100;
-  // verify elements exist
-  if (!(temp_elm && humd_elm)) {
-    return;
-  }
-  // validate response
-  if (resp_arr.length == 2) {
-    let tvalue = resp_arr[0];
-    let hvalue = resp_arr[1];
-    // set temperature
-    temp_elm.dataset.value = tvalue + "°F";
-    if (tvalue >= maxTemp) { tvalue = maxTemp; }
-    if (tvalue <= minTemp) { tvalue = minTemp; }
-    temp_elm.style.height = (tvalue - minTemp) / (maxTemp - minTemp) * 100 + "%";
-    // set humidity
-    humd_elm.dataset.value = hvalue + "%";
-    if (hvalue >= maxHumitidy) { hvalue = maxHumitidy; }
-    if (hvalue <= minHumidity) { hvalue = minHumidity; }
-    humd_elm.style.height = (hvalue - minHumidity) / (maxHumitidy - minHumidity) * 100 + "%";
-  } else {
-    pushTempErrorThermos(temp_elm, humd_elm);
-  }
-}
-
-function pushTempErrorThermos(temp_elm, humd_elm) {
-  // verify elements exist
-  if (!(temp_elm && humd_elm)) {
-    return;
-  }
-  temp_elm.style.height = "0%";
-  temp_elm.dataset.value = "--";
-  humd_elm.style.height = "0%";
-  humd_elm.dataset.value = "--";
-}
-
-/////// Pi Wi-Fi Window ///////
-
-async function showPiWiFiPrompt() {
-  const winid = "pinet__prompt";
-  if (document.getElementById(winid)) return;
-  removeDropdowns();
-  let result = await piWiFiPrompt(winid);
-  if (result !== null) {  
-    if (result !== '') {  
-      sendCmd('main','confwpa',result);
-      document.getElementById("logTextBox").value = "Wi-Fi configuration updated, select client mode to apply changes.";
-    }
-  }
-}
-
-async function piWiFiPrompt(_winid){
-  let pinetprompt = document.createElement("div"); 
-  pinetprompt.id = _winid;
-  pinetprompt.classList.add("prompt_win");
-  // SSID text
-  let pinettext1 = document.createElement("div"); 
-  pinettext1.innerHTML = "Network (SSID):"; 
-  pinetprompt.appendChild(pinettext1); 
-  // SSID box 
-  let pinetssidbox = document.createElement("input"); 
-  pinetssidbox.id = "pinet__ssidbox"; 
-  pinetprompt.appendChild(pinetssidbox); 
-  // password text
-  let pinettext2 = document.createElement("div"); 
-  pinettext2.innerHTML = "Password:"; 
-  pinetprompt.appendChild(pinettext2);   
-  // password box
-  let pinetpassbox = document.createElement("input"); 
-  pinetpassbox.id = "pinet__passbox"; 
-  pinetpassbox.type="password";
-  pinetprompt.appendChild(pinetpassbox); 
-  // save button
-  let pinetokbutton = document.createElement("button"); 
-  pinetokbutton.innerHTML = "Save";
-  pinetokbutton.className ="button pinet__btn"; 
-  pinetokbutton.type="button"; 
-  // cancel button
-  let pinetcancelb = document.createElement("button"); 
-  pinetcancelb.innerHTML = "Cancel";
-  pinetcancelb.className ="button pinet__btn"; 
-  pinetcancelb.type="button"; 
-  // create window
-  pinetprompt.appendChild(pinetcancelb); 
-  pinetprompt.appendChild(pinetokbutton); 
-  document.body.appendChild(pinetprompt); 
-  // focus on SSID text box
-  pinetssidbox.focus();
-  // control logic
-  return new Promise(function(resolve) {
-  	function cancelWiFi(){
-  		pinetssidbox.value = "";
-  		pinetpassbox.value = "";
-        document.body.removeChild(pinetprompt);
-    }
-  	function sendWiFiData(){
-	    if (pinetssidbox.value === "") {
-	      pinettext1.innerHTML = "enter SSID!";
-	    } else {
-	      if (pinetpassbox.value === "") {
-	        pinettext1.innerHTML = "enter password!";
-	      } else {
-	      	// concat and convert to base64
-          let _wifidata = base64URLSafeEncode(pinetssidbox.value + "|$|" + pinetpassbox.value);
-	        resolve(_wifidata);
-	        cancelWiFi();
-	      }
-	    }
-    }
-    // button clicks
-    pinetprompt.addEventListener('click', function handleButtonClicks(e) { 
-      if (e.target.tagName !== 'BUTTON') return; 
-        if (e.target === pinetokbutton) {
-          sendWiFiData();
-        }
-        if (e.target === pinetcancelb) {
-          cancelWiFi();
-        }        
-    });
-    // key focused on SSID box
-    pinetssidbox.addEventListener('keyup', function handleSSID(ssid_evnt){ 
-        if(ssid_evnt.key === 'Enter') {
-          pinetpassbox.focus();
-        } else if (ssid_evnt.key === 'Escape') { 
-          cancelWiFi();
-        }
-    });
-    // key focused on password box
-    pinetpassbox.addEventListener('keyup', function handlePass(pass_evnt){ 
-        if(pass_evnt.key === 'Enter') { 
-          sendWiFiData();
-        } else if (pass_evnt.key === 'Escape') {
-          cancelWiFi();
-        }
-    });
-  }); 
-}
-
-async function wifiPrompt(){
-  const _winid = "wifi__prompt";
-  if (document.getElementById(_winid)) return;
-  let wifiprompt = document.createElement("div");
-  wifiprompt.id = _winid;
-  wifiprompt.classList.add("prompt_win");
-  let wifitext = document.createElement("div");
-  wifitext.innerHTML = "Scan for WiFi Access"; 
-  wifiprompt.appendChild(wifitext);
-  let img = document.createElement("img");
-  img.src = "img/wifi.png";
-  img.id = "wifi__img";
-  wifiprompt.appendChild(img);
-  let wifipwd = document.createElement("div");
-  wifipwd.id = "wifi__pwdtxt";
-  wifipwd.innerHTML = atob(SSIDpwd());
-  wifiprompt.appendChild(wifipwd);
-  let wificancelb = document.createElement("button");
-  wificancelb.innerHTML = "Close";
-  wificancelb.className = "button"; 
-  wificancelb.type = "button"; 
-  wificancelb.id = "wifipmt__btn";
-  wifiprompt.appendChild(wificancelb);
-  document.body.appendChild(wifiprompt);
-  new Promise(function() {
-    wifiprompt.addEventListener('click', function handleButtonClicks(btn_evnt) {
-      if (btn_evnt.target.tagName !== 'BUTTON') { return; }
-        wifiprompt.removeEventListener('click', handleButtonClicks);
-        document.body.removeChild(wifiprompt);
-    });
-  });   
-}
-
-async function getPassword(_type){
-  let result;
-  try{
-    removeDropdowns();
-    result = await passwordPrompt();
-    if (result !== null) {  
-      if (result !== '') {
-        savePOST(_type, [result]);
-      }
-    }
-    result = "";
-  } catch(e){
-    result = "";
-  }
-}
-
-function passwordPrompt(){
-  const _winid = "pass__prompt_win";
-  if (document.getElementById(_winid)) return;
-  let pwprompt = document.createElement("div");
-  pwprompt.id = _winid;
-  pwprompt.classList.add("prompt_win");
-  let pwtextdiv = document.createElement("div");
-  pwtextdiv.innerHTML = "Enter password:";
-  pwprompt.appendChild(pwtextdiv);
-  let pwinput = document.createElement("input");
-  pwinput.id = "pass__textbox";
-  pwinput.type="password";
-  pwprompt.appendChild(pwinput);
-  // buttons 
-  let pwbtndiv = document.createElement("div");
-  pwbtndiv.id = "pass__prmbtnctr";
-  let pwokbutton = document.createElement("button");
-  pwokbutton.innerHTML = "Send";
-  pwokbutton.className ="button pass__prompt_btn"; 
-  pwokbutton.type="button"; 
-  let pwcancelb = document.createElement("button");
-  pwcancelb.innerHTML = "Cancel";
-  pwcancelb.className = "button pass__prompt_btn"; 
-  pwcancelb.type = "button"; 
-  pwbtndiv.appendChild(pwcancelb);
-  pwbtndiv.appendChild(pwokbutton);
-  pwprompt.appendChild(pwbtndiv);
-  document.body.appendChild(pwprompt); 
-  pwinput.focus();
-  return new Promise(function(resolve, reject) {
-    pwprompt.addEventListener('click', function handleButtonClicks(click_evnt) {
-      if (click_evnt.target.tagName !== 'BUTTON') return;
-      pwprompt.removeEventListener('click', handleButtonClicks);
-      if (click_evnt.target === pwokbutton) {
-        resolve(pwinput.value);
-      } else {
-        reject(new Error('User cancelled'));
-      }
-      document.body.removeChild(pwprompt);
-    });
-    pwinput.addEventListener('keyup',function handleEnter(up_events) {
-      if(up_events.key === 'Enter') {
-        resolve(pwinput.value);
-        document.body.removeChild(pwprompt);
-      } else if (up_events.key === 'Escape') {
-        document.body.removeChild(pwprompt);
-        reject(new Error("User cancelled"));
-      }
-    });
-  }); 
 }
 
 /////// Volume Controls ///////
-
-/**
- * Iterates through the room configurations, locates the exact button elements 
- * in the DOM, and attaches a 'click' event listener directly to each one.
- * * @param {Object} roomConfigs - The configuration object for all rooms.
- */
-function setupVolumeListeners(roomConfigs) {
-  const roomKeys = Object.keys(roomConfigs);
-  // Iterate over each room defined in the configuration
-  for (let index = 0; index < roomKeys.length; index++) {
-    const roomPrefix = roomKeys[index];
-    const roomData = roomConfigs[roomPrefix];
-    // Check if the voltarget property exists and is not an empty string
-    const isVolumeTargetPopulated = roomData.voltarget !== undefined && roomData.voltarget !== '';
-    if (isVolumeTargetPopulated) {
-      const actionKeys = Object.keys(VOLUME_ACTIONS);
-      // Dynamically generate the full ID, find the element, and attach the listener
-      for (let actionIndex = 0; actionIndex < actionKeys.length; actionIndex++) {
-        const buttonSuffix = actionKeys[actionIndex];
-        const actionCommand = VOLUME_ACTIONS[buttonSuffix];
-        // Construct the exact DOM element ID (e.g., 'lr-voldwnbtn')
-        const fullElementId = `${roomPrefix}-${buttonSuffix}`;
-        // Retrieve the actual DOM element
-        const buttonElement = document.getElementById(fullElementId);
-        // Verify the element exists
-        const DOMElementExists = buttonElement !== null;
-        if (DOMElementExists) {
-          // Attach the event listener to button
-          buttonElement.addEventListener('click', function() {
-            sendVol(actionCommand);
-          });
-        }
-      }
-    }
-  }
-}
 
 function sendVol(_cmd) {
   const room = App.currentRoom;
@@ -1094,72 +1389,6 @@ function setAmpVolume(_cmd, _device, _maxvol) {
   });
 }
 
-function showVolumePopup(vol) {
-  let win_name = "vol-popup";
-  let text_name = "vol-text";
-  let grid_name = "vol-grid";
-  let bar_name = "vol-bar";
-  let voltext, volgrid, volbar;
-  let volpopwin = document.getElementById(win_name);
-  if (!volpopwin) { // window does not exist
-    // draw window
-    volpopwin = document.createElement("div");
-    volpopwin.classList.add("popup-alert");
-    volpopwin.id = win_name;
-    // volume text box
-    voltext = document.createElement("div");
-    voltext.id = text_name;
-    volpopwin.appendChild(voltext);
-    // progress bar
-    volgrid = document.createElement("div");
-    volgrid.classList.add("progress_grid");
-    volgrid.id = grid_name;
-    volbar = document.createElement("div");
-    volbar.classList.add("bar_progress");
-    volbar.id = bar_name;
-    volgrid.appendChild(volbar);
-    volpopwin.appendChild(volgrid);
-    // add to page
-    document.body.appendChild(volpopwin);
-  } else {
-    // select elements in existing window
-    volbar = document.getElementById(bar_name);
-    volgrid = document.getElementById(grid_name);
-    voltext = document.getElementById(text_name);
-  }
-  // set volume display
-  switch(vol) {
-    case -1:
-      volgrid.style.display = "none";
-      voltext.innerHTML = "---";
-      break;    
-    case 0:
-      volgrid.style.display = "none";
-      voltext.innerHTML = "Mute";
-      break;     
-    default:
-      volgrid.style.display = "block";
-      let volstr = vol + "%";
-      voltext.innerHTML = volstr;
-      volbar.style.width = volstr;
-  }
-  // reset hide window timeout
-  clearTimeout(App.volPopupTimer);
-  // hide window after delay
-  App.volPopupTimer = setTimeout(() => {
-    if (volpopwin) { // window exists
-      // fade out window
-      volpopwin.classList.add('fade-out');
-      // wait for the transition to end before removing window
-      volpopwin.addEventListener("animationend", function (event) {
-        if (event && volpopwin) {
-          document.body.removeChild(volpopwin);
-        }
-      });
-    }
-  }, 3000); // hide delay in (ms)
-}
-
 ///// Misc. Functions ////
 
 function roomOnOff(action) {
@@ -1168,354 +1397,6 @@ function roomOnOff(action) {
 
 function relaxSend(_cmd) {
   sendCmd('main', 'relax', _cmd);
-}
-
-//// Bookmarks Menu ////
-
-function showBookmarks() {
-  // hide menu if clicked while open
-  if (App.bookmarkState !== App.BKM_INACTIVE) {
-    removeDropdowns();
-    return;
-  }
-  // draw bookmarks
-  showDynMenu('bookmarks');
-  // show add / edit buttons
-  classDisplay("bookmark-buttons", "flex");
-  // link open mode
-  App.bookmarkState = App.BKM_OPEN_MODE;
-}
-
-function showBookmarkSearch() {
-  const elem = document.getElementById("bookmarks");
-  if (elem) {
-    // draw text input box
-    let searchBox = document.createElement("input"); 
-    searchBox.type = "text";
-    searchBox.autocorrect = "off";
-    searchBox.autocapitalize = "none"; 
-    searchBox.placeholder = "Search here...";
-    searchBox.classList.add('nohide');
-    searchBox.id = 'bookmark__search_txt';
-    // draw menu container 
-    let searchMenuItem = document.createElement('a');
-    searchMenuItem.id = "bookmark__search";
-    searchMenuItem.classList.add('nohide');
-    // draw search icon
-    let searchIcon = document.createElement("div");
-    searchIcon.id = "bookmark__search_icon";
-    showBookmarkSearchIcon(searchIcon);
-    // add objects to window
-    searchMenuItem.appendChild(searchIcon);
-    searchMenuItem.appendChild(searchBox);
-    elem.appendChild(searchMenuItem);
-    // focus keyboard on search text box
-    searchBox.focus();
-    new Promise(function() {
-      // add input listener
-      searchMenuItem.addEventListener('input', function searchInputListener(int_evnt) {
-        filterBookmarkItems(searchBox.value);
-        // cleanup listener
-        if (int_evnt.target.tagName !== 'INPUT') { return; }
-        searchMenuItem.removeEventListener('click', searchInputListener); 
-      });
-      // search icon button listener
-      searchMenuItem.addEventListener('click', function handleSearchButtonClick(btn_evnt) {
-        // reset search
-        filterBookmarkItems("");
-        searchBox.value = "";
-        searchBox.focus();
-        // cleanup listener
-        if (btn_evnt.target.tagName !== 'BUTTON') { return; }
-        searchMenuItem.removeEventListener('click', handleSearchButtonClick);
-      });
-    });
-  }
-}
-
-function filterBookmarkItems(termIn) {
-  const searchTerm = termIn.toLowerCase();
-  const searchIcon = document.getElementById("bookmark__search_icon")
-  if (searchTerm === "") {
-    showBookmarkSearchIcon(searchIcon);
-  } else {
-    showCancelSearchIcon(searchIcon);
-  }
-  const bookmarks = document.getElementById("bookmarks");
-  if (bookmarks) {
-    [...bookmarks.getElementsByClassName('bookmarked__item')].forEach(elem => {
-      if (elem) {
-        const bookmarkText = elem.textContent.toLowerCase();
-        if (bookmarkText.includes(searchTerm)) {
-          elem.style.display = 'list-item';
-        } else {
-          elem.style.display = 'none';
-        }
-      }
-    });
-  }
-}
-
-function showBookmarkSearchIcon(searchIcon) {
-  searchIcon.className = "";
-  searchIcon.classList.add("fad");
-  searchIcon.classList.add("fa-search");
-}
-
-function showCancelSearchIcon(searchIcon) {
-  searchIcon.className = "";
-  searchIcon.classList.add("fad");
-  searchIcon.classList.add("fa-times-octagon");
-}
-
-function removeBookmarkSearch() {
-  const search = document.getElementById("bookmark__search");
-  const search_txt = document.getElementById("bookmark__search_txt");
-  const search_icon = document.getElementById("bookmark__search_icon")
-  if (search_icon) search_icon.remove();
-  if (search_txt) search_txt.remove();
-  if (search) search.remove();
-}
-
-function editBookmark() {
-  // hide menu if clicked while open
-  if (App.bookmarkState === App.BKM_EDIT_MODE) {
-    removeDropdowns();
-    return;
-  }
-  enableEditAddMode();
-}
-
-function addBookmark() {
-  enableEditAddMode();
-  // create new unique menu ID
-  let _newid;
-  const _datalen = App.fileData.length;
-  if (_datalen <= 1) {
-    if (_datalen == 1) {
-      _newid = 1;
-    } else {
-      _newid = 0;
-    }
-  } else {
-    _newid = _datalen - 1;
-  }
-  // add temporary entry to menu array
-  App.fileData.push("placeholder");
-  // create placeholder menu item
-  const navElement = document.getElementById('bookmarks');
-  const _elm = document.createElement('a');
-  _elm.id = "menu-" + _newid;
-  _elm.innerText = "New Bookmark";
-  _elm.classList.add('bookmarked__item');
-  // store URL
-  Object.defineProperty(_elm, "url", {
-    enumerable: false,
-    writable: true,
-    value: "about:blank"
-  });
-  // define click action
-  _elm.addEventListener("click", function() {
-    clickBookmark(_newid);
-  });
-  // highlight selected item
-  _elm.classList.add("dd-selected");
-  // insert item below 
-  navElement.insertBefore(_elm,navElement.firstChild);
-  // add new window
-  drawBookmarkPrompt(true, null, null, _elm);
-}
-
-function enableEditAddMode() {
-  const elem = document.getElementById("bookmarks");
-  if (elem) { // change color of menu
-    elem.classList.add("bookmark-editmode");
-  }
-  // remove 
-  removeBookmarkSearch();
-  App.bookmarkState = App.BKM_EDIT_MODE;
-  closeBookmarkPrompt();
-}
-
-function clickBookmark(id) {
-  const elmid = "menu-" + id;
-  const elem = document.getElementById(elmid);
-  const url = Object.values(elem.url).join("");
-  const name = elem.innerText;
-  if (elem) { 
-    if (App.bookmarkState === App.BKM_OPEN_MODE) {
-      if (!(url === null || url == "" || url == "about:blank")) {
-        // open URL in new tab
-        window.open(url, "_blank");
-      }
-    }
-    if (App.bookmarkState === App.BKM_EDIT_MODE) {
-      // edit bookmark item
-      closeBookmarkPrompt();
-      elem.classList.add("dd-selected"); // highlight selected item
-      drawBookmarkPrompt(false, url, name, elem);
-    }
-  }
-}
-
-async function drawBookmarkPrompt(add, url, name, elem){
-  // create empty window
-  let editFavPrompt = document.createElement("div"); 
-  editFavPrompt.className = "editFav__win";
-  editFavPrompt.id = "editFav__prompt";
-  editFavPrompt.classList.add("prompt_win");
-  // Link name edit box
-  let editFavName = document.createElement("input"); 
-  editFavName.type = "text";
-  editFavName.value = name;
-  editFavName.autocorrect = "off";
-  editFavName.autocapitalize = "none"; 
-  editFavName.id = "editFav__namebox";
-  editFavName.classList.add("editFav__textbox");
-  // URL edit box
-  let editFavURL = document.createElement("input"); 
-  editFavURL.type = "text";
-  editFavURL.value = url;
-  editFavURL.autocorrect = "off";
-  editFavURL.autocapitalize = "none";
-  editFavURL.id = "editFav__urlbox";
-  editFavURL.classList.add("editFav__textbox");
-  let bannerText;
-  if (add === true) { // add new mode
-    bannerText = "Add Bookmark";
-    editFavName.placeholder = "Enter Name";
-    editFavURL.placeholder = "Enter URL";
-  } else { // edit mode 
-    bannerText = "Edit Bookmark";
-  }
-  // window banner text
-  let editFavText = document.createElement("div");
-  editFavText.classList.add("editFav__toptext");
-  editFavText.innerHTML = bannerText; 
-  // cancel button
-  let editFavCancelBtn = document.createElement("button");
-  editFavCancelBtn.classList.add("editFav__button");
-  editFavCancelBtn.classList.add("button");
-  editFavCancelBtn.classList.add("fad");
-  editFavCancelBtn.classList.add("fa-times-octagon");
-  editFavCancelBtn.type = "button";
-  // lookup favorites
-  let editFavLookupBtn = document.createElement("button");
-  editFavLookupBtn.classList.add("editFav__button");
-  editFavLookupBtn.classList.add("button");
-  editFavLookupBtn.classList.add("fad");
-  editFavLookupBtn.classList.add("fa-search");
-  editFavLookupBtn.type = "button";
-  // save button
-  let editFavSaveBtn = document.createElement("button");
-  editFavSaveBtn.classList.add("editFav__button");
-  editFavSaveBtn.classList.add("button");
-  editFavSaveBtn.classList.add("fad");
-  editFavSaveBtn.classList.add("fa-save");
-  editFavSaveBtn.type = "button";
-  // delete button
-  let editFavDeleteBtn = document.createElement("button");
-  editFavDeleteBtn.classList.add("editFav__button");
-  editFavDeleteBtn.classList.add("button");
-  editFavDeleteBtn.classList.add("fad");
-  editFavDeleteBtn.classList.add("fa-trash-alt");
-  editFavDeleteBtn.type = "button";
-  // up button
-  let editFavUpBtn = document.createElement("button");
-  editFavUpBtn.classList.add("editFav__button");
-  editFavUpBtn.classList.add("button");
-  editFavUpBtn.classList.add("fad");
-  editFavUpBtn.classList.add("fa-arrow-up");
-  editFavUpBtn.type = "button"; 
-  // down button
-  let editFavDownBtn = document.createElement("button");
-  editFavDownBtn.classList.add("editFav__button");
-  editFavDownBtn.classList.add("button");
-  editFavDownBtn.classList.add("fad");
-  editFavDownBtn.classList.add("fa-arrow-down");
-  editFavDownBtn.type = "button";
-  // append elements to window
-  editFavPrompt.appendChild(editFavText);      // window title text
-  editFavPrompt.appendChild(editFavName);      // name text box
-  editFavPrompt.appendChild(editFavURL);       // URL text box
-  editFavPrompt.appendChild(editFavUpBtn);     // row #1
-  editFavPrompt.appendChild(editFavLookupBtn); // row #1 
-  editFavPrompt.appendChild(editFavDownBtn);   // row #2
-  editFavPrompt.appendChild(editFavSaveBtn);   // row #2
-  editFavPrompt.appendChild(editFavCancelBtn); // row #3
-  editFavPrompt.appendChild(editFavDeleteBtn); // row #3
-  // display window on page
-  document.body.appendChild(editFavPrompt);
-  // handle button actions
-  new Promise(function() {
-    editFavPrompt.addEventListener('click', function handleButtonClicks(btn_event) { 
-    if (btn_event.target.tagName !== 'BUTTON') { return; }
-      // move up button action
-      if (btn_event.target === editFavUpBtn) {
-        shiftMenuUp(elem);
-      }
-      // move down button action
-      if (btn_event.target === editFavDownBtn) {
-        shiftMenuDown(elem);
-      }         
-      // cancel button action
-      if (btn_event.target === editFavCancelBtn) {
-        editFavPrompt.removeEventListener('click', handleButtonClicks);
-        removeDropdowns();
-      }
-      // lookup URL action
-      if (btn_event.target === editFavLookupBtn) {
-        lookupURL();
-      }
-      // save button action
-      if (btn_event.target === editFavSaveBtn) {
-        // do not allow empty URL or name
-        let stopsave = false;
-        if (editFavName.value === null || editFavName.value == "") {
-          editFavName.placeholder = "Name cannot be empty";
-          stopsave = true;
-        }
-        if (editFavURL.value === null || editFavURL.value == "") {
-          editFavURL.placeholder = "URL cannot be empty";
-          stopsave = true;
-        }
-        if (stopsave === true){
-          return;
-        }
-        // update changed values
-        if (elem) { 
-          // save name to menu object
-          let _boxname = editFavName.value.replaceAll("|", "-");
-          // name length limiter
-          let maxNameLength = 42;
-          if (_boxname.length >= maxNameLength) {
-            elem.innerText = _boxname.substring(0,maxNameLength) + "...";
-          } else {
-            elem.innerText = _boxname;
-          }
-          // save URL to menu object
-          let _boxurl = addHTTPtoURL(editFavURL.value.replaceAll("|", "-"));
-          elem['url'] = _boxurl;
-          editFavURL.value = _boxurl;
-          editFavText.innerHTML = "Changes Saved"; 
-        }
-        // save to file
-        saveBookmarks();
-        // close dropdown
-        editFavPrompt.removeEventListener('click', handleButtonClicks);
-        closeBookmarkPrompt();
-      }
-      // delete button action
-      if (btn_event.target === editFavDeleteBtn) {
-        elem.remove();
-        // save to file
-        saveBookmarks();
-        // close dropdown
-        editFavPrompt.removeEventListener('click', handleButtonClicks);
-        closeBookmarkPrompt();
-      }    
-    });
-  });   
 }
 
 // add HTTPs prefix if not defined
@@ -1532,6 +1413,117 @@ function addHTTPtoURL(linkin) {
     }
   }
   return linkout;
+}
+
+//// Bookmarks Menu ////
+
+// close add / edit window
+function closeBookmarkPrompt() {
+  // re-enable click outside of window
+  document.querySelectorAll("*:not(#editFav__prompt)").forEach(elem1 => {
+    elem1.style.pointerEvents = "";
+  }); 
+  // un-highlight selected item
+  for (let idx = 0; idx <= App.fileData.length; idx++) {
+    const _menuid = "menu-" + idx;
+    const elem2 = document.getElementById(_menuid);
+    if (elem2) {
+      if(elem2.classList.contains('dd-selected')) {
+        elem2.classList.remove("dd-selected");
+      }
+    }
+  }
+  const favPrompt = document.getElementById("editFav__prompt");
+  if (favPrompt) {
+    favPrompt.remove();
+  }  
+}
+
+function showBookmarks() {
+  // hide menu if clicked while open
+  if (App.bookmarkState !== App.BKM_INACTIVE) {
+    removeDropdowns();
+    return;
+  }
+  // draw bookmarks
+  showDynMenu("bookmarks");
+  // render the edit/add buttons next to the bookmarks star on demand;
+  // removeBookmarks() removes them again (no show/hide toggling)
+  renderBookmarkButtons();
+  // link open mode
+  App.bookmarkState = App.BKM_OPEN_MODE;
+}
+
+function renderBookmarkButtons() {
+  if (document.getElementById("bookmark-buttons")) return; // already rendered
+  const starBtn = document.getElementById("btn-show-bookmarks");
+  if (!starBtn) return;
+  starBtn.insertAdjacentHTML("afterend", bookmarkButtonsTemplate());
+  // (.bookmark-buttons is display:flex in styles.css -- rendering it is
+  // all that's needed, no inline display)
+}
+
+function showBookmarkSearch() {
+  const elem = document.getElementById("bookmarks");
+  if (elem) {
+    // draw menu container with search icon + text input box
+    const searchMenuItem = document.createElement("a");
+    searchMenuItem.id = "bookmark__search";
+    searchMenuItem.classList.add("nohide");
+    searchMenuItem.innerHTML = html`
+      <div id="bookmark__search_icon" class="fad fa-search"></div>
+      <input type="text" id="bookmark__search_txt" class="nohide"
+             placeholder="Search here..." autocorrect="off" autocapitalize="none">
+    `;
+    elem.appendChild(searchMenuItem);
+    const searchBox = document.getElementById("bookmark__search_txt");
+    // focus keyboard on search text box
+    searchBox.focus();
+    // filter list as the user types
+    searchMenuItem.addEventListener("input", function searchInputListener() {
+      filterBookmarkItems(searchBox.value);
+    });
+    // clicking the icon resets the search
+    searchMenuItem.addEventListener("click", function handleSearchButtonClick() {
+      filterBookmarkItems("");
+      searchBox.value = "";
+      searchBox.focus();
+    });
+  }
+}
+
+function filterBookmarkItems(termIn) {
+  const searchTerm = termIn.toLowerCase();
+  const searchIcon = document.getElementById("bookmark__search_icon");
+  if (searchTerm === "") {
+    showBookmarkSearchIcon(searchIcon);
+  } else {
+    showCancelSearchIcon(searchIcon);
+  }
+  const bookmarks = document.getElementById("bookmarks");
+  if (bookmarks) {
+    [...bookmarks.getElementsByClassName("bookmarked__item")].forEach((elem) => {
+      const bookmarkText = elem.textContent.toLowerCase();
+      elem.style.display = bookmarkText.includes(searchTerm) ? "list-item" : "none";
+    });
+  }
+}
+
+function showBookmarkSearchIcon(searchIcon) {
+  if (searchIcon) searchIcon.className = "fad fa-search";
+}
+
+function showCancelSearchIcon(searchIcon) {
+  if (searchIcon) searchIcon.className = "fad fa-times-octagon";
+}
+
+function removeBookmarkSearch() {
+  const search = document.getElementById("bookmark__search");
+  const search_txt = document.getElementById("bookmark__search_txt");
+  const search_icon = document.getElementById("bookmark__search_icon");
+  if (search_icon) search_icon.remove();
+  if (search_txt) search_txt.remove();
+  if (search) search.remove();
 }
 
 async function lookupURL() {
@@ -1601,26 +1593,551 @@ function saveBookmarks() {
   savePOST('bookmarks', [_file]);
 }
 
-// close add / edit window
-function closeBookmarkPrompt() {
-  // re-enable click outside of window
-  document.querySelectorAll("*:not(#editFav__prompt)").forEach(elem1 => {
-    elem1.style.pointerEvents = "";
-  }); 
-  // un-highlight selected item
-  for (let idx = 0; idx <= App.fileData.length; idx++) {
-    const _menuid = "menu-" + idx;
-    const elem2 = document.getElementById(_menuid);
-    if (elem2) {
-      if(elem2.classList.contains('dd-selected')) {
-        elem2.classList.remove("dd-selected");
-      }
+function editBookmark() {
+  // hide menu if clicked while open
+  if (App.bookmarkState === App.BKM_EDIT_MODE) {
+    removeDropdowns();
+    return;
+  }
+  enableEditAddMode();
+}
+
+function addBookmark() {
+  enableEditAddMode();
+  // create new unique menu ID (0 -> 0, 1 -> 1, n>1 -> n-1)
+  const _datalen = App.fileData.length;
+  const _newid = _datalen <= 1 ? _datalen : _datalen - 1;
+  // add temporary entry to menu array
+  App.fileData.push("placeholder");
+  // create placeholder menu item
+  const navElement = document.getElementById("bookmarks");
+  const _elm = document.createElement("a");
+  _elm.id = `menu-${_newid}`;
+  _elm.innerText = "New Bookmark";
+  _elm.classList.add("bookmarked__item");
+  // store URL
+  Object.defineProperty(_elm, "url", {
+    enumerable: false,
+    writable: true,
+    value: "about:blank"
+  });
+  // define click action
+  _elm.addEventListener("click", function () {
+    clickBookmark(_newid);
+  });
+  // highlight selected item
+  _elm.classList.add("dd-selected");
+  // insert item below
+  navElement.insertBefore(_elm, navElement.firstChild);
+  // add new window
+  drawBookmarkPrompt(true, null, null, _elm);
+}
+
+function enableEditAddMode() {
+  const elem = document.getElementById("bookmarks");
+  if (elem) { // change color of menu
+    elem.classList.add("bookmark-editmode");
+  }
+  // remove
+  removeBookmarkSearch();
+  App.bookmarkState = App.BKM_EDIT_MODE;
+  closeBookmarkPrompt();
+}
+
+function clickBookmark(id) {
+  const elem = document.getElementById(`menu-${id}`);
+  if (!elem) return;
+  const url = elem.url; // Object.values(str).join("") returned the same string
+  const name = elem.innerText;
+  if (App.bookmarkState === App.BKM_OPEN_MODE) {
+    if (!(url === null || url == "" || url == "about:blank")) {
+      // open URL in new tab
+      window.open(url, "_blank");
     }
   }
-  const favPrompt = document.getElementById("editFav__prompt");
-  if (favPrompt) {
-    favPrompt.remove();
-  }  
+  if (App.bookmarkState === App.BKM_EDIT_MODE) {
+    // edit bookmark item
+    closeBookmarkPrompt();
+    elem.classList.add("dd-selected"); // highlight selected item
+    drawBookmarkPrompt(false, url, name, elem);
+  }
+}
+
+async function drawBookmarkPrompt(add, url, name, elem) {
+  // create window: banner text, name box, URL box, six action buttons
+  const editFavPrompt = document.createElement("div");
+  editFavPrompt.className = "editFav__win";
+  editFavPrompt.id = "editFav__prompt";
+  editFavPrompt.classList.add("prompt_win");
+  const bannerText = add === true ? "Add Bookmark" : "Edit Bookmark";
+  editFavPrompt.innerHTML = html`
+    <div class="editFav__toptext">${bannerText}</div>
+    <input type="text" id="editFav__namebox" class="editFav__textbox"
+           autocorrect="off" autocapitalize="none">
+    <input type="text" id="editFav__urlbox" class="editFav__textbox"
+           autocorrect="off" autocapitalize="none">
+    <button class="editFav__button button fad fa-arrow-up" type="button"></button>
+    <button class="editFav__button button fad fa-search" type="button"></button>
+    <button class="editFav__button button fad fa-arrow-down" type="button"></button>
+    <button class="editFav__button button fad fa-save" type="button"></button>
+    <button class="editFav__button button fad fa-times-octagon" type="button"></button>
+    <button class="editFav__button button fad fa-trash-alt" type="button"></button>
+  `;
+  // element references (buttons in DOM order: row1 up/lookup, row2 down/save,
+  // row3 cancel/delete)
+  const editFavText = editFavPrompt.querySelector(".editFav__toptext");
+  const nameBox = editFavPrompt.querySelector("#editFav__namebox");
+  const urlBox = editFavPrompt.querySelector("#editFav__urlbox");
+  const [editFavUpBtn, editFavLookupBtn, editFavDownBtn,
+         editFavSaveBtn, editFavCancelBtn, editFavDeleteBtn] =
+    editFavPrompt.querySelectorAll("button");
+  // set values via properties (null coerces to "" exactly as before)
+  nameBox.value = name;
+  urlBox.value = url;
+  if (add === true) { // add new mode placeholders
+    nameBox.placeholder = "Enter Name";
+    urlBox.placeholder = "Enter URL";
+  }
+  // display window on page
+  document.body.appendChild(editFavPrompt);
+  // handle button actions
+  editFavPrompt.addEventListener("click", function handleButtonClicks(btn_event) {
+    if (btn_event.target.tagName !== "BUTTON") { return; }
+    // move up button action
+    if (btn_event.target === editFavUpBtn) {
+      shiftMenuUp(elem);
+    }
+    // move down button action
+    if (btn_event.target === editFavDownBtn) {
+      shiftMenuDown(elem);
+    }
+    // cancel button action
+    if (btn_event.target === editFavCancelBtn) {
+      editFavPrompt.removeEventListener("click", handleButtonClicks);
+      removeDropdowns();
+    }
+    // lookup URL action
+    if (btn_event.target === editFavLookupBtn) {
+      lookupURL();
+    }
+    // save button action
+    if (btn_event.target === editFavSaveBtn) {
+      // do not allow empty URL or name
+      let stopsave = false;
+      if (nameBox.value === null || nameBox.value == "") {
+        nameBox.placeholder = "Name cannot be empty";
+        stopsave = true;
+      }
+      if (urlBox.value === null || urlBox.value == "") {
+        urlBox.placeholder = "URL cannot be empty";
+        stopsave = true;
+      }
+      if (stopsave === true) {
+        return;
+      }
+      // update changed values
+      if (elem) {
+        // save name to menu object
+        const _boxname = nameBox.value.replaceAll("|", "-");
+        // name length limiter
+        const maxNameLength = 42;
+        if (_boxname.length >= maxNameLength) {
+          elem.innerText = `${_boxname.substring(0, maxNameLength)}...`;
+        } else {
+          elem.innerText = _boxname;
+        }
+        // save URL to menu object
+        const _boxurl = addHTTPtoURL(urlBox.value.replaceAll("|", "-"));
+        elem.url = _boxurl;
+        urlBox.value = _boxurl;
+        editFavText.innerHTML = "Changes Saved";
+      }
+      // save to file
+      saveBookmarks();
+      // close dropdown
+      editFavPrompt.removeEventListener("click", handleButtonClicks);
+      closeBookmarkPrompt();
+    }
+    // delete button action
+    if (btn_event.target === editFavDeleteBtn) {
+      elem.remove();
+      // save to file
+      saveBookmarks();
+      // close dropdown
+      editFavPrompt.removeEventListener("click", handleButtonClicks);
+      closeBookmarkPrompt();
+    }
+  });
+}
+
+// Tag function for building DOM markup with template literals.
+// Strips whitespace between tags so the resulting DOM contains no stray
+// text nodes -- output is identical to element-by-element createElement()
+// construction (whitespace text nodes between inline-block elements would
+// otherwise render as visible gaps).
+function html(strings, ...values) {
+  return strings
+    .reduce((out, str, i) => out + str + (i < values.length ? values[i] : ""), "")
+    .replace(/>\s+</g, "><")
+    .trim();
+}
+
+function showPopup(message) {
+  const win_name = "msg-popup";
+  const text_name = "msg-text";
+  let msgpopwin = document.getElementById(win_name);
+  if (!msgpopwin) { // window does not exist
+    // draw window (popup container + message text box)
+    msgpopwin = document.createElement("div");
+    msgpopwin.classList.add("popup-alert");
+    msgpopwin.id = win_name;
+    msgpopwin.innerHTML = html`<div id="${text_name}"></div>`;
+    // add to page
+    document.body.appendChild(msgpopwin);
+  }
+  msgpopwin.classList.remove("fade-out");
+  // set message text
+  const msgtext = document.getElementById(text_name);
+  msgtext.innerHTML = message;
+  // reset hide window timeout
+  clearTimeout(App.messagePopupTimer);
+  // hide window after delay
+  App.messagePopupTimer = setTimeout(() => {
+    // fade out window
+    msgpopwin.classList.add("fade-out");
+    // wait for the transition to end before removing window
+    msgpopwin.addEventListener("animationend", () => {
+      if (msgpopwin.isConnected) {
+        msgpopwin.remove();
+      }
+    }, { once: true });
+  }, 4000); // hide delay in (ms)
+}
+
+/// Temperature & Humidity ///
+
+async function showTempHumidity() {
+  const _winid = "temp__prompt";
+  if (document.getElementById(_winid)) return;
+  // create window: banner text, thermometer grid, buttons row
+  const tempprompt = document.createElement("div");
+  tempprompt.id = _winid;
+  tempprompt.classList.add("prompt_win");
+  tempprompt.innerHTML = html`
+    <div id="temp_top_text">Temperature/Humidity</div>
+    <div id="temp_therm_grid">
+      <div class="thermometer">
+        <div class="temperature" id="thermo__1" data-value="--&#176;"></div>
+      </div>
+      <div class="thermometer">
+        <div class="temperature" id="thermo__2" data-value="--%"></div>
+      </div>
+    </div>
+    <div>
+      <button class="button temp__btn fad fa-times-octagon" type="button"></button>
+      <button class="button temp__btn fad fa-sync" type="button"></button>
+    </div>
+  `;
+  // add window to DOM
+  document.body.appendChild(tempprompt);
+  // grab button references (cancel first, refresh second)
+  const [tempcancelb, temprefreshb] = tempprompt.querySelectorAll("button");
+  // call API for data
+  getTemperatureData();
+  // button actions
+  tempprompt.addEventListener("click", function handleButtonClicks(btn_evnt) {
+    if (btn_evnt.target.tagName !== "BUTTON") { return; }
+    // close button
+    if (btn_evnt.target === tempcancelb) {
+      tempprompt.removeEventListener("click", handleButtonClicks);
+      tempprompt.remove();
+    }
+    // refresh button
+    if (btn_evnt.target === temprefreshb) {
+      getTemperatureData();
+    }
+  });
+}
+
+function getTemperatureData() {
+  sendCmd("main", "brxmit", "roomth")
+    .then((data) => {
+      const resp = cleanString(data);
+      // extract numerics
+      const resp_arr = resp.split("~");
+      const temp_elm = document.getElementById("thermo__1");
+      const humd_elm = document.getElementById("thermo__2");
+      if (resp_arr.length == 2) {
+        // valid response
+        pushTempDataToThermos(resp_arr, temp_elm, humd_elm);
+      } else {
+        pushTempErrorThermos(temp_elm, humd_elm);
+      }
+    })
+    .catch(() => {
+      pushTempErrorThermos(
+        document.getElementById("thermo__1"),
+        document.getElementById("thermo__2")
+      );
+    });
+}
+
+function pushTempDataToThermos(resp_arr, temp_elm, humd_elm) {
+  // thermometer limits
+  const minTemp = 25;
+  const maxTemp = 100;
+  const minHumidity = 5;
+  const maxHumidity = 100;
+  // verify elements exist
+  if (!(temp_elm && humd_elm)) {
+    return;
+  }
+  // validate response
+  if (resp_arr.length == 2) {
+    let tvalue = resp_arr[0];
+    let hvalue = resp_arr[1];
+    // set temperature
+    temp_elm.dataset.value = `${tvalue}\u00B0F`;
+    if (tvalue >= maxTemp) { tvalue = maxTemp; }
+    if (tvalue <= minTemp) { tvalue = minTemp; }
+    temp_elm.style.height = `${(tvalue - minTemp) / (maxTemp - minTemp) * 100}%`;
+    // set humidity
+    humd_elm.dataset.value = `${hvalue}%`;
+    if (hvalue >= maxHumidity) { hvalue = maxHumidity; }
+    if (hvalue <= minHumidity) { hvalue = minHumidity; }
+    humd_elm.style.height = `${(hvalue - minHumidity) / (maxHumidity - minHumidity) * 100}%`;
+  } else {
+    pushTempErrorThermos(temp_elm, humd_elm);
+  }
+}
+
+function pushTempErrorThermos(temp_elm, humd_elm) {
+  // verify elements exist
+  if (!(temp_elm && humd_elm)) {
+    return;
+  }
+  temp_elm.style.height = "0%";
+  temp_elm.dataset.value = "--";
+  humd_elm.style.height = "0%";
+  humd_elm.dataset.value = "--";
+}
+
+/////// Pi Wi-Fi Window ///////
+
+async function showPiWiFiPrompt() {
+  const winid = "pinet__prompt";
+  if (document.getElementById(winid)) return;
+  removeDropdowns();
+  const result = await piWiFiPrompt(winid);
+  if (result !== null && result !== "") {
+    sendCmd("main", "confwpa", result);
+    document.getElementById("logTextBox").value =
+      "Wi-Fi configuration updated, select client mode to apply changes.";
+  }
+}
+
+function piWiFiPrompt(_winid) {
+  return new Promise((resolve) => {
+    // create window: SSID label/box, password label/box, cancel + save buttons
+    const pinetprompt = document.createElement("div");
+    pinetprompt.id = _winid;
+    pinetprompt.classList.add("prompt_win");
+    pinetprompt.innerHTML = html`
+      <div>Network (SSID):</div>
+      <input id="pinet__ssidbox">
+      <div>Password:</div>
+      <input id="pinet__passbox" type="password">
+      <button class="button pinet__btn" type="button">Cancel</button>
+      <button class="button pinet__btn" type="button">Save</button>
+    `;
+    document.body.appendChild(pinetprompt);
+    // element references
+    const pinettext1 = pinetprompt.querySelector("div"); // SSID label
+    const pinetssidbox = document.getElementById("pinet__ssidbox");
+    const pinetpassbox = document.getElementById("pinet__passbox");
+    const [pinetcancelb, pinetokbutton] = pinetprompt.querySelectorAll("button");
+    // focus on SSID text box
+    pinetssidbox.focus();
+    // control logic
+    function cancelWiFi() {
+      pinetssidbox.value = "";
+      pinetpassbox.value = "";
+      pinetprompt.remove();
+      resolve(null); // settle the promise on cancel
+    }
+    function sendWiFiData() {
+      if (pinetssidbox.value === "") {
+        pinettext1.innerHTML = "enter SSID!";
+      } else if (pinetpassbox.value === "") {
+        pinettext1.innerHTML = "enter password!";
+      } else {
+        // concat and convert to base64
+        const _wifidata = base64URLSafeEncode(`${pinetssidbox.value}|$|${pinetpassbox.value}`);
+        resolve(_wifidata);
+        cancelWiFi();
+      }
+    }
+    // button clicks
+    pinetprompt.addEventListener("click", function handleButtonClicks(e) {
+      if (e.target.tagName !== "BUTTON") return;
+      if (e.target === pinetokbutton) {
+        sendWiFiData();
+      }
+      if (e.target === pinetcancelb) {
+        cancelWiFi();
+      }
+    });
+    // key focused on SSID box
+    pinetssidbox.addEventListener("keyup", function handleSSID(ssid_evnt) {
+      if (ssid_evnt.key === "Enter") {
+        pinetpassbox.focus();
+      } else if (ssid_evnt.key === "Escape") {
+        cancelWiFi();
+      }
+    });
+    // key focused on password box
+    pinetpassbox.addEventListener("keyup", function handlePass(pass_evnt) {
+      if (pass_evnt.key === "Enter") {
+        sendWiFiData();
+      } else if (pass_evnt.key === "Escape") {
+        cancelWiFi();
+      }
+    });
+  });
+}
+
+async function wifiPrompt() {
+  const _winid = "wifi__prompt";
+  if (document.getElementById(_winid)) return;
+  // create window: banner text, QR image, password text, close button
+  const wifiprompt = document.createElement("div");
+  wifiprompt.id = _winid;
+  wifiprompt.classList.add("prompt_win");
+  wifiprompt.innerHTML = html`
+    <div>Scan for WiFi Access</div>
+    <img src="img/wifi.png" id="wifi__img">
+    <div id="wifi__pwdtxt"></div>
+    <button class="button" type="button" id="wifipmt__btn">Close</button>
+  `;
+  document.body.appendChild(wifiprompt);
+  // password text set separately (value is data, not markup)
+  document.getElementById("wifi__pwdtxt").innerHTML = atob(SSIDpwd());
+  wifiprompt.addEventListener("click", function handleButtonClicks(btn_evnt) {
+    if (btn_evnt.target.tagName !== "BUTTON") { return; }
+    wifiprompt.removeEventListener("click", handleButtonClicks);
+    wifiprompt.remove();
+  });
+}
+
+async function getPassword(_type) {
+  try {
+    removeDropdowns();
+    const result = await passwordPrompt();
+    if (result !== null && result !== "" && result !== undefined) {
+      savePOST(_type, [result]);
+    }
+  } catch (e) {
+    // user cancelled -- nothing to do
+  }
+}
+
+function passwordPrompt() {
+  const _winid = "pass__prompt_win";
+  if (document.getElementById(_winid)) return null;
+  const pwprompt = document.createElement("div");
+  pwprompt.id = _winid;
+  pwprompt.classList.add("prompt_win");
+  pwprompt.innerHTML = html`
+    <div>Enter password:</div>
+    <input id="pass__textbox" type="password">
+    <div id="pass__prmbtnctr">
+      <button class="button pass__prompt_btn" type="button">Cancel</button>
+      <button class="button pass__prompt_btn" type="button">Send</button>
+    </div>
+  `;
+  document.body.appendChild(pwprompt);
+  // element references
+  const pwinput = document.getElementById("pass__textbox");
+  const [pwcancelb, pwokbutton] = pwprompt.querySelectorAll("button");
+  pwinput.focus();
+  return new Promise(function (resolve, reject) {
+    pwprompt.addEventListener("click", function handleButtonClicks(click_evnt) {
+      if (click_evnt.target.tagName !== "BUTTON") return;
+      pwprompt.removeEventListener("click", handleButtonClicks);
+      if (click_evnt.target === pwokbutton) {
+        resolve(pwinput.value);
+      } else {
+        reject(new Error("User cancelled"));
+      }
+      pwprompt.remove();
+    });
+    pwinput.addEventListener("keyup", function handleEnter(up_events) {
+      if (up_events.key === "Enter") {
+        resolve(pwinput.value);
+        pwprompt.remove();
+      } else if (up_events.key === "Escape") {
+        pwprompt.remove();
+        reject(new Error("User cancelled"));
+      }
+    });
+  });
+}
+
+function showVolumePopup(vol) {
+  const win_name = "vol-popup";
+  const text_name = "vol-text";
+  const grid_name = "vol-grid";
+  const bar_name = "vol-bar";
+  let volpopwin = document.getElementById(win_name);
+  if (!volpopwin) { // window does not exist
+    // draw window: volume text box + progress bar grid
+    volpopwin = document.createElement("div");
+    volpopwin.classList.add("popup-alert");
+    volpopwin.id = win_name;
+    volpopwin.innerHTML = html`
+      <div id="${text_name}"></div>
+      <div class="progress_grid" id="${grid_name}">
+        <div class="bar_progress" id="${bar_name}"></div>
+      </div>
+    `;
+    // add to page
+    document.body.appendChild(volpopwin);
+  }
+  volpopwin.classList.remove("fade-out");
+  // select elements in window
+  const voltext = document.getElementById(text_name);
+  const volgrid = document.getElementById(grid_name);
+  const volbar = document.getElementById(bar_name);
+  // set volume display
+  switch (vol) {
+    case -1:
+      volgrid.style.display = "none";
+      voltext.innerHTML = "---";
+      break;
+    case 0:
+      volgrid.style.display = "none";
+      voltext.innerHTML = "Mute";
+      break;
+    default: {
+      volgrid.style.display = "block";
+      const volstr = `${vol}%`;
+      voltext.innerHTML = volstr;
+      volbar.style.width = volstr;
+    }
+  }
+  // reset hide window timeout
+  clearTimeout(App.volPopupTimer);
+  // hide window after delay
+  App.volPopupTimer = setTimeout(() => {
+    // fade out window
+    volpopwin.classList.add("fade-out");
+    // wait for the transition to end before removing window
+    volpopwin.addEventListener("animationend", () => {
+      if (volpopwin.isConnected) {
+        volpopwin.remove();
+      }
+    }, { once: true });
+  }, 3000); // hide delay in (ms)
 }
 
 function showHiFiMoreMenu() {
@@ -1809,15 +2326,23 @@ function showPowerMenu(target, menu = null) {
       if (isNumeric(cmd1) === false || data == null) {
         _menudata += `${menu}-error|redind|Error\n`;
       } else {
-        // power on/off toggle switch
-        if (cmd1 == '1' || cmd1 == '0')
-          _menudata += `${cmd1}~${target}~${menu}|toggle|\n`;
-        // dual LED lamps channel 1=ON/OFF 2=PWM
-        if (menu.endsWith('_dual')) 
-          _menudata += `${cmd2}~main~${menu}|slider|\n`;
-        // global LEDs brightness
-        if (menu == 'fc_leds') 
+        // draw toggle and/or slider
+        const isDualToggleSlider = menu.endsWith('_dual');
+        const isSingleLedSlider = menu.endsWith('_leds');
+        const isFadeCandyLeds = (menu === 'fc_leds');
+        const isDefinedMenu = (isDualToggleSlider || isSingleLedSlider || isFadeCandyLeds);
+        if (isDefinedMenu === false || isDualToggleSlider === true) {
+          if (cmd1 == '1' || cmd1 == '0') {
+            _menudata += `${cmd1}~${target}~${menu}|toggle|\n`;
+          }
+        }
+        if (isDualToggleSlider) {
+          _menudata += `${cmd2}~${target}~${menu}|slider|\n`;
+        } else if (isFadeCandyLeds) {
           _menudata += `${cmd1}~leds~fc|slider|\n`;
+        } else if (isSingleLedSlider) {
+          _menudata += `${cmd1}~${target}~${menu}|slider|\n`; 
+        }
       }
       // stop spinner animation
       btnText.style.visibility = 'visible';
@@ -1984,9 +2509,10 @@ window.drawMenu = function(data, menu) {
     for (let row = 0; row < rows; row++) {
       let line = splitdat[row];
       if (line != "") {
+        const linearr = line.split("|");
+        if (linearr.length < 3) { continue; }
         App.fileData.push(line); // write to array
         const navElement = document.getElementById(menu);
-        const linearr = line.split("|");
         // 0=Host, 1=Type, 2=Name
         const col0 = linearr[0];
         const col1 = linearr[1];
@@ -2016,14 +2542,6 @@ function createListItem(col0_in, col1, col2, menuid) {
   _elm.innerText = col2;
   // configure menu item
   switch (col1) {
-    case 'chkon': 
-      // check-box checked
-      drawCheckBoxItem(_elm, col0, col2, true);
-      break;
-    case 'chkoff': 
-      // check-box unchecked
-      drawCheckBoxItem(_elm, col0, col2, false);
-      break;
     case 'ledmenu': 
       // LEDs menu
       const effect_cmd = col0;
@@ -2071,7 +2589,8 @@ function createListItem(col0_in, col1, col2, menuid) {
       slider.value = col0;
       slider.step = 1;
       slider.addEventListener('input', (event) => {
-        throttledSliderSend(host, cmd, event.target.value);
+        const value = event.target.value;
+        throttledSliderSend('main', host, `${cmd}_set_${value}`);
       });
       _elm.appendChild(slider);
       _elm.classList.add('slider-wide_container');
@@ -2169,83 +2688,39 @@ const throttledSliderSend = requestThrottle((host, cmd, val) => {
   sendCmd(host, cmd, val);
 }, 50); // in (ms)
 
-function drawCheckBoxItem(elm, url, boxid, state) {
-  const _cbox = document.createElement('input');
-  _cbox.type = "checkbox";
-  _cbox.className = "chkbox";
-  _cbox.id = "chkbox-" + boxid;
-  // read checkbox state from file
-  _cbox.checked = state;
-  elm.appendChild(_cbox);
-  // URL on click
-  elm.href = url;
-  // a checkbox was clicked
-  elm.addEventListener('click', function(event) {
-    if (event.target.classList.contains('chkbox')) {
-      boxChanged();
-    }
-  });
-}
-
-function boxChanged() {
-  // loop through checkbox's state
-  for (let i = 0; i < (App.fileData.length - 1); i++) {
-    let line = App.fileData[i];
-    // split up into array (host,state,name)
-    const linearr = line.split("|");
-    // only write box state on 0/1 state items
-    if (linearr[1] == 'chkon' || linearr[1] == 'chkoff') {
-      // read elements checkbox then write state
-      const box = "chkbox-" + linearr[2];
-      let boxelm = document.getElementById(box);
-      if (boxelm.checked === true) {
-        linearr[1] = 'chkon';
-      } else {
-        linearr[1] = 'chkoff';
-      }
-      // build new data
-      let _outstr = linearr.join('|');
-      // replace existing data
-      App.fileData[i] = _outstr;
-    }
-  }
-  // write checkbox changes to file (III)
-  let menuid = App.fileData[App.fileData.length - 1]; // extract menu ID
-  // remove last element of array
-  App.fileData.pop();
-  // update file
-  let fileout = "";
-  for (let row = 0; row < App.fileData.length; row++) {
-    fileout += App.fileData[row] + '\n';
-  }
-  savePOST(menuid, fileout);
-  // add menu ID back to array
-  App.fileData.push(menuid);
-}
-
 function removeDynMenus() {
   // only if menu is on-screen 
   if (App.dynMenuActive == 1) {
     // remove dynamic menu elements (II)
     for (let idx = 0; idx <= App.fileData.length; idx++) {
       const menuRemove = document.getElementById('menu-' + idx);
-      if (menuRemove) {
-        menuRemove.remove();
-      }
+      if (menuRemove) menuRemove.remove();
     }
     App.dynMenuActive = 0;
   }
 }
 
-function openColorPrompt(formattedColor = '#000000') {
+function openColorPrompt(command, argument, cmd_type = false) {
   const colorPrompt = new ColorPrompt('color-popup', (strippedHex) => {
-    sendCmd('leds', 'hex', strippedHex)
+    let cmd;
+    let arg1;
+    let arg2;
+    if (cmd_type === true) { // 3-argument command type
+      cmd = command;
+      arg1 = argument;
+      arg2 = strippedHex;
+    } else {                 // 2-argument command type 
+      cmd = 'main';
+      arg1 = command;
+      arg2 = `${argument}_${strippedHex}`;
+    }
+    sendCmd(cmd, arg1, arg2)
       .catch(err => {
         showPopup("[ColorPrompt] failed to send color: " + err);
       });
   });
   colorPrompt.show();
-  colorPrompt.updateStateFromHex(formattedColor, true, false);
+  colorPrompt.updateStateFromHex('#000000', true, false);
 }
 
 //// End Dynamic Menus ////
@@ -2289,16 +2764,23 @@ App.destroyAll = function() {
     });
     App.activeSwitches = [];
   }
+  destroyPageServices();
+};
+
+function destroyPageServices() {
   // room status display
   if (App.roomStateManager) {
     App.roomStateManager.stopRoomStateTimer();
+    App.roomStateManager = null;
   }
   // animated background
-  if (typeof App.starBackground !== 'undefined' && App.starBackground) {
+  if (App.starBackground) {
     App.starBackground.destroy();
+    App.starBackground = null;
   }
-  // weather wigget
-  if (window.weatherApp && typeof window.weatherApp.remove === 'function') {
-    window.weatherApp.remove();
+  // weather widget
+  if (window.weatherWidget && typeof window.weatherWidget.remove === 'function') {
+    window.weatherWidget.remove();
+    window.weatherWidget = null;
   }
-};
+}

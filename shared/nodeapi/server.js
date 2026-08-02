@@ -41,7 +41,11 @@ app.get('/api', [
         });
         let respout;
         if (action === 'main') {
-            respout = await executeMain(baseWWW, arg1, arg2);
+            if (arg1 === 'leds') {
+                respout = await OPCLEDparser(baseWWW, arg2); 
+            } else {
+                respout = await executeMain(baseWWW, arg1, arg2);
+            }
             return res.status(200).json(respout);
         }
         if (action === 'leds') {

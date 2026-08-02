@@ -75,44 +75,8 @@ body {
   padding-bottom: 100px; 
 }
 
-.server-grid {
-  display: none;
-}
-
-.led-grid {
-  display: none;
-}
-
-.ledpi-grid {
-  display: none;
-}
-
-.pi-grid {
-  display: none;
-}
-
 .dynamic-menus {
   display: block;
-}
-
-.svropt__main {
-  display: none;
-}
-
-.svropt__regions {
-  display: none;
-}
-
-.svropt__backup {
-  display: none;
-}
-
-#bedroom-grid {
-  display: none;
-}
-
-#lr-grid {
-  display: none;
 }
 
 .no-hover:hover {
@@ -434,11 +398,6 @@ input.chkbox {
   opacity: 70%;
 }
 
-.topnav > div[style*="block"] {
-  display: flex !important;
-  align-items: center;
-}
-
 .topnav i { /* Tint nav icons */
   color: var(--main-40-white);
 }
@@ -468,6 +427,8 @@ input.chkbox {
 }
 
 #topnav-right {
+  display: flex;
+  align-items: center;
   margin-left: auto;
 }
 
@@ -738,7 +699,7 @@ input.chkbox {
  */
 
 .bookmark-buttons {
-  display: none;
+  display: flex;
 }
 
 .bookmark-editmode a {
@@ -1620,3 +1581,41 @@ input.chkbox {
 }
 
 /* END - Toggle Switches */
+
+/*
+ *  Bed Adjustment Prompt Style
+ */
+
+#bed__prompt {
+  top: 50%;
+  left: 50%;
+  margin-right: -50%;
+  transform: translate(-50%, -50%);
+  width: 200px;
+  height: auto;
+  padding-top: 12px;
+  padding-left: 12px;
+  padding-right: 10px;
+  padding-bottom: 10px;  
+  color: #fff;
+  z-index: 997;
+}
+
+.bed__title {
+  font-size: 22px;
+  margin-bottom: 8px;
+}
+
+.bed__btn {
+  width: 150px;
+  height: 130px;
+}
+
+.bed__icon {
+  font-size: 50px;
+}
+
+#bed__btn-close {
+  width: 150px;
+  height: 65px;
+}
