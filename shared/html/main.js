@@ -183,12 +183,8 @@ function handleClicks(event) {
   // don't hide menus when clicking these elements
   const NO_HIDE_ELEMENTS = [
       '.button',
-      '.topnav',
       '.bookmarked__item',
-      '.bookmark__search_icon',
-      '.roomstatus-svgs',
-      '.chkbox',
-      '.toggle-switch',
+      '.nohide',
     ].join(', ');
   if (event.target.closest(NO_HIDE_ELEMENTS)) return;
   removeDropdowns();
@@ -336,7 +332,7 @@ function showMenu(_menu) {
 
 function topNavTemplate(f) {
   return `
-<div class="topnav" data-app-injected>
+<div class="topnav nohide" data-app-injected>
   ${f.isServer ? `
   <a id="btn-dyn-mainmenu">
     <i class="fad fa-list"></i>
@@ -432,35 +428,30 @@ function mainGridTemplate(f) {
     <div class="column-left">
       <div class="dropdown">
         <button type="button" class="button" id="btn-dyn-ledcolormenu">
-          <span class="button__text"><i class="fad fa-brush"></i> Solid</span>
+          <span class="button__text"><i class="fad fa-brush"></i> Colors</span>
         </button>
         <div class="dd-content dd-button" id="ledcolormenu">
-          <a id="btn-fc-color-prompt"> Picker<i class="fad fa-tint"></i></a>
+          <a id="btn-fc-color-prompt"> Picker<i class="fad fa-palette"></i></a>
+        </div>
+      </div>
+      <div class="dropdown">
+        <button type="button" class="button" id="btn-power-fc_leds">
+          <span class="button__text" id="fc_leds-text"><i class="fad fa-sun"></i> Pixels</span>
+          <span class="button__text" id="fc_leds-spinner"></span>
+        </button>
+        <div class="dd-content ind-button" id="fc_leds-menu">
+          <a id="btn-cmd-leds-stop"> Stop<i class="fad fa-stop"></i></a>
+          <a id="btn-cmd-leds-pause"> Pause<i class="fad fa-pause"></i></a>
         </div>
       </div>
       <div class="dropdown">
         <button type="button" class="button" id="btn-dyn-ledeffectmenu">
           <span class="button__text"><i class="fad fa-film"></i> Animated</span>
         </button>
-        <div class="dd-content dd-button" id="ledeffectmenu"></div>
+        <div class="dd-content dd-button" id="ledeffectmenu">
+          <a id="btn-cmd-leds-shuffle"> Shuffle<i class="fad fa-random"></i></a>
+        </div>
       </div>
-      <div class="dropdown">
-        <button type="button" class="button" id="btn-power-fc_leds">
-          <span class="button__text" id="fc_leds-text"><i class="fad fa-sun"></i> Brightness</span>
-          <span class="button__text" id="fc_leds-spinner"></span>
-        </button>
-        <div class="dd-content ind-button" id="fc_leds-menu"></div>
-      </div>
-      <p class="grid-sep"></p>
-      <button type="button" class="button" id="btn-cmd-leds-shuffle">
-        <span class="button__text"><i class="fad fa-random"></i> Shuffle</span>
-      </button>
-      <button type="button" class="button" id="btn-cmd-leds-stop">
-        <span class="button__text"><i class="fad fa-stop"></i> Stop</span>
-      </button>
-      <button type="button" class="button" id="btn-cmd-leds-pause">
-        <span class="button__text"><i class="fad fa-pause"></i> Pause</span>
-      </button>
       ${f.isServer ? roomControlsTemplate() : ''}
     </div>
     <!-- the active room's grid is rendered into this container on demand by
@@ -474,9 +465,9 @@ registerListeners({
   'btn-fc-color-prompt':   () => openColorPrompt('leds', 'hex', true),
   'btn-dyn-ledeffectmenu': () => showDynMenu('ledeffectmenu'),
   'btn-power-fc_leds':     () => showPowerMenu('fc_leds'),
-  'btn-cmd-leds-shuffle':  () => sendCmd('leds', 'shuffle', ''),
-  'btn-cmd-leds-stop':     () => sendCmd('leds', 'stop', ''),
-  'btn-cmd-leds-pause':    () => sendCmd('leds', 'pause', '')
+  'btn-cmd-leds-shuffle':  () => sendCmd('leds', 'shuffle'),
+  'btn-cmd-leds-stop':     () => sendCmd('leds', 'stop'),
+  'btn-cmd-leds-pause':    () => sendCmd('leds', 'pause')
 });
 
 // server-only block inside the main grid's left column
@@ -493,21 +484,37 @@ function roomControlsTemplate() {
       <a id="btn-room-off"> Off<i class="fad fa-toggle-off"></i></a>
     </div>
   </div>
+  <div class="dropdown">
+    <button type="button" class="button" id="btn-menu-lightmenu">
+      <span class="button__text"><i class="fad fa-lightbulb-on"></i> Lights</span>
+    </button>
+    <div class="dd-content dd-button" id="lightmenu">
+      <a id="btn-cmd-lightson"> On<i class="fad fa-toggle-on"></i></a>
+      <a id="btn-cmd-lightsoff"> Off<i class="fad fa-toggle-off"></i></a>
+    </div>
+  </div>
+  <div class="dropdown">
+    <button type="button" class="button" id="btn-menu-pwrmenu">
+      <span class="button__text"><i class="fad fa-plug"></i> Power</span>
+    </button>
+    <div class="dd-content dd-button" id="pwrmenu">
+      <a id="btn-power-on"> On<i class="fad fa-toggle-on"></i></a>
+      <a id="btn-power-off"> Off<i class="fad fa-toggle-off"></i></a>
+    </div>
+  </div>
+  <p class="grid-sep"></p>
+  <button type="button" class="button">
+    <span class="button__text"> ---</span>
+  </button>
   <button type="button" class="button" id="btn-show-temphumid">
     <span class="button__text">
       <i class="fad fa-temperature-hot large__icon"></i>
       <i class="fad fa-humidity large__icon"></i>
     </span>
   </button>
-  <div class="dropdown">
-    <button type="button" class="button" id="btn-menu-lightmenu">
-      <span class="button__text"><i class="fad fa-lightbulb"></i> Lights</span>
-    </button>
-    <div class="dd-content dd-button" id="lightmenu">
-      <a id="btn-cmd-lightson"> All On<i class="fad fa-toggle-on"></i></a>
-      <a id="btn-cmd-lightsoff"> All Off<i class="fad fa-toggle-off"></i></a>
-    </div>
-  </div>
+  <button type="button" class="button">
+    <span class="button__text"> ---</span>
+  </button>
   <p class="grid-sep"></p>
   <button type="button" class="button" id="btn-open-cam">
     <span class="button__text"><i class="fad fa-door-open"></i> Doorway</span>
@@ -526,12 +533,15 @@ function roomControlsTemplate() {
 }
 registerListeners({
   'btn-menu-allmenu':   () => showMenu('allmenu'),
-  'btn-room-on':        () => roomOnOff('on'),
-  'btn-room-off':       () => roomOnOff('off'),
+  'btn-menu-pwrmenu':   () => showMenu('pwrmenu'),
+  'btn-power-on':       () => sendCmd('main', 'allon'),
+  'btn-power-off':      () => sendCmd('main', 'alloff'),
+  'btn-room-on':        () => sendCmd('main', `${App.currentRoom}on`),
+  'btn-room-off':       () => sendCmd('main', `${App.currentRoom}off`),
   'btn-show-temphumid': () => showTempHumidity(),
   'btn-menu-lightmenu': () => showMenu('lightmenu'),
-  'btn-cmd-lightson':   () => sendCmd('main', 'lightson', ''),
-  'btn-cmd-lightsoff':  () => sendCmd('main', 'lightsoff', ''),
+  'btn-cmd-lightson':   () => sendCmd('main', 'lightson'),
+  'btn-cmd-lightsoff':  () => sendCmd('main', 'lightsoff'),
   'btn-open-cam':       () => openCamWindow(),
   'main-room-btn':      () => openRoomDropdown(),
   'btn-open-log-svr':   () => openLogWindow()
@@ -541,20 +551,15 @@ function livingRoomGridTemplate() {
   return `
 <div>
   <div class="dropdown">
-    <button type="button" class="button" id="btn-menu-lr-backlight">
-      <span class="button__text"><i class="fad fa-lightbulb"></i> Backlight</span>
-    </button>
-    <div class="dd-content dd-button" id="lr-backlight">
-      <a>TBD</a>
-    </div>
-  </div>
-  <div class="dropdown">
     <button type="button" class="button" id="btn-power-wkststate">
       <span class="button__text" id="wkststate-text"><i class="fad fa-desktop-alt"></i> Desktop</span>
       <span class="button__text" id="wkststate-spinner"></span>
     </button>
     <div class="dd-content ind-button" id="wkststate-menu"></div>
   </div>
+  <button type="button" class="button">
+    <span class="button__text"> ---</span>
+  </button>
   <div class="dropdown">
     <button type="button" class="button" id="btn-power-wl1_dual">
       <span class="button__text" id="wl1_dual-text"><i class="fad fa-lamp-floor"></i> Window</span>
@@ -607,7 +612,6 @@ function livingRoomGridTemplate() {
 </div>`;
 }
 registerListeners({
-  'btn-menu-lr-backlight': () => showMenu('lr-backlight'),
   'btn-power-wkststate':   () => showPowerMenu('lrxmit', 'wkststate'),
   'btn-power-wl1_dual':    () => showPowerMenu('lrxmit', 'wl1_dual'),
   'lr-voldwnbtn':          () => sendVol(VOLUME_ACTIONS.voldwnbtn),
@@ -632,10 +636,10 @@ function bedroomGridTemplate() {
     <div class="dd-content dd-button" id="bed_leds-menu">
       <a id="btn-bed-adjprompt"> Adjust<i class="fad fa-sort-circle-up"></i></a>
       <a id="bed_leds-colorprompt"> Picker<i class="fad fa-palette"></i></a>
-      <a id="bed_leds-rainbow"> Rainbow</a>
+      <a id="bed_leds-stop"> Stop<i class="fad fa-stop"></i></a>
       <a id="bed_leds-colorcycle"> Cycle</a>
       <a id="bed_leds-sweep"> Sweep</a>
-      <a id="bed_leds-stop"> Stop<i class="fad fa-stop"></i></a>
+      <a id="bed_leds-rainbow"> Rainbow</a>
     </div>
   </div>
   <div class="dropdown">
@@ -718,7 +722,7 @@ registerListeners({
   'bed_leds-sweep':       () => sendCmd('main', 'brxmit', 'bed_leds_sw'),
   'bed_leds-stop':        () => sendCmd('main', 'brxmit', 'bed_leds_off'),
   'btn-dyn-relaxmenu':    () => showDynMenu('relaxmenu'),
-  'btn-cmd-stop-br':      () => sendCmd('main', 'stop-br', ''),
+  'btn-cmd-stop-br':      () => sendCmd('main', 'stop-br'),
   'btn-power-brlamp1':    () => showPowerMenu('brxmit', 'brlamp1'),
   'br-voldwnbtn':         () => sendVol(VOLUME_ACTIONS.voldwnbtn),
   'br-volmutebtn':        () => sendVol(VOLUME_ACTIONS.volmutebtn),
@@ -1262,7 +1266,7 @@ function closeTextScroll(){
 
 function clearLEDsMessage(){
   clearTextScrollBox();
-  sendCmd('leds', 'stop', '');
+  sendCmd('leds', 'stop');
 }
 
 function setTextScrollColor(color){
@@ -1397,16 +1401,6 @@ function setAmpVolume(_cmd, _device, _maxvol) {
   });
 }
 
-///// Misc. Functions ////
-
-function roomOnOff(action) {
-  sendCmd('main', App.currentRoom + action, '');
-}
-
-function relaxSend(_cmd) {
-  sendCmd('main', 'relax', _cmd);
-}
-
 // add HTTPs prefix if not defined
 function addHTTPtoURL(linkin) {
   let linkout;
@@ -1463,12 +1457,10 @@ function showBookmarks() {
 }
 
 function renderBookmarkButtons() {
-  if (document.getElementById("bookmark-buttons")) return; // already rendered
+  if (document.getElementById("bookmark-buttons")) return;
   const starBtn = document.getElementById("btn-show-bookmarks");
   if (!starBtn) return;
   starBtn.insertAdjacentHTML("afterend", bookmarkButtonsTemplate());
-  // (.bookmark-buttons is display:flex in styles.css -- rendering it is
-  // all that's needed, no inline display)
 }
 
 function showBookmarkSearch() {
@@ -1479,9 +1471,7 @@ function showBookmarkSearch() {
     searchMenuItem.id = "bookmark__search";
     searchMenuItem.classList.add("nohide");
     searchMenuItem.innerHTML = html`
-      <div id="bookmark__search_icon" class="fad fa-search"></div>
-      <input type="text" id="bookmark__search_txt" class="nohide"
-             placeholder="Search here..." autocorrect="off" autocapitalize="none">
+      <input type="text" id="bookmark__search_txt" class="nohide" placeholder="Search here..." autocorrect="off" autocapitalize="none">
     `;
     elem.appendChild(searchMenuItem);
     const searchBox = document.getElementById("bookmark__search_txt");
@@ -1491,23 +1481,11 @@ function showBookmarkSearch() {
     searchMenuItem.addEventListener("input", function searchInputListener() {
       filterBookmarkItems(searchBox.value);
     });
-    // clicking the icon resets the search
-    searchMenuItem.addEventListener("click", function handleSearchButtonClick() {
-      filterBookmarkItems("");
-      searchBox.value = "";
-      searchBox.focus();
-    });
   }
 }
 
 function filterBookmarkItems(termIn) {
   const searchTerm = termIn.toLowerCase();
-  const searchIcon = document.getElementById("bookmark__search_icon");
-  if (searchTerm === "") {
-    showBookmarkSearchIcon(searchIcon);
-  } else {
-    showCancelSearchIcon(searchIcon);
-  }
   const bookmarks = document.getElementById("bookmarks");
   if (bookmarks) {
     [...bookmarks.getElementsByClassName("bookmarked__item")].forEach((elem) => {
@@ -1517,21 +1495,11 @@ function filterBookmarkItems(termIn) {
   }
 }
 
-function showBookmarkSearchIcon(searchIcon) {
-  if (searchIcon) searchIcon.className = "fad fa-search";
-}
-
-function showCancelSearchIcon(searchIcon) {
-  if (searchIcon) searchIcon.className = "fad fa-times-octagon";
-}
-
 function removeBookmarkSearch() {
   const search = document.getElementById("bookmark__search");
-  const search_txt = document.getElementById("bookmark__search_txt");
-  const search_icon = document.getElementById("bookmark__search_icon");
-  if (search_icon) search_icon.remove();
-  if (search_txt) search_txt.remove();
   if (search) search.remove();
+  const search_txt = document.getElementById("bookmark__search_txt");
+  if (search_txt) search_txt.remove();
 }
 
 async function lookupURL() {
@@ -2378,7 +2346,7 @@ function showStatusMenu() {
     statSpinner.classList.add('right-nav-spinner');
     // show menu
     _elem.style.display = 'block';
-    sendCmd('main', 'status', '').then((data) => { // GET request
+    sendCmd('main', 'status').then((data) => { // GET request
       // draw menu items
       drawMenu(data, _menu);
       // stop spinner animation
@@ -2571,7 +2539,7 @@ function createListItem(col0_in, col1, col2, menuid) {
     case 'relaxmenu': 
       // relax menu
       _elm.addEventListener("click", function() {
-        relaxSend(col0);
+        sendCmd('main', 'relax', col0);
       });
       break;
     case 'link': 

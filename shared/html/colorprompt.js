@@ -249,6 +249,8 @@ export default class ColorPrompt {
    */
   stopMapDrag() {
     this.isDraggingMap = false;
+    this.lastCommandTime = 0;              // force the final color through
+    this.updateUIFromState(true);
     window.removeEventListener('pointermove', this.boundUpdateMapPointer);
     window.removeEventListener('pointerup', this.boundStopMapDrag);
     window.removeEventListener('pointercancel', this.boundStopMapDrag);

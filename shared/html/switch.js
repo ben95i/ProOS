@@ -30,6 +30,7 @@ export default class ToggleSwitch {
   _render() {
     this.wrapper = document.createElement('div');
     this.wrapper.className = 'toggle-switch';
+    this.wrapper.classList.add('nohide');
     this.wrapper.style.contain = 'layout paint';
     if (this.config.id) this.wrapper.id = this.config.id;
     if (this.config.width) this.wrapper.style.setProperty('--local-width', this.config.width);

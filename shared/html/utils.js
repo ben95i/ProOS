@@ -1,7 +1,7 @@
 // Automate Website - JavaScript Utilities
 
 // transmit a command
-export async function sendCmd(act, arg1, arg2) {
+export async function sendCmd(act, arg1, arg2 = '') {
   // construct API URL
   const url = location.protocol + "//"+ location.hostname + "/api?var=" + arg2 + "&arg=" + arg1 + "&action=" + act;
   // send request
@@ -153,8 +153,11 @@ export function rgbToHexFromStyle(rgbString) {
 }
 
 export function hsvToRgb(hue, saturation, value) {
+  // Wrap into [0, 360) so hue === 360 (slider at max) maps back to red
+  // instead of falling through every branch below and returning gray.
+  const wrappedHue = ((hue % 360) + 360) % 360;
   const chroma = value * saturation;
-  const hueSegment = hue / 60;
+  const hueSegment = wrappedHue / 60;
   const intermediateValue = chroma * (1 - Math.abs((hueSegment % 2) - 1));
   const valueMatch = value - chroma;
   let redRaw = 0;
@@ -170,7 +173,7 @@ export function hsvToRgb(hue, saturation, value) {
     redRaw = 0; greenRaw = intermediateValue; blueRaw = chroma;
   } else if (hueSegment >= 4 && hueSegment < 5) {
     redRaw = intermediateValue; greenRaw = 0; blueRaw = chroma;
-  } else if (hueSegment >= 5 && hueSegment < 6) {
+  } else {
     redRaw = chroma; greenRaw = 0; blueRaw = intermediateValue;
   }
   const redFinal = Math.round((redRaw + valueMatch) * 255);

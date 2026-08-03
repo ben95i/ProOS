@@ -201,6 +201,60 @@ function parseInputData(input, marker) {
   return { var1: input, var2: '' };
 }
 
+function bedroomOn() {
+    Promise.all([
+        brXmit("bed_leds_rb"),
+        brXmit("brlamp1on"), 
+        brXmit("retropion"),
+        brXmit("brmacson"), 
+        brXmit("brtvon"), 
+        brXmit("brpcon"), 
+        callApi(LOCALHOSTS.brpi, "ampstateon")
+    ]).catch(() => {});
+}
+
+function bedroomOff() {
+    Promise.all([
+        brXmit("bed_leds_off"),
+        brXmit("brlamp1off"), 
+        brXmit("retropioff"), 
+        brXmit("brmacsoff"), 
+        brXmit("brtvoff"), 
+        callApi(LOCALHOSTS.brpc, "sleep"), 
+        callApi(LOCALHOSTS.brpi, "ampstateoff")
+    ]).catch(() => {});
+}
+
+function livingRoomOn(baseWWW) {
+    Promise.all([
+        lrXmit("wl1_led1on"), 
+        lrXmit("wl1_led2on"), 
+        lrXmit("wkststateon"), 
+        lrXmit("hifistateon"),
+        OPCLEDparser(baseWWW, "abstract")
+    ]).catch(() => {});
+}
+
+function livingRoomOff(baseWWW) {
+    Promise.all([
+        lrXmit("wl1_led1off"),
+        lrXmit("wl1_led2off"), 
+        lrXmit("wkststateoff"), 
+        lrXmit("hifistateoff"),
+        OPCLEDparser(baseWWW, "stop")
+    ]).catch(() => {});
+}
+
+async function windowLamp1Status() { 
+    return await callPico(LOCALHOSTS.picolamp1, "4", "0"); 
+}
+async function windowLamp1Off() { 
+    return await callPico(LOCALHOSTS.picolamp1, "1", "2");
+}
+async function windowLamp1On() { 
+    return await callPico(LOCALHOSTS.picolamp1, "1", "3");
+}
+
 async function brXmit(arg1, arg2 = '') {
     switch (arg1) {
         case "bed_adj_up":     return await callFIFO("local", "11041");
@@ -260,16 +314,6 @@ async function brXmit(arg1, arg2 = '') {
     }
 }
 
-async function windowLamp1Status() { 
-    return await callPico(LOCALHOSTS.picolamp1, "4", "0"); 
-}
-async function windowLamp1Off() { 
-    return await callPico(LOCALHOSTS.picolamp1, "1", "2");
-}
-async function windowLamp1On() { 
-    return await callPico(LOCALHOSTS.picolamp1, "1", "3");
-}
-
 async function lrXmit(arg1, arg2 = '') {
     switch (arg1) {
         case "wl1_dual":      return await windowLamp1Status();
@@ -284,8 +328,16 @@ async function lrXmit(arg1, arg2 = '') {
         case "wl1_led2":      return await callPico(LOCALHOSTS.picolamp1, "2", "2");
 
         case "wkststate":     return await localPing(LOCALHOSTS.desk);
-        case "wkststateoff":  return await callApi(LOCALHOSTS.lrxmit, "pc_power");
-        case "wkststateon":   return await callApi(LOCALHOSTS.lrxmit, "pc_power");
+        case "wkststateoff": 
+            if (await localPing(LOCALHOSTS.desk) === "1") {
+              return await callApi(LOCALHOSTS.lrxmit, "pc_power");
+            }
+            return `${LOCALHOSTS.desk} is already offline`;
+        case "wkststateon": 
+            if (await localPing(LOCALHOSTS.desk) === "1") {
+              return `${LOCALHOSTS.desk} is already online`;
+            }
+            return await callApi(LOCALHOSTS.lrxmit, "pc_power");
 
         case "hifistate":     return await callFIFO("lrxmit", "15019");
         case "hifistateoff":  return await callFIFO("lrxmit", "15018");
@@ -332,13 +384,21 @@ async function executeMain(baseWWW, firstArg, secondArg) {
                 lrXmit("wl1_led2off"), 
                 brXmit("brlamp1off"),
                 brXmit("bed_leds_off"),
+                OPCLEDparser(baseWWW, "stop")
             ]).catch(() => {});
-            OPCLEDparser(baseWWW, "stop");
+            return "OK";
+        case "allon":
+            bedroomOn();
+            livingRoomOn(baseWWW);
+            return "OK";
+        case "alloff":
+            bedroomOff();
+            livingRoomOff(baseWWW);
             return "OK";
         case "lrxmit": 
             const lrcmds = parseInputData(secondArg, '_set');
             return await lrXmit(lrcmds.var1, lrcmds.var2);
-        case "lrstatus": {
+        case "lrstatus":
             const lrRoom = new RoomManager();
             const [wlRaw, wkst, hifi] = await Promise.all([
                 windowLamp1Status(),
@@ -352,7 +412,6 @@ async function executeMain(baseWWW, firstArg, secondArg) {
             lrRoom.addDevice('Stereo System', hifi);
             lrRoom.updateRoomState();
             return lrRoom.getData();
-        }
         case "lrlightson":
             lrXmit("wl1_led1on");
             return "OK";
@@ -360,27 +419,15 @@ async function executeMain(baseWWW, firstArg, secondArg) {
             lrXmit("wl1_led1off");
             return "OK";
         case "lron":
-            Promise.all([
-                lrXmit("wl1_led1on"), 
-                lrXmit("wl1_led2on"), 
-                lrXmit("wkststateon"), 
-                lrXmit("hifistateon")
-            ]).catch(() => {});
-            OPCLEDparser(baseWWW, "abstract");
+            livingRoomOn(baseWWW);
             return "OK";
         case "lroff":
-            Promise.all([
-                lrXmit("wl1_led1off"),
-                lrXmit("wl1_led2off"), 
-                lrXmit("wkststateoff"), 
-                lrXmit("hifistateoff")
-            ]).catch(() => {});
-            OPCLEDparser(baseWWW, "stop");
+            livingRoomOff(baseWWW);
             return "OK";
         case "brxmit":
             const brcmds = parseInputData(secondArg, '_set');
             return await brXmit(brcmds.var1, brcmds.var2);
-        case "brstatus": {
+        case "brstatus":
             const brRoom = new RoomManager();
             const [lamp, bedleds, retro, macs, tv, pc, amp] = await Promise.all([
                 brXmit("brlamp1"),
@@ -400,28 +447,11 @@ async function executeMain(baseWWW, firstArg, secondArg) {
             brRoom.addDevice('Audio System', amp);
             brRoom.updateRoomState();
             return brRoom.getData();
-        }
         case "bron":
-            Promise.all([
-                brXmit("bed_leds_rb"),
-                brXmit("brlamp1on"), 
-                brXmit("retropion"),
-                brXmit("brmacson"), 
-                brXmit("brtvon"), 
-                brXmit("brpcon"), 
-                callApi(LOCALHOSTS.brpi, "ampstateon")
-            ]).catch(() => {});
+            bedroomOn();
             return "OK";
         case "broff":
-            Promise.all([
-                brXmit("bed_leds_off"),
-                brXmit("brlamp1off"), 
-                brXmit("retropioff"), 
-                brXmit("brmacsoff"), 
-                brXmit("brtvoff"), 
-                callApi(LOCALHOSTS.brpc, "sleep"), 
-                callApi(LOCALHOSTS.brpi, "ampstateoff")
-            ]).catch(() => {});
+            bedroomOff();
             return "OK";
         case "brpi":
             return await callApi(LOCALHOSTS.brpi, secondArg);
@@ -434,13 +464,12 @@ async function executeMain(baseWWW, firstArg, secondArg) {
             return "OK";
         case "stop-br":
             return await callApi(LOCALHOSTS.brpi, "stoprelax");
-        case "status": {
+        case "status":
             try { return await runStatusUpdate(baseWWW); } 
             catch (exc) { return "status update exception: " + exc.message; }
-        }
         case "sitelookup":
             return await runSiteLookup(secondArg);
-        case "server": {
+        case "server":
             const logFile = path.join(baseWWW, '/ram/sysout.txt');
             if (!secondArg) return "empty server command!";
             if (secondArg === "netscan") {
@@ -452,14 +481,12 @@ async function executeMain(baseWWW, firstArg, secondArg) {
             await fsPromises.appendFile(logFile, `\n${secondArg} sent.\n`);
             await fsPromises.writeFile(path.join(baseWWW, `/ram/${secondArg}.txt`), ''); 
             return "OK";
-        }
-        case "weather": {
+        case "weather":
             try {
                 return await runWeatherWidget();
             } catch (err) {
                 return `weatherWidget error: ${err.message}`;
             }
-        }
         default: return "executeMain: invalid command";
     }
 }

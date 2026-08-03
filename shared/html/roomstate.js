@@ -23,6 +23,7 @@ export default class RoomStateManager {
     const svg = document.createElementNS(xmlns, "svg");
     svg.setAttribute("viewBox", "0 0 50 50");
     svg.setAttribute("class", "roomstatus-svgs");
+    svg.classList.add('nohide');
     const trafficLightIcon = document.createElementNS(xmlns, "circle");
     trafficLightIcon.setAttribute("id", "trafficLightIcon");
     trafficLightIcon.setAttribute("cx", "25");

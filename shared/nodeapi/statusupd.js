@@ -5,9 +5,11 @@ const net = require('net');
 
 const execFileAsync = util.promisify(execFile);
 
-const SSH_PORT = 22;
-const MAX_WAIT = '1.0';
 const MAX_PARALLEL = 12;
+const MAX_WAIT = '1.0';
+const SSH_PORT = 22;
+const TCP_PROBE_TIMEOUT = 450; // in (ms)
+const TCP_PROBE_ATTEMPTS = 2;
 const ONLINE = 'grnind';  // green indicator
 const OFFLINE = 'blkind'; // black indicator
 
@@ -17,7 +19,7 @@ const OFFLINE = 'blkind'; // black indicator
  * retry. Only a silent timeout is ambiguous — that's the wifi dropped-SYN
  * case — so that alone is retried. Never rejects; only ONLINE/OFFLINE escape.
  */
-function tcpProbe(host, port, timeout = 200, attempts = 2) {
+function tcpProbe(host) {
     const attempt = () => new Promise(resolve => {
         const socket = new net.Socket();
         let settled = false;
@@ -27,14 +29,14 @@ function tcpProbe(host, port, timeout = 200, attempts = 2) {
             socket.destroy();
             resolve(result);
         };
-        socket.setTimeout(timeout);
+        socket.setTimeout(TCP_PROBE_TIMEOUT);
         socket.once('connect', () => finish(ONLINE));
         socket.once('timeout', () => finish('timeout')); // ambiguous may retry
         socket.on('error', () => finish(OFFLINE));        // definitive no retry
-        socket.connect({ host, port, family: 4 });
+        socket.connect({ host, port: SSH_PORT, family: 4 });
     });
     return (async () => {
-        for (let i = 0; i < attempts; i++) {
+        for (let i = 0; i < TCP_PROBE_ATTEMPTS; i++) {
             const result = await attempt();
             if (result === ONLINE) return ONLINE;
             if (result === OFFLINE) return OFFLINE; // RST/unreachable done
@@ -61,7 +63,7 @@ const ACTIONS = {
             await execFileAsync(
                 '/usr/bin/ping',
                 ['-4', '-A', '-c', '1', '-i', MAX_WAIT, '-W', MAX_WAIT, host],
-                { timeout: 5000 }
+                { timeout: 3000 }
             );
             return ONLINE;
         } catch (err) {
@@ -69,7 +71,7 @@ const ACTIONS = {
         }
     },
     async ssh(host) {
-        return tcpProbe(host, SSH_PORT);
+        return tcpProbe(host);
     }
 };
 

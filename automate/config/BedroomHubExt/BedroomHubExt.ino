@@ -151,15 +151,15 @@ const uint16_t EFFECT_INTERVAL_MS = 30;
 //   98 s down to 2.5 s per wheel. Past ~800 the per-frame color jump starts
 //   to become visible as stepping.
 const uint16_t RAINBOW_HUE_STEP  = 100; // 200 = ~9.8 s per full wheel at 30 ms
-const uint16_t CYCLE_HUE_STEP    = 65; // 150 = ~13.1 s per full wheel at 30 ms
-//
+const uint16_t CYCLE_HUE_STEP    = 65;  // 150 = ~13.1 s per full wheel at 30 ms
+
 // Pattern effects - step is in HUNDREDTHS OF A PIXEL per frame (100 = 1 px):
 //   pixels per second = step * 10 / EFFECT_INTERVAL_MS
 //   Valid: 1..65535. Useful: 20..300 - at a 30 ms interval that spans about
 //   6.7 to 100 pixels per second. Sub-pixel steps are what let a pattern
 //   crawl slowly on the shared 30 ms clock instead of needing its own longer
 //   frame interval; values above 100 skip pixels and look choppy.
-const uint16_t CHASE_PIXEL_STEP  = 60;  // 60 = 0.60 px/frame = 20 px/s at 30 ms
+const uint16_t CHASE_PIXEL_STEP  = 60; // 60 = 0.60 px/frame = 20 px/s at 30 ms
 const uint16_t COMET_PIXEL_STEP  = 80; // 100 = 1.00 px/frame = 33 px/s at 30 ms
 
 // Ceiling on how much elapsed time a single frame may absorb, in frame
@@ -239,7 +239,7 @@ SoftwareSerial LinkSerial(LINK_RX_PIN, LINK_TX_PIN);
 // command is refused (BHE: COOLDOWN) unless the bucket has room for at least
 // one minimum pulse, and if the bucket fills mid-run the motor is force-
 // stopped and all run commands are locked out for MOTOR_LOCKOUT_MS (cooldown).
-const uint16_t MOTOR_PULSE_MS       = 2000;    // minimum pulse / per-command run time
+const uint16_t MOTOR_PULSE_MS       = 1500;    // minimum pulse / per-command run time
 const uint16_t MOTOR_SETTLE_MS      = 1500;    // required off-time before reversing direction
 const unsigned long MOTOR_DUTY_BUDGET_MS = 60000UL; // bucket size: max total AND max single run (1 minute)
 const uint8_t MOTOR_DUTY_REST_RATIO = 9;            // ms of rest that drain 1 ms of run time
@@ -254,9 +254,9 @@ uint8_t motorLastDirection = motorIdle; // direction of the previous run (for th
 unsigned long motorStopAt = 0;          // millis() deadline when the current run ends
 unsigned long motorLastStop = 0;        // millis() when the motor last stopped (settle timer)
 unsigned long motorLockoutUntil = 0;    // millis() deadline when the cooldown lockout ends
-bool motorLockedOut = false;            // true while the cooldown lockout is active
 unsigned long motorDutyUsedMs = 0;      // leaky bucket: accumulated run time not yet drained
 unsigned long motorDutyLastUpdate = 0;  // millis() up to which the bucket has been accounted
+bool motorLockedOut = false;            // true while the cooldown lockout is active
 
 // --- protocol constants (match AutomateHub_1) ---
 const char nullTrm = '\0';
@@ -386,7 +386,7 @@ void setup() {
   strip.begin();
   strip.setBrightness(ledBrightness);
   strip.clear();
-  strip.show(); // all pixels off at boot
+  strip.show();
   serialMessageIn[0] = nullTrm;
 }
 
@@ -867,7 +867,7 @@ void handleControlCommand(uint16_t messageData) {
       break;
     case ctrlLedsOff:
       sendResponse(okMessage);
-      stopEffect(); // static command overrides any running effect
+      stopEffect();
       clearStrip();
       break;
     case ctrlFillAll:
@@ -920,12 +920,10 @@ void handleControlCommand(uint16_t messageData) {
       handleMotorRunCommand(motorRev);
       break;
     case ctrlMotorStop:
-      // an explicit stop is always honored, even during the cooldown lockout
       stopMotor(millis());
       sendResponse(okMessage);
       break;
     case ctrlMotorStatus:
-      // report which direction (if any) the motor is currently driven in
       switch (motorDirection) {
         case motorFwd:
           sendResponse(powerStateOn);  // "1" = running forward
