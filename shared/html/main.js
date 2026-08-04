@@ -436,7 +436,7 @@ function mainGridTemplate(f) {
       </div>
       <div class="dropdown">
         <button type="button" class="button" id="btn-power-fc_leds">
-          <span class="button__text" id="fc_leds-text"><i class="fad fa-sun"></i> Pixels</span>
+          <span class="button__text" id="fc_leds-text"><i class="fad fa-stars"></i> Pixels</span>
           <span class="button__text" id="fc_leds-spinner"></span>
         </button>
         <div class="dd-content ind-button" id="fc_leds-menu">
@@ -462,7 +462,7 @@ function mainGridTemplate(f) {
 }
 registerListeners({
   'btn-dyn-ledcolormenu':  () => showDynMenu('ledcolormenu'),
-  'btn-fc-color-prompt':   () => openColorPrompt('leds', 'hex', true),
+  'btn-fc-color-prompt':   () => openColorPrompt('leds', 'hex', '3args'),
   'btn-dyn-ledeffectmenu': () => showDynMenu('ledeffectmenu'),
   'btn-power-fc_leds':     () => showPowerMenu('fc_leds'),
   'btn-cmd-leds-shuffle':  () => sendCmd('leds', 'shuffle'),
@@ -477,7 +477,7 @@ function roomControlsTemplate() {
   <p class="grid-sep"></p>
   <div class="dropdown">
     <button type="button" class="button" id="btn-menu-allmenu">
-      <span class="button__text"><i class="fad fa-power-off"></i> Room</span>
+      <span class="button__text"><i class="fad fa-plug"></i> Room</span>
     </button>
     <div class="dd-content dd-button" id="allmenu">
       <a id="btn-room-on"> On<i class="fad fa-toggle-on"></i></a>
@@ -495,7 +495,7 @@ function roomControlsTemplate() {
   </div>
   <div class="dropdown">
     <button type="button" class="button" id="btn-menu-pwrmenu">
-      <span class="button__text"><i class="fad fa-plug"></i> Power</span>
+      <span class="button__text"><i class="fad fa-home"></i> Power</span>
     </button>
     <div class="dd-content dd-button" id="pwrmenu">
       <a id="btn-power-on"> On<i class="fad fa-toggle-on"></i></a>
@@ -503,8 +503,8 @@ function roomControlsTemplate() {
     </div>
   </div>
   <p class="grid-sep"></p>
-  <button type="button" class="button">
-    <span class="button__text"> ---</span>
+  <button type="button" class="button" id="btn-yt-link">
+    <span class="button__text"><i class="fab fa-youtube"></i> YouTube</span>
   </button>
   <button type="button" class="button" id="btn-show-temphumid">
     <span class="button__text">
@@ -512,8 +512,8 @@ function roomControlsTemplate() {
       <i class="fad fa-humidity large__icon"></i>
     </span>
   </button>
-  <button type="button" class="button">
-    <span class="button__text"> ---</span>
+  <button type="button" class="button" id="btn-media-link">
+    <span class="button__text"><i class="fad fa-mp3-player"></i> Media</span>
   </button>
   <p class="grid-sep"></p>
   <button type="button" class="button" id="btn-open-cam">
@@ -532,6 +532,8 @@ function roomControlsTemplate() {
 </div>`;
 }
 registerListeners({
+  'btn-media-link':     () => GoToExtPage('media.home'),
+  'btn-yt-link':        () => GoToExtPage('youtube.com'),
   'btn-menu-allmenu':   () => showMenu('allmenu'),
   'btn-menu-pwrmenu':   () => showMenu('pwrmenu'),
   'btn-power-on':       () => sendCmd('main', 'allon'),
@@ -557,9 +559,7 @@ function livingRoomGridTemplate() {
     </button>
     <div class="dd-content ind-button" id="wkststate-menu"></div>
   </div>
-  <button type="button" class="button">
-    <span class="button__text"> ---</span>
-  </button>
+  <button type="button" class="button"></button>
   <div class="dropdown">
     <button type="button" class="button" id="btn-power-wl1_dual">
       <span class="button__text" id="wl1_dual-text"><i class="fad fa-lamp-floor"></i> Window</span>
@@ -786,10 +786,10 @@ function svrOptMainTemplate() {
     </div>
   </div>
   <div class="dropdown">
-    <button type="button" class="button svropt_button" id="btn-menu-svr">
-      <span class="button__text"><i class="fad fa-microchip"></i> Server</span>
+    <button type="button" class="button svropt_button" id="btn-menu-pve">
+      <span class="button__text"><i class="fad fa-microchip"></i> PVE</span>
     </button>
-    <div class="dd-content dd-button" id="svr-menu">
+    <div class="dd-content dd-button" id="pve-menu">
       <a id="btn-ext-pve"><i class="fad fa-link"></i> Open</a>
       <a id="btn-open-regions"><i class="fad fa-th"></i> Regions</a>
       <a id="btn-open-backup"><i class="fad fa-sync"></i> Backup</a>
@@ -838,7 +838,7 @@ registerListeners({
   'btn-svr-startxana':    () => serverAction('startxana'),
   'btn-svr-stopxana':     () => serverAction('stopxana'),
   'btn-svr-restorexana':  () => serverAction('restorexana'),
-  'btn-menu-svr':         () => showMenu('svr-menu'),
+  'btn-menu-pve':         () => showMenu('pve-menu'),
   'btn-ext-pve':          () => GoToExtPage('pve:8006'),
   'btn-open-backup':      () => openServerPanel(svrOptBackupTemplate),
   'btn-open-regions':     () => openServerPanel(svrOptRegionsTemplate),
@@ -2676,16 +2676,16 @@ function removeDynMenus() {
   }
 }
 
-function openColorPrompt(command, argument, cmd_type = false) {
+function openColorPrompt(command, argument, cmd_type = '') {
   const colorPrompt = new ColorPrompt('color-popup', (strippedHex) => {
     let cmd;
     let arg1;
     let arg2;
-    if (cmd_type === true) { // 3-argument command type
+    if (cmd_type === '3args') { // 3-argument command type
       cmd = command;
       arg1 = argument;
       arg2 = strippedHex;
-    } else {                 // 2-argument command type 
+    } else {                    // 2-argument command type 
       cmd = 'main';
       arg1 = command;
       arg2 = `${argument}_${strippedHex}`;
