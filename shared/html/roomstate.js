@@ -1,4 +1,6 @@
-import { sendCmd } from './utils.js'
+import { sendCmd, refreshInterval } from './utils.js'
+
+const REFRESH_INTERVAL = 100;
 
 export default class RoomStateManager {
   constructor(containerId) {
@@ -73,14 +75,15 @@ export default class RoomStateManager {
           lightIcon.classList.add("status-off");
         }
       }
-      this.container.style.setProperty('--spin-duration', `${App.REFRESH_INTERVAL}s`);    
+      const refreshRate = refreshInterval();
+      this.container.style.setProperty('--spin-duration', `${refreshRate}s`);    
       void this.container.offsetWidth; // Trigger reflow
       requestAnimationFrame(() => {
         this.container.classList.add('status-loading');
         this.timerID = setTimeout(() => {
           this.isRunning = false;
           this.showRoomState();
-        }, App.REFRESH_INTERVAL * 1000);
+        }, refreshRate * 1000);
       });
     } catch (err) {
       lightIcon.classList.add("status-error");

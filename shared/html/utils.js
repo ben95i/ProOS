@@ -1,5 +1,7 @@
 // Automate Website - JavaScript Utilities
 
+const REFRESH_INTERVAL = 10; // in seconds
+
 // transmit a command
 export async function sendCmd(act, arg1, arg2 = '') {
   // construct API URL
@@ -16,6 +18,18 @@ export async function sendCmd(act, arg1, arg2 = '') {
     showPopup("[sendCmd] " + error);
     return null;
   }
+}
+
+export function refreshInterval() {
+  return REFRESH_INTERVAL;
+}
+
+export function splitMenuData(data) {
+  // Strip quotes if they exist at the very beginning or end
+  let start = data.charCodeAt(0) === 34 ? 1 : 0; // 34 is the '"' character
+  let end = data.charCodeAt(data.length - 1) === 34 ? data.length - 1 : data.length;
+  // Slice the string and split it in one go
+  return data.slice(start, end).split(/\\n|\n/);
 }
 
 // request rate limiter

@@ -2,8 +2,8 @@
 // by Ben Provenzano III
 
 import { requestThrottle, setTheme, classDisplay, checkElemIsVisibleByID,
-  addClassToElem, removeWindow, cleanString, base64URLSafeEncode, 
-  isNumeric, mapNumber, splitByDelimiter, sendCmd } from './utils.js';
+  addClassToElem, removeWindow, cleanString, base64URLSafeEncode, splitMenuData, 
+  isNumeric, mapNumber, splitByDelimiter, sendCmd, refreshInterval } from './utils.js';
 import ToggleSwitch, { toggleSwitchCallback } from './switch.js';
 import RoomStateManager from './roomstate.js';
 import AnimatedBackground from './stars.js';
@@ -12,6 +12,10 @@ import WeatherWidget from './weather.js';
 import { deviceType } from './device.js';
 import { SSIDpwd } from './wifi.js';
 
+const MAIN_SITE = "Automate";
+const BKM_INACTIVE = 0;
+const BKM_OPEN_MODE = 1;
+const BKM_EDIT_MODE = 2;
 const ROOM_CONFIGS = {
   'lr':   { 
     name: 'Living Room',
@@ -39,12 +43,6 @@ const VOLUME_ACTIONS = {
 const DELEGATED_LISTENERS = {};
 
 window.App = {
-  MAIN_SITE: "Automate",
-  BKM_INACTIVE: 0,
-  BKM_OPEN_MODE: 1,
-  BKM_EDIT_MODE: 2,
-  REFRESH_INTERVAL: 10,
-  TIMEOUT_INTERVAL: 100,
   starBackground: null,
   roomStateManager: null,
   activeSwitches: [],
@@ -102,7 +100,7 @@ function setupEventListeners() {
 
 function buildPageHTML(model) {
   const f = {
-    isServer: model === App.MAIN_SITE,
+    isServer: model === MAIN_SITE,
     isPi: model === 'Pi',
     isLedPi: model === 'LEDpi'
   };
@@ -142,7 +140,7 @@ function loadPage() {
   App.sysModel = deviceType(); 
   destroyPageServices();
   renderPage(App.sysModel);
-  if (App.sysModel === App.MAIN_SITE) {
+  if (App.sysModel === MAIN_SITE) {
     // load control menu saved state
     const room = localStorage.getItem("ctls-mode")
     selectRoom(room);
@@ -174,7 +172,7 @@ function loadPage() {
 function handleClicks(event) {
   resetActivityTimer();
   // disable click events when in bookmark edit mode
-  if (App.bookmarkState === App.BKM_EDIT_MODE) {
+  if (App.bookmarkState === BKM_EDIT_MODE) {
     if (event.target.className !== "editFav__win") {
       event.stopPropagation();
     }
@@ -195,14 +193,14 @@ function resetActivityTimer() {
   clearTimeout(App.activityTimeout);
   App.activityTimeout = setTimeout(() => {
     activityStop();
-  }, App.TIMEOUT_INTERVAL * 1000);
+  }, refreshInterval() * 1000);
 }
 
 function activityBegin() {
   if (typeof App.starBackground !== 'undefined' && App.starBackground) {
     App.starBackground.resume();
   }
-  if (App.sysModel === App.MAIN_SITE && App.roomStateManager) {
+  if (App.sysModel === MAIN_SITE && App.roomStateManager) {
     App.roomStateManager.showRoomState();
   }
 }
@@ -211,13 +209,13 @@ function activityStop() {
   if (typeof App.starBackground !== 'undefined' && App.starBackground) { 
     App.starBackground.pause();
   }
-  if (App.sysModel === App.MAIN_SITE && App.roomStateManager) {
+  if (App.sysModel === MAIN_SITE && App.roomStateManager) {
     App.roomStateManager.hideRoomState();
   }  
 }
 
 async function refreshRoomState() {
-  if (App.sysModel === App.MAIN_SITE && App.roomStateManager) {
+  if (App.sysModel === MAIN_SITE && App.roomStateManager) {
     App.roomStateManager.hideRoomState();
     App.roomStateManager.showRoomState();
   }  
@@ -226,7 +224,7 @@ async function refreshRoomState() {
 window.removeDropdowns = function() {
   classDisplay("dd-content", "none");
   removeDynMenus();
-  if (App.sysModel === App.MAIN_SITE) {
+  if (App.sysModel === MAIN_SITE) {
     removeBookmarks();
     if (App.activeSwitches && App.activeSwitches.length > 0) {
       App.activeSwitches.forEach(toggle => {
@@ -247,7 +245,7 @@ function removeBookmarks() {
   if (bkmButtons) bkmButtons.remove();
   removeBookmarkSearch();
   closeBookmarkPrompt();
-  App.bookmarkState = App.BKM_INACTIVE;
+  App.bookmarkState = BKM_INACTIVE;
 }
 
 function openRoomDropdown() {
@@ -309,11 +307,11 @@ function GoToExtPage(_path) {
 
 // back to home page 
 function GoToHomePage() {
-  if (App.sysModel === App.MAIN_SITE) {
+  if (App.sysModel === MAIN_SITE) {
     removeInjectedPage();
     loadPage();
   } else {
-    window.location = 'https://' + App.MAIN_SITE + '.home';   
+    window.location = 'https://' + MAIN_SITE + '.home';   
   }
 }
 
@@ -553,20 +551,21 @@ function livingRoomGridTemplate() {
   return `
 <div>
   <div class="dropdown">
-    <button type="button" class="button" id="btn-power-wkststate">
-      <span class="button__text" id="wkststate-text"><i class="fad fa-desktop-alt"></i> Desktop</span>
-      <span class="button__text" id="wkststate-spinner"></span>
-    </button>
-    <div class="dd-content ind-button" id="wkststate-menu"></div>
-  </div>
-  <button type="button" class="button"></button>
-  <div class="dropdown">
     <button type="button" class="button" id="btn-power-wl1_dual">
       <span class="button__text" id="wl1_dual-text"><i class="fad fa-lamp-floor"></i> Window</span>
       <span class="button__text" id="wl1_dual-spinner"></span>
     </button>
     <div class="dd-content ind-button" id="wl1_dual-menu"></div>
   </div>
+  <div class="dropdown">
+    <button type="button" class="button" id="btn-power-wkststate">
+      <span class="button__text" id="wkststate-text"><i class="fad fa-desktop-alt"></i> Desktop</span>
+      <span class="button__text" id="wkststate-spinner"></span>
+    </button>
+    <div class="dd-content ind-button" id="wkststate-menu"></div>
+  </div>
+  <button type="button" class="button">
+  </button>
   <p class="grid-sep"></p>
   <button type="button" class="button" id="lr-voldwnbtn">
       <span class="button__text"><i class="fad fa-volume-down fa-lg"></i></span>
@@ -757,6 +756,17 @@ function svrOptMainTemplate() {
     </div>
   </div>
   <div class="dropdown">
+    <button type="button" class="button svropt_button" id="btn-menu-pve">
+      <span class="button__text"><i class="fad fa-microchip"></i> PVE</span>
+    </button>
+    <div class="dd-content dd-button" id="pve-menu">
+      <a id="btn-ext-pve"><i class="fad fa-link"></i> Open</a>
+      <a id="btn-open-regions"><i class="fad fa-th"></i> Regions</a>
+      <a id="btn-open-backup"><i class="fad fa-sync"></i> Backup</a>
+      <a id="btn-svr-syslog"><i class="fad fa-tachometer"></i> Status</a>
+    </div>
+  </div>
+  <div class="dropdown">
     <button type="button" class="button svropt_button" id="btn-menu-legacy">
       <span class="button__text"><i class="fad fa-save"></i> CIFS</span>
     </button>
@@ -766,34 +776,12 @@ function svrOptMainTemplate() {
     </div>
   </div>
   <div class="dropdown">
-    <button type="button" class="button svropt_button" id="btn-menu-unifi">
-      <span class="button__text"><i class="fad fa-router"></i> UniFi</span>
+    <button type="button" class="button svropt_button" id="btn-menu-router">
+      <span class="button__text"><i class="fad fa-ethernet"></i> Router</span>
     </button>
-    <div class="dd-content dd-button" id="unifi-menu">
-      <a id="btn-ext-unifi"><i class="fad fa-link"></i> Open</a>
-      <a id="btn-svr-startunifi"><i class="fad fa-play"></i> Start</a>
-      <a id="btn-svr-stopunifi"><i class="fad fa-stop"></i> Stop</a>
-    </div>
-  </div>
-  <div class="dropdown">
-    <button type="button" class="button svropt_button" id="btn-menu-xana">
-      <span class="button__text"><i class="fab fa-linux"></i> Xana</span>
-    </button>
-    <div class="dd-content dd-button" id="xana-menu">
-      <a id="btn-svr-startxana"><i class="fad fa-play"></i> Start</a>
-      <a id="btn-svr-stopxana"><i class="fad fa-stop"></i> Stop</a>
-      <a id="btn-svr-restorexana"><i class="fad fa-eraser"></i> Erase</a>
-    </div>
-  </div>
-  <div class="dropdown">
-    <button type="button" class="button svropt_button" id="btn-menu-pve">
-      <span class="button__text"><i class="fad fa-microchip"></i> PVE</span>
-    </button>
-    <div class="dd-content dd-button" id="pve-menu">
-      <a id="btn-ext-pve"><i class="fad fa-link"></i> Open</a>
-      <a id="btn-open-regions"><i class="fad fa-th"></i> Regions</a>
-      <a id="btn-open-backup"><i class="fad fa-sync"></i> Backup</a>
-      <a id="btn-svr-syslog"><i class="fad fa-tachometer"></i> Status</a>
+    <div class="dd-content dd-button" id="router-menu">
+      <a id="btn-ext-router"><i class="fad fa-link"></i> Open</a>
+      <a id="btn-svr-rebootrouter"><i class="fad fa-redo"></i> Reboot</a>
     </div>
   </div>
   <div class="dropdown">
@@ -806,6 +794,16 @@ function svrOptMainTemplate() {
       <a id="btn-svr-netscan"><i class="fad fa-chart-network"></i> LAN Scanner</a>
     </div>
   </div>
+  <div class="dropdown">
+    <button type="button" class="button svropt_button" id="btn-menu-unifi">
+      <span class="button__text"><i class="fad fa-router"></i> UniFi</span>
+    </button>
+    <div class="dd-content dd-button" id="unifi-menu">
+      <a id="btn-ext-unifi"><i class="fad fa-link"></i> Open</a>
+      <a id="btn-svr-startunifi"><i class="fad fa-play"></i> Start</a>
+      <a id="btn-svr-stopunifi"><i class="fad fa-stop"></i> Stop</a>
+    </div>
+  </div>
   <button type="button" class="button svropt_button" id="btn-close-svr-opt1">
     <span class="button__text"><i class="fad fa-times-octagon"></i> Close</span>
   </button>
@@ -813,12 +811,13 @@ function svrOptMainTemplate() {
     <span class="button__text"><i class="fad fa-trash-alt"></i> Clear</span>
   </button>
   <div class="dropdown">
-    <button type="button" class="button svropt_button" id="btn-menu-router">
-      <span class="button__text"><i class="fad fa-ethernet"></i> Router</span>
+    <button type="button" class="button svropt_button" id="btn-menu-xana">
+      <span class="button__text"><i class="fab fa-linux"></i> Xana</span>
     </button>
-    <div class="dd-content dd-button" id="router-menu">
-      <a id="btn-ext-router"><i class="fad fa-link"></i> Open</a>
-      <a id="btn-svr-rebootrouter"><i class="fad fa-redo"></i> Reboot</a>
+    <div class="dd-content dd-button" id="xana-menu">
+      <a id="btn-svr-startxana"><i class="fad fa-play"></i> Start</a>
+      <a id="btn-svr-stopxana"><i class="fad fa-stop"></i> Stop</a>
+      <a id="btn-svr-restorexana"><i class="fad fa-eraser"></i> Erase</a>
     </div>
   </div>
 </div>`;
@@ -1443,7 +1442,7 @@ function closeBookmarkPrompt() {
 
 function showBookmarks() {
   // hide menu if clicked while open
-  if (App.bookmarkState !== App.BKM_INACTIVE) {
+  if (App.bookmarkState !== BKM_INACTIVE) {
     removeDropdowns();
     return;
   }
@@ -1453,7 +1452,7 @@ function showBookmarks() {
   // removeBookmarks() removes them again (no show/hide toggling)
   renderBookmarkButtons();
   // link open mode
-  App.bookmarkState = App.BKM_OPEN_MODE;
+  App.bookmarkState = BKM_OPEN_MODE;
 }
 
 function renderBookmarkButtons() {
@@ -1571,7 +1570,7 @@ function saveBookmarks() {
 
 function editBookmark() {
   // hide menu if clicked while open
-  if (App.bookmarkState === App.BKM_EDIT_MODE) {
+  if (App.bookmarkState === BKM_EDIT_MODE) {
     removeDropdowns();
     return;
   }
@@ -1616,7 +1615,7 @@ function enableEditAddMode() {
   }
   // remove
   removeBookmarkSearch();
-  App.bookmarkState = App.BKM_EDIT_MODE;
+  App.bookmarkState = BKM_EDIT_MODE;
   closeBookmarkPrompt();
 }
 
@@ -1625,13 +1624,13 @@ function clickBookmark(id) {
   if (!elem) return;
   const url = elem.url; // Object.values(str).join("") returned the same string
   const name = elem.innerText;
-  if (App.bookmarkState === App.BKM_OPEN_MODE) {
+  if (App.bookmarkState === BKM_OPEN_MODE) {
     if (!(url === null || url == "" || url == "about:blank")) {
       // open URL in new tab
       window.open(url, "_blank");
     }
   }
-  if (App.bookmarkState === App.BKM_EDIT_MODE) {
+  if (App.bookmarkState === BKM_EDIT_MODE) {
     // edit bookmark item
     closeBookmarkPrompt();
     elem.classList.add("dd-selected"); // highlight selected item
@@ -2414,7 +2413,7 @@ async function loadLog(file) {
   })
   .catch(error => {
     // This catches both the thrown HTTP error and any network errors
-    showPopup("[loadLog] " + error.message);
+    showPopup("[loadLog] error fetching data.");
   });
   App.serverCmdData = null;
 }
@@ -2432,7 +2431,7 @@ function savePOST(file, data) {
         // action on successful transmit
         afterPOSTActions(file);
       } else {
-        showPopup("[savePOST] failed! " + file);
+        showPopup("[savePOST] failed to send: " + file);
       }
     }
   }
@@ -2467,7 +2466,7 @@ async function loadMenu(url) {
     // return response
     return await response.text();
   } catch (error) {
-    showPopup("[loadMenu] " + error);
+    showPopup("[loadMenu] failed to fetch: " + error);
   }
 }
 
@@ -2477,13 +2476,10 @@ window.drawMenu = function(data, menu) {
   removeDynMenus();
   if (data && typeof data === 'string') {
     // erase global data
-    while (App.fileData.length) { 
-      App.fileData.pop(); 
-    }
-    let splitdat = data.replace(/^"|"$/g, '').replace(/\\n/g, '\n').split('\n');
-    let rows = splitdat.length;
-    for (let row = 0; row < rows; row++) {
-      let line = splitdat[row];
+    while (App.fileData.length) App.fileData.pop();
+    const splitdat = splitMenuData(data);
+    for (let row = 0; row < splitdat.length; row++) {
+      const line = splitdat[row];
       if (line != "") {
         const linearr = line.split("|");
         if (linearr.length < 3) { continue; }
@@ -2501,7 +2497,7 @@ window.drawMenu = function(data, menu) {
     // store menu name at end of array
     App.fileData.push(menu);
   } else {
-    showPopup("[drawMenu] no data");
+    showPopup("[drawMenu] no data to parse.");
   }
 }
 
@@ -2681,11 +2677,12 @@ function openColorPrompt(command, argument, cmd_type = '') {
     let cmd;
     let arg1;
     let arg2;
-    if (cmd_type === '3args') { // 3-argument command type
+    // 3-argument command type
+    if (cmd_type === '3args') {
       cmd = command;
       arg1 = argument;
       arg2 = strippedHex;
-    } else {                    // 2-argument command type 
+    } else { // 2-argument command type 
       cmd = 'main';
       arg1 = command;
       arg2 = `${argument}_${strippedHex}`;

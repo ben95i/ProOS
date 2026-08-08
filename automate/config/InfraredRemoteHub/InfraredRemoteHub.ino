@@ -46,7 +46,7 @@ void setup() {
   pinMode(PC_TRIG_PIN, OUTPUT);
   digitalWrite(PC_TRIG_PIN, LOW);
   // controller software serial
-  serialMessageOut[0] = '\0';
+  serialMessageOut[0] = nullTrm;
   Serial.begin(serialBaudRate);
   // IR initalization
   IrSender.begin(IR_OUT_PIN);

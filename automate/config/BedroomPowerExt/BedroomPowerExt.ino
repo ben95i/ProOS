@@ -48,7 +48,7 @@ void setup() {
   pinMode(relay2, OUTPUT);  
   digitalWrite(relay2, LOW);
   // controller software serial
-  serialMessageOut[0] = '\0';
+  serialMessageOut[0] = nullTrm;
   Ctrl232.begin(serialBaudRate);
 }
 
@@ -330,7 +330,7 @@ void writeOutStates(){
   if (relaysState2 == true) {
     outTbl[2] = '9';
   }
-  outTbl[3] = '\0';
+  outTbl[3] = nullTrm;
   int16_t intOut = atoi(outTbl);
   writeSerialMessage(intOut);
 }

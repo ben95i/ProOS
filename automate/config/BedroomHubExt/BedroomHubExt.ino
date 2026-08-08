@@ -111,7 +111,7 @@
 #include <Adafruit_NeoPixel.h>
 
 // --- WS2812 LED strip ---
-#define LED_PIN 6      // WS2812 data pin (keep clear of the link pins 10/11)
+#define LED_PIN 6      // WS2812 data pin
 #define NUM_LEDS 60    // number of pixels on the strip (change to match hardware)
 Adafruit_NeoPixel strip(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);
 
