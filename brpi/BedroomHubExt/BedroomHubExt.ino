@@ -72,6 +72,54 @@
  *                   so the reply's leading '|' was lost and the hub timed out.
  *                   The reply now waits for that terminator (REPLY_GUARD_MS
  *                   cap) before it is sent
+ * v21- 08/11/2026 - fix: the fade never ran. Its abort test was linkIsBusy(),
+ *                   but the fade is reached from inside decodeMessage(), where
+ *                   serialMsgEnd is still set for the command being answered
+ *                   and the master's terminator byte is already buffered by
+ *                   waitForMasterTerminator() - so it was always true and the
+ *                   fade cut to black on step 1, blanking instantly. It now
+ *                   samples the pending byte count once and aborts only on
+ *                   growth past it, which is what a NEW command looks like.
+ *                   Command 011000 also fades a static color out now, not just
+ *                   a running effect; color-to-color changes stay instant
+ * v20- 08/14/2026 - fade snapshot stored as three bytes per pixel instead of a
+ *                   packed 32-bit color, saving one byte per pixel of stack
+ *                   (180 rather than 240 at 60 pixels) for the length of a
+ *                   fade. It is repacked per pixel per step so scaleColor()
+ *                   still does the scaling; no behavior change
+ * v19- 08/14/2026 - removed command 011002 (fill all) and its case; staging
+ *                   the three color channels is now the only path to a solid
+ *                   color, and fillStripWithStagedColor() is reached only from
+ *                   there. Command value 2 joins 3 and 10 as a gap that
+ *                   answers with the error frame. Tidied alongside it, with no
+ *                   change in behavior: fadeStripOut() now reuses scaleColor()
+ *                   rather than repeating its math per channel, drops the
+ *                   clearStrip() that used to rewrite an already-black strip
+ *                   after the last fade step, and returns immediately when the
+ *                   strip is not lit instead of writing black over black
+ * v18- 08/14/2026 - stopEffect() now fades the strip out over STOP_FADE_MS
+ *                   instead of leaving the last frame frozen on the pixels.
+ *                   Staging all three color channels (registers 12/13/14)
+ *                   fills the strip on its own; command 011002 still works but
+ *                   is no longer required. Removed: command 011003 (set one
+ *                   pixel), command 011010 (theater chase) and register 15
+ *                   (stage pixel index), along with their effect, draw
+ *                   function, pattern constants and the staged-color helper
+ *                   that only the chase used. Remaining command values are
+ *                   UNCHANGED - 3 and 10 are simply gaps now and reply with
+ *                   the error frame, so nothing else on the hub side moves
+ * v17- 08/14/2026 - color cycle: pixels are now fanned across a small hue
+ *                   range (CYCLE_DITHER_SPREAD) so the strip dissolves across
+ *                   an output quantization step instead of every pixel
+ *                   stepping together, which is what made the orange-to-red
+ *                   part of the wheel visibly jump.
+ *                   Effect 7 is now a loading bar rather than a comet: a solid
+ *                   bar fills the strip over a dimmed background of the
+ *                   opposite hue, then restarts from the other end with a
+ *                   fresh random color pair. COMET_TAIL_LEN is gone and
+ *                   COMET_PIXEL_STEP / COMET_PERIOD are now BAR_PIXEL_STEP /
+ *                   BAR_PERIOD; the bar ignores the staged color, so registers
+ *                   12-14 now only feed the theater chase
  * -----------------------------------------------------------
  *
  * Protocol recap:
@@ -84,7 +132,11 @@
  *   Reg 12: stage RED   (0-255)
  *   Reg 13: stage GREEN (0-255)
  *   Reg 14: stage BLUE  (0-255)
- *   Reg 15: stage pixel INDEX (0 .. NUM_LEDS-1)
+ *           Staging all three of 12/13/14 fills the whole strip with that
+ *           color immediately, and is the ONLY way to set a solid color. The
+ *           fill waits for all three so the strip never flashes through a
+ *           half-mixed color on the way, and it stops (and fades out) any
+ *           running effect. Re-send all three to re-apply a color.
  *   Reg 16: set BRIGHTNESS level (0-255, mapped perceptually onto
  *           MIN_BRIGHTNESS..MAX_BRIGHTNESS - equal level steps look like
  *           equal brightness steps; level 0 is the dimmest setting, never
@@ -162,8 +214,7 @@ const uint16_t CYCLE_HUE_STEP    = 65;  // 150 = ~13.1 s per full wheel at 30 ms
 //   6.7 to 100 pixels per second. Sub-pixel steps are what let a pattern
 //   crawl slowly on the shared 30 ms clock instead of needing its own longer
 //   frame interval; values above 100 skip pixels and look choppy.
-const uint16_t CHASE_PIXEL_STEP  = 60; // 60 = 0.60 px/frame = 20 px/s at 30 ms
-const uint16_t COMET_PIXEL_STEP  = 80; // 100 = 1.00 px/frame = 33 px/s at 30 ms
+const uint16_t BAR_PIXEL_STEP    = 80; // 100 = 1.00 px/frame = 33 px/s at 30 ms
 
 // Ceiling on how much elapsed time a single frame may absorb, in frame
 // intervals. Small gaps (a frame or two lost to link traffic) are caught up
@@ -172,17 +223,59 @@ const uint16_t COMET_PIXEL_STEP  = 80; // 100 = 1.00 px/frame = 33 px/s at 30 ms
 // Valid: 1..8 (1 = never catch up; the animation simply loses that time).
 const uint8_t EFFECT_CATCHUP_FRAMES = 3;
 
+// --- stop fade ---
+// How long stopEffect() takes to dim a running effect to black, in ms, and how
+// many steps that dim is drawn in. The fade is the one place the sketch holds
+// the loop on purpose, so it is kept short: the reply has already been sent and
+// flushed before it starts, and incoming bytes buffer in the USART meanwhile,
+// but a command that lands mid-fade still waits for it to finish. The fade also
+// gives up early the moment link traffic appears, jumping straight to black, so
+// the strip can never be more than one step behind what the master asked for.
+//   STOP_FADE_MS valid: 0..5000 (0 disables the fade entirely - the strip
+//   blanks instantly, exactly as it did before).
+//   STOP_FADE_STEPS valid: 2..255. The step interval is STOP_FADE_MS divided by
+//   this, so keep the result at or above about 15 ms or the steps become
+//   shorter than the strip write itself.
+const uint16_t STOP_FADE_MS    = 600;
+const uint8_t  STOP_FADE_STEPS = 30;
+
 // Gamma correction makes mid-range colors look right, but it also compresses
 // the low end so hard that a channel crossing the bottom of its range can pop
 // between output values on a slow fade. Set to 0 for a linear (flatter but
 // perfectly even) ramp if that stepping is more objectionable than the gamma.
 #define EFFECT_USE_GAMMA 1
 
-// Pattern shape for the two lit-pattern effects.
-const uint8_t CHASE_SPACING   = 3; // theater chase lights every Nth pixel
-const uint8_t COMET_TAIL_LEN  = 5; // pixels in the comet's fading tail (head included)
+// Spatial hue dither for the color-cycle effect, in hue units. The cycle shows
+// ONE color on every pixel, so when the gamma-corrected output of a channel
+// steps by one - unavoidable, the strip only accepts whole 0-255 values, and
+// near red or orange the green channel has only a handful of usable levels
+// left after gamma and brightness scaling - all 60 pixels step at the same
+// instant and the whole strip visibly jumps. Fanning the pixels out over a
+// tiny hue range staggers those steps: each pixel crosses the boundary at a
+// slightly different moment, so the jump becomes a dissolve between two
+// adjacent levels and reads as a smooth fade. The spread wants to be roughly
+// the hue distance between two output steps (a few hundred units near the
+// bottom of a channel).
+//   Valid: 0..65535. Useful: 300..1200. 0 restores the old flat behavior;
+//   above ~2000 the spread starts to be visible as a faint gradient rather
+//   than a single color.
+const uint16_t CYCLE_DITHER_SPREAD = 700;
+// Step between neighboring pixels' dither ranks. Coprime with NUM_LEDS so the
+// ranks form a permutation: adjacent pixels get widely separated hue offsets,
+// which turns the step into a scattered dissolve instead of an edge wiping
+// along the strip. Any value coprime with NUM_LEDS works; 23 and 60 are.
+const uint16_t CYCLE_DITHER_STRIDE = 23;
+
+// Pattern shape for the loading bar effect.
+// How far the loading bar's background color is scaled toward black (0-255,
+// 255 = untouched). The bar and its background are opposite hues, which
+// separates them by color; dimming the background separates them by
+// brightness as well, so the fill edge stays obvious whichever random pair
+// comes up - including on hues the eye reads as dark to begin with.
+//   Useful: 20..80. Above ~100 a bright random background can rival the bar.
+const uint8_t BAR_BACK_SCALE  = 45;
 #if NUM_LEDS < 2
-#error "NUM_LEDS must be at least 2 (the comet sweep needs two end points)"
+#error "NUM_LEDS must be at least 2 (the loading bar needs somewhere to fill)"
 #endif
 
 // The step constants above, converted to phase units per millisecond in
@@ -201,8 +294,7 @@ const uint8_t COMET_TAIL_LEN  = 5; // pixels in the comet's fading tail (head in
 // wrapped to this after every advance, so the accumulator can neither drift
 // nor overflow however long an effect runs.
 #define HUE_PERIOD   (65536UL << 12)                          // one color wheel
-#define CHASE_PERIOD ((uint32_t)CHASE_SPACING << 12)          // one chase group
-#define COMET_PERIOD ((uint32_t)(2 * (NUM_LEDS - 1)) << 12)   // one there-and-back sweep
+#define BAR_PERIOD   ((uint32_t)(2 * NUM_LEDS) << 12)         // both fill passes
 
 // --- link to the hub (hardware USART) ---
 // The board's built-in serial port: pin 0 = RX (from hub ExtSerial2 TX),
@@ -280,21 +372,17 @@ const uint8_t regControl           = 11; // general commands
 const uint8_t regStageRed          = 12; // stage red channel
 const uint8_t regStageGreen        = 13; // stage green channel
 const uint8_t regStageBlue         = 14; // stage blue channel
-const uint8_t regStageIndex        = 15; // stage target pixel index
 const uint8_t regBrightness        = 16; // set overall brightness
 
 // --- control-register (11) command values ---
 const uint16_t ctrlLedsOff         = 0; // clear the strip (stops any effect)
 const uint16_t ctrlAbout           = 1; // reply with the hello message
-const uint16_t ctrlFillAll         = 2; // fill entire strip with staged color (stops effect)
-const uint16_t ctrlSetPixel        = 3; // set one pixel (staged index) to staged color (stops effect)
 const uint16_t ctrlRainbow         = 4; // start the rainbow effect
 const uint16_t ctrlCycle           = 5; // start the color-cycle effect
 const uint16_t ctrlPause           = 6; // pause the running effect (freeze, do not clear)
-const uint16_t ctrlSweep           = 7; // start the comet sweep effect
+const uint16_t ctrlSweep           = 7; // start the loading bar effect
 const uint16_t ctrlStripStatus     = 8; // report whether the strip is lit or blank
 const uint16_t ctrlStripBrightness = 9; // show current brightness level
-const uint16_t ctrlChase           = 10; // start the theater-chase effect
 const uint16_t ctrl1PowerOn        = 31; // switch device #1 on (if currently off)
 const uint16_t ctrl1PowerOff       = 32; // switch device #1 off (if currently on)
 const uint16_t ctrl1PowerStatus    = 33; // report device #1's current power state
@@ -318,7 +406,15 @@ const char motorStateRev[]     = "2"; // motor status reply: running in reverse
 uint8_t stagedRed = 0;
 uint8_t stagedGreen = 0;
 uint8_t stagedBlue = 0;
-uint16_t stagedIndex = 0;
+// Which of the three color channels have been staged since the last fill. A
+// color is only applied once all three have arrived, so a half-set color (red
+// updated, green and blue still holding the previous value) never reaches the
+// strip. Cleared by the fill, so the next complete set of three triggers again.
+const uint8_t STAGED_RED_BIT   = 0x01;
+const uint8_t STAGED_GREEN_BIT = 0x02;
+const uint8_t STAGED_BLUE_BIT  = 0x04;
+const uint8_t STAGED_ALL_BITS  = (STAGED_RED_BIT | STAGED_GREEN_BIT | STAGED_BLUE_BIT);
+uint8_t stagedColorBits = 0;
 uint8_t ledBrightness = MAX_BRIGHTNESS; // scaled brightness actually sent to the strip
 uint8_t ledBrightnessLevel = 255;       // last 0-255 level commanded on register 16, kept
                                         // linear so the UI slider can be read straight
@@ -328,8 +424,7 @@ uint8_t ledBrightnessLevel = 255;       // last 0-255 level commanded on registe
 const uint8_t effectNone    = 0; // no animation running
 const uint8_t effectRainbow = 1; // rainbow hues trailing up the strip
 const uint8_t effectCycle   = 2; // whole strip cycling through hues
-const uint8_t effectChase   = 3; // theater-chase marquee in the staged color
-const uint8_t effectSweep   = 4; // comet with a fading tail sweeping back and forth
+const uint8_t effectSweep   = 4; // loading bar filling the strip, alternating ends
 uint8_t effectMode = effectNone;
 bool effectPaused = false;
 // How far the running effect is through its animation, in 1/4096ths () of
@@ -340,6 +435,14 @@ bool effectPaused = false;
 // it to that effect's period so it can never drift or overflow.
 uint32_t effectPhase = 0;
 unsigned long lastEffectUpdate = 0; // millis() of the last frame actually SHOWN
+// --- loading bar state ---
+// The bar re-rolls its colors every time it resets, so it needs to notice the
+// reset: barLastPass holds the fill pass the colors were picked for, and
+// BAR_PASS_NONE forces a fresh pick on the effect's first frame.
+const uint8_t BAR_PASS_NONE = 255;
+uint8_t barLastPass = BAR_PASS_NONE;
+uint32_t barFillColor = 0;
+uint32_t barBackColor = 0;
 
 // --- link recovery tuning ---
 // Effect frames stay suppressed until effectHoldoffUntil. Raw link traffic
@@ -537,15 +640,10 @@ void serviceEffects() {
       phaseRate = HUE_RATE(CYCLE_HUE_STEP);
       phasePeriod = HUE_PERIOD;
       break;
-    case effectChase:
-      drawTheaterChaseFrame();
-      phaseRate = PIXEL_RATE_(CHASE_PIXEL_STEP);
-      phasePeriod = CHASE_PERIOD;
-      break;
     case effectSweep:
-      drawCometFrame();
-      phaseRate = PIXEL_RATE_(COMET_PIXEL_STEP);
-      phasePeriod = COMET_PERIOD;
+      drawLoadingBarFrame();
+      phaseRate = PIXEL_RATE_(BAR_PIXEL_STEP);
+      phasePeriod = BAR_PERIOD;
       break;
     default:
       return; // unknown mode: nothing drawn, nothing to show
@@ -574,14 +672,102 @@ void startEffect(uint8_t mode) {
   effectMode = mode;
   effectPaused = false;
   effectPhase = 0;                               // begin at the effect's origin
+  barLastPass = BAR_PASS_NONE;                   // loading bar re-rolls its colors
   lastEffectUpdate = millis() - EFFECT_INTERVAL_MS; // draw promptly
 }
 
-// Stops any running animation, leaving the strip exactly as it is. Used by the
-// static LED commands, which take over the strip themselves right afterwards.
+// Stops any running animation and fades whatever it left on the strip down to
+// black over STOP_FADE_MS, ending blanked. Called by the static LED commands,
+// which take over the strip themselves right afterwards - so a fill following a
+// stop reads as the old animation dimming away before the new color appears.
+// The fade only runs if an effect was actually running: a static color replaced
+// by another static color changes over immediately, with nothing to dim.
 void stopEffect() {
+  bool effectWasRunning = (effectMode != effectNone);
   effectMode = effectNone;
   effectPaused = false;
+  if (effectWasRunning) {
+    fadeStripOut();
+  }
+}
+
+// Dims the strip's current contents to black in STOP_FADE_STEPS even steps.
+//
+// The pixels are snapshotted first and every step is scaled from that snapshot,
+// never from the previous step: scaling the live buffer repeatedly compounds
+// its rounding, which drags the low end to black early and turns the last third
+// of the fade into a hard cut. Adafruit's setBrightness() is avoided for the
+// same reason - it rescales the pixel buffer in place, and a ramp down through
+// it is lossy in exactly that way (setBrightness(0) is worse still: it zeroes
+// the buffer permanently). Scaling from the snapshot keeps every step an
+// unrounded fraction of the original color, so the ramp stays linear to the
+// end, and the display brightness the user set is never touched.
+//
+// The snapshot is stored as three bytes per pixel rather than as packed 32-bit
+// colors: the top byte of a packed color is always empty here, so packing would
+// cost a fourth byte per pixel of stack for nothing. At 60 pixels that is 180
+// bytes instead of 240, held only for the length of the fade and nothing at
+// rest - worth the repack below if NUM_LEDS is ever raised.
+void fadeStripOut() {
+  if (isStripLit() == false) {
+    return; // already blank: nothing to dim and nothing to rewrite
+  }
+  if (STOP_FADE_MS == 0) {
+    clearStrip(); // fade disabled: blank instantly, as it did before the fade
+    return;
+  }
+  // getPixelColor() returns the color with the display brightness divided back
+  // out, which is what we want: the fade works in staged-color space and
+  // setPixelColor() re-applies brightness on the way back out.
+  uint8_t fadeSnapshot[NUM_LEDS][3];
+  for (uint16_t _idx = 0; _idx < NUM_LEDS; _idx++) {
+    uint32_t pixelColor = strip.getPixelColor(_idx);
+    fadeSnapshot[_idx][0] = (uint8_t)(pixelColor >> 16); // red
+    fadeSnapshot[_idx][1] = (uint8_t)(pixelColor >> 8);  // green
+    fadeSnapshot[_idx][2] = (uint8_t)pixelColor;         // blue
+  }
+  // Abort test for the loop below. linkIsBusy() CANNOT be used here: this fade
+  // runs from inside decodeMessage(), so serialMsgEnd is still set for the very
+  // command being answered, and waitForMasterTerminator() has just parked the
+  // master's terminator byte in the receive buffer - linkIsBusy() is therefore
+  // always true at this point and would kill the fade on its first step. What
+  // actually matters is traffic arriving AFTER the fade starts, so the pending
+  // byte count is sampled once here and only growth past it counts as a new
+  // command. serialReading cannot change meanwhile, since the link is not
+  // serviced during the fade.
+  int linkPendingAtStart = Serial.available();
+  const uint16_t fadeStepMs = STOP_FADE_MS / STOP_FADE_STEPS;
+  for (uint8_t _step = 1; _step <= STOP_FADE_STEPS; _step++) {
+    // a NEW command arriving mid-fade wins: cut to black and let it be serviced
+    if (Serial.available() > linkPendingAtStart) {
+      clearStrip();
+      return;
+    }
+    // full brightness before the first step, exactly black on the last one
+    uint8_t fadeScale = (uint8_t)(255 - (((uint32_t)_step * 255) / STOP_FADE_STEPS));
+    for (uint16_t _idx = 0; _idx < NUM_LEDS; _idx++) {
+      // repack for scaleColor(), which takes the same packed form setPixelColor
+      // and getPixelColor use - one shared scaling rule instead of a private
+      // copy of its math here
+      uint32_t snapshotColor = ((uint32_t)fadeSnapshot[_idx][0] << 16) |
+                               ((uint32_t)fadeSnapshot[_idx][1] << 8) |
+                               (uint32_t)fadeSnapshot[_idx][2];
+      strip.setPixelColor(_idx, scaleColor(snapshotColor, fadeScale));
+    }
+    strip.show();
+    // Hold the step WITHOUT delay(): the chair motor's run and duty deadlines
+    // are enforced by serviceMotor(), and a blocking delay here would let a
+    // motor overrun its stop time by most of the fade. The link cannot be
+    // serviced from inside a half-drawn fade, but incoming bytes buffer in the
+    // USART and the pending-count check above cuts the fade short on the next
+    // step, so nothing is lost either way.
+    unsigned long stepStarted = millis();
+    while ((millis() - stepStarted) < fadeStepMs) {
+      serviceMotor();
+    }
+  }
+  // The last step scaled by 0, so the buffer already holds - and the strip
+  // already shows - all black. A clearStrip() here would only rewrite it.
 }
 
 // True while the link has traffic in flight: a frame being received, a decoded
@@ -612,21 +798,17 @@ void drawRainbowFrame() {
 
 // Builds one frame of the color-cycle effect: the whole strip shows the single
 // hue the phase currently sits on, so it walks the wheel as the phase advances.
+// Each pixel is nudged by a fraction of CYCLE_DITHER_SPREAD so the strip does
+// not cross an output quantization step all at once - see that constant for
+// why a single flat color pops on a slow fade and this does not.
 void drawColorCycleFrame() {
-  uint32_t color = effectHueColor((uint16_t)(effectPhase >> 12));
+  uint16_t baseHue = (uint16_t)(effectPhase >> 12); // phase wraps at one wheel
   for (uint16_t _idx = 0; _idx < NUM_LEDS; _idx++) {
-    strip.setPixelColor(_idx, color);
+    // scatter the dither ranks so neighbors are far apart in the spread
+    uint16_t ditherRank = (uint16_t)(((uint32_t)_idx * CYCLE_DITHER_STRIDE) % NUM_LEDS);
+    uint16_t hueOffset = (uint16_t)(((uint32_t)ditherRank * CYCLE_DITHER_SPREAD) / NUM_LEDS);
+    strip.setPixelColor(_idx, effectHueColor(baseHue + hueOffset));
   }
-}
-
-// Returns the color the pattern effects should draw in: the staged
-// red/green/blue, falling back to white when nothing has been staged, since a
-// black staged color would otherwise make the effect invisible.
-uint32_t stagedEffectColor() {
-  if ((stagedRed | stagedGreen | stagedBlue) == 0) {
-    return strip.Color(255, 255, 255);
-  }
-  return strip.Color(stagedRed, stagedGreen, stagedBlue);
 }
 
 // Scales a packed color toward black: 255 leaves it unchanged, 0 blacks it
@@ -639,44 +821,53 @@ uint32_t scaleColor(uint32_t color, uint8_t scale) {
                      (uint8_t)(((color & 0xFF) * _mul) >> 8));
 }
 
-// Builds one frame of the theater-chase effect: every CHASE_SPACING-th pixel
-// is lit in the staged color, and the lit group sits wherever the phase points
-// within one group, giving the classic marquee crawl. Unlit pixels are
-// cleared, so the pattern always draws over whatever was on the strip before.
-void drawTheaterChaseFrame() {
-  uint32_t chaseColor = stagedEffectColor();
-  uint8_t chaseOffset = (uint8_t)(effectPhase >> 12); // phase wraps at CHASE_SPACING
-  strip.clear();
-  for (uint16_t _idx = chaseOffset; _idx < NUM_LEDS; _idx += CHASE_SPACING) {
-    strip.setPixelColor(_idx, chaseColor);
+// Rolls a fresh color pair for the loading bar. The background hue is random
+// and the fill hue is its opposite on the wheel, which is the largest hue
+// separation available, so the pair always contrasts however the roll lands.
+// The background is also dimmed (BAR_BACK_SCALE) so the two differ in
+// brightness as well as hue - hue alone is not enough when a random roll
+// lands on two hues the eye reads as similarly dark.
+//
+// random() replays one fixed sequence unless it is seeded, which would make
+// every power-up show the same colors in the same order. It is seeded here on
+// first use rather than in setup(): the effect is started by a hub command, so
+// the microsecond timer at that moment is genuinely unpredictable, where at
+// boot it would read nearly the same value every time.
+void pickBarColors() {
+  static bool barSeeded = false;
+  if (barSeeded == false) {
+    randomSeed(micros());
+    barSeeded = true;
   }
+  uint16_t backHue = (uint16_t)random(65536);
+  barBackColor = scaleColor(effectHueColor(backHue), BAR_BACK_SCALE);
+  barFillColor = effectHueColor((uint16_t)(backHue + 32768)); // opposite hue
 }
 
-// Builds one frame of the comet effect: a bright head in the staged color
-// sweeps along the strip and reverses at each end, trailing COMET_TAIL_LEN
-// pixels that fade linearly to black. The tail is drawn from the head position
-// rather than by fading the previous frame, so repeated brightness rescaling
-// cannot make the colors drift.
+// Builds one frame of the loading bar effect: a solid bar grows from one end
+// of the strip to the other over a dimmed background of the opposite hue, and
+// on reaching the far end it starts over from the OTHER end with a fresh pair
+// of random colors.
 //
-// The phase runs 0 .. 2*(NUM_LEDS-1) and the second half is folded back on
-// itself, which produces the there-and-back sweep - and the travel direction
-// with it - from the phase alone, with no direction flag or end-of-strip test.
-void drawCometFrame() {
-  uint32_t baseColor = stagedEffectColor();
-  uint16_t sweepPos = (uint16_t)(effectPhase >> 12);
-  bool movingForward = (sweepPos < NUM_LEDS);
-  int16_t cometHead = movingForward ? (int16_t)sweepPos
-                                    : (int16_t)(2 * (NUM_LEDS - 1) - sweepPos);
-  strip.clear();
-  for (uint8_t _tail = 0; _tail < COMET_TAIL_LEN; _tail++) {
-    // tail pixels sit behind the head, so they trail the direction of travel
-    int16_t tailPos = movingForward ? (cometHead - _tail) : (cometHead + _tail);
-    if (tailPos < 0 || tailPos >= (int16_t)NUM_LEDS) {
-      continue;
-    }
-    // linear fade: full brightness at the head, dark at the end of the tail
-    uint8_t fadeScale = (uint8_t)(255 - ((uint16_t)_tail * 255 / COMET_TAIL_LEN));
-    strip.setPixelColor(tailPos, scaleColor(baseColor, fadeScale));
+// The phase runs 0 .. 2*NUM_LEDS-1 and its top half is the return pass, so the
+// fill direction comes from the phase alone with no direction flag - the same
+// trick the comet used for its there-and-back travel. Only the color re-roll
+// needs memory, since it has to happen once per pass rather than once per
+// frame; barLastPass provides it.
+void drawLoadingBarFrame() {
+  uint16_t barPos = (uint16_t)(effectPhase >> 12); // 0 .. 2*NUM_LEDS-1
+  // pass 0 fills from pixel 0 upward, pass 1 fills from the far end downward
+  uint8_t barPass = (barPos < NUM_LEDS) ? 0 : 1;
+  if (barPass != barLastPass) {
+    pickBarColors(); // the bar just reset (or just started)
+    barLastPass = barPass;
+  }
+  // one pixel lit at the start of a pass, the whole strip at the end of it
+  uint16_t filledCount = (barPass == 0) ? (barPos + 1) : (barPos - NUM_LEDS + 1);
+  for (uint16_t _idx = 0; _idx < NUM_LEDS; _idx++) {
+    // _idx counts from the filling end, barIdx is the pixel that end maps to
+    uint16_t barIdx = (barPass == 0) ? _idx : (uint16_t)(NUM_LEDS - 1 - _idx);
+    strip.setPixelColor(barIdx, (_idx < filledCount) ? barFillColor : barBackColor);
   }
 }
 
@@ -846,7 +1037,7 @@ void handleCommand(uint8_t messageRegister, uint16_t messageData) {
     case regStageRed:
       if (messageData <= 255) {
         stagedRed = (uint8_t)messageData;
-        sendResponse(okMessage);
+        stageColorChannel(STAGED_RED_BIT);
       } else {
         sendResponse(errorMessage);
       }
@@ -854,7 +1045,7 @@ void handleCommand(uint8_t messageRegister, uint16_t messageData) {
     case regStageGreen:
       if (messageData <= 255) {
         stagedGreen = (uint8_t)messageData;
-        sendResponse(okMessage);
+        stageColorChannel(STAGED_GREEN_BIT);
       } else {
         sendResponse(errorMessage);
       }
@@ -862,15 +1053,7 @@ void handleCommand(uint8_t messageRegister, uint16_t messageData) {
     case regStageBlue:
       if (messageData <= 255) {
         stagedBlue = (uint8_t)messageData;
-        sendResponse(okMessage);
-      } else {
-        sendResponse(errorMessage);
-      }
-      break;
-    case regStageIndex:
-      if (messageData < NUM_LEDS) {
-        stagedIndex = messageData;
-        sendResponse(okMessage);
+        stageColorChannel(STAGED_BLUE_BIT);
       } else {
         sendResponse(errorMessage);
       }
@@ -886,6 +1069,26 @@ void handleCommand(uint8_t messageRegister, uint16_t messageData) {
     default:
       sendResponse(errorMessage);
       break;
+  }
+}
+
+// Records that one color channel has just been staged, answers the master, and
+// applies the color to the whole strip once all three channels have arrived.
+//
+// The reply goes out before the strip is touched, for the same reason the
+// static LED commands answer first: show() disables interrupts and would
+// stretch the gaps between the reply's bytes. sendResponse() flushes, so by the
+// time the fill runs the reply is completely on the wire.
+//
+// Waiting for all three channels is what makes this safe to do automatically -
+// applying each channel as it lands would flash the strip through two
+// half-mixed colors on the way to every requested one.
+void stageColorChannel(uint8_t channelBit) {
+  stagedColorBits |= channelBit;
+  sendResponse(okMessage);
+  if ((stagedColorBits & STAGED_ALL_BITS) == STAGED_ALL_BITS) {
+    stopEffect(); // a running effect fades out first, then the color appears
+    fillStripWithStagedColor();
   }
 }
 
@@ -906,17 +1109,8 @@ void handleControlCommand(uint16_t messageData) {
     case ctrlLedsOff:
       sendResponse(okMessage);
       stopEffect();
-      clearStrip();
-      break;
-    case ctrlFillAll:
-      sendResponse(okMessage);
-      stopEffect();
-      fillStripWithStagedColor();
-      break;
-    case ctrlSetPixel:
-      sendResponse(okMessage);
-      stopEffect();
-      setStagedPixelColor();
+      fadeStripOut(); // fades a static color out too; a no-op after an effect
+                      // fade, which has already left the strip blank
       break;
     case ctrlRainbow:
       sendResponse(okMessage);
@@ -925,10 +1119,6 @@ void handleControlCommand(uint16_t messageData) {
     case ctrlCycle:
       sendResponse(okMessage);
       startEffect(effectCycle);
-      break;
-    case ctrlChase:
-      sendResponse(okMessage);
-      startEffect(effectChase);
       break;
     case ctrlSweep:
       sendResponse(okMessage);
@@ -1232,19 +1422,16 @@ void clearStrip() {
   strip.show();
 }
 
-// Fills every pixel with the currently staged red/green/blue color.
+// Fills every pixel with the currently staged red/green/blue color, and clears
+// the staged-channel bits: the color has been applied, so the next automatic
+// fill waits for a fresh set of all three channels rather than firing on the
+// next single channel that happens to arrive.
 void fillStripWithStagedColor() {
   for (uint16_t _idx = 0; _idx < NUM_LEDS; _idx++) {
     strip.setPixelColor(_idx, stagedRed, stagedGreen, stagedBlue);
   }
   strip.show();
-}
-
-// Sets the single staged-index pixel to the staged red/green/blue color,
-// leaving the rest of the strip unchanged.
-void setStagedPixelColor() {
-  strip.setPixelColor(stagedIndex, stagedRed, stagedGreen, stagedBlue);
-  strip.show();
+  stagedColorBits = 0;
 }
 
 // Sets the display brightness from a 0-255 level, mapped PERCEPTUALLY onto the
