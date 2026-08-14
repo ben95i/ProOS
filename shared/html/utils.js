@@ -1,6 +1,7 @@
 // Automate Website - JavaScript Utilities
 
 const REFRESH_INTERVAL = 10; // in seconds
+const TIMEOUT_INTERVAL = 50; // in seconds
 
 // transmit a command
 export async function sendCmd(act, arg1, arg2 = '') {
@@ -22,6 +23,10 @@ export async function sendCmd(act, arg1, arg2 = '') {
 
 export function refreshInterval() {
   return REFRESH_INTERVAL;
+}
+
+export function timeoutInterval() {
+  return TIMEOUT_INTERVAL;
 }
 
 export function splitMenuData(data) {
@@ -138,14 +143,13 @@ export function mapNumber(num, inMin, inMax, outMin, outMax) {
   return (num - inMin) * (outMax - outMin) / (inMax - inMin) + outMin;
 }
 
-// --- Mathematical Conversion Helpers (Verbose Implementation) --- //
-
-export function hexToRgb(hexString) {
-  const cleanHex = hexString.replace(/^#/, '');
-  const redDecimal = parseInt(cleanHex.substring(0, 2), 16);
-  const greenDecimal = parseInt(cleanHex.substring(2, 4), 16);
-  const blueDecimal = parseInt(cleanHex.substring(4, 6), 16);
-  return { red: redDecimal, green: greenDecimal, blue: blueDecimal };
+export function hexToRgb(hex_in) {
+  const hex = hex_in.replace(/^#/, '');
+  return { 
+    red: parseInt(hex.substring(0, 2), 16), 
+    green: parseInt(hex.substring(2, 4), 16), 
+    blue: parseInt(hex.substring(4, 6), 16) 
+  };
 }
 
 export function rgbToHex(red, green, blue) {

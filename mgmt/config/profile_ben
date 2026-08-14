@@ -1,9 +1,11 @@
 #!/bin/bash
 
+PROS_PATH='/mnt/Projects/ProOS'
+
 ## Command Aliases
 alias matrix='/usr/bin/cmatrix'
-alias login="/mnt/ProOS/login.sh"
-alias logon="/mnt/ProOS/login.sh"
+alias login="$PROS_PATH/login.sh"
+alias logon="$PROS_PATH/login.sh"
 alias less='less --RAW-CONTROL-CHARS'
 
 ## Colorized Lists
@@ -51,4 +53,4 @@ echo "${bluetty}"
 echo "by Ben Provenzano III"
 echo "${resettty}"
 
-cd /mnt/ProOS
+cd "$PROS_PATH"

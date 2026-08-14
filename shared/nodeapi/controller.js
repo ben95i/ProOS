@@ -11,7 +11,7 @@ const execFileAsync = util.promisify(execFile);
 const PROCESS_TIMEOUT = 3000;  // in (ms)
 const MAX_PING_WAIT = "0.5"; // in (sec)
 const NET_RANGE = "192.168.1.0/24";
-const LOCALHOSTS = {
+const IP_ADRS = {
     lrxmit: "192.168.1.12",
     desk: "192.168.1.14",
     brpi: "192.168.1.15",
@@ -26,34 +26,6 @@ const { runStatusUpdate } = require('./statusupd');
 const { runSiteLookup } = require('./sitelookup');
 const { runWeatherWidget } = require('./weather');
 const { runScanNetwork } = require('./netscan');
-
-const fifoQueue = [];
-const MAX_QUEUE_SIZE = 15;
-let isQueueProcessing = false;
-
-async function processQueue() {
-    if (isQueueProcessing) return;
-    isQueueProcessing = true;
-    while (fifoQueue.length > 0) {
-        const { executeTask, resolve, reject } = fifoQueue.shift();
-        try {
-            resolve(await executeTask());
-        } catch (error) {
-            reject(error);
-        }
-    }
-    isQueueProcessing = false;
-}
-
-function enqueueTask(executeTask) {
-    return new Promise((resolve, reject) => {
-        if (fifoQueue.length >= MAX_QUEUE_SIZE) {
-            return reject(new Error("Server busy: queue limit reached"));
-        }
-        fifoQueue.push({ executeTask, resolve, reject });
-        processQueue();
-    });
-}
 
 function isNumeric(value) {
     return typeof value === 'string' && value.trim() !== '' && Number.isInteger(Number(value));
@@ -81,14 +53,6 @@ function extractResponse(str, delimiter = '|') {
 
 function padOctet(value) {
   return String(value).padStart(3, "0");
-}
-
-function hexToRgb(hexString) {
-  const cleanHex = hexString.replace(/^#/, '');
-  const redDecimal = padOctet(parseInt(cleanHex.substring(0, 2), 16));
-  const greenDecimal = padOctet(parseInt(cleanHex.substring(2, 4), 16));
-  const blueDecimal = padOctet(parseInt(cleanHex.substring(4, 6), 16));
-  return { red: redDecimal, green: greenDecimal, blue: blueDecimal };
 }
 
 async function localPing(ip) {
@@ -156,39 +120,29 @@ async function commonAPIRequest(server, delim) {
     }
 }
 
-async function callApi(target, arg1, arg2 = '') {
-    if (arg1 === "") return "callApi: argument cannot be empty";
-    return await commonAPIRequest(`http://${target}:80/api?var=${arg2}&arg=${arg1}&action=main`, '|');
-}
-
 async function callPico(target, arg1, arg2 = '') {
     if (arg1 === "") return "callPico: argument cannot be empty";
     return await commonAPIRequest(`http://${target}:4000/api?${arg1},,${arg2}~`, null);
 }
 
-async function callFIFO(host, cmd, out_pos = '') {
-    const executeTask = async () => {
-        let out = '';
-        if (host === "lrxmit") {
-            out = await callApi(LOCALHOSTS.lrxmit, "extcom", cmd);
-        } else if (host === "local") {
-            try {
-                const { stdout } = await execFileAsync('/usr/bin/ztermcom', [cmd], { 
-                    timeout: PROCESS_TIMEOUT 
-                });
-                out = extractResponse(stdout);
-            } catch (error) {
-                out = processProgramError(error);
-            }
-        } else {
-            return 'invalid host';
-        }
-        if (out_pos === '') return out;
-        if (out && out.length === 1) return out;
-        if (out && out.length === 3) return out[parseInt(out_pos)] === "9" ? "1" : "0";
-        return `invalid response: ${out}`;
-    };
-    return enqueueTask(executeTask);
+async function callApi(target, arg1, arg2 = '') {
+    if (arg1 === "") return "callApi: argument cannot be empty";
+    return await commonAPIRequest(`http://${target}:80/api?var=${arg2}&arg=${arg1}&action=main`, '|');
+}
+
+async function brComCall(cmd, pos = '') {
+    return decodeXmitCmd(pos, await callApi(IP_ADRS.brpi, "hwcom", cmd));
+}
+
+async function lrComCall(cmd, pos = '') {
+    return decodeXmitCmd(pos, await callApi(IP_ADRS.lrxmit, "extcom", cmd));
+}
+
+function decodeXmitCmd(pos, out){
+    if (pos === '') return out;
+    if (out && out.length === 1) return out;
+    if (out && out.length === 3) return out[parseInt(pos)] === "9" ? "1" : "0";
+    return `invalid response: ${out}`;
 }
 
 function parseInputData(input, marker) {
@@ -209,7 +163,7 @@ function bedroomOn() {
         brXmit("brmacson"), 
         brXmit("brtvon"), 
         brXmit("brpcon"), 
-        callApi(LOCALHOSTS.brpi, "ampstateon")
+        callApi(IP_ADRS.brpi, "ampstateon")
     ]).catch(() => {});
 }
 
@@ -220,8 +174,8 @@ function bedroomOff() {
         brXmit("retropioff"), 
         brXmit("brmacsoff"), 
         brXmit("brtvoff"), 
-        callApi(LOCALHOSTS.brpc, "sleep"), 
-        callApi(LOCALHOSTS.brpi, "ampstateoff")
+        callApi(IP_ADRS.brpc, "sleep"), 
+        callApi(IP_ADRS.brpi, "ampstateoff")
     ]).catch(() => {});
 }
 
@@ -246,67 +200,61 @@ function livingRoomOff(baseWWW) {
 }
 
 async function windowLamp1Status() { 
-    return await callPico(LOCALHOSTS.picolamp1, "4", "0"); 
+    return await callPico(IP_ADRS.picolamp1, "4", "0"); 
 }
 async function windowLamp1Off() { 
-    return await callPico(LOCALHOSTS.picolamp1, "1", "2");
+    return await callPico(IP_ADRS.picolamp1, "1", "2");
 }
 async function windowLamp1On() { 
-    return await callPico(LOCALHOSTS.picolamp1, "1", "3");
+    return await callPico(IP_ADRS.picolamp1, "1", "3");
 }
 
 async function brXmit(arg1, arg2 = '') {
     switch (arg1) {
-        case "bed_adj_up":     return await callFIFO("local", "11041");
-        case "bed_adj_dwn":    return await callFIFO("local", "11042");
-        case "bed_adj_stop":   return await callFIFO("local", "11043");
-        case "bed_adj_sts":    return await callFIFO("local", "11044");
-        case "bed_leds":       return await callFIFO("local", "11009");
-        case "bed_leds_sts":   return await callFIFO("local", "11008");
-        case "bed_leds_rb":    return await callFIFO("local", "11004");
-        case "bed_leds_cs":    return await callFIFO("local", "11005");
-        case "bed_leds_sw":    return await callFIFO("local", "11007");
-        case "bed_leds_ch":    return await callFIFO("local", "11010");
-        case "bed_leds_off":   return await callFIFO("local", "11000");
-        case "bed_leds_pause": return await callFIFO("local", "11006");
-        case "bed_leds_set":   return await callFIFO("local", `16${padOctet(arg2)}`);
-        case "bed_leds_hex_set": {
-            const rgb = hexToRgb(arg2);
-            await callFIFO("local", `12${rgb.red}`);
-            await callFIFO("local", `13${rgb.green}`);
-            await callFIFO("local", `14${rgb.blue}`);
-            return await callFIFO("local", "11002");
-        }
+        case "bed_adj_up":       return await brComCall("11041");
+        case "bed_adj_dwn":      return await brComCall("11042");
+        case "bed_adj_stop":     return await brComCall("11043");
+        case "bed_adj_sts":      return await brComCall("11044");
+        case "bed_leds":         return await brComCall("11009");
+        case "bed_leds_sts":     return await brComCall("11008");
+        case "bed_leds_rb":      return await brComCall("11004");
+        case "bed_leds_cs":      return await brComCall("11005");
+        case "bed_leds_sw":      return await brComCall("11007");
+        case "bed_leds_ch":      return await brComCall("11010");
+        case "bed_leds_off":     return await brComCall("11000");
+        case "bed_leds_pause":   return await brComCall("11006");
+        case "bed_leds_set":     return await brComCall(`16${padOctet(arg2)}`);
+        case "bed_leds_hex_set": return await callApi(IP_ADRS.brpi, arg1, arg2);
     
-        case "brlamp1":        return await callFIFO("local", "10007", "0");
-        case "brlamp1on":      return await callFIFO("local", "10002");
-        case "brlamp1off":     return await callFIFO("local", "10001");
+        case "brlamp1":          return await brComCall("10007", "0");
+        case "brlamp1on":        return await brComCall("10002");
+        case "brlamp1off":       return await brComCall("10001");
 
-        case "brmacs":         return await callFIFO("local", "10007", "1");
-        case "brmacson":       return await callFIFO("local", "10004");
-        case "brmacsoff":      return await callFIFO("local", "10003");
+        case "brmacs":           return await brComCall("10007", "1");
+        case "brmacson":         return await brComCall("10004");
+        case "brmacsoff":        return await brComCall("10003");
 
-        case "retropi":        return await callFIFO("local", "10007", "2");
-        case "retropion":      return await callFIFO("local", "10006");
-        case "retropioff":     return await callFIFO("local", "10005");
+        case "retropi":          return await brComCall("10007", "2");
+        case "retropion":        return await brComCall("10006");
+        case "retropioff":       return await brComCall("10005");
 
-        case "roomth":         return await callFIFO("local", "01005");
+        case "roomth":           return await brComCall("01005");
 
-        case "brtv":           return await callFIFO("local", "11033", "0");
-        case "brtvoff":        return await callFIFO("local", "11032");
-        case "brtvon":         return await callFIFO("local", "11031");
+        case "brtv":             return await brComCall("11033", "0");
+        case "brtvoff":          return await brComCall("11032");
+        case "brtvon":           return await brComCall("11031");
 
-        case "brpc":           return await localPing(LOCALHOSTS.brpc);
-        case "brpcoff": 
-            if (await localPing(LOCALHOSTS.brpc) === "1") {
-              return await callApi(LOCALHOSTS.brpc, "sleep");
+        case "brpc":             return await localPing(IP_ADRS.brpc);
+        case "brpcoff":  
+            if (await localPing(IP_ADRS.brpc) === "1") {
+              return await callApi(IP_ADRS.brpc, "sleep");
             }
-            return `${LOCALHOSTS.brpc} is already offline`;
+            return `${IP_ADRS.brpc} is already offline`;
         case "brpcon": 
-            if (await localPing(LOCALHOSTS.brpc) === "1") {
-              return `${LOCALHOSTS.brpc} is already online`;
+            if (await localPing(IP_ADRS.brpc) === "1") {
+              return `${IP_ADRS.brpc} is already online`;
             }
-            return await execFileAsync('/usr/bin/wakeonlan', [LOCALHOSTS.brpc_mac], { 
+            return await execFileAsync('/usr/bin/wakeonlan', [IP_ADRS.brpc_mac], { 
                 timeout: PROCESS_TIMEOUT 
             }).then(() => "OK").catch(e => processProgramError(e));
 
@@ -317,53 +265,53 @@ async function brXmit(arg1, arg2 = '') {
 async function lrXmit(arg1, arg2 = '') {
     switch (arg1) {
         case "wl1_dual":      return await windowLamp1Status();
-        case "wl1_dual_set":  return await callPico(LOCALHOSTS.picolamp1, "3", arg2);     
+        case "wl1_dual_set":  return await callPico(IP_ADRS.picolamp1, "3", arg2);     
         case "wl1_dualoff":   return await windowLamp1Off();
         case "wl1_dualon":    return await windowLamp1On();
         case "wl1_led1off":   return await windowLamp1Off();
         case "wl1_led1on":    return await windowLamp1On();
-        case "wl1_led1":      return await callPico(LOCALHOSTS.picolamp1, "1", "0");
-        case "wl1_led2off":   return await callPico(LOCALHOSTS.picolamp1, "2", "0");
-        case "wl1_led2on":    return await callPico(LOCALHOSTS.picolamp1, "2", "1");
-        case "wl1_led2":      return await callPico(LOCALHOSTS.picolamp1, "2", "2");
+        case "wl1_led1":      return await callPico(IP_ADRS.picolamp1, "1", "0");
+        case "wl1_led2off":   return await callPico(IP_ADRS.picolamp1, "2", "0");
+        case "wl1_led2on":    return await callPico(IP_ADRS.picolamp1, "2", "1");
+        case "wl1_led2":      return await callPico(IP_ADRS.picolamp1, "2", "2");
 
-        case "wkststate":     return await localPing(LOCALHOSTS.desk);
+        case "wkststate":     return await localPing(IP_ADRS.desk);
         case "wkststateoff": 
-            if (await localPing(LOCALHOSTS.desk) === "1") {
-              return await callApi(LOCALHOSTS.lrxmit, "pc_power");
+            if (await localPing(IP_ADRS.desk) === "1") {
+              return await callApi(IP_ADRS.lrxmit, "pc_power");
             }
-            return `${LOCALHOSTS.desk} is already offline`;
+            return `${IP_ADRS.desk} is already offline`;
         case "wkststateon": 
-            if (await localPing(LOCALHOSTS.desk) === "1") {
-              return `${LOCALHOSTS.desk} is already online`;
+            if (await localPing(IP_ADRS.desk) === "1") {
+              return `${IP_ADRS.desk} is already online`;
             }
-            return await callApi(LOCALHOSTS.lrxmit, "pc_power");
+            return await callApi(IP_ADRS.lrxmit, "pc_power");
 
-        case "hifistate":     return await callFIFO("lrxmit", "15019");
-        case "hifistateoff":  return await callFIFO("lrxmit", "15018");
-        case "hifistateon":   return await callFIFO("lrxmit", "15017");
-        case "hifitoggle":    return await callFIFO("lrxmit", "15016");
-        case "aux":           return await callFIFO("lrxmit", "15002");
-        case "phono":         return await callFIFO("lrxmit", "15003");
-        case "usb":           return await callFIFO("lrxmit", "15001");
-        case "coax":          return await callFIFO("lrxmit", "15004");
-        case "opt":           return await callFIFO("lrxmit", "15005");
-        case "curinput":      return await callFIFO("lrxmit", "15007");
-        case "autodac":       return await callFIFO("lrxmit", "15006");
-        case "vlimit":        return await callFIFO("lrxmit", "15015");
-        case "togglehpf":     return await callFIFO("lrxmit", "15014");
-        case "curhpfvollim":  return await callFIFO("lrxmit", "15020");
-        case "voldisplay":    return await callFIFO("lrxmit", "15013");
-        case "volmute":       return await callFIFO("lrxmit", "15012");
-        case "voldwn":        return await callFIFO("lrxmit", "15010");
-        case "volup":         return await callFIFO("lrxmit", "15011");
-        case "voldwnc":       return await callFIFO("lrxmit", "15008");
-        case "volupc":        return await callFIFO("lrxmit", "15009");
-        case "submute":       return await callFIFO("lrxmit", "17001");
-        case "subup":         return await callFIFO("lrxmit", "17002");
-        case "subdwn":        return await callFIFO("lrxmit", "17003");
-        case "subup_fast":    return await callFIFO("lrxmit", "17004");
-        case "subdwn_fast":   return await callFIFO("lrxmit", "17005");
+        case "hifistate":     return await lrComCall("15019");
+        case "hifistateoff":  return await lrComCall("15018");
+        case "hifistateon":   return await lrComCall("15017");
+        case "hifitoggle":    return await lrComCall("15016");
+        case "aux":           return await lrComCall("15002");
+        case "phono":         return await lrComCall("15003");
+        case "usb":           return await lrComCall("15001");
+        case "coax":          return await lrComCall("15004");
+        case "opt":           return await lrComCall("15005");
+        case "curinput":      return await lrComCall("15007");
+        case "autodac":       return await lrComCall("15006");
+        case "vlimit":        return await lrComCall("15015");
+        case "togglehpf":     return await lrComCall("15014");
+        case "curhpfvollim":  return await lrComCall("15020");
+        case "voldisplay":    return await lrComCall("15013");
+        case "volmute":       return await lrComCall("15012");
+        case "voldwn":        return await lrComCall("15010");
+        case "volup":         return await lrComCall("15011");
+        case "voldwnc":       return await lrComCall("15008");
+        case "volupc":        return await lrComCall("15009");
+        case "submute":       return await lrComCall("17001");
+        case "subup":         return await lrComCall("17002");
+        case "subdwn":        return await lrComCall("17003");
+        case "subup_fast":    return await lrComCall("17004");
+        case "subdwn_fast":   return await lrComCall("17005");
         default: return "lrXmit: invalid command";
     }
 }
@@ -436,7 +384,7 @@ async function executeMain(baseWWW, firstArg, secondArg) {
                 brXmit("brmacs"),
                 brXmit("brtv"),
                 brXmit("brpc"),
-                callApi(LOCALHOSTS.brpi, "ampstate")
+                callApi(IP_ADRS.brpi, "ampstate")
             ]);
             brRoom.addDevice('Desk Lamp', lamp);
             brRoom.addDevice('Bed Lights', bedleds);
@@ -454,16 +402,16 @@ async function executeMain(baseWWW, firstArg, secondArg) {
             bedroomOff();
             return "OK";
         case "brpi":
-            return await callApi(LOCALHOSTS.brpi, secondArg);
+            return await callApi(IP_ADRS.brpi, secondArg);
         case "relax":
             Promise.all([
-                callApi(LOCALHOSTS.brpi, "relax", secondArg), 
+                callApi(IP_ADRS.brpi, "relax", secondArg), 
                 brXmit("brtvoff"), 
-                callApi(LOCALHOSTS.brpc, "sleep")
+                callApi(IP_ADRS.brpc, "sleep")
             ]).catch(() => {});
             return "OK";
         case "stop-br":
-            return await callApi(LOCALHOSTS.brpi, "stoprelax");
+            return await callApi(IP_ADRS.brpi, "stoprelax");
         case "status":
             try { return await runStatusUpdate(baseWWW); } 
             catch (exc) { return "status update exception: " + exc.message; }

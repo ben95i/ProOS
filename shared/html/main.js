@@ -3,7 +3,7 @@
 
 import { requestThrottle, setTheme, classDisplay, checkElemIsVisibleByID,
   addClassToElem, removeWindow, cleanString, base64URLSafeEncode, splitMenuData, 
-  isNumeric, mapNumber, splitByDelimiter, sendCmd, refreshInterval } from './utils.js';
+  isNumeric, mapNumber, splitByDelimiter, sendCmd, timeoutInterval } from './utils.js';
 import ToggleSwitch, { toggleSwitchCallback } from './switch.js';
 import RoomStateManager from './roomstate.js';
 import AnimatedBackground from './stars.js';
@@ -193,7 +193,7 @@ function resetActivityTimer() {
   clearTimeout(App.activityTimeout);
   App.activityTimeout = setTimeout(() => {
     activityStop();
-  }, refreshInterval() * 1000);
+  }, timeoutInterval() * 1000);
 }
 
 function activityBegin() {

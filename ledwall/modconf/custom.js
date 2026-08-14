@@ -10,6 +10,8 @@ const PINS = {
     pcPower: "16"
 };
 
+const SERIAL_PORT = '/dev/ttyAMA0';
+
 const PROCESS_TIMEOUT = 3000;
 const MAX_QUEUE_SIZE = 50;
 
@@ -63,11 +65,11 @@ function processProgramError(error, separator = ' : ') {
     ].filter(Boolean).join(separator);
 }
 
+// FIFO queue
 async function ztermCom(cmd) {
     const executeTask = async () => {
-        try {
-            // Fixed Architecture: Timeout added to prevent deadlocks on hardware hang
-            const { stdout } = await execFileAsync('/usr/bin/ztermcom', [cmd], { timeout: PROCESS_TIMEOUT });
+        try { // serial transmission
+            const { stdout } = await execFileAsync('/usr/bin/ztermcom', [SERIAL_PORT, cmd], { timeout: PROCESS_TIMEOUT });
             return stdout;
         } catch (error) {
             return processProgramError(error);
@@ -95,7 +97,6 @@ async function exeCustom(ramDisk, firstArg, secondArg) {
             try {
                 await OPCLEDparser(ramDisk, 'shuffle', '');
             } catch (e) {
-                // Fixed Syntax Bug: Proper string template usage
                 return `leds shuffle script failed: ${e.message}`;
             }
             await callGPIO(PINS.frontLed, "LOW");

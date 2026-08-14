@@ -1,0 +1,17 @@
+#1 TBD
+TIP  = 2 (10K pull-up)
+RING = 3 (10K pull-up)
+
+#2 TBD
+TIP  = 5 (10K removable pull-up)
+RING = 6 (10K removable pull-up)
+
+#3 Bed Adjustment
+TIP  = 8 (10K pull-down)
+RING = 7 (10K pull-down)
+
+#4 Bedroom TV
+TIP  = 9
+RING = 10 (10K pull-up)
+
+WS2812 LEDs = 11

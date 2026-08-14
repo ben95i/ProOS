@@ -6,7 +6,7 @@
 ## DNS domain name
 DOMAIN=""
 ## modules folder
-ROOTDIR="/mnt/ProOS"
+ROOTDIR="/mnt/Projects/ProOS"
 ## SSH keys folder
 KEYS="$ROOTDIR/mgmt/keys"
 ## work folder
@@ -274,7 +274,6 @@ DEPLOY_PI(){
   echo "Downloading shared software..."
   rsync -e "ssh -o $SSH_ARGS" $RSYNC_ARGS --mkpath $ROOTDIR/shared/html/ root@$HOST:/opt/rpi/config/html-base/
   rsync -e "ssh -o $SSH_ARGS" $RSYNC_ARGS --mkpath $ROOTDIR/shared/nodeapi/ root@$HOST:/opt/nodeapi/
-  rsync -e "ssh -o $SSH_ARGS" $RSYNC_ARGS $ROOTDIR/shared/ztermcom.c root@$HOST:/opt/rpi/
   echo "Downloading module-specific software..."
   rsync -e "ssh -o $SSH_ARGS" $RSYNC_ARGS $EXCLUDED $ROOTDIR/$MODULE/ root@$HOST:/opt/rpi/
   echo "Starting installer..."
@@ -298,7 +297,6 @@ DEPLOY_SERVER(){
     echo "Copying shared software..."
     cp -rf $ROOTDIR/shared/html $TMPFLDR/config/
     cp -rf $ROOTDIR/shared/nodeapi $TMPFLDR/config/
-    cp -f $ROOTDIR/shared/ztermcom.c $TMPFLDR/config/
   fi
   echo "Compressing files..."
   cd $TMPFLDR

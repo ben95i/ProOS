@@ -1,12 +1,21 @@
 const { execFile } = require('child_process');
 const util = require('util');
 const execFileAsync = util.promisify(execFile);
-const relaxScriptPath = '/opt/rpi/relaxrun.sh';
 
-const PROCESS_TIMEOUT = 3000;
-const MAX_QUEUE_SIZE = 50;
+const PROCESS_TIMEOUT = 3500;
+const MAX_QUEUE_SIZE = 10;
 
-// Fixed Memory Leak: Bounded Async FIFO Queue
+const USB_SERIAL = '/dev/ttyUSB0';
+const HW_SERIAL = '/dev/ttyAMA0';
+
+const LED_PIN = 12; // GPIO LED
+const LED_FLASH_TIME = 80; // in (ms)
+let isLEDflashing = false;
+
+const SUDO = '/usr/bin/sudo';
+const ZTERM = '/usr/bin/ztermcom';
+const RELAX = '/opt/rpi/relaxrun.sh';
+
 const fifoQueue = [];
 let isQueueProcessing = false;
 
@@ -50,12 +59,11 @@ function processProgramError(error, separator = ' : ') {
     ].filter(Boolean).join(separator);
 }
 
-async function ztermCom(cmd) {
+// FIFO queue
+async function ztermCom(port, cmd) {
     const executeTask = async () => {
-        try {
-            // Added timeout to prevent serial deadlocks
-            const { stdout } = await execFileAsync('/usr/bin/ztermcom', [cmd], { 
-                timeout: PROCESS_TIMEOUT });
+        try { // serial transmission
+            const { stdout } = await execFileAsync(ZTERM, [port, cmd], { timeout: PROCESS_TIMEOUT });
             return stdout;
         } catch (error) {
             return processProgramError(error);
@@ -64,32 +72,74 @@ async function ztermCom(cmd) {
     return enqueueTask(executeTask);
 }
 
-const optAMode = async () => await ztermCom("02002");
-const optBMode = async () => await ztermCom("02001");
-const coaxMode = async () => await ztermCom("02003");
-const powerStatus = async () => await decodeComResp("01005");
-const onLastInput = async () => await ztermCom("01001");
+async function callGPIO(pin, state) {
+    try {
+        await fetch(`http://127.0.0.1:8770/gpio?pin=${pin}&state=${state}`, { 
+            signal: AbortSignal.timeout(500) 
+        });
+    } catch (error) {
+        console.error(`GPIO request failed for pin ${pin}: ${error.message}`);
+    }
+}
 
-async function decodeComResp(respCmd) {
-    const ttyRaw = await ztermCom(respCmd);
+async function flashLED() {
+    if (isLEDflashing) return;
+    isLEDflashing = true;
+    await callGPIO(LED_PIN, "HIGH");
+    await new Promise(resolve => setTimeout(resolve, LED_FLASH_TIME));
+    await callGPIO(LED_PIN, "LOW");
+    isLEDflashing = false;
+}
+
+function padOctet(value) {
+  return String(value).padStart(3, "0");
+}
+
+function hexToRgb(hex_in) {
+  const hex = hex_in.replace(/^#/, '');
+  return { 
+    red: padOctet(parseInt(hex.substring(0, 2), 16)), 
+    green: padOctet(parseInt(hex.substring(2, 4), 16)), 
+    blue: padOctet(parseInt(hex.substring(4, 6), 16)) 
+  };
+}
+
+const optAMode = async () => await ztermCom(USB_SERIAL, "02002");
+const optBMode = async () => await ztermCom(USB_SERIAL, "02001");
+const coaxMode = async () => await ztermCom(USB_SERIAL, "02003");
+const powerStatus = async () => await decodeComResp(USB_SERIAL, "01005");
+const onLastInput = async () => await ztermCom(USB_SERIAL, "01001");
+
+async function decodeComResp(port, cmd) {
+    const ttyRaw = await ztermCom(port, cmd);
     const firstDelim = ttyRaw.indexOf('|');
     const lastDelim = ttyRaw.lastIndexOf('|');
     if (firstDelim !== -1 && lastDelim !== -1 && firstDelim !== lastDelim) {
         const ttyOut = ttyRaw.substring(firstDelim + 1, lastDelim);
         if (ttyOut.length === 1) return ttyOut;
     }
-    return "X";
+    return "invalid response: " + ttyRaw;
 }
 
 async function exeCustom(ramDisk, arg1, arg2 = "") {
+    flashLED();
     switch (arg1) {
+        case "bed_leds_hex_set": {
+            const color = hexToRgb(arg2);
+            await ztermCom(HW_SERIAL, `12${padOctet(color.red)}`);
+            await ztermCom(HW_SERIAL, `13${padOctet(color.green)}`);
+            await ztermCom(HW_SERIAL, `14${padOctet(color.blue)}`);
+            await ztermCom(HW_SERIAL, '11002');
+            return;
+        }
         case "relax": {
-            if (await powerStatus() === "1") await coaxMode();
-            else await ztermCom("01003");
-            
+            if (await powerStatus() === "1") {
+                await coaxMode();
+            } else {
+                await ztermCom(USB_SERIAL, "01003");
+            }
             try {
-                // Fixed Security Risk: No shell spawned, preventing command injection
-                const { stdout } = await execFileAsync('/usr/bin/sudo', [relaxScriptPath, arg2], { timeout: 10000 });
+                const { stdout } = await execFileAsync(SUDO, [RELAX, arg2], { timeout: PROCESS_TIMEOUT });
                 return stdout;
             } catch (e) {
                 return `relaxrun failed: ${e.message}`;
@@ -97,7 +147,7 @@ async function exeCustom(ramDisk, arg1, arg2 = "") {
         }
         case "stoprelax":
             try {
-                await execFileAsync('/usr/bin/sudo', [relaxScriptPath, 'stop'], { timeout: 5000 });
+                await execFileAsync(SUDO, [RELAX, 'stop'], { timeout: PROCESS_TIMEOUT });
             } catch (e) {
                 return `Failed to stop relaxrun: ${e.message}`;
             }
@@ -106,28 +156,32 @@ async function exeCustom(ramDisk, arg1, arg2 = "") {
         case "opt-a":        return await optAMode();
         case "opt-b":        return await optBMode();
         case "coaxial":      return await coaxMode();
-        case "aux":          return await ztermCom("02004");
-        case "volup":        return await ztermCom("03002");
-        case "voldwn":       return await ztermCom("03003");
-        case "volmute":      return await ztermCom("03001");
+        case "aux":          return await ztermCom(USB_SERIAL, "02004");
+        case "volup":        return await ztermCom(USB_SERIAL, "03002");
+        case "voldwn":       return await ztermCom(USB_SERIAL, "03003");
+        case "volmute":      return await ztermCom(USB_SERIAL, "03001");
         case "ampon-lastin": return await onLastInput();
-        case "inputstate":   return await ztermCom("01006");
-        case "volstate":     return await ztermCom("01007");
+        case "inputstate":   return await ztermCom(USB_SERIAL, "01006");
+        case "volstate":     return await ztermCom(USB_SERIAL, "01007");
         case "ampstate":     return await powerStatus();        
-        case "ampstateon":   return await ztermCom("01004");
+        case "ampstateon":   return await ztermCom(USB_SERIAL, "01004");
         case "ampstateoff":
-            await ztermCom("01002");
+            await ztermCom(USB_SERIAL, "01002");
             try {
-                await execFileAsync('/usr/bin/sudo', [relaxScriptPath, 'stop'], { timeout: 5000 });
+                await execFileAsync(SUDO, [RELAX, 'stop'], { timeout: PROCESS_TIMEOUT });
             } catch (e) {
                 return `Failed to stop relaxrun: ${e.message}`;
             }
             return "OK";
         case "amptogglepwr": {
-            if (await powerStatus() === "1") await ztermCom("01002");
+            if (await powerStatus() === "1") await ztermCom(USB_SERIAL, "01002");
             else await onLastInput();
             return "OK";
         }
+        case "hwcom":
+            return await ztermCom(HW_SERIAL, arg2);
+        case "usbcom":
+            return await ztermCom(USB_SERIAL, arg2);
         default:
             return "Bedroom Pi - Enter valid command.";
     }

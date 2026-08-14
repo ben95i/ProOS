@@ -3,10 +3,6 @@
 ## LEDwall boot script by Ben Provenzano III ##
 ###############################################
 
-## External Serial COM
-ARDUINO_PORT="ttyAMA0"
-ln -sf /dev/$ARDUINO_PORT /dev/zterm-tty
-
 ## GPIO Services
 FRONT_BTN_PIN="13"
 systemctl set-environment rpi_gpipin_1=$FRONT_BTN_PIN

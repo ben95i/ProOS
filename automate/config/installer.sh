@@ -42,34 +42,6 @@ cp $TMPDIR/sysctl.conf /etc
 chmod 644 /etc/sysctl.conf
 chown root:root /etc/sysctl.conf
 
-## Install Arduino Support
-if [ ! -e "/usr/bin/arduino-cli" ]; then
-  curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR=/usr/bin sh
-  arduino-cli core update-index
-  arduino-cli core install arduino:avr
-  arduino-cli lib install Encoder@1.4.4
-  cd $TMPDIR
-fi
-
-## Arduino Firmware
-FWNME="BedroomHub"
-rm -rf /opt/$FWNME
-mkdir -p /opt/$FWNME
-cp -r $TMPDIR/$FWNME/* /opt/$FWNME/
-chmod -R 644 /opt/$FWNME/*
-chown -R root:root /opt/$FWNME
-cp -f $TMPDIR/update-fw.sh /usr/bin/update-fw
-chmod +x /usr/bin/update-fw
-chown root:root /usr/bin/update-fw
-
-## Xmit Serial COM
-rm -f /usr/bin/ztermcom
-gcc $TMPDIR/ztermcom.c -o /usr/bin/ztermcom
-chmod +x /usr/bin/ztermcom 
-chown root:root /usr/bin/ztermcom
-usermod -a -G dialout www-data
-usermod -a -G tty www-data
-
 ## Node.JS API Server
 mv -f /opt/nodeapi/nodeapi.service /etc/systemd/system/
 chmod 644 /etc/systemd/system/nodeapi.service
@@ -169,7 +141,6 @@ systemctl daemon-reload
 
 ## Clean-up
 rm -rf $TMPDIR
-rm -rf /opt/system
 apt-get autoremove -y
 apt-get clean -y
 apt-get autoclean -y

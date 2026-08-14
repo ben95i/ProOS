@@ -12,6 +12,7 @@
 /// 04/06/2026 v8 ///
 /// 05/31/2026 v9 ///
 /// 07/26/2026 v10 ///
+/// 08/08/2026 v11 ///
 //////////////////////
 
 #include <stdio.h>
@@ -27,24 +28,40 @@
 #include <time.h>
 
 // --- Configuration Constants ---
-const char TARGET_CHAR = '\n';
-const char DEVICE_PATH[] = "/dev/zterm-tty";
-const int MAX_WAIT_TIME_MS = 800; // needs to be greater then 500ms
-const int MIN_LOCK_TIME_MS = 15;
-const int MAX_TRANSMIT_ATTEMPTS = 3;
+// Declared static so the compiler can fold them directly into the code
+// instead of loading them through external linkage.
+static const char TARGET_CHAR = '\n';
+static const int MAX_WAIT_TIME_MS = 800; // needs to be greater then 500ms
+static const int MIN_LOCK_TIME_MS = 15;
+static const int MAX_TRANSMIT_ATTEMPTS = 2;
 
 // Response line from the hub that must trigger an automatic
 // re-transmission, exactly as if the response had timed out.
-const char RETRY_TRIGGER_MESSAGE[] = "*EXT-232 MAX WAIT EXCEEDED!*";
+static const char RETRY_TRIGGER_MESSAGE[] = "*EXT-232 MAX WAIT EXCEEDED!*";
+
+// Protocol framing applied to every outgoing payload: "<9,9," + payload + ">\n"
+static const char FRAME_PREFIX[] = "<9,9,";
+static const char FRAME_SUFFIX[] = ">\n";
+#define FRAME_PREFIX_LENGTH (sizeof(FRAME_PREFIX) - 1)
+#define FRAME_SUFFIX_LENGTH (sizeof(FRAME_SUFFIX) - 1)
 
 // Maximum number of characters of a single response line that are
 // retained for retry-trigger matching (excess is still printed,
 // just not matched against the trigger message).
 #define RESPONSE_LINE_BUFFER_SIZE 256
 
+// Number of bytes pulled from the tty per read() call. Reading in blocks
+// instead of one byte at a time removes a poll()/read() syscall pair for
+// every single character of the response.
+#define READ_CHUNK_BUFFER_SIZE 128
+
+// Framed commands up to this length are assembled on the stack, so the
+// common case performs no heap allocation at all.
+#define TRANSMIT_STACK_BUFFER_SIZE 256
+
 // --- Data Structures ---
 /**
- * Struct to hold the context of the serial application to prevent 
+ * Struct to hold the context of the serial application to prevent
  * global variable race conditions and manage memory cleanly.
  */
 typedef struct {
@@ -55,11 +72,13 @@ typedef struct {
 } SerialContext;
 
 // --- Function Prototypes ---
-void cleanupAndClosePort(SerialContext* context);
-long elapsedMillisecondsSince(const struct timespec* startTime);
-int writeToSerial(int fileDescriptor, const char* payload);
-int readFromSerial(int fileDescriptor);
-int transmitCommandWithRetries(int fileDescriptor, const char* payload, int maximumAttempts);
+// All internal helpers are static: this gives the compiler freedom to
+// inline them and drop the external symbols entirely.
+static void cleanupAndClosePort(SerialContext* context);
+static long elapsedMillisecondsSince(const struct timespec* startTime);
+static int writeToSerial(int fileDescriptor, const char* payload);
+static int readFromSerial(int fileDescriptor);
+static int transmitCommandWithRetries(int fileDescriptor, const char* payload, int maximumAttempts);
 
 
 /**
@@ -68,7 +87,7 @@ int transmitCommandWithRetries(int fileDescriptor, const char* payload, int maxi
  * * @param startTime Pointer to the reference monotonic timestamp.
  * @return Elapsed time in milliseconds.
  */
-long elapsedMillisecondsSince(const struct timespec* startTime) {
+static long elapsedMillisecondsSince(const struct timespec* startTime) {
     struct timespec currentTime;
     int clockResult = clock_gettime(CLOCK_MONOTONIC, &currentTime);
     (void)clockResult;
@@ -85,60 +104,64 @@ long elapsedMillisecondsSince(const struct timespec* startTime) {
 }
 
 /**
- * Safely releases file locks, manages the minimum execution delay, 
+ * Safely releases file locks, manages the minimum execution delay,
  * closes the file descriptor, and frees allocated memory.
  * * @param context Pointer to the application's serial state context.
  */
-void cleanupAndClosePort(SerialContext* context) {
+static void cleanupAndClosePort(SerialContext* context) {
     bool isArgumentDataAllocated = (context->allocatedArgumentData != NULL);
     if (isArgumentDataAllocated == true) {
         free(context->allocatedArgumentData);
         context->allocatedArgumentData = NULL;
     }
-    
+
     bool isFileDescriptorValid = (context->fileDescriptor >= 0);
     if (isFileDescriptorValid == true) {
-        
+
         bool isPortCurrentlyLocked = (context->isPortLocked == true);
         if (isPortCurrentlyLocked == true) {
-            
+
             long totalElapsedMilliseconds = elapsedMillisecondsSince(&context->lockAcquiredTime);
-            
+
             // Check if we need to wait to satisfy the minimum lock time constraint
             bool isExecutionTooFast = (totalElapsedMilliseconds < MIN_LOCK_TIME_MS);
             if (isExecutionTooFast == true) {
                 long remainingMilliseconds = MIN_LOCK_TIME_MS - totalElapsedMilliseconds;
                 long remainingMicroseconds = remainingMilliseconds * 1000;
-                
+
                 int sleepResult = usleep(remainingMicroseconds);
                 (void)sleepResult;
             }
-            
+
             // Explicitly unlock the port
             int unlockResult = flock(context->fileDescriptor, LOCK_UN);
             (void)unlockResult;
-            
+
             context->isPortLocked = false;
         }
-        
+
         int closeResult = close(context->fileDescriptor);
         (void)closeResult;
-        
+
         context->fileDescriptor = -1;
     }
 }
 
 /**
- * Packages the payload string into the protocol format and transmits 
+ * Packages the payload string into the protocol format and transmits
  * it over the provided serial file descriptor. Handles partial writes
  * and transient EAGAIN conditions caused by the non-blocking port by
  * waiting for the descriptor to become writable and continuing until
  * every byte has been handed to the kernel.
+ *
+ * The frame is assembled with memcpy into a stack buffer whenever it
+ * fits, avoiding both the malloc/free pair and the snprintf format
+ * parsing on every transmission attempt.
  * * @param fileDescriptor The active file descriptor for the serial port.
  * @param payload The null-terminated command string to send.
  * @return 0 on successful write, 1 on error.
  */
-int writeToSerial(int fileDescriptor, const char* payload) {
+static int writeToSerial(int fileDescriptor, const char* payload) {
     bool isFileDescriptorInvalid = (fileDescriptor < 0);
     if (isFileDescriptorInvalid == true) {
         printf("Serial port not available!\n");
@@ -147,27 +170,34 @@ int writeToSerial(int fileDescriptor, const char* payload) {
 
     // Break down memory allocation requirements
     size_t payloadLength = strlen(payload);
-    size_t prefixLength = 5;            // Represents "<9,9,"
-    size_t suffixLength = 2;            // Represents ">\n"
-    size_t nullTerminatorLength = 1;    // Represents '\0'
-    
+    size_t prefixLength = FRAME_PREFIX_LENGTH;      // Represents "<9,9,"
+    size_t suffixLength = FRAME_SUFFIX_LENGTH;      // Represents ">\n"
+    size_t nullTerminatorLength = 1;                // Represents '\0'
+
     size_t totalBufferLength = payloadLength + prefixLength + suffixLength + nullTerminatorLength;
-    
-    char* rawDataBuffer = malloc(totalBufferLength);
-    
-    bool isMemoryAllocationFailed = (rawDataBuffer == NULL);
-    if (isMemoryAllocationFailed == true) {
-        perror("Memory allocation failed for serial data!");
-        return 1;
+
+    char stackDataBuffer[TRANSMIT_STACK_BUFFER_SIZE];
+    char* heapDataBuffer = NULL;
+    char* rawDataBuffer = stackDataBuffer;
+
+    bool isStackBufferTooSmall = (totalBufferLength > sizeof(stackDataBuffer));
+    if (isStackBufferTooSmall == true) {
+        heapDataBuffer = malloc(totalBufferLength);
+
+        bool isMemoryAllocationFailed = (heapDataBuffer == NULL);
+        if (isMemoryAllocationFailed == true) {
+            perror("Memory allocation failed for serial data!");
+            return 1;
+        }
+
+        rawDataBuffer = heapDataBuffer;
     }
 
-    int stringFormatResult = snprintf(rawDataBuffer, totalBufferLength, "<9,9,%s>\n", payload);
-    bool isStringFormatFailed = (stringFormatResult < 0);
-    if (isStringFormatFailed == true) {
-         perror("String formatting failed!");
-         free(rawDataBuffer);
-         return 1;
-    }
+    // Assemble "<9,9," + payload + ">\n" without format-string processing
+    memcpy(rawDataBuffer, FRAME_PREFIX, prefixLength);
+    memcpy(rawDataBuffer + prefixLength, payload, payloadLength);
+    memcpy(rawDataBuffer + prefixLength + payloadLength, FRAME_SUFFIX, suffixLength);
+    rawDataBuffer[totalBufferLength - nullTerminatorLength] = '\0';
 
     printf("Serial Data: %s", rawDataBuffer);
 
@@ -202,14 +232,14 @@ int writeToSerial(int fileDescriptor, const char* payload) {
                 bool isPortWritable = (pollResult > 0);
                 if (isPortWritable == false) {
                     printf("Serial port not writable, transmit aborted!\n");
-                    free(rawDataBuffer);
+                    free(heapDataBuffer);
                     return 1;
                 }
                 continue;
             }
 
             perror("Error writing to serial port!");
-            free(rawDataBuffer);
+            free(heapDataBuffer);
             return 1;
         }
 
@@ -217,26 +247,31 @@ int writeToSerial(int fileDescriptor, const char* payload) {
     }
 
     // Free immediately after transmission buffer is consumed to prevent leaks
-    free(rawDataBuffer);
+    // (free(NULL) is a no-op when the stack buffer was used)
+    free(heapDataBuffer);
 
     return 0;
 }
 
 /**
- * Polls the serial file descriptor for incoming data until the TARGET_CHAR 
+ * Polls the serial file descriptor for incoming data until the TARGET_CHAR
  * is received, the maximum overall timeout is exceeded, or the device
  * reports an error/disconnect condition. Each received line is compared
  * against RETRY_TRIGGER_MESSAGE; a match is reported as a timeout so the
  * caller re-transmits the command automatically.
+ *
+ * Bytes are drained in blocks rather than one character per poll cycle,
+ * and the received text is echoed with a single buffered write per block
+ * instead of a printf/fflush pair per character.
  * * @param fileDescriptor The active file descriptor for the serial port.
  * @return 0 on success, 1 on unrecoverable error, 2 on timeout or retry-trigger.
  */
-int readFromSerial(int fileDescriptor) {
+static int readFromSerial(int fileDescriptor) {
     printf("Waiting for response...\n");
 
     struct pollfd fileDescriptorArray[1];
     fileDescriptorArray[0].fd = fileDescriptor;
-    fileDescriptorArray[0].events = POLLIN; 
+    fileDescriptorArray[0].events = POLLIN;
 
     // Overall deadline: the timeout no longer resets on every received
     // byte, so a stream of data without a terminator cannot hang forever
@@ -249,8 +284,8 @@ int readFromSerial(int fileDescriptor) {
     size_t responseLineLength = 0;
     responseLineBuffer[0] = '\0';
 
-    char readBufferCharacter;
-    
+    char readChunkBuffer[READ_CHUNK_BUFFER_SIZE];
+
     while (true) {
         long totalElapsedMilliseconds = elapsedMillisecondsSince(&readStartTime);
         long remainingTimeoutMilliseconds = MAX_WAIT_TIME_MS - totalElapsedMilliseconds;
@@ -266,7 +301,7 @@ int readFromSerial(int fileDescriptor) {
 
         bool isPollSuccessful = (pollResult > 0);
         if (isPollSuccessful == true) {
-            
+
             // A hangup or error event means the device vanished or faulted;
             // without this check the loop would spin at full CPU forever
             int errorEventMask = POLLERR | POLLHUP | POLLNVAL;
@@ -278,16 +313,49 @@ int readFromSerial(int fileDescriptor) {
 
             // Check if the specific event returned indicates data is ready to read
             bool isDataReadyEvent = ((fileDescriptorArray[0].revents & POLLIN) != 0);
-            
+
             if (isDataReadyEvent == true) {
-                size_t bytesRequested = 1;
-                ssize_t bytesRead = read(fileDescriptor, &readBufferCharacter, bytesRequested);
-                
+                size_t bytesRequested = sizeof(readChunkBuffer);
+                ssize_t bytesRead = read(fileDescriptor, readChunkBuffer, bytesRequested);
+
                 bool isReadSuccessful = (bytesRead > 0);
                 if (isReadSuccessful == true) {
-                    
-                    bool isCharacterTarget = (readBufferCharacter == TARGET_CHAR);
-                    if (isCharacterTarget == true) {
+
+                    size_t receivedByteCount = (size_t)bytesRead;
+
+                    // Locate the line terminator inside this block, if present
+                    char* terminatorPointer = memchr(readChunkBuffer, TARGET_CHAR, receivedByteCount);
+                    bool isTerminatorFound = (terminatorPointer != NULL);
+
+                    size_t displayableByteCount = receivedByteCount;
+                    if (isTerminatorFound == true) {
+                        displayableByteCount = (size_t)(terminatorPointer - readChunkBuffer);
+                    }
+
+                    // Accumulate the characters for retry-trigger matching
+                    // (leave room for the null terminator)
+                    size_t availableLineSpace = (RESPONSE_LINE_BUFFER_SIZE - 1) - responseLineLength;
+                    size_t copyableByteCount = displayableByteCount;
+                    bool isLineSpaceExhausted = (copyableByteCount > availableLineSpace);
+                    if (isLineSpaceExhausted == true) {
+                        copyableByteCount = availableLineSpace;
+                    }
+
+                    if (copyableByteCount > 0) {
+                        memcpy(responseLineBuffer + responseLineLength, readChunkBuffer, copyableByteCount);
+                        responseLineLength = responseLineLength + copyableByteCount;
+                    }
+
+                    // Echo the received text as it arrives, one write per block
+                    if (displayableByteCount > 0) {
+                        size_t writtenItemCount = fwrite(readChunkBuffer, 1, displayableByteCount, stdout);
+                        (void)writtenItemCount;
+
+                        int flushResult = fflush(stdout);
+                        (void)flushResult;
+                    }
+
+                    if (isTerminatorFound == true) {
 
                         // Terminate the accumulated line and test the retry trigger
                         responseLineBuffer[responseLineLength] = '\0';
@@ -301,27 +369,14 @@ int readFromSerial(int fileDescriptor) {
 
                         printf("\n(OK)\n");
                         return 0; // Success
-                    } else {
-
-                        // Accumulate the character for retry-trigger matching
-                        // (leave room for the null terminator)
-                        bool isLineBufferSpaceAvailable = (responseLineLength < (RESPONSE_LINE_BUFFER_SIZE - 1));
-                        if (isLineBufferSpaceAvailable == true) {
-                            responseLineBuffer[responseLineLength] = readBufferCharacter;
-                            responseLineLength = responseLineLength + 1;
-                        }
-
-                        printf("%c", readBufferCharacter);
-                        int flushResult = fflush(stdout); 
-                        (void)flushResult; 
                     }
-                    
+
                 } else {
                     bool isReadFailed = (bytesRead < 0);
                     if (isReadFailed == true) {
                         bool isErrorWouldBlock = (errno == EAGAIN) || (errno == EWOULDBLOCK);
                         bool isCriticalError = (isErrorWouldBlock == false);
-                        
+
                         if (isCriticalError == true) {
                             perror("Failed to read serial port!");
                             return 1; // Error
@@ -333,10 +388,10 @@ int readFromSerial(int fileDescriptor) {
                     }
                 }
             }
-            
+
         } else {
             bool isPollTimeout = (pollResult == 0);
-            
+
             if (isPollTimeout == true) {
                 printf("\nMax response wait time exceeded (%d ms)\n", MAX_WAIT_TIME_MS);
                 return 2; // Timeout code
@@ -354,7 +409,7 @@ int readFromSerial(int fileDescriptor) {
 }
 
 /**
- * Manages the high-level transmission workflow. Attempts to write and read 
+ * Manages the high-level transmission workflow. Attempts to write and read
  * from the serial device, automatically re-transmitting if a timeout occurs
  * or if the hub reports the external-device wait-exceeded message.
  * * @param fileDescriptor The active file descriptor for the serial port.
@@ -362,9 +417,9 @@ int readFromSerial(int fileDescriptor) {
  * @param maximumAttempts The maximum number of transmission attempts allowed.
  * @return 0 on final success, non-zero on failure/timeout.
  */
-int transmitCommandWithRetries(int fileDescriptor, const char* payload, int maximumAttempts) {
+static int transmitCommandWithRetries(int fileDescriptor, const char* payload, int maximumAttempts) {
     int attemptCounter = 0;
-    
+
     while (true) {
         bool isMaxAttemptsReached = (attemptCounter >= maximumAttempts);
         if (isMaxAttemptsReached == true) {
@@ -373,7 +428,7 @@ int transmitCommandWithRetries(int fileDescriptor, const char* payload, int maxi
         }
 
         attemptCounter = attemptCounter + 1;
-        
+
         bool isRetryAttempt = (attemptCounter > 1);
         if (isRetryAttempt == true) {
             printf("--- Retrying transmission (Attempt %d of %d) ---\n", attemptCounter, maximumAttempts);
@@ -383,7 +438,7 @@ int transmitCommandWithRetries(int fileDescriptor, const char* payload, int maxi
         int flushQueueType = TCIOFLUSH;
         int flushResult = tcflush(fileDescriptor, flushQueueType);
         bool isFlushFailed = (flushResult == -1);
-        
+
         if (isFlushFailed == true) {
             perror("Error flushing serial port buffer");
             return 1;
@@ -391,24 +446,24 @@ int transmitCommandWithRetries(int fileDescriptor, const char* payload, int maxi
 
         int writeStatus = writeToSerial(fileDescriptor, payload);
         bool isWriteSuccessful = (writeStatus == 0);
-        
+
         if (isWriteSuccessful == true) {
             int readStatus = readFromSerial(fileDescriptor);
-            
+
             bool isReadSuccessful = (readStatus == 0);
             if (isReadSuccessful == true) {
                 return 0; // Complete Success
             }
-            
+
             bool isReadTimeout = (readStatus == 2);
             if (isReadTimeout == true) {
                  // Continue loop to retry (timeout or retry-trigger message)
                  continue;
             } else {
                  // Fatal read error
-                 return 1; 
+                 return 1;
             }
-            
+
         } else {
              // Fatal write error
              return 1;
@@ -426,23 +481,33 @@ int main(int argumentCount, char *argumentVector[]) {
     applicationContext.allocatedArgumentData = NULL;
 
     // 2. Argument Validation
-    int requiredArgumentCount = 2;
+    // Argument 1 selects the serial device, argument 2 carries the command
+    int requiredArgumentCount = 3;
     bool isArgumentCountValid = (argumentCount == requiredArgumentCount);
-    
+
     if (isArgumentCountValid == false) {
-        printf("Z-Terminal Xmit v10\n");
-        printf("Usage: %s <message>\n", argumentVector[0]);
-        return 1; 
+        printf("Z-Terminal Xmit v11\n");
+        printf("Usage: %s <device> <message>\n", argumentVector[0]);
+        printf("Example: %s /dev/zterm-tty \"<command>\"\n", argumentVector[0]);
+        return 1;
     }
 
-    char* duplicatedArgumentString = strdup(argumentVector[1]);
+    const char* serialDevicePath = argumentVector[1];
+    bool isDevicePathEmpty = (serialDevicePath[0] == '\0');
+
+    if (isDevicePathEmpty == true) {
+        printf("Serial port path is empty!\n");
+        return 1;
+    }
+
+    char* duplicatedArgumentString = strdup(argumentVector[2]);
     bool isAllocationSuccessful = (duplicatedArgumentString != NULL);
-    
+
     if (isAllocationSuccessful == false) {
         perror("Failed to allocate memory for argument");
         return 1;
     }
-    
+
     applicationContext.allocatedArgumentData = duplicatedArgumentString;
 
     // Strip accidental carriage returns or newlines from input
@@ -450,21 +515,10 @@ int main(int argumentCount, char *argumentVector[]) {
     size_t firstIllegalCharacterIndex = strcspn(applicationContext.allocatedArgumentData, illegalCharacters);
     applicationContext.allocatedArgumentData[firstIllegalCharacterIndex] = 0;
 
-    // 3. Mode Selection Validation
-    const char* initializationFlag = "i";
-    int stringComparisonResult = strcmp(applicationContext.allocatedArgumentData, initializationFlag);
-    bool isInitializationModeRequested = (stringComparisonResult == 0);
-    
-    if (isInitializationModeRequested == true) {
-        printf("Serial port initialized\n");
-        cleanupAndClosePort(&applicationContext);
-        return 0;
-    }
-
-    // 4. Open Port Connection
+    // 3. Open Port Connection
     int fileOpenFlags = O_RDWR | O_NOCTTY | O_NONBLOCK;
-    applicationContext.fileDescriptor = open(DEVICE_PATH, fileOpenFlags);
-    
+    applicationContext.fileDescriptor = open(serialDevicePath, fileOpenFlags);
+
     bool isOpenSuccessful = (applicationContext.fileDescriptor >= 0);
     if (isOpenSuccessful == false) {
         perror("Error opening serial port");
@@ -472,11 +526,11 @@ int main(int argumentCount, char *argumentVector[]) {
         return 1;
     }
 
-    // 5. Apply Exclusive File Lock
+    // 4. Apply Exclusive File Lock
     int fileLockOperation = LOCK_EX | LOCK_NB;
     int lockResult = flock(applicationContext.fileDescriptor, fileLockOperation);
     bool isLockSuccessful = (lockResult != -1);
-    
+
     if (isLockSuccessful == false) {
         bool isErrorWouldBlock = (errno == EWOULDBLOCK);
         if (isErrorWouldBlock == true) {
@@ -487,16 +541,16 @@ int main(int argumentCount, char *argumentVector[]) {
         cleanupAndClosePort(&applicationContext);
         return 1;
     }
-    
+
     applicationContext.isPortLocked = true;
     int clockResult = clock_gettime(CLOCK_MONOTONIC, &applicationContext.lockAcquiredTime);
     (void)clockResult;
 
-    // 6. Configure Terminal Hardware Attributes
+    // 5. Configure Terminal Hardware Attributes
     struct termios terminalSettings;
     int getAttributesResult = tcgetattr(applicationContext.fileDescriptor, &terminalSettings);
     bool isGetAttributesSuccessful = (getAttributesResult == 0);
-    
+
     if (isGetAttributesSuccessful == false) {
         perror("Error reading serial port attributes");
         cleanupAndClosePort(&applicationContext);
@@ -505,7 +559,7 @@ int main(int argumentCount, char *argumentVector[]) {
 
     int setOutputSpeedResult = cfsetospeed(&terminalSettings, B9600);
     (void)setOutputSpeedResult;
-    
+
     int setInputSpeedResult = cfsetispeed(&terminalSettings, B9600);
     (void)setInputSpeedResult;
 
@@ -516,12 +570,12 @@ int main(int argumentCount, char *argumentVector[]) {
     terminalSettings.c_cflag = terminalSettings.c_cflag | CS8;         // set 8 data bits
     terminalSettings.c_cflag = terminalSettings.c_cflag & (~CRTSCTS);  // disable hardware flow control
     terminalSettings.c_cflag = terminalSettings.c_cflag & (~HUPCL);    // disable DST & RST
-    terminalSettings.c_cflag = terminalSettings.c_cflag | CREAD;       // turn on READ 
+    terminalSettings.c_cflag = terminalSettings.c_cflag | CREAD;       // turn on READ
     terminalSettings.c_cflag = terminalSettings.c_cflag | CLOCAL;      // ignore ctrl lines
 
     // Set to raw mode (disable echo, etc.)
     int rawModeFlags = ICANON | ECHO | ECHOE | ISIG;
-    terminalSettings.c_lflag = terminalSettings.c_lflag & (~rawModeFlags); 
+    terminalSettings.c_lflag = terminalSettings.c_lflag & (~rawModeFlags);
 
     // Disable input translation so the kernel cannot rewrite received
     // bytes: no CR<->NL mapping (would fake the '\n' terminator) and
@@ -536,18 +590,18 @@ int main(int argumentCount, char *argumentVector[]) {
     int hardwareActionFlag = TCSANOW;
     int setAttributesResult = tcsetattr(applicationContext.fileDescriptor, hardwareActionFlag, &terminalSettings);
     bool isSetAttributesSuccessful = (setAttributesResult == 0);
-    
+
     if (isSetAttributesSuccessful == false) {
         perror("Error applying serial port settings");
         cleanupAndClosePort(&applicationContext);
         return 1;
     }
 
-    // 7. Execute Main Program Flow
+    // 6. Execute Main Program Flow
     int executionStatus = transmitCommandWithRetries(applicationContext.fileDescriptor, applicationContext.allocatedArgumentData, MAX_TRANSMIT_ATTEMPTS);
 
-    // 8. Cleanup and Exit
+    // 7. Cleanup and Exit
     cleanupAndClosePort(&applicationContext);
-    
+
     return executionStatus;
 }

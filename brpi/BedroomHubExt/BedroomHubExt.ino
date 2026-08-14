@@ -8,7 +8,7 @@
  * v1 - 07/26/2026 - SoftwareSerial link, hello only
  * v2 - 07/26/2026 - hardware Serial (pins 0/1) link + WS2812 control
  * v3 - 07/26/2026 - back to SoftwareSerial link (RX 10 / TX 11) + WS2812 control
- * v4 - 07/26/2026 - strip lit-status query (011008) + fast effect resume
+ * v4 - 07/26/2026 - strip lit-status query (11008) + fast effect resume
  * v5 - 07/27/2026 - brightness floor, burst-aware effect resume, trailing
  *                   terminator no longer re-arms the long holdoff
  * v6 - 07/31/2026 - theater-chase and comet effects, per-effect speed
@@ -52,23 +52,27 @@
  *                   steps instead of bunching all visible change into the
  *                   bottom of the range. The commanded level itself is stored
  *                   and echoed back linearly, so the UI slider is unaffected
+ * v14- 08/11/2026 - hub link moved from SoftwareSerial (RX 10 / TX 11) to the
+ *                   Uno's hardware USART on pins 0/1; the SoftwareSerial
+ *                   library, its port object and its pin defines are gone.
+ *                   sendResponse() now ends with Serial.flush() so a reply is
+ *                   still completely on the wire before the function returns,
+ *                   which is what the reply-before-show ordering relies on:
+ *                   HardwareSerial::print() only queues into the TX buffer,
+ *                   and unlike SoftwareSerial::flush(), HardwareSerial's
+ *                   flush() drains that TX buffer and does NOT touch the
+ *                   receive buffer, so no queued command is discarded.
+ *                   Nothing else changed - protocol, command map, effects,
+ *                   power and motor logic are all untouched
+ * v16- 08/11/2026 - fix: no response reached the hub when forwarded through
+ *                   AutomateHub's SoftwareSerial ExtSerial2 (direct to the Pi
+ *                   worked). The hub is deaf while it bit-bangs the terminator
+ *                   byte it sends after each frame's '>', and the hardware
+ *                   USART here answers fast enough to land inside that window,
+ *                   so the reply's leading '|' was lost and the hub timed out.
+ *                   The reply now waits for that terminator (REPLY_GUARD_MS
+ *                   cap) before it is sent
  * -----------------------------------------------------------
- *
- * Link wiring (SoftwareSerial, through the same RS-232 level shifter
- * the hub uses):
- *   node LINK_RX (pin 10) <-- hub ExtSerial2 TX (hub pin 3)
- *   node LINK_TX (pin 11) --> hub ExtSerial2 RX (hub pin 12)
- *   common ground between the two boards.
- *
- *   Using SoftwareSerial keeps the hardware UART (pins 0/1) free for
- *   USB uploads and the Serial Monitor while the hub link is active.
- *
- * WS2812 wiring:
- *   data -> LED_PIN (default pin 6), plus 5V and ground to the strip.
- *
- * Chair motor wiring (existing driver hardware, 0V = off / 5V = on):
- *   forward input -> MOTOR_FWD_PIN (pin 4)
- *   reverse input -> MOTOR_REV_PIN (pin 12)
  *
  * Protocol recap:
  *   Incoming (from hub):  <9,9,RRDDD>   e.g. <9,9,11001> = register 11, command 001
@@ -107,16 +111,15 @@
  * deadline out and the animation stays paused until the burst finishes.
  */
 
-#include <SoftwareSerial.h>
 #include <Adafruit_NeoPixel.h>
 
 // --- WS2812 LED strip ---
-#define LED_PIN 6      // WS2812 data pin
+#define LED_PIN 11      // WS2812 data pin
 #define NUM_LEDS 60    // number of pixels on the strip (change to match hardware)
 Adafruit_NeoPixel strip(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);
 
 // --- LED brightness and effect tuning constants ---
-#define MAX_BRIGHTNESS 140 // brightness ceiling (0-255); a level of 255 maps here
+#define MAX_BRIGHTNESS 160 // brightness ceiling (0-255); a level of 255 maps here
 #define MIN_BRIGHTNESS 1   // brightness floor (1-254); a level of 0 maps here, so the
                            // strip is never driven at an actual brightness of 0
 #if MIN_BRIGHTNESS >= MAX_BRIGHTNESS
@@ -201,22 +204,27 @@ const uint8_t COMET_TAIL_LEN  = 5; // pixels in the comet's fading tail (head in
 #define CHASE_PERIOD ((uint32_t)CHASE_SPACING << 12)          // one chase group
 #define COMET_PERIOD ((uint32_t)(2 * (NUM_LEDS - 1)) << 12)   // one there-and-back sweep
 
-// --- link to the hub (SoftwareSerial) ---
+// --- link to the hub (hardware USART) ---
+// The board's built-in serial port: pin 0 = RX (from hub ExtSerial2 TX),
+// pin 1 = TX (to hub ExtSerial2 RX). No port object is declared - the core
+// provides "Serial" - and pins 10/11 are now free. Note that on an Uno this
+// port is shared with the USB/bootloader connection, so the hub link must be
+// disconnected while programming the board.
 #define serialBaudRate 9600
-#define LINK_RX_PIN 10 // receive from hub ExtSerial2 TX
-#define LINK_TX_PIN 11 // transmit to hub ExtSerial2 RX
-SoftwareSerial LinkSerial(LINK_RX_PIN, LINK_TX_PIN);
+
+// --- link activity LED ---
+#define LINK_LED_PIN 13
 
 // --- power control I/O (from AutomateHub_1) ---
-#define PWR_TRIG_1 9 // TRIGGER TIP - pulses to switch the attached device
-#define PWR_SENS_1 2 // SENSE RING  - reads the attached device's power state
+#define PWR_TRIG_1 9  // TRIGGER TIP - pulses to switch the attached device
+#define PWR_SENS_1 10 // SENSE RING  - reads the attached device's power state
 
 // --- chair motor control I/O ---
 // Two active-high inputs on the existing motor driver: 5V runs the motor in
 // that direction, 0V stops it. The state machine guarantees the two pins are
 // never high at the same time.
-#define MOTOR_FWD_PIN 4  // 5V = motor runs forward
-#define MOTOR_REV_PIN 12 // 5V = motor runs in reverse
+#define MOTOR_FWD_PIN 8 // 5V = motor runs forward
+#define MOTOR_REV_PIN 7 // 5V = motor runs in reverse
 
 // --- chair motor tuning constants ---
 // A motor command starts a pulse of MOTOR_PULSE_MS (the minimum pulse length).
@@ -239,7 +247,7 @@ SoftwareSerial LinkSerial(LINK_RX_PIN, LINK_TX_PIN);
 // command is refused (BHE: COOLDOWN) unless the bucket has room for at least
 // one minimum pulse, and if the bucket fills mid-run the motor is force-
 // stopped and all run commands are locked out for MOTOR_LOCKOUT_MS (cooldown).
-const uint16_t MOTOR_PULSE_MS       = 1500;    // minimum pulse / per-command run time
+const uint16_t MOTOR_PULSE_MS       = 1200;    // minimum pulse / per-command run time
 const uint16_t MOTOR_SETTLE_MS      = 1500;    // required off-time before reversing direction
 const unsigned long MOTOR_DUTY_BUDGET_MS = 60000UL; // bucket size: max total AND max single run (1 minute)
 const uint8_t MOTOR_DUTY_REST_RATIO = 9;            // ms of rest that drain 1 ms of run time
@@ -351,6 +359,16 @@ const uint16_t EFFECT_RESUME_DELAY_MS = 250;
 // whole command takes ~11 ms at 9600 baud), so it is abandoned rather than
 // allowed to absorb the retry that follows.
 const uint16_t FRAME_ABANDON_MS = 100;
+// The master sends one terminator byte straight after each frame's '>'. When
+// the master is the AutomateHub, that byte is bit-banged by SoftwareSerial,
+// which disables interrupts for its whole duration (~1 ms at 9600 baud) and is
+// therefore DEAF until it finishes. This port receives that byte in hardware,
+// in the background, so a reply sent the instant the '>' decodes would begin
+// inside the hub's deaf window and lose its leading '|' - the hub then never
+// sees a response start and times out. The reply is therefore held until the
+// terminator has actually landed, or this long if a master ever sends a frame
+// without one (a direct connection to the Pi, for example).
+const uint16_t REPLY_GUARD_MS = 5;
 unsigned long lastRxActivity = 0;     // millis() of the last received byte
 unsigned long effectHoldoffUntil = 0; // effects stay suppressed until this millis()
 // The hub appends one terminator byte after every frame's '>'. It arrives while
@@ -366,13 +384,15 @@ bool serialMsgEnd = 0;
 
 ///////////////////////////////////////
 
-// Arduino entry point: starts the link serial port (and makes it the
-// active SoftwareSerial listener), configures the power trigger/sense
-// pins, initializes the LED strip to all-off, and clears the receive
-// buffer.
+// Arduino entry point: starts the hardware serial link to the hub,
+// configures the power trigger/sense pins, initializes the LED strip to
+// all-off, and clears the receive buffer. The hardware port receives on an
+// interrupt from the moment it is opened, so nothing has to be told to listen.
 void setup() {
-  LinkSerial.begin(serialBaudRate);
-  LinkSerial.listen(); // single SoftwareSerial port -> ensure it is listening
+  pinMode(LINK_LED_PIN, OUTPUT);
+  digitalWrite(LINK_LED_PIN, HIGH);
+  // start serial
+  Serial.begin(serialBaudRate);
   // power control I/O
   pinMode(PWR_TRIG_1, OUTPUT);
   digitalWrite(PWR_TRIG_1, LOW);
@@ -388,6 +408,8 @@ void setup() {
   strip.clear();
   strip.show();
   serialMessageIn[0] = nullTrm;
+  delay(1000);
+  digitalWrite(LINK_LED_PIN, LOW);
 }
 
 // Main loop: services the hub link first (so incoming bytes are always
@@ -411,8 +433,8 @@ void loop() {
 void serviceSerial() {
   if (serialMsgEnd == 0) {
     // still collecting a message
-    if (LinkSerial.available()) {
-      char incomingChar = LinkSerial.read();
+    if (Serial.available()) {
+      char incomingChar = Serial.read();
       lastRxActivity = millis();
       // The one byte following an answered frame is the hub's terminator:
       // expected protocol noise, so it must not arm the long holdoff. A frame
@@ -424,6 +446,7 @@ void serviceSerial() {
       }
       readSerialData(incomingChar, serialDataStart, serialDataEnd);
     } else if (serialReading == 1) {
+      digitalWrite(LINK_LED_PIN, HIGH);
       // mid-frame with no new data: abandon the frame if it has stalled
       if ((millis() - lastRxActivity) > FRAME_ABANDON_MS) {
         serialReading = 0;
@@ -432,6 +455,19 @@ void serviceSerial() {
       }
     }
   } else {
+    // Waits for the master's post-frame terminator byte to arrive before a reply is
+    // sent, giving up after REPLY_GUARD_MS. The byte is only waited FOR, never
+    // consumed: it stays in the receive buffer and the existing expectTrailingByte
+    // path swallows it on the next service pass, so the effect holdoff behaves
+    // exactly as before. Returning as soon as the byte is present means the wait
+    // costs nothing on a link that has already delivered it. See REPLY_GUARD_MS for
+    // why answering before the terminator loses the reply on a SoftwareSerial
+    // master.
+    unsigned long guardStart = millis();
+    while ((Serial.available() == 0) &&
+          ((millis() - guardStart) < REPLY_GUARD_MS)) {
+      ; // spin: nothing else may run here, the reply is the next thing out
+    }
     // a full frame has arrived -> decode and act on it
     decodeMessage();
     // the frame was decoded and answered, so the master will not retry it:
@@ -441,6 +477,7 @@ void serviceSerial() {
     // clear for the next message
     serialMessageIn[0] = nullTrm;
     serialMsgEnd = 0;
+    digitalWrite(LINK_LED_PIN, LOW);
   }
 }
 
@@ -448,8 +485,9 @@ void serviceSerial() {
 // when an effect is active, not paused, AND the link is completely idle (no
 // message being received and no byte waiting in the RX buffer). This is what
 // keeps effects from interfering with commands: strip.show() disables
-// interrupts on the Uno, which would corrupt a SoftwareSerial byte arriving at
-// that instant, so a frame is never written while a command could be in flight.
+// interrupts on the Uno, which stalls the USART receive interrupt while a byte
+// could be arriving, so a frame is never written while a command could be in
+// flight.
 //
 // The four draw<Effect>Frame() helpers only fill the pixel buffer. Everything
 // common to them - the second link check, the strip write, the frame clock and
@@ -549,7 +587,7 @@ void stopEffect() {
 // True while the link has traffic in flight: a frame being received, a decoded
 // frame waiting to be answered, or a byte already sitting in the RX buffer.
 bool linkIsBusy() {
-  return (serialReading || serialMsgEnd || LinkSerial.available());
+  return (serialReading || serialMsgEnd || Serial.available());
 }
 
 // Converts a 16-bit hue to the packed color the effects draw with, applying
@@ -855,8 +893,8 @@ void handleCommand(uint8_t messageRegister, uint16_t messageData) {
 // commands (off/fill/set-pixel, which also stop any running effect), the
 // background effects, and pause. For the static LED commands
 // the reply is sent BEFORE the strip update: on the Uno, Adafruit_NeoPixel's
-// show() disables interrupts to bit-bang the strip, and transmitting on
-// SoftwareSerial immediately after a show() corrupts the outgoing frame.
+// show() disables interrupts to bit-bang the strip, which would stall the
+// USART transmit interrupt and stretch the gaps between the reply's bytes.
 // Sending first keeps the reply clean; the show() then runs during the gap
 // before the next command. Effect start and pause only set state - their
 // frames are drawn later by serviceEffects() while the link is idle.
@@ -1237,14 +1275,19 @@ void setBrightnessLevel(uint8_t level) {
   strip.show();
 }
 
-// Sends a delimiter-framed ("|message|\n") response back to the hub over
-// the link serial port. SoftwareSerial.print() is blocking, so each byte
-// is fully transmitted before the function returns. No flush() is used:
-// SoftwareSerial::flush() clears the RECEIVE buffer, which would discard a
-// queued next command.
+// Sends a delimiter-framed ("|message|\n") response back to the hub over the
+// hardware serial link. HardwareSerial::print() only queues bytes into the
+// transmit buffer and returns, so the reply is flushed before returning: the
+// callers that update the strip right after replying (reply-before-show)
+// depend on the reply already being on the wire before show() turns interrupts
+// off. HardwareSerial::flush() waits for the TRANSMIT buffer to drain and,
+// unlike SoftwareSerial's, leaves the receive buffer alone, so a command that
+// arrives during the reply is still queued and handled. Reception continues on
+// interrupt throughout, so nothing is lost while this waits.
 void sendResponse(const char* message) {
-  LinkSerial.print(respDelimiter);
-  LinkSerial.print(message);
-  LinkSerial.print(respDelimiter);
-  LinkSerial.print('\n');
+  Serial.print(respDelimiter);
+  Serial.print(message);
+  Serial.print(respDelimiter);
+  Serial.print('\n');
+  Serial.flush();
 }
