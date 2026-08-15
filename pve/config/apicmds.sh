@@ -16,6 +16,8 @@ TANK_DATA="$TANK_ROOT/data"
 TANK_MEDIA="$TANK_ROOT/media"
 TANK_SNAPS="$TANK_ROOT/.zfs/snapshot"
 PROOS_DIR="$TANK_DATA/ProOS"
+RSYNC_BIN="nice -n 19 ionice -c 3 rsync"
+RSYNC_OPTIONS="-aP --delete --delete-excluded"
 
 function END_ROUTINE() {
   TRAILER=$(date)
@@ -29,6 +31,17 @@ function END_ROUTINE() {
 
 function PATHMOUNTED() { 
   findmnt --mountpoint "$1" >/dev/null 2>&1
+}
+
+## FIX 6: guard every code path that builds a path from $RAMDISK.
+## An empty $2 would otherwise turn "$RAMDISK/pwd.txt" into "/pwd.txt"
+## and hand root-owned shred/truncate/mount operations the filesystem root.
+function REQUIRE_RAMDISK() {
+  if [ -z "$RAMDISK" ] || [ ! -d "$RAMDISK" ]; then
+    echo "invalid or missing RAM disk path (argument 2)!"
+    echo "aborting before operating on '/'."
+    END_ROUTINE
+  fi
 }
 
 function UMNT_FUSEFS () {
@@ -53,24 +66,34 @@ function MNT_FUSEFS () {
   UMNT_FUSEFS "$VOLNME"
   UNCAPSTR="${VOLNME,,}"
   echo "attaching $UNCAPSTR..."
-  mkdir -p "$FUSEPTH"
-  if [ -e "$FUSEPWD" ]; then
-    gocryptfs -quiet -allow_other \
-      "$REGDATA/$VOLNME" \
-      "$FUSEPTH" -passfile "$FUSEPWD"
-  else
+  if [ ! -e "$FUSEPWD" ]; then
     echo "password file not found!"
+    return 1
   fi
-  if [ -e "$FUSEPWD" ]; then
-    rm -f "$FUSEPWD"
+  mkdir -p "$FUSEPTH"
+  gocryptfs -quiet -allow_other \
+    "$REGDATA/$VOLNME" \
+    "$FUSEPTH" -passfile "$FUSEPWD"
+  ## FIX 7: capture the exit status before anything else clobbers $?
+  local _FUSERC=$?
+  ## destroy key material on every path (shred, to match pwd.txt handling)
+  shred -n 2 -z -u "$FUSEPWD" 2>/dev/null || rm -f "$FUSEPWD"
+  if [ $_FUSERC -ne 0 ]; then
+    echo "failed to attach $UNCAPSTR (gocryptfs exit $_FUSERC)."
+    ## don't leave a bare empty directory posing as a mounted region
+    rmdir "$FUSEPTH" 2>/dev/null
+    return $_FUSERC
   fi
+  echo "attached $UNCAPSTR."
 }
 
 function MOUNT_SNAP(){
   if ! PATHMOUNTED "$BINDMNTS/Snapshots"; then
     echo "attaching ZFS snapshots region..."
     mkdir -p "$BINDMNTS/Snapshots"
-    mount --bind "$TANK_SNAPS" "$BINDMNTS/Snapshots"
+    ## FIX 4: each snapshot under .zfs/snapshot is its own automounted
+    ## filesystem; a plain --bind exposes only the empty parent directory.
+    mount --rbind "$TANK_SNAPS" "$BINDMNTS/Snapshots"
   else
     echo "snapshots already attached."
   fi
@@ -78,7 +101,8 @@ function MOUNT_SNAP(){
 function UMOUNT_SNAP(){
   if PATHMOUNTED "$BINDMNTS/Snapshots"; then
     echo "detaching ZFS snapshots region..."
-    umount -l "$BINDMNTS/Snapshots"
+    ## FIX 4: -R detaches the whole bound subtree, not just the top mount
+    umount -R -l "$BINDMNTS/Snapshots"
     rmdir "$BINDMNTS/Snapshots"
   else
     echo "snapshots not attached." 
@@ -108,14 +132,14 @@ function UMOUNT_RAMDSK(){
 CURBKPDTES=()
 function SAVEBKPDATES () {
   local _POOL="$1"
-  touch $EXTBKPS/$_POOL/LastSynced.txt
-  local _LASTSYNC=$(date -r $EXTBKPS/$_POOL/LastSynced.txt '+%F %r')
-  local _CURBKPLNE=$(echo "$_POOL|$_LASTSYNC" | sed -e 's/ /_/g')
-  CURBKPDTES+=( $_CURBKPLNE )
+  touch "$EXTBKPS/$_POOL/LastSynced.txt"
+  local _CURDATE=$(date '+%F %r')
+  CURBKPDTES+=( "$_POOL|${_CURDATE// /_}" )
 }
 
 if [ "$CMD" == "clearlog" ]; then
-  truncate -s 0 $RAMDISK/sysout.txt
+  REQUIRE_RAMDISK
+  truncate -s 0 "$RAMDISK/sysout.txt"
   timeout 30 bash -c "fastfetch --pipe | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g' | tr -cd '\11\12\15\40-\176'"
   END_ROUTINE
 fi
@@ -130,7 +154,8 @@ if [[ "$CMD" == "backupstd" || "$CMD" == "backupchk" ]]; then
     echo "checksum compare option selected, this backup will take awhile!"
     CHECKSUM="--checksum"
   fi
-  ## Time to wait for PVE response
+  REQUIRE_RAMDISK
+  ## Seconds to wait for drives to settle before triggering detach
   WAIT_TIME=60
   ### Lock file -- noclobber makes create-if-absent atomic, so two
   ### backup triggers arriving together cannot both pass the check.
@@ -145,7 +170,17 @@ if [[ "$CMD" == "backupstd" || "$CMD" == "backupchk" ]]; then
   trap 'exit 143' TERM INT
   echo "****************** starting backup **********************"
   echo " "
+  ## Turn on indicator LED
+  curl -s -f 'http://ledwall.home/api?action=main&arg=whtledon' > /dev/null 2>&1 &
   ## Read Backup Drive Names
+  ## FIX 2: without this guard a missing drives file syncs nothing,
+  ## yet still prints "backup complete" and fires the detach trigger.
+  if [ ! -e "$DRIVES_PATH" ]; then
+    echo "drives file '$DRIVES_PATH' not found, aborting backup!"
+    ## EXIT trap releases the lock; clear the indicator LED first
+    curl -s -f 'http://ledwall.home/api?action=main&arg=whtledoff' > /dev/null 2>&1
+    END_ROUTINE
+  fi
   readarray -t ZFSPOOLS < "$DRIVES_PATH"
   #######################
   ## RSYNC ##############
@@ -154,7 +189,9 @@ if [[ "$CMD" == "backupstd" || "$CMD" == "backupchk" ]]; then
     POOL=$(echo $_POOL | sed -e 's/\r//g')
     if [ ! "$POOL" == "" ]; then
       ## USB Flash Drives
-      if [ ${POOL::3} == "usb" ]; then
+      ## FIX 3: unquoted, a glob character in the drives file makes this
+      ## expand against the cwd and abort the test with "too many arguments"
+      if [ "${POOL::3}" == "usb" ]; then
         #################################
         if [ ! -e "$EXTBKPS/$POOL/Data" ]; then
           echo "flash drive not connected $POOL"
@@ -164,28 +201,23 @@ if [[ "$CMD" == "backupstd" || "$CMD" == "backupchk" ]]; then
             echo "Data' share not found!"
           else
             echo "syncing 'Data' share to $POOL drive..."
-            nice -n 19 ionice -c 3 rsync $CHECKSUM -aP  \
-              --exclude="**CDs.zip" --exclude="**CDs.7z" \
-              --exclude="**USB.img" --exclude="**USB.7z" --exclude="**USB.zip" \
-              --exclude="**HD.img" --exclude="**HD.7z" --exclude="**HD.zip" \
-              --exclude="**VM.img" --exclude="**VM.7z" --exclude="**VM.zip" \
-                $TANK_DATA/ $EXTBKPS/$POOL/Data/ --delete --delete-excluded
+            $RSYNC_BIN $CHECKSUM --exclude="**CDs.zip" --exclude="**CDs.7z" --exclude="**USB.img" --exclude="**USB.7z" --exclude="**USB.zip" \
+              --exclude="**HD.img" --exclude="**HD.7z" --exclude="**HD.zip" --exclude="**VM.img" --exclude="**VM.7z" --exclude="**VM.zip" \
+              $TANK_DATA/ $EXTBKPS/$POOL/Data/ $RSYNC_OPTIONS
           fi
           #### Regions Share ####
           if [ ! -e "$REGDATA/DB" ]; then
             echo "'Regions' share not found!"
           else
             echo "syncing 'Regions' share to $POOL drive..."
-            nice -n 19 ionice -c 3 rsync $CHECKSUM -aP \
-              --exclude="Archive/ALUTqMiuxVtjfuair7WIgQ/" --exclude="Games/" \
-                $REGDATA/ $EXTBKPS/$POOL/.Regions/ --delete --delete-excluded
+            $RSYNC_BIN $CHECKSUM --exclude="Archive/ALUTqMiuxVtjfuair7WIgQ/" --exclude="Games/" $REGDATA/ $EXTBKPS/$POOL/.Regions/ $RSYNC_OPTIONS
           fi
           ##### END BACKUP #####
           SAVEBKPDATES "$POOL"
         fi
       fi
       ## Hard Drives
-      if [ ${POOL::3} == "hdd" ]; then
+      if [ "${POOL::3}" == "hdd" ]; then
         #################################
         if [ ! -e "$EXTBKPS/$POOL/Data" ]; then
           echo "hard drive not connected $POOL"
@@ -195,24 +227,21 @@ if [[ "$CMD" == "backupstd" || "$CMD" == "backupchk" ]]; then
             echo "Data' share not found!"
           else
             echo "syncing 'Data' share to $POOL drive..."
-            nice -n 19 ionice -c 3 rsync $CHECKSUM -aP \
-              $TANK_DATA/ $EXTBKPS/$POOL/Data/ --delete --delete-excluded
+            $RSYNC_BIN $CHECKSUM $TANK_DATA/ $EXTBKPS/$POOL/Data/ $RSYNC_OPTIONS
           fi
           #### Regions Share ####
           if [ ! -e "$REGDATA/DB" ]; then
             echo "'Regions' share not found!"
           else
             echo "syncing 'Regions' share to $POOL drive..."
-            nice -n 19 ionice -c 3 rsync $CHECKSUM -aP \
-              $REGDATA/ $EXTBKPS/$POOL/.Regions/ --delete --delete-excluded
+            $RSYNC_BIN $CHECKSUM $REGDATA/ $EXTBKPS/$POOL/.Regions/ $RSYNC_OPTIONS
           fi
           #### Media Share ####
           if [ ! -e "$TANK_MEDIA/Music" ]; then
             echo "'Media' share not found!"
           else
             echo "syncing 'Media' share to $POOL drive..."
-            nice -n 19 ionice -c 3 rsync -aP \
-              $TANK_MEDIA/ $EXTBKPS/$POOL/Media/ --delete --delete-excluded
+            $RSYNC_BIN $CHECKSUM $TANK_MEDIA/ $EXTBKPS/$POOL/Media/ $RSYNC_OPTIONS
           fi
           ##### END BACKUP #####
           SAVEBKPDATES "$POOL"
@@ -224,6 +253,16 @@ if [[ "$CMD" == "backupstd" || "$CMD" == "backupchk" ]]; then
   ################################
   ################################
   ## Write backup dates to file ##
+  ## FIX 1: on a fresh install (or if $EXTBKPS wasn't mounted) the file is
+  ## absent, the merge block below was skipped, and every collected date was
+  ## discarded silently -- leaving the file absent forever. Create it here.
+  if [ ! -f "$STATUSFILE" ]; then
+    if : > "$STATUSFILE" 2>/dev/null; then
+      echo "created new status file '$STATUSFILE'."
+    else
+      echo "WARNING: cannot create '$STATUSFILE' -- backup dates not recorded!"
+    fi
+  fi
   if [ -f "$STATUSFILE" ]; then
     ## Read status file into array
     echo " " 
@@ -237,13 +276,16 @@ if [[ "$CMD" == "backupstd" || "$CMD" == "backupchk" ]]; then
     ## Delete status files content
     truncate -s 0 "$STATUSFILE"
     ## Read through each item in current drive status array
-    for CURBKP_ITEM in ${CURBKPDTES[@]}; do
+    for CURBKP_ITEM in "${CURBKPDTES[@]}"; do
+      ## skip blank or malformed entries (must be DRIVE|DATE)
+      [[ "$CURBKP_ITEM" == *"|"* ]] || continue
       ENTRY_FOUND=""
       CURBKP_DRIVE=${CURBKP_ITEM%|*}
       CURBKP_DATE=${CURBKP_ITEM#*|}
       ## Read through each item in status file array
       for STATIDX in "${!STATFILEARR[@]}"; do
         STATFILE_ITEM=${STATFILEARR[$STATIDX]}
+        [[ "$STATFILE_ITEM" == *"|"* ]] || continue
         STATFILE_DRIVE=${STATFILE_ITEM%|*}
         STATFILE_DATE=${STATFILE_ITEM#*|}
         ## Scan for matching drive entry
@@ -274,9 +316,11 @@ if [[ "$CMD" == "backupstd" || "$CMD" == "backupchk" ]]; then
   echo "triggering drive detach in $WAIT_TIME second(s)."
   sleep $WAIT_TIME
   ## Unlock State File
-  rm -f $RAMDISK/backupsvr.lock
+  rm -f "$RAMDISK/backupsvr.lock"
   ## Write drive detach trigger file
-  touch $RAMDISK/detach_bkps.txt
+  touch "$RAMDISK/detach_bkps.txt"
+  ## Turn off indicator LED
+  curl -s -f 'http://ledwall.home/api?action=main&arg=whtledoff' > /dev/null 2>&1 &
   echo "****************** backup complete **********************"
   END_ROUTINE
 fi
@@ -302,6 +346,7 @@ fi
 
 ## Archive Region
 if [ "$CMD" == "mnt_arch_region" ]; then
+  REQUIRE_RAMDISK
   MNT_FUSEFS "Archive"
   END_ROUTINE
 fi
@@ -312,6 +357,7 @@ fi
 
 ## RAM Disk Region
 if [ "$CMD" == "mnt_ram_region" ]; then
+  REQUIRE_RAMDISK
   MOUNT_RAMDSK
   END_ROUTINE
 fi
@@ -332,6 +378,7 @@ fi
 
 ### IMPORT ZFS ########################################   
 if [ "$CMD" == "attach_bkps" ]; then
+  REQUIRE_RAMDISK
   if [ ! -e "$DRIVES_PATH" ]; then
 	  echo "drives file not found, aborting!"
 	else
@@ -377,8 +424,18 @@ if [ "$CMD" == "detach_bkps" ]; then
           echo "invalid pool specified."
         else
           echo "unmounting ZFS backup volume $POOL."
-          zfs unmount "$EXTBKPS/$POOL"
-          zpool export $POOL
+          ## FIX 5: attach mounts the dataset ($POOL/extbkp), so unmount the
+          ## dataset too. Passing a mountpoint path only worked while the
+          ## dataset's mountpoint property happened to match $EXTBKPS/$POOL;
+          ## when it didn't, unmount failed and the export failed busy.
+          if ! zfs unmount "$POOL/extbkp"; then
+            echo "WARNING: could not unmount $POOL/extbkp -- skipping export."
+            echo " "
+            continue
+          fi
+          if ! zpool export "$POOL"; then
+            echo "WARNING: export of $POOL failed (pool still in use?)."
+          fi
         fi
         echo " "
       fi  
@@ -460,6 +517,7 @@ if [ "$CMD" == "syslog" ]; then
 fi
   ###### Server VM Backup Script ######################
 if [ "$CMD" == "pve_vmsbkp" ]; then
+  REQUIRE_RAMDISK
   ### Lock file -- atomic create via noclobber (see backup lock above)
   if ! ( set -o noclobber; : > "$RAMDISK/pvebackup.lock" ) 2>/dev/null; then
     echo "PVE backup already running!"
@@ -531,7 +589,7 @@ if [ "$CMD" == "pve_vmsbkp" ]; then
   chmod -R 777 $TANK_DATA/ProOS/pve/vmbkps/*.conf
   chmod -R 777 $TANK_DATA/ProOS/pve/vmbkps/*.log
   echo "Backup Complete."
-  rm -f $RAMDISK/pvebackup.lock
+  rm -f "$RAMDISK/pvebackup.lock"
   END_ROUTINE
 fi
 

@@ -635,10 +635,10 @@ function bedroomGridTemplate() {
     <div class="dd-content dd-button" id="bed_leds-menu">
       <a id="btn-bed-adjprompt"> Adjust<i class="fad fa-sort-circle-up"></i></a>
       <a id="bed_leds-colorprompt"> Picker<i class="fad fa-palette"></i></a>
-      <a id="bed_leds-stop"> Stop<i class="fad fa-stop"></i></a>
       <a id="bed_leds-colorcycle"> Cycle</a>
       <a id="bed_leds-sweep"> Sweep</a>
       <a id="bed_leds-rainbow"> Rainbow</a>
+      <a id="bed_leds-stop"> Stop<i class="fad fa-stop"></i></a>
     </div>
   </div>
   <div class="dropdown">

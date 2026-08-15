@@ -17,4 +17,5 @@ pve/photos
 *.key*
 *.rsa*
 *.pub*
+*.pdf*
 .ssh

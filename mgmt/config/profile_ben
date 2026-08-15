@@ -2,17 +2,20 @@
 
 PROS_PATH='/mnt/Projects/ProOS'
 
-## Command Aliases
+## Command aliases
 alias matrix='/usr/bin/cmatrix'
 alias login="$PROS_PATH/login.sh"
 alias logon="$PROS_PATH/login.sh"
 alias less='less --RAW-CONTROL-CHARS'
 
-## Colorized Lists
+## Colorized lists
 export LS_OPTS='--color=auto'
 alias ls='ls $LS_OPTS'
 alias ll='ls $LS_OPTS -l'
 alias l='ls $LS_OPTS -lA'
+
+## Only show hostname in shell prompt
+export PS1="\h $ "
 
 # Set text colors
 ambertty=`tput setaf 3`

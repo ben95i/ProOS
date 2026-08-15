@@ -1,172 +1,60 @@
 /*
  * -----------------------------------------------------------
  * Bedroom Hub External - companion node for AutomateHub #1
- * Runs on an Arduino wired to the hub's external serial port #2.
- * Answers register 11 / command 1 with a "Hello World" message and
- * adds WS2812 LED control, using the same framed serial protocol
- * as AutomateHub_1.
- * v1 - 07/26/2026 - SoftwareSerial link, hello only
- * v2 - 07/26/2026 - hardware Serial (pins 0/1) link + WS2812 control
- * v3 - 07/26/2026 - back to SoftwareSerial link (RX 10 / TX 11) + WS2812 control
- * v4 - 07/26/2026 - strip lit-status query (11008) + fast effect resume
- * v5 - 07/27/2026 - brightness floor, burst-aware effect resume, trailing
- *                   terminator no longer re-arms the long holdoff
- * v6 - 07/31/2026 - theater-chase and comet effects, per-effect speed
- * v7 - 08/01/2026 - adjustable-chair motor control (non-blocking pulses,
- *                   burst extension, run-time limit + cooldown lockout,
- *                   direction settle time)
- * v8 - 08/01/2026 - motor cumulative duty-cycle limiter (leaky-bucket run
- *                   budget) + both-pins-high hardware interlock guard
- * v9 - 08/01/2026 - motor code simplified: duty bucket alone now enforces
- *                   the 60 s run cap (redundant run timer/clamp removed),
- *                   pin read-back guard dropped (GPIOs drive MOSFET gates
- *                   directly and every start passes through both-pins-low)
- * v10- 08/02/2026 - smooth hue animation: the rainbow/cycle hue now advances
- *                   from elapsed time in 1/4096-hue fixed point instead of a
- *                   fixed jump per frame, so a frame delayed or skipped by
- *                   link traffic no longer changes the animation speed. Frame
- *                   intervals lowered (speed unchanged, see the tuning notes)
- *                   for finer per-frame color steps, catch-up is clamped so a
- *                   long holdoff cannot cause a color jump, gamma is now a
- *                   compile-time option, and every effect re-checks the link
- *                   immediately before strip.show() so the raised frame rate
- *                   does not cost command responsiveness
- * v11- 08/02/2026 - LED/effect code consolidated: one global EFFECT_INTERVAL_MS
- *                   for every effect (per-effect intervals and
- *                   currentEffectInterval() dropped), a per-effect SPEED step
- *                   for all four effects including the two pattern ones, the
- *                   four separate position variables replaced by one shared
- *                   phase accumulator, and the link re-check / strip.show() /
- *                   phase advance hoisted out of the four renderers into
- *                   serviceEffects() so each exists exactly once. static_assert
- *                   guards removed - the valid range of every tuning constant
- *                   is documented instead
- * v12- 08/02/2026 - effect resume command (011007) removed; pause is now
- *                   cleared by re-issuing an effect command, which also
- *                   rewinds that effect to its origin. Command value 7 is
- *                   left unused so the rest of the map is unchanged
- * v13- 08/02/2026 - perceptual brightness: register 16's 0-255 level is now
- *                   mapped through a square-law curve (the standard integer
- *                   approximation of the eye's response) before it is applied
- *                   to the strip, so the level scales evenly in PERCEIVED
- *                   steps instead of bunching all visible change into the
- *                   bottom of the range. The commanded level itself is stored
- *                   and echoed back linearly, so the UI slider is unaffected
- * v14- 08/11/2026 - hub link moved from SoftwareSerial (RX 10 / TX 11) to the
- *                   Uno's hardware USART on pins 0/1; the SoftwareSerial
- *                   library, its port object and its pin defines are gone.
- *                   sendResponse() now ends with Serial.flush() so a reply is
- *                   still completely on the wire before the function returns,
- *                   which is what the reply-before-show ordering relies on:
- *                   HardwareSerial::print() only queues into the TX buffer,
- *                   and unlike SoftwareSerial::flush(), HardwareSerial's
- *                   flush() drains that TX buffer and does NOT touch the
- *                   receive buffer, so no queued command is discarded.
- *                   Nothing else changed - protocol, command map, effects,
- *                   power and motor logic are all untouched
- * v16- 08/11/2026 - fix: no response reached the hub when forwarded through
- *                   AutomateHub's SoftwareSerial ExtSerial2 (direct to the Pi
- *                   worked). The hub is deaf while it bit-bangs the terminator
- *                   byte it sends after each frame's '>', and the hardware
- *                   USART here answers fast enough to land inside that window,
- *                   so the reply's leading '|' was lost and the hub timed out.
- *                   The reply now waits for that terminator (REPLY_GUARD_MS
- *                   cap) before it is sent
- * v21- 08/11/2026 - fix: the fade never ran. Its abort test was linkIsBusy(),
- *                   but the fade is reached from inside decodeMessage(), where
- *                   serialMsgEnd is still set for the command being answered
- *                   and the master's terminator byte is already buffered by
- *                   waitForMasterTerminator() - so it was always true and the
- *                   fade cut to black on step 1, blanking instantly. It now
- *                   samples the pending byte count once and aborts only on
- *                   growth past it, which is what a NEW command looks like.
- *                   Command 011000 also fades a static color out now, not just
- *                   a running effect; color-to-color changes stay instant
- * v20- 08/14/2026 - fade snapshot stored as three bytes per pixel instead of a
- *                   packed 32-bit color, saving one byte per pixel of stack
- *                   (180 rather than 240 at 60 pixels) for the length of a
- *                   fade. It is repacked per pixel per step so scaleColor()
- *                   still does the scaling; no behavior change
- * v19- 08/14/2026 - removed command 011002 (fill all) and its case; staging
- *                   the three color channels is now the only path to a solid
- *                   color, and fillStripWithStagedColor() is reached only from
- *                   there. Command value 2 joins 3 and 10 as a gap that
- *                   answers with the error frame. Tidied alongside it, with no
- *                   change in behavior: fadeStripOut() now reuses scaleColor()
- *                   rather than repeating its math per channel, drops the
- *                   clearStrip() that used to rewrite an already-black strip
- *                   after the last fade step, and returns immediately when the
- *                   strip is not lit instead of writing black over black
- * v18- 08/14/2026 - stopEffect() now fades the strip out over STOP_FADE_MS
- *                   instead of leaving the last frame frozen on the pixels.
- *                   Staging all three color channels (registers 12/13/14)
- *                   fills the strip on its own; command 011002 still works but
- *                   is no longer required. Removed: command 011003 (set one
- *                   pixel), command 011010 (theater chase) and register 15
- *                   (stage pixel index), along with their effect, draw
- *                   function, pattern constants and the staged-color helper
- *                   that only the chase used. Remaining command values are
- *                   UNCHANGED - 3 and 10 are simply gaps now and reply with
- *                   the error frame, so nothing else on the hub side moves
- * v17- 08/14/2026 - color cycle: pixels are now fanned across a small hue
- *                   range (CYCLE_DITHER_SPREAD) so the strip dissolves across
- *                   an output quantization step instead of every pixel
- *                   stepping together, which is what made the orange-to-red
- *                   part of the wheel visibly jump.
- *                   Effect 7 is now a loading bar rather than a comet: a solid
- *                   bar fills the strip over a dimmed background of the
- *                   opposite hue, then restarts from the other end with a
- *                   fresh random color pair. COMET_TAIL_LEN is gone and
- *                   COMET_PIXEL_STEP / COMET_PERIOD are now BAR_PIXEL_STEP /
- *                   BAR_PERIOD; the bar ignores the staged color, so registers
- *                   12-14 now only feed the theater chase
+ * Runs on an ATmega328P wired to the hub's external serial port #2. Adds
+ * WS2812 strip control, switched-outlet control and bed motor control, using
+ * the same framed serial protocol as AutomateHub_1.
  * -----------------------------------------------------------
  *
- * Protocol recap:
- *   Incoming (from hub):  <9,9,RRDDD>   e.g. <9,9,11001> = register 11, command 001
+ * Link: hardware USART at 9600 baud - pin 0 = RX (hub ExtSerial2 TX), pin 1 =
+ * TX (hub ExtSerial2 RX). On an Uno this port is shared with the USB/bootloader
+ * connection, so the hub link must be disconnected while programming. Pin 13
+ * (built-in LED) lights while a frame is being received and answered.
+ *
+ * Protocol:
+ *   Incoming (from hub):  <9,9,RRDDD>   e.g. <9,9,11001> = register 11, cmd 001
  *   Outgoing (to hub):    |message|     e.g. |Hello World|
  *
- * Command map (all registers 11-20 are routed to this node by the hub):
- *   Reg 11: (control) - LED/effect/power commands, plus chair motor:
- *           041 fwd, 042 rev, 043 stop, 044 status (0/1/2)
+ * Command map (the hub routes registers 11-20 to this node):
+ *   Reg 11: control commands
+ *           000 LEDs off (fades out)  001 hello               004 rainbow
+ *           005 color cycle           006 pause               007 loading bar
+ *           008 strip lit? (0/1)      009 brightness level read-back
+ *           031/032/033/034 outlet on / off / status / toggle
+ *           041/042/043/044 motor fwd / rev / stop / status (0=idle,1=fwd,2=rev)
+ *           002, 003 and 010 are unused and answer with the error frame.
  *   Reg 12: stage RED   (0-255)
  *   Reg 13: stage GREEN (0-255)
- *   Reg 14: stage BLUE  (0-255)
- *           Staging all three of 12/13/14 fills the whole strip with that
- *           color immediately, and is the ONLY way to set a solid color. The
- *           fill waits for all three so the strip never flashes through a
- *           half-mixed color on the way, and it stops (and fades out) any
- *           running effect. Re-send all three to re-apply a color.
- *   Reg 16: set BRIGHTNESS level (0-255, mapped perceptually onto
- *           MIN_BRIGHTNESS..MAX_BRIGHTNESS - equal level steps look like
- *           equal brightness steps; level 0 is the dimmest setting, never
- *           fully off. Command 011009 echoes the level back linearly.)
- *   Commands reply with the OK / hello text, a status digit (|1|/|0|), or
- *   the error text (unrecognized / out of range / invalid sense reading).
+ *   Reg 14: stage BLUE  (0-255) - and paints the strip
+ *           Send 12/13/14 in that order to set a solid color; it is the only
+ *           way to set one. Red and green stage silently and blue paints all
+ *           three at once, so the strip never shows a half-mixed color, and the
+ *           fill stops (and fades out) any running effect. Keying the paint to
+ *           blue also keeps it idempotent, which matters because the master
+ *           retries any command it gets no reply to: a repeat simply repaints
+ *           the same color instead of leaving the channels out of step.
+ *   Reg 16: BRIGHTNESS level (0-255), mapped perceptually onto
+ *           MIN_BRIGHTNESS..MAX_BRIGHTNESS. Level 0 is the dimmest setting,
+ *           never fully off; 011009 echoes the level back linearly.
+ *   Replies are the OK / hello text, a status digit, or the error text.
  *
- * Effects run in the background but only ever call strip.show() while the
- * link is idle (no message arriving/queued), so they don't corrupt incoming
- * commands - the idle check is made once more after the frame has been built
- * and before it is written, so a byte that arrives while a frame is being
- * assembled defers the write instead of being clipped by it. Every effect
- * draws on one shared clock,
- * EFFECT_INTERVAL_MS, which sets only the frame RATE (smoothness); each effect
- * then has its own <NAME>_STEP constant that sets its SPEED independently of
- * that clock. See the effect tuning notes for the valid range of each.
+ * Effects run in the background but only call strip.show() while the link is
+ * idle, so an animation frame can never clip an incoming command - the idle
+ * check is repeated after the frame is built and before it is written. Every
+ * effect shares one frame clock (EFFECT_INTERVAL_MS, which sets smoothness
+ * only) and one phase accumulator; each has its own <NAME>_STEP constant for
+ * speed, metered against real elapsed time so irregular frames never change it.
  *
- * Effect frames are held off after link traffic, but for how long depends on
- * whether a retry is expected: a command that decoded and was answered will
- * not be retried, so effects resume after EFFECT_RESUME_DELAY_MS; incomplete
- * or corrupted traffic keeps the full EFFECT_RX_HOLDOFF_MS silence so the
- * master's retry lands on a clean link. EFFECT_RESUME_DELAY_MS is sized to
- * span the gap between rapid-fire commands, so a burst keeps pushing the
- * deadline out and the animation stays paused until the burst finishes.
+ * After link traffic, effect frames are held off: EFFECT_RESUME_DELAY_MS for a
+ * frame that was decoded and answered, since no retry is coming, and the longer
+ * EFFECT_RX_HOLDOFF_MS for anything incomplete or corrupted, so the master's
+ * retry lands on a quiet link.
  */
 
 #include <Adafruit_NeoPixel.h>
 
 // --- WS2812 LED strip ---
-#define LED_PIN 11      // WS2812 data pin
+#define LED_PIN 11     // WS2812 data pin
 #define NUM_LEDS 60    // number of pixels on the strip (change to match hardware)
 Adafruit_NeoPixel strip(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);
 
@@ -181,127 +69,106 @@ Adafruit_NeoPixel strip(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);
 #error "MIN_BRIGHTNESS must be at least 1 (a value of 0 would blank the strip)"
 #endif
 // --- effect frame rate (one shared clock for every effect) ---
-// How often ANY running effect redraws the strip. This is the SMOOTHNESS knob
-// only: each effect's speed is set separately below and is metered against
-// real elapsed time, so changing this interval does not change how fast
-// anything moves. Going lower draws more finely but spends more time with
-// interrupts off (a 60-pixel strip.show() blanks them for roughly 1.9 ms, so
-// 30 ms spends about 6% of the time unable to receive a link byte); going
-// higher makes each frame's jump larger and coarser.
-// Valid: 10..1000. Useful: 20..40.
-// Do NOT raise this to slow an effect down - that keeps the per-frame jump
-// just as large and only shows it less often, which is exactly what reads as
-// flicker/stepping. Lower that effect's step constant instead.
+// How often any running effect redraws. Smoothness only: each effect's speed is
+// set separately below and metered against elapsed time, so changing this does
+// not change how fast anything moves. Lower draws more finely but spends more
+// time with interrupts off (a 60-pixel show() blanks them for ~1.9 ms, so 30 ms
+// spends about 6% of the time unable to receive); higher makes each frame's
+// jump coarser. To slow an effect down, lower its step constant instead -
+// raising this keeps the jump as large and only shows it less often, which is
+// what reads as stepping. Valid: 10..1000. Useful: 20..40.
 const uint16_t EFFECT_INTERVAL_MS = 30;
 
 // --- per-effect speed ---
-// Each effect advances by its own step every EFFECT_INTERVAL_MS. Because the
-// advance is metered from elapsed milliseconds rather than applied whole per
-// frame, the step is a true rate: a frame delayed or skipped by link traffic
-// changes how finely the animation is drawn, never how fast it travels.
+// Each effect advances by its own step every EFFECT_INTERVAL_MS, metered from
+// elapsed milliseconds rather than applied whole per frame, so the step is a
+// true rate: a delayed or skipped frame changes how finely the animation is
+// drawn, never how fast it travels.
 //
-// Hue effects - step is in HUE UNITS per frame (65536 hue units = full wheel):
+// Hue steps are in hue units per frame (65536 units = full wheel):
 //   seconds per wheel = 65536 * EFFECT_INTERVAL_MS / (step * 1000)
-//   Valid: 1..65535. Useful: 20..800 - at a 30 ms interval that spans about
-//   98 s down to 2.5 s per wheel. Past ~800 the per-frame color jump starts
-//   to become visible as stepping.
+//   Valid 1..65535, useful 20..800 (about 98 s to 2.5 s per wheel at 30 ms).
+//   Past ~800 the per-frame color jump shows as stepping.
 const uint16_t RAINBOW_HUE_STEP  = 100; // 200 = ~9.8 s per full wheel at 30 ms
 const uint16_t CYCLE_HUE_STEP    = 65;  // 150 = ~13.1 s per full wheel at 30 ms
 
-// Pattern effects - step is in HUNDREDTHS OF A PIXEL per frame (100 = 1 px):
+// Pattern steps are in hundredths of a pixel per frame (100 = 1 px):
 //   pixels per second = step * 10 / EFFECT_INTERVAL_MS
-//   Valid: 1..65535. Useful: 20..300 - at a 30 ms interval that spans about
-//   6.7 to 100 pixels per second. Sub-pixel steps are what let a pattern
-//   crawl slowly on the shared 30 ms clock instead of needing its own longer
-//   frame interval; values above 100 skip pixels and look choppy.
+//   Valid 1..65535, useful 20..300 (6.7 to 100 px/s at 30 ms). Sub-pixel steps
+//   let a pattern crawl on the shared clock instead of needing its own longer
+//   frame interval; above 100 it skips pixels and looks choppy.
 const uint16_t BAR_PIXEL_STEP    = 80; // 100 = 1.00 px/frame = 33 px/s at 30 ms
 
-// Ceiling on how much elapsed time a single frame may absorb, in frame
-// intervals. Small gaps (a frame or two lost to link traffic) are caught up
-// smoothly; a long gap - the effect holdoff during a command burst - is
-// clamped, so the animation resumes where it paused instead of jumping.
-// Valid: 1..8 (1 = never catch up; the animation simply loses that time).
+// Ceiling on the elapsed time one frame may absorb, in frame intervals. A
+// small gap is caught up smoothly; a long one - the holdoff during a command
+// burst - is clamped so the animation resumes where it paused instead of
+// jumping. Valid: 1..8 (1 = never catch up; that time is simply lost).
 const uint8_t EFFECT_CATCHUP_FRAMES = 3;
 
 // --- stop fade ---
-// How long stopEffect() takes to dim a running effect to black, in ms, and how
-// many steps that dim is drawn in. The fade is the one place the sketch holds
-// the loop on purpose, so it is kept short: the reply has already been sent and
-// flushed before it starts, and incoming bytes buffer in the USART meanwhile,
-// but a command that lands mid-fade still waits for it to finish. The fade also
-// gives up early the moment link traffic appears, jumping straight to black, so
-// the strip can never be more than one step behind what the master asked for.
-//   STOP_FADE_MS valid: 0..5000 (0 disables the fade entirely - the strip
-//   blanks instantly, exactly as it did before).
-//   STOP_FADE_STEPS valid: 2..255. The step interval is STOP_FADE_MS divided by
-//   this, so keep the result at or above about 15 ms or the steps become
-//   shorter than the strip write itself.
+// How long the strip takes to dim to black when an effect stops or the LEDs are
+// switched off, and in how many steps. This is the one place the sketch holds
+// the loop on purpose, so it is kept short: the reply is sent and flushed
+// first, incoming bytes buffer in the USART meanwhile, and the fade cuts
+// straight to black as soon as a new command appears.
+//   STOP_FADE_MS valid 0..5000 (0 disables the fade - the strip blanks at once).
+//   STOP_FADE_STEPS valid 2..255. Keep STOP_FADE_MS/steps at or above ~15 ms,
+//   or a step is shorter than the strip write itself.
 const uint16_t STOP_FADE_MS    = 600;
 const uint8_t  STOP_FADE_STEPS = 30;
 
-// Gamma correction makes mid-range colors look right, but it also compresses
-// the low end so hard that a channel crossing the bottom of its range can pop
-// between output values on a slow fade. Set to 0 for a linear (flatter but
-// perfectly even) ramp if that stepping is more objectionable than the gamma.
+// Gamma correction makes mid-range colors look right, but compresses the low
+// end hard enough that a channel crossing the bottom of its range can pop on a
+// slow fade. Set to 0 for a linear ramp: flatter, but perfectly even.
 #define EFFECT_USE_GAMMA 1
 
-// Spatial hue dither for the color-cycle effect, in hue units. The cycle shows
-// ONE color on every pixel, so when the gamma-corrected output of a channel
-// steps by one - unavoidable, the strip only accepts whole 0-255 values, and
-// near red or orange the green channel has only a handful of usable levels
-// left after gamma and brightness scaling - all 60 pixels step at the same
-// instant and the whole strip visibly jumps. Fanning the pixels out over a
-// tiny hue range staggers those steps: each pixel crosses the boundary at a
-// slightly different moment, so the jump becomes a dissolve between two
-// adjacent levels and reads as a smooth fade. The spread wants to be roughly
-// the hue distance between two output steps (a few hundred units near the
-// bottom of a channel).
-//   Valid: 0..65535. Useful: 300..1200. 0 restores the old flat behavior;
-//   above ~2000 the spread starts to be visible as a faint gradient rather
-//   than a single color.
+// Spatial hue dither for the color-cycle effect, in hue units. That effect
+// shows one color on every pixel, so when a channel's output steps by one -
+// unavoidable, since the strip takes whole 0-255 values and near red/orange the
+// green channel has few levels left after gamma and brightness scaling - all 60
+// pixels step at the same instant and the strip visibly jumps. Fanning the
+// pixels over a tiny hue range staggers those steps into a dissolve between two
+// adjacent levels. The spread wants to be roughly the hue distance between two
+// output steps: a few hundred units near the bottom of a channel.
+//   Valid 0..65535, useful 300..1200. 0 makes every pixel identical (and the
+//   strip jump); above ~2000 the spread shows as a faint gradient.
 const uint16_t CYCLE_DITHER_SPREAD = 700;
 // Step between neighboring pixels' dither ranks. Coprime with NUM_LEDS so the
-// ranks form a permutation: adjacent pixels get widely separated hue offsets,
-// which turns the step into a scattered dissolve instead of an edge wiping
-// along the strip. Any value coprime with NUM_LEDS works; 23 and 60 are.
+// ranks form a permutation and adjacent pixels get widely separated offsets -
+// a scattered dissolve rather than an edge wiping along the strip. Any coprime
+// value works; 23 and 60 are.
 const uint16_t CYCLE_DITHER_STRIDE = 23;
 
-// Pattern shape for the loading bar effect.
-// How far the loading bar's background color is scaled toward black (0-255,
-// 255 = untouched). The bar and its background are opposite hues, which
-// separates them by color; dimming the background separates them by
-// brightness as well, so the fill edge stays obvious whichever random pair
-// comes up - including on hues the eye reads as dark to begin with.
-//   Useful: 20..80. Above ~100 a bright random background can rival the bar.
+// How far the loading bar's background is scaled toward black (255 = left
+// alone). Bar and background are opposite hues, which separates them by color;
+// dimming the background separates them by brightness too, so the fill edge
+// stays obvious whichever random pair comes up.
+//   Useful: 20..80. Above ~100 a bright background can rival the bar.
 const uint8_t BAR_BACK_SCALE  = 45;
 #if NUM_LEDS < 2
 #error "NUM_LEDS must be at least 2 (the loading bar needs somewhere to fill)"
 #endif
 
-// The step constants above, converted to phase units per millisecond in
-// 1/4096ths ( fixed point) and rounded to nearest. All four are folded by
-// the compiler. The sub-unit precision is what lets a slow animation advance
-// a fraction of a step per frame instead of rounding down to nothing; a
-// uint16_t step can never make one clamped frame's advance
-// (rate * EFFECT_INTERVAL_MS * EFFECT_CATCHUP_FRAMES) approach the 32-bit
-// accumulator's limit, so no range guard is needed on any value.
+// The step constants above as phase units per millisecond, in 1/4096ths fixed
+// point, rounded to nearest and folded by the compiler. The sub-unit precision
+// lets a slow animation advance a fraction of a step per frame instead of
+// rounding down to nothing. A uint16_t step can never push one clamped frame's
+// advance (rate * EFFECT_INTERVAL_MS * EFFECT_CATCHUP_FRAMES) near the 32-bit
+// accumulator's limit, so no range guard is needed.
 #define HUE_RATE(stepPerFrame) \
   ((((uint32_t)(stepPerFrame) << 12) + (EFFECT_INTERVAL_MS / 2)) / EFFECT_INTERVAL_MS)
 #define PIXEL_RATE_(stepPerFrame) \
   ((((uint32_t)(stepPerFrame) << 12) + (50UL * EFFECT_INTERVAL_MS)) / (100UL * EFFECT_INTERVAL_MS))
 
-// One full period of each effect's phase, in the same  units. The phase is
-// wrapped to this after every advance, so the accumulator can neither drift
-// nor overflow however long an effect runs.
+// One full period of each effect's phase, in the same units. The phase is
+// wrapped to this after every advance, so the accumulator can neither drift nor
+// overflow however long an effect runs.
 #define HUE_PERIOD   (65536UL << 12)                          // one color wheel
 #define BAR_PERIOD   ((uint32_t)(2 * NUM_LEDS) << 12)         // both fill passes
 
 // --- link to the hub (hardware USART) ---
-// The board's built-in serial port: pin 0 = RX (from hub ExtSerial2 TX),
-// pin 1 = TX (to hub ExtSerial2 RX). No port object is declared - the core
-// provides "Serial" - and pins 10/11 are now free. Note that on an Uno this
-// port is shared with the USB/bootloader connection, so the hub link must be
-// disconnected while programming the board.
+// Pin 0 = RX, pin 1 = TX. No port object is declared; the core provides
+// "Serial". See the header notes on sharing this port with USB.
 #define serialBaudRate 9600
 
 // --- link activity LED ---
@@ -311,41 +178,36 @@ const uint8_t BAR_BACK_SCALE  = 45;
 #define PWR_TRIG_1 9  // TRIGGER TIP - pulses to switch the attached device
 #define PWR_SENS_1 10 // SENSE RING  - reads the attached device's power state
 
-// --- chair motor control I/O ---
+// --- bed motor control I/O ---
 // Two active-high inputs on the existing motor driver: 5V runs the motor in
 // that direction, 0V stops it. The state machine guarantees the two pins are
 // never high at the same time.
 #define MOTOR_FWD_PIN 8 // 5V = motor runs forward
 #define MOTOR_REV_PIN 7 // 5V = motor runs in reverse
 
-// --- chair motor tuning constants ---
-// A motor command starts a pulse of MOTOR_PULSE_MS (the minimum pulse length).
-// Repeating the SAME direction command while the motor is running pushes the
-// stop deadline back out to "now + MOTOR_PULSE_MS", so a rapid burst of
-// commands keeps the motor moving and the run length tracks how long the
-// commands keep arriving (velocity control); the motor always coasts to a stop
-// MOTOR_PULSE_MS after the last command. After any stop, the motor must sit
-// idle for MOTOR_SETTLE_MS before it may start in the OPPOSITE direction, so
-// fwd<->rev transitions always pass through 2 s of rest.
+// --- bed motor tuning constants ---
+// A command starts a pulse of MOTOR_PULSE_MS. Repeating the same direction
+// while running pushes the stop deadline back out to now + MOTOR_PULSE_MS, so a
+// burst of commands keeps the motor moving and the run tracks how long they
+// keep arriving (velocity control); it always stops MOTOR_PULSE_MS after the
+// last one. After any stop the motor must idle for MOTOR_SETTLE_MS before
+// starting in the opposite direction.
 //
-// Run time is metered by a leaky bucket: every millisecond the motor RUNS
-// fills the bucket by 1 ms, and every MOTOR_DUTY_REST_RATIO milliseconds the
-// motor rests drains it by 1 ms, limiting the sustained duty cycle to about
-// 1/(MOTOR_DUTY_REST_RATIO+1) - a ratio of 9 allows ~10%, a common rating for
-// chair/linear actuators (raise the ratio for a lower-duty motor). Because the
-// bucket fills as fast as the motor runs, its size is ALSO the longest
-// possible single run: a continuous run fills it in at most
-// MOTOR_DUTY_BUDGET_MS (1 minute), so no separate run timer is needed. A run
-// command is refused (BHE: COOLDOWN) unless the bucket has room for at least
-// one minimum pulse, and if the bucket fills mid-run the motor is force-
-// stopped and all run commands are locked out for MOTOR_LOCKOUT_MS (cooldown).
+// Run time is metered by a leaky bucket: each millisecond of running fills it
+// by 1 ms, each MOTOR_DUTY_REST_RATIO ms of rest drains 1 ms, capping the
+// sustained duty cycle near 1/(ratio+1) - 9 allows ~10%, typical for linear
+// actuators (raise it for a lower-duty motor). Since the bucket fills as fast
+// as the motor runs, its size is also the longest possible single run, so no
+// separate run timer is needed. A command is refused (BHE: COOLDOWN) unless the
+// bucket has room for one minimum pulse; if it fills mid-run the motor is
+// force-stopped and run commands are locked out for MOTOR_LOCKOUT_MS.
 const uint16_t MOTOR_PULSE_MS       = 1200;    // minimum pulse / per-command run time
 const uint16_t MOTOR_SETTLE_MS      = 1500;    // required off-time before reversing direction
 const unsigned long MOTOR_DUTY_BUDGET_MS = 60000UL; // bucket size: max total AND max single run (1 minute)
 const uint8_t MOTOR_DUTY_REST_RATIO = 9;            // ms of rest that drain 1 ms of run time
 const unsigned long MOTOR_LOCKOUT_MS  = 300000UL;   // cooldown after filling the bucket (5 minutes)
 
-// --- chair motor state (all transitions handled non-blocking in serviceMotor) ---
+// --- bed motor state (all transitions handled non-blocking in serviceMotor) ---
 const uint8_t motorIdle = 0; // also used as "no previous direction" at boot
 const uint8_t motorFwd  = 1;
 const uint8_t motorRev  = 2;
@@ -387,9 +249,9 @@ const uint16_t ctrl1PowerOn        = 31; // switch device #1 on (if currently of
 const uint16_t ctrl1PowerOff       = 32; // switch device #1 off (if currently on)
 const uint16_t ctrl1PowerStatus    = 33; // report device #1's current power state
 const uint16_t ctrl1PowerToggle    = 34; // toggle device #1's power state
-const uint16_t ctrlMotorFwd        = 41; // run the chair motor forward (repeat to extend)
-const uint16_t ctrlMotorRev        = 42; // run the chair motor in reverse (repeat to extend)
-const uint16_t ctrlMotorStop       = 43; // stop the chair motor immediately (always allowed)
+const uint16_t ctrlMotorFwd        = 41; // run the bed motor forward (repeat to extend)
+const uint16_t ctrlMotorRev        = 42; // run the bed motor in reverse (repeat to extend)
+const uint16_t ctrlMotorStop       = 43; // stop the bed motor immediately (always allowed)
 const uint16_t ctrlMotorStatus     = 44; // report motor state (0=idle, 1=fwd, 2=rev)
 
 // --- reply strings ---
@@ -406,15 +268,6 @@ const char motorStateRev[]     = "2"; // motor status reply: running in reverse
 uint8_t stagedRed = 0;
 uint8_t stagedGreen = 0;
 uint8_t stagedBlue = 0;
-// Which of the three color channels have been staged since the last fill. A
-// color is only applied once all three have arrived, so a half-set color (red
-// updated, green and blue still holding the previous value) never reaches the
-// strip. Cleared by the fill, so the next complete set of three triggers again.
-const uint8_t STAGED_RED_BIT   = 0x01;
-const uint8_t STAGED_GREEN_BIT = 0x02;
-const uint8_t STAGED_BLUE_BIT  = 0x04;
-const uint8_t STAGED_ALL_BITS  = (STAGED_RED_BIT | STAGED_GREEN_BIT | STAGED_BLUE_BIT);
-uint8_t stagedColorBits = 0;
 uint8_t ledBrightness = MAX_BRIGHTNESS; // scaled brightness actually sent to the strip
 uint8_t ledBrightnessLevel = 255;       // last 0-255 level commanded on register 16, kept
                                         // linear so the UI slider can be read straight
@@ -427,17 +280,16 @@ const uint8_t effectCycle   = 2; // whole strip cycling through hues
 const uint8_t effectSweep   = 4; // loading bar filling the strip, alternating ends
 uint8_t effectMode = effectNone;
 bool effectPaused = false;
-// How far the running effect is through its animation, in 1/4096ths () of
-// one phase unit - a hue unit for the two hue effects, a pixel for the two
-// pattern effects. Only one effect is ever active, so they share this single
-// accumulator instead of keeping four separate positions; startEffect() zeroes
-// it so an effect always begins at its own origin, and serviceEffects() wraps
-// it to that effect's period so it can never drift or overflow.
+// How far the running effect is through its animation, in 1/4096ths of one
+// phase unit - a hue unit for the hue effects, a pixel for the loading bar.
+// Only one effect is ever active, so they share this one accumulator;
+// startEffect() zeroes it and serviceEffects() wraps it to the effect's
+// period.
 uint32_t effectPhase = 0;
 unsigned long lastEffectUpdate = 0; // millis() of the last frame actually SHOWN
 // --- loading bar state ---
-// The bar re-rolls its colors every time it resets, so it needs to notice the
-// reset: barLastPass holds the fill pass the colors were picked for, and
+// The bar re-rolls its colors on every reset, so it must notice one:
+// barLastPass holds the pass the current colors were picked for, and
 // BAR_PASS_NONE forces a fresh pick on the effect's first frame.
 const uint8_t BAR_PASS_NONE = 255;
 uint8_t barLastPass = BAR_PASS_NONE;
@@ -447,36 +299,33 @@ uint32_t barBackColor = 0;
 // --- link recovery tuning ---
 // Effect frames stay suppressed until effectHoldoffUntil. Raw link traffic
 // pushes that deadline out by EFFECT_RX_HOLDOFF_MS, so a command clipped by a
-// strip write silences the animation and the master's retry lands on a clean,
-// effect-free link. A frame that was decoded AND answered will not be retried,
-// so it only holds off for EFFECT_RESUME_DELAY_MS: long enough to bridge the
-// gap between rapid-fire commands (a back-to-back ztermcom invocation lands
-// roughly 20-50 ms after the previous reply) so a burst keeps pushing the
-// deadline out and the animation stays paused until the burst finishes, yet
-// short enough that an effect appears to start immediately. This value is also
-// how long an effect takes to visibly start, so lower it for a snappier start
-// and raise it if a burst is ever spaced further apart than this.
+// strip write silences the animation and the master's retry lands on a clean
+// link. A frame that was decoded and answered will not be retried, so it holds
+// off only for EFFECT_RESUME_DELAY_MS - long enough to bridge the gap between
+// rapid-fire commands (back-to-back ztermcom calls land 20-50 ms apart) so a
+// burst keeps the animation paused until it finishes, short enough that an
+// effect appears to start at once. That delay is also how long an effect takes
+// to visibly start: lower it for a snappier start, raise it if a burst is ever
+// spaced wider.
 const uint16_t EFFECT_RX_HOLDOFF_MS = 1000;
 const uint16_t EFFECT_RESUME_DELAY_MS = 250;
 // A partial frame idle this long lost its terminator to a corrupted byte (a
 // whole command takes ~11 ms at 9600 baud), so it is abandoned rather than
 // allowed to absorb the retry that follows.
 const uint16_t FRAME_ABANDON_MS = 100;
-// The master sends one terminator byte straight after each frame's '>'. When
-// the master is the AutomateHub, that byte is bit-banged by SoftwareSerial,
-// which disables interrupts for its whole duration (~1 ms at 9600 baud) and is
-// therefore DEAF until it finishes. This port receives that byte in hardware,
-// in the background, so a reply sent the instant the '>' decodes would begin
-// inside the hub's deaf window and lose its leading '|' - the hub then never
-// sees a response start and times out. The reply is therefore held until the
-// terminator has actually landed, or this long if a master ever sends a frame
-// without one (a direct connection to the Pi, for example).
+// The master sends one terminator byte straight after each frame's '>'. The
+// AutomateHub bit-bangs that byte on SoftwareSerial, which disables interrupts
+// for its whole duration (~1 ms at 9600) and is deaf until it finishes. This
+// port receives it in hardware, in the background, so a reply sent the instant
+// the '>' decodes would start inside that deaf window and lose its leading '|',
+// and the hub would time out waiting for a response. The reply is therefore
+// held until the terminator lands, or this long if a master sends none at all
+// (a direct connection to the Pi, for example).
 const uint16_t REPLY_GUARD_MS = 5;
 unsigned long lastRxActivity = 0;     // millis() of the last received byte
 unsigned long effectHoldoffUntil = 0; // effects stay suppressed until this millis()
-// The hub appends one terminator byte after every frame's '>'. It arrives while
-// the reply is being sent, so it must not be mistaken for fresh traffic and
-// re-arm the long holdoff - that is what delayed every effect start by a second.
+// Set after an answered frame so the hub's trailing terminator byte is not
+// mistaken for fresh traffic and made to re-arm the long holdoff.
 bool expectTrailingByte = false;
 
 // --- receive buffer and reader state ---
@@ -487,9 +336,8 @@ bool serialMsgEnd = 0;
 
 ///////////////////////////////////////
 
-// Arduino entry point: starts the hardware serial link to the hub,
-// configures the power trigger/sense pins, initializes the LED strip to
-// all-off, and clears the receive buffer. The hardware port receives on an
+// Arduino entry point: opens the hub link, configures the power and motor I/O,
+// blanks the strip and clears the receive buffer. The hardware port receives on
 // interrupt from the moment it is opened, so nothing has to be told to listen.
 void setup() {
   pinMode(LINK_LED_PIN, OUTPUT);
@@ -500,8 +348,8 @@ void setup() {
   pinMode(PWR_TRIG_1, OUTPUT);
   digitalWrite(PWR_TRIG_1, LOW);
   pinMode(PWR_SENS_1, INPUT_PULLUP);
-  // chair motor I/O: both direction lines low (motor off) before and after
-  // the pins become outputs, so the motor can never twitch at boot
+  // both direction lines low before and after they become outputs, so the
+  // motor can never twitch at boot
   digitalWrite(MOTOR_FWD_PIN, LOW);
   digitalWrite(MOTOR_REV_PIN, LOW);
   pinMode(MOTOR_FWD_PIN, OUTPUT);
@@ -515,33 +363,31 @@ void setup() {
   digitalWrite(LINK_LED_PIN, LOW);
 }
 
-// Main loop: services the hub link first (so incoming bytes are always
-// handled promptly), then the chair motor deadlines (cheap millis()
-// comparisons only, so a running motor never delays the link), then any
-// running LED effect - but only while the link is idle, so an animation
-// frame can never overlap an incoming command.
+// Services the hub link first so incoming bytes are handled promptly, then the
+// motor deadlines (millis() comparisons only, so a running motor never delays
+// the link), then any running effect - which draws only while the link is
+// idle, so a frame can never overlap an incoming command.
 void loop() {
   serviceSerial();
   serviceMotor();
   serviceEffects();
 }
 
-// Reads and processes framed commands from the hub link: buffers an
-// incoming message one character at a time, and once a full frame has
-// arrived, decodes and acts on it. Every received byte stamps lastRxActivity
-// and arms the long effect holdoff (a retry may be coming), except the single
-// terminator byte that trails an answered frame. A partial frame that stalls
-// for FRAME_ABANDON_MS - its terminator was lost to a corrupted byte - is
-// abandoned so a retry decodes cleanly instead of being appended to stale data.
+// Reads framed commands from the link one character at a time and decodes a
+// frame once it completes. Every received byte stamps lastRxActivity and arms
+// the long effect holdoff (a retry may be coming), except the terminator byte
+// trailing an answered frame. A partial frame stalled for FRAME_ABANDON_MS lost
+// its terminator to a corrupted byte and is abandoned, so a retry decodes
+// cleanly instead of being appended to stale data. The built-in LED is lit for
+// the whole transaction.
 void serviceSerial() {
   if (serialMsgEnd == 0) {
     // still collecting a message
     if (Serial.available()) {
       char incomingChar = Serial.read();
       lastRxActivity = millis();
-      // The one byte following an answered frame is the hub's terminator:
-      // expected protocol noise, so it must not arm the long holdoff. A frame
-      // start is never noise, and everything else may still need retrying.
+      // the byte following an answered frame is the hub's terminator: expected
+      // noise, so it must not arm the long holdoff. A frame start never is.
       bool isExpectedTerminator = expectTrailingByte && (incomingChar != serialDataStart);
       expectTrailingByte = false;
       if (isExpectedTerminator == false) {
@@ -558,14 +404,10 @@ void serviceSerial() {
       }
     }
   } else {
-    // Waits for the master's post-frame terminator byte to arrive before a reply is
-    // sent, giving up after REPLY_GUARD_MS. The byte is only waited FOR, never
-    // consumed: it stays in the receive buffer and the existing expectTrailingByte
-    // path swallows it on the next service pass, so the effect holdoff behaves
-    // exactly as before. Returning as soon as the byte is present means the wait
-    // costs nothing on a link that has already delivered it. See REPLY_GUARD_MS for
-    // why answering before the terminator loses the reply on a SoftwareSerial
-    // master.
+    // Wait for the master's terminator byte before replying, giving up after
+    // REPLY_GUARD_MS (see that constant for why replying sooner loses the reply
+    // on a SoftwareSerial master). The byte is only waited for, never consumed -
+    // expectTrailingByte swallows it on the next service pass.
     unsigned long guardStart = millis();
     while ((Serial.available() == 0) &&
           ((millis() - guardStart) < REPLY_GUARD_MS)) {
@@ -584,18 +426,16 @@ void serviceSerial() {
   }
 }
 
-// Advances the active LED animation by at most one frame per call. Runs only
-// when an effect is active, not paused, AND the link is completely idle (no
-// message being received and no byte waiting in the RX buffer). This is what
-// keeps effects from interfering with commands: strip.show() disables
-// interrupts on the Uno, which stalls the USART receive interrupt while a byte
-// could be arriving, so a frame is never written while a command could be in
-// flight.
+// Advances the active animation by at most one frame per call. Runs only when
+// an effect is active, not paused, and the link is completely idle. That is what
+// keeps effects clear of commands: strip.show() disables interrupts, stalling
+// the USART receive interrupt, so a frame is never written while a command could
+// be in flight.
 //
-// The four draw<Effect>Frame() helpers only fill the pixel buffer. Everything
-// common to them - the second link check, the strip write, the frame clock and
-// the phase advance - lives here, so each of those exists exactly once and an
-// effect is added by writing one draw function plus one case below.
+// The draw<Effect>Frame() helpers only fill the pixel buffer. Everything common
+// to them - the second link check, the strip write, the frame clock and the
+// phase advance - lives here, so an effect is added by writing one draw
+// function plus one case below.
 void serviceEffects() {
   // nothing to draw if no effect is running or it is paused (frozen)
   if (effectMode == effectNone || effectPaused) {
@@ -616,11 +456,9 @@ void serviceEffects() {
   if (sinceLastFrame < EFFECT_INTERVAL_MS) {
     return;
   }
-  // How much animation time this frame is allowed to represent. Frames are
-  // never exactly one interval apart (the link is serviced first, and frames
-  // are suppressed entirely while it is busy), so effects advance by this
-  // measured elapsed time rather than by a fixed step - that is what keeps
-  // their speed steady when frames arrive irregularly. The clamp stops a long
+  // How much animation time this frame may represent. Frames are never exactly
+  // one interval apart, so effects advance by measured elapsed time rather than
+  // a fixed step, which is what keeps their speed steady. The clamp stops a long
   // suppression from being paid back as one large jump.
   const uint16_t catchupCap = (uint16_t)EFFECT_INTERVAL_MS * EFFECT_CATCHUP_FRAMES;
   uint16_t frameElapsedMs = (sinceLastFrame > catchupCap) ? catchupCap
@@ -648,11 +486,10 @@ void serviceEffects() {
     default:
       return; // unknown mode: nothing drawn, nothing to show
   }
-  // Building a frame takes real time (up to 60 pixels of ColorHSV/gamma), so
-  // re-check the link: a byte that arrived meanwhile would be clipped by the
-  // interrupts-off strip write. Deferring costs nothing visually - the buffer
-  // keeps the finished frame, neither the clock nor the phase moves, and the
-  // next idle pass redraws and shows the very same frame.
+  // Building a frame takes real time, so re-check the link: a byte that arrived
+  // meanwhile would be clipped by the interrupts-off strip write. Deferring
+  // costs nothing - the clock and phase do not move, so the next idle pass shows
+  // the very same frame.
   if (linkIsBusy()) {
     return;
   }
@@ -676,12 +513,11 @@ void startEffect(uint8_t mode) {
   lastEffectUpdate = millis() - EFFECT_INTERVAL_MS; // draw promptly
 }
 
-// Stops any running animation and fades whatever it left on the strip down to
-// black over STOP_FADE_MS, ending blanked. Called by the static LED commands,
-// which take over the strip themselves right afterwards - so a fill following a
-// stop reads as the old animation dimming away before the new color appears.
-// The fade only runs if an effect was actually running: a static color replaced
-// by another static color changes over immediately, with nothing to dim.
+// Stops any running animation and fades what it left on the strip to black,
+// ending blanked. A fill following a stop therefore reads as the old animation
+// dimming away before the new color appears. The fade runs only if an effect
+// was actually running, so replacing one static color with another changes over
+// immediately.
 void stopEffect() {
   bool effectWasRunning = (effectMode != effectNone);
   effectMode = effectNone;
@@ -691,34 +527,30 @@ void stopEffect() {
   }
 }
 
-// Dims the strip's current contents to black in STOP_FADE_STEPS even steps.
+// Dims the strip's contents to black in STOP_FADE_STEPS even steps, ending
+// blank on every path.
 //
-// The pixels are snapshotted first and every step is scaled from that snapshot,
-// never from the previous step: scaling the live buffer repeatedly compounds
-// its rounding, which drags the low end to black early and turns the last third
-// of the fade into a hard cut. Adafruit's setBrightness() is avoided for the
-// same reason - it rescales the pixel buffer in place, and a ramp down through
-// it is lossy in exactly that way (setBrightness(0) is worse still: it zeroes
-// the buffer permanently). Scaling from the snapshot keeps every step an
-// unrounded fraction of the original color, so the ramp stays linear to the
-// end, and the display brightness the user set is never touched.
+// The pixels are snapshotted first and every step scales from that snapshot,
+// never from the previous step: rescaling the live buffer compounds its
+// rounding, dragging the low end to black early and turning the last third of
+// the fade into a hard cut. setBrightness() is avoided for the same reason - it
+// rescales the pixel buffer in place, and setBrightness(0) zeroes it
+// permanently. Scaling from the snapshot keeps every step an unrounded fraction
+// of the original, and never touches the brightness the user set.
 //
-// The snapshot is stored as three bytes per pixel rather than as packed 32-bit
-// colors: the top byte of a packed color is always empty here, so packing would
-// cost a fourth byte per pixel of stack for nothing. At 60 pixels that is 180
-// bytes instead of 240, held only for the length of the fade and nothing at
-// rest - worth the repack below if NUM_LEDS is ever raised.
+// The snapshot is three bytes per pixel rather than packed 32-bit colors, whose
+// top byte would always be empty here: 180 bytes of stack instead of 240 at 60
+// pixels, held only for the length of the fade.
 void fadeStripOut() {
   if (isStripLit() == false) {
     return; // already blank: nothing to dim and nothing to rewrite
   }
   if (STOP_FADE_MS == 0) {
-    clearStrip(); // fade disabled: blank instantly, as it did before the fade
+    clearStrip(); // fade disabled: blank instantly
     return;
   }
-  // getPixelColor() returns the color with the display brightness divided back
-  // out, which is what we want: the fade works in staged-color space and
-  // setPixelColor() re-applies brightness on the way back out.
+  // getPixelColor() divides the display brightness back out, so the fade works
+  // in staged-color space and setPixelColor() re-applies it on the way out.
   uint8_t fadeSnapshot[NUM_LEDS][3];
   for (uint16_t _idx = 0; _idx < NUM_LEDS; _idx++) {
     uint32_t pixelColor = strip.getPixelColor(_idx);
@@ -726,15 +558,13 @@ void fadeStripOut() {
     fadeSnapshot[_idx][1] = (uint8_t)(pixelColor >> 8);  // green
     fadeSnapshot[_idx][2] = (uint8_t)pixelColor;         // blue
   }
-  // Abort test for the loop below. linkIsBusy() CANNOT be used here: this fade
-  // runs from inside decodeMessage(), so serialMsgEnd is still set for the very
-  // command being answered, and waitForMasterTerminator() has just parked the
-  // master's terminator byte in the receive buffer - linkIsBusy() is therefore
-  // always true at this point and would kill the fade on its first step. What
-  // actually matters is traffic arriving AFTER the fade starts, so the pending
-  // byte count is sampled once here and only growth past it counts as a new
-  // command. serialReading cannot change meanwhile, since the link is not
-  // serviced during the fade.
+  // Abort test for the loop below. linkIsBusy() cannot be used: this fade runs
+  // from inside decodeMessage(), where serialMsgEnd is still set for the command
+  // being answered and the master's terminator byte is already buffered, so it
+  // is always true here and would kill the fade on its first step. Only traffic
+  // arriving AFTER the fade starts matters, so the pending byte count is sampled
+  // once and growth past it counts as a new command. serialReading cannot change
+  // meanwhile, since the link is not serviced during the fade.
   int linkPendingAtStart = Serial.available();
   const uint16_t fadeStepMs = STOP_FADE_MS / STOP_FADE_STEPS;
   for (uint8_t _step = 1; _step <= STOP_FADE_STEPS; _step++) {
@@ -746,28 +576,26 @@ void fadeStripOut() {
     // full brightness before the first step, exactly black on the last one
     uint8_t fadeScale = (uint8_t)(255 - (((uint32_t)_step * 255) / STOP_FADE_STEPS));
     for (uint16_t _idx = 0; _idx < NUM_LEDS; _idx++) {
-      // repack for scaleColor(), which takes the same packed form setPixelColor
-      // and getPixelColor use - one shared scaling rule instead of a private
-      // copy of its math here
+      // repack for scaleColor() so its scaling rule is shared rather than
+      // copied into this loop
       uint32_t snapshotColor = ((uint32_t)fadeSnapshot[_idx][0] << 16) |
                                ((uint32_t)fadeSnapshot[_idx][1] << 8) |
                                (uint32_t)fadeSnapshot[_idx][2];
       strip.setPixelColor(_idx, scaleColor(snapshotColor, fadeScale));
     }
     strip.show();
-    // Hold the step WITHOUT delay(): the chair motor's run and duty deadlines
-    // are enforced by serviceMotor(), and a blocking delay here would let a
-    // motor overrun its stop time by most of the fade. The link cannot be
-    // serviced from inside a half-drawn fade, but incoming bytes buffer in the
-    // USART and the pending-count check above cuts the fade short on the next
-    // step, so nothing is lost either way.
+    // Hold the step without delay(): serviceMotor() enforces the motor's run
+    // and duty deadlines, and a blocking delay would let a motor overrun its
+    // stop time by most of the fade. The link cannot be serviced from inside a
+    // half-drawn fade, but bytes buffer in the USART and the check above cuts
+    // the fade short on the next step.
     unsigned long stepStarted = millis();
     while ((millis() - stepStarted) < fadeStepMs) {
       serviceMotor();
     }
   }
-  // The last step scaled by 0, so the buffer already holds - and the strip
-  // already shows - all black. A clearStrip() here would only rewrite it.
+  // the last step scaled by 0, so the strip already shows black - a
+  // clearStrip() here would only rewrite it
 }
 
 // True while the link has traffic in flight: a frame being received, a decoded
@@ -796,11 +624,10 @@ void drawRainbowFrame() {
   }
 }
 
-// Builds one frame of the color-cycle effect: the whole strip shows the single
-// hue the phase currently sits on, so it walks the wheel as the phase advances.
-// Each pixel is nudged by a fraction of CYCLE_DITHER_SPREAD so the strip does
-// not cross an output quantization step all at once - see that constant for
-// why a single flat color pops on a slow fade and this does not.
+// Builds one frame of the color-cycle effect: the whole strip shows the hue the
+// phase sits on, walking the wheel as the phase advances. Each pixel is nudged
+// by a fraction of CYCLE_DITHER_SPREAD so the strip does not cross an output
+// quantization step all at once - see that constant.
 void drawColorCycleFrame() {
   uint16_t baseHue = (uint16_t)(effectPhase >> 12); // phase wraps at one wheel
   for (uint16_t _idx = 0; _idx < NUM_LEDS; _idx++) {
@@ -821,18 +648,16 @@ uint32_t scaleColor(uint32_t color, uint8_t scale) {
                      (uint8_t)(((color & 0xFF) * _mul) >> 8));
 }
 
-// Rolls a fresh color pair for the loading bar. The background hue is random
-// and the fill hue is its opposite on the wheel, which is the largest hue
-// separation available, so the pair always contrasts however the roll lands.
-// The background is also dimmed (BAR_BACK_SCALE) so the two differ in
-// brightness as well as hue - hue alone is not enough when a random roll
-// lands on two hues the eye reads as similarly dark.
+// Rolls a fresh color pair for the loading bar: a random background hue and its
+// opposite on the wheel for the fill, the largest hue separation available, so
+// the pair contrasts however the roll lands. The background is also dimmed by
+// BAR_BACK_SCALE, since hue alone is not enough when a roll lands on two hues
+// the eye reads as similarly dark.
 //
-// random() replays one fixed sequence unless it is seeded, which would make
-// every power-up show the same colors in the same order. It is seeded here on
-// first use rather than in setup(): the effect is started by a hub command, so
-// the microsecond timer at that moment is genuinely unpredictable, where at
-// boot it would read nearly the same value every time.
+// random() replays one fixed sequence unless seeded. It is seeded on first use
+// rather than in setup() because the effect is started by a hub command, so the
+// microsecond timer at that moment is unpredictable - at boot it would read
+// nearly the same value every time.
 void pickBarColors() {
   static bool barSeeded = false;
   if (barSeeded == false) {
@@ -844,16 +669,14 @@ void pickBarColors() {
   barFillColor = effectHueColor((uint16_t)(backHue + 32768)); // opposite hue
 }
 
-// Builds one frame of the loading bar effect: a solid bar grows from one end
-// of the strip to the other over a dimmed background of the opposite hue, and
-// on reaching the far end it starts over from the OTHER end with a fresh pair
-// of random colors.
+// Builds one frame of the loading bar effect: a solid bar grows from one end of
+// the strip to the other over a dimmed background of the opposite hue, then
+// restarts from the OTHER end with a fresh random color pair.
 //
 // The phase runs 0 .. 2*NUM_LEDS-1 and its top half is the return pass, so the
-// fill direction comes from the phase alone with no direction flag - the same
-// trick the comet used for its there-and-back travel. Only the color re-roll
-// needs memory, since it has to happen once per pass rather than once per
-// frame; barLastPass provides it.
+// fill direction comes from the phase alone with no direction flag. Only the
+// color re-roll needs memory, since it happens once per pass rather than once
+// per frame; barLastPass provides it.
 void drawLoadingBarFrame() {
   uint16_t barPos = (uint16_t)(effectPhase >> 12); // 0 .. 2*NUM_LEDS-1
   // pass 0 fills from pixel 0 upward, pass 1 fills from the far end downward
@@ -871,11 +694,10 @@ void drawLoadingBarFrame() {
   }
 }
 
-// Character-by-character framed reader: waits for startInd, buffers
-// characters into serialMessageIn (overflow-safe), and sets serialMsgEnd
-// when endInd is received. A startInd received MID-frame restarts the
-// frame from scratch (the payload never contains '<'): if the previous
-// frame's terminator was lost to a corrupted byte, the master's retry
+// Character-by-character framed reader: waits for startInd, buffers characters
+// into serialMessageIn (overflow-safe), and sets serialMsgEnd on endInd. A
+// startInd received mid-frame restarts the frame, since the payload never
+// contains '<': if a terminator was lost to a corrupted byte, the master's retry
 // begins a clean message instead of being appended to the stale one.
 void readSerialData(char rc, char startInd, char endInd) {
   if (serialReading == 1) {
@@ -908,11 +730,10 @@ void readSerialData(char rc, char startInd, char endInd) {
   }
 }
 
-// Validates and decodes a received "9,9,RRDDD" message: confirms the
-// delimiter count and the leading "9" prefix, then passes the position
-// of the numeric payload (after the second delimiter) to processCmdData().
-// Malformed input is answered with an error frame so the hub never has
-// to wait out its response timeout.
+// Validates and decodes a received "9,9,RRDDD" message: confirms the delimiter
+// count and the leading "9" prefix, then passes the position of the numeric
+// payload to processCmdData(). Malformed input is answered with an error frame
+// so the hub never has to wait out its response timeout.
 void decodeMessage() {
   const char fieldDelimiter = ',';
   // count field delimiters
@@ -978,9 +799,9 @@ void decodeMessage() {
   }
 }
 
-// Extracts the fixed-length numeric control code beginning at
-// messageStart, splits it into the 2-digit register select and the
-// 3-digit command data, and hands the pair to handleCommand().
+// Extracts the fixed-length control code at messageStart, splits it into the
+// 2-digit register and 3-digit data fields, and hands the pair to
+// handleCommand().
 void processCmdData(uint8_t messageStart) {
   uint8_t _numcnt = 0;
   uint8_t _cmdlen = cmdRegLen + cmdDatLen;
@@ -1024,11 +845,9 @@ void processCmdData(uint8_t messageStart) {
   handleCommand(messageRegister, messageData);
 }
 
-// Dispatches a decoded register/command pair. Register 11 carries the
-// hello and LED apply/clear commands; registers 12-16 stage the color
-// channels, target index, and brightness; register 17 controls the
-// attached device's power. Unknown registers or out-of-range values
-// reply with the error frame.
+// Dispatches a decoded register/command pair: register 11 carries every control
+// command, 12-14 the color channels and 16 the brightness. Unknown registers
+// and out-of-range values reply with the error frame.
 void handleCommand(uint8_t messageRegister, uint16_t messageData) {
   switch (messageRegister) {
     case regControl:
@@ -1036,24 +855,21 @@ void handleCommand(uint8_t messageRegister, uint16_t messageData) {
       break;
     case regStageRed:
       if (messageData <= 255) {
-        stagedRed = (uint8_t)messageData;
-        stageColorChannel(STAGED_RED_BIT);
+        stageColorChannel((uint8_t)messageData, &stagedRed);
       } else {
         sendResponse(errorMessage);
       }
       break;
     case regStageGreen:
       if (messageData <= 255) {
-        stagedGreen = (uint8_t)messageData;
-        stageColorChannel(STAGED_GREEN_BIT);
+        stageColorChannel((uint8_t)messageData, &stagedGreen);
       } else {
         sendResponse(errorMessage);
       }
       break;
     case regStageBlue:
       if (messageData <= 255) {
-        stagedBlue = (uint8_t)messageData;
-        stageColorChannel(STAGED_BLUE_BIT);
+        applyStagedColor((uint8_t)messageData); // blue paints the strip
       } else {
         sendResponse(errorMessage);
       }
@@ -1072,35 +888,42 @@ void handleCommand(uint8_t messageRegister, uint16_t messageData) {
   }
 }
 
-// Records that one color channel has just been staged, answers the master, and
-// applies the color to the whole strip once all three channels have arrived.
-//
-// The reply goes out before the strip is touched, for the same reason the
-// static LED commands answer first: show() disables interrupts and would
-// stretch the gaps between the reply's bytes. sendResponse() flushes, so by the
-// time the fill runs the reply is completely on the wire.
-//
-// Waiting for all three channels is what makes this safe to do automatically -
-// applying each channel as it lands would flash the strip through two
-// half-mixed colors on the way to every requested one.
-void stageColorChannel(uint8_t channelBit) {
-  stagedColorBits |= channelBit;
+// Stages one color channel and answers the master, applying nothing. Red and
+// green use this; blue paints the strip (below).
+void stageColorChannel(uint8_t channelValue, uint8_t* channelTarget) {
+  *channelTarget = channelValue;
   sendResponse(okMessage);
-  if ((stagedColorBits & STAGED_ALL_BITS) == STAGED_ALL_BITS) {
-    stopEffect(); // a running effect fades out first, then the color appears
-    fillStripWithStagedColor();
-  }
 }
 
-// Handles the control register (11) command values: hello, static LED
-// commands (off/fill/set-pixel, which also stop any running effect), the
-// background effects, and pause. For the static LED commands
-// the reply is sent BEFORE the strip update: on the Uno, Adafruit_NeoPixel's
-// show() disables interrupts to bit-bang the strip, which would stall the
-// USART transmit interrupt and stretch the gaps between the reply's bytes.
-// Sending first keeps the reply clean; the show() then runs during the gap
-// before the next command. Effect start and pause only set state - their
-// frames are drawn later by serviceEffects() while the link is idle.
+// Stages blue - the last channel a color set sends - then answers the master and
+// paints the strip with all three staged channels. A color set MUST therefore
+// end with blue; red and green alone stage without painting.
+//
+// Blue is the trigger rather than "all three staged since the last fill"
+// because the master retries any command it gets no reply to, so a channel can
+// arrive twice or go missing. Counting channels leaves that bookkeeping one out
+// of step for good, and the next color set then fills early, mixing two new
+// channels with one stale one. Keying the fill to blue holds no state to fall
+// out of step: a duplicate repaints the same color, and a dropped command costs
+// at most one stale fill that the next set corrects.
+//
+// The reply goes out before the strip is touched, like the other LED commands:
+// show() disables interrupts and would stretch the gaps between the reply's
+// bytes. sendResponse() flushes, so the reply is fully on the wire by then.
+void applyStagedColor(uint8_t blueValue) {
+  stagedBlue = blueValue;
+  sendResponse(okMessage);
+  stopEffect(); // a running effect fades out first, then the color appears
+  fillStripWithStagedColor();
+}
+
+// Handles the register 11 command values: hello, LEDs off, the background
+// effects, pause, the strip status and brightness read-backs, and the motor
+// commands; anything else falls through to handlePowerCommand(). The reply is
+// sent before any strip update, because show() disables interrupts to bit-bang
+// the strip and would stretch the gaps between the reply's bytes. Effect start
+// and pause only set state - their frames are drawn later by serviceEffects()
+// while the link is idle.
 void handleControlCommand(uint16_t messageData) {
   switch (messageData) {
     case ctrlAbout:
@@ -1170,15 +993,14 @@ void handleControlCommand(uint16_t messageData) {
   }
 }
 
-// Handles the power register (17), mirroring AutomateHub_1's internal
-// power logic. Reads the attached device's current state from the sense
-// line, then either reports it (status) or pulses the trigger to switch
-// it (on/off/toggle).
-//   1 = on, 2 = off, 3 = status, 4 = toggle.
-// The sense line is inverted (INPUT_PULLUP): a LOW reading means the
-// device is on, a HIGH reading means it is off. On/off only pulse when a
-// change is actually needed; toggle always pulses. Status replies with
-// the on/off digit, or the error frame on an invalid (bouncing) reading.
+// Handles the outlet commands (031 on, 032 off, 033 status, 034 toggle),
+// mirroring AutomateHub_1's power logic. Reads the device's state from the sense
+// line, then either reports it or pulses the trigger to switch it. The sense
+// line is inverted (INPUT_PULLUP), so LOW means on. On/off pulse only when a
+// change is needed; toggle always pulses. Status replies with the on/off digit,
+// or the error frame on an invalid (bouncing) reading. Any command value outside
+// this range is rejected here, which is what makes unused register 11 values
+// answer with the error frame.
 void handlePowerCommand(uint16_t messageData) {
   // reject anything outside the defined power command range
   if (messageData < ctrl1PowerOn || messageData > ctrl1PowerToggle) {
@@ -1217,9 +1039,8 @@ void handlePowerCommand(uint16_t messageData) {
   }
 }
 
-// Samples a digital input pin 16 times back-to-back and returns a
-// debounced consensus reading: 1 = all samples high, 0 = all samples low,
-// -1 = samples disagreed (bouncing / invalid input).
+// Samples a pin 16 times back-to-back for a debounced consensus reading:
+// 1 = all high, 0 = all low, -1 = samples disagreed (bouncing/invalid).
 int powerSense(int powerSensePin) {
   const int inputReadings = 16;
   int total = 0;
@@ -1240,21 +1061,17 @@ int powerSense(int powerSensePin) {
   }
 }
 
-// Generates a 250 ms active-high pulse on the given output pin, used to
-// press the power trigger of the attached device.
+// Generates a 250 ms active-high pulse, used to press the outlet's trigger.
 void powerPulse(int powerPin) {
   digitalWrite(powerPin, HIGH);
   delay(250);
   digitalWrite(powerPin, LOW);
 }
 
-// Non-blocking chair motor service, called every loop() pass. While idle it
-// returns immediately; while the motor is running it settles the duty bucket
-// and does two cheap checks (rollover-safe millis() arithmetic, like the
-// effect holdoff): a full bucket - which a continuous run reaches in at most
-// MOTOR_DUTY_BUDGET_MS - force-stops the motor and arms the MOTOR_LOCKOUT_MS
-// cooldown, and otherwise a passed pulse deadline (MOTOR_PULSE_MS after the
-// most recent command) stops the motor normally.
+// Non-blocking motor service, called every loop() pass. Returns immediately
+// while idle; while running it settles the duty bucket and makes two
+// rollover-safe checks: a full bucket force-stops the motor and arms the
+// cooldown, and otherwise a passed pulse deadline stops it normally.
 void serviceMotor() {
   if (motorDirection == motorIdle) {
     return;
@@ -1272,12 +1089,11 @@ void serviceMotor() {
   }
 }
 
-// Settles the duty-cycle leaky bucket up to "now". While the motor runs the
-// bucket fills 1 ms per elapsed ms; while it rests the bucket drains 1 ms per
-// MOTOR_DUTY_REST_RATIO ms. Draining only advances the accounted timestamp by
-// whole drained units (drained * ratio), so the sub-ratio remainder is never
-// lost to rounding no matter how often this is called. All arithmetic is
-// unsigned differences of millis(), so it is rollover-safe.
+// Settles the duty-cycle leaky bucket up to "now": running fills it 1 ms per
+// elapsed ms, resting drains 1 ms per MOTOR_DUTY_REST_RATIO ms. Draining
+// advances the accounted timestamp only by whole drained units, so the
+// remainder survives however often this is called. All arithmetic is unsigned
+// millis() differences, so it is rollover-safe.
 void updateMotorDutyAccumulator(unsigned long now) {
   unsigned long elapsed = now - motorDutyLastUpdate;
   if (motorDirection != motorIdle) {
@@ -1297,12 +1113,10 @@ void updateMotorDutyAccumulator(unsigned long now) {
   }
 }
 
-// Drives both motor direction lines low and records the stop, remembering
-// which direction just ran (for the direction-settle rule) and when it
-// stopped (the settle timer). The duty bucket is settled FIRST, while the
-// direction still reads as running, so the final slice of run time is
-// counted before draining begins. Safe to call when the motor is already
-// idle.
+// Drives both direction lines low and records which direction just ran and when
+// it stopped, for the settle rule. The duty bucket is settled FIRST, while the
+// direction still reads as running, so the last slice of run time is counted
+// before draining begins. Safe to call when already idle.
 void stopMotor(unsigned long now) {
   updateMotorDutyAccumulator(now);
   digitalWrite(MOTOR_FWD_PIN, LOW);
@@ -1314,33 +1128,26 @@ void stopMotor(unsigned long now) {
   motorDirection = motorIdle;
 }
 
-// Handles a forward/reverse run command (requestedDirection is motorFwd or
-// motorRev) and sends the reply. Enforces, in order:
-//   1. Cooldown lockout: after a max-length run, all run commands answer
+// Handles a forward/reverse run command and sends the reply, enforcing in
+// order:
+//   1. Cooldown lockout: after filling the run budget, run commands answer
 //      "BHE: COOLDOWN" until MOTOR_LOCKOUT_MS has elapsed.
-// Handles a forward/reverse run command (requestedDirection is motorFwd or
-// motorRev) and sends the reply. Enforces, in order:
-//   1. Cooldown lockout: after filling the run budget, all run commands
-//      answer "BHE: COOLDOWN" until MOTOR_LOCKOUT_MS has elapsed.
-//   2. Duty budget: the leaky bucket must have room for at least one minimum
-//      pulse before a run may start or be extended, otherwise the reply is
-//      "BHE: COOLDOWN" and the bucket keeps draining naturally (about
+//   2. Duty budget: the bucket must have room for one minimum pulse to start or
+//      extend a run, otherwise "BHE: COOLDOWN" while it drains naturally (about
 //      MOTOR_DUTY_REST_RATIO seconds of rest buy one second of run time).
-//   3. Extension (velocity control): the same direction repeated while
-//      running pushes the stop deadline out to now + MOTOR_PULSE_MS; total
-//      run time is bounded by the bucket, which serviceMotor enforces as the
-//      run progresses.
-//   4. Opposite direction while running: the motor is stopped immediately
-//      (never driven both ways) and the reply is "BHE: WAIT" - the settle
-//      timer then blocks the reversal until MOTOR_SETTLE_MS of rest.
-//   5. Direction settle: from idle, starting OPPOSITE to the previous run
-//      within MOTOR_SETTLE_MS of its stop answers "BHE: WAIT". Restarting in
-//      the SAME direction needs no settle.
-//   6. Start: the requested line goes high for a minimum pulse of
-//      MOTOR_PULSE_MS, ended later by serviceMotor(). The other line is
-//      already low: the motor only starts from idle, and every path to idle
-//      (setup and stopMotor) drives both lines low, so the two MOSFET gates
-//      can never be high together.
+//   3. Extension: the same direction repeated while running pushes the stop
+//      deadline out to now + MOTOR_PULSE_MS. Total run time stays bounded by
+//      the bucket, which serviceMotor() enforces as the run progresses.
+//   4. Opposite direction while running: stopped immediately (never driven both
+//      ways) and answered "BHE: WAIT"; the settle timer then blocks the
+//      reversal until MOTOR_SETTLE_MS of rest.
+//   5. Direction settle: from idle, starting opposite to the previous run within
+//      MOTOR_SETTLE_MS of its stop answers "BHE: WAIT". The same direction needs
+//      no settle.
+//   6. Start: the requested line goes high for MOTOR_PULSE_MS, ended later by
+//      serviceMotor(). The other line is already low, since the motor only
+//      starts from idle and every path to idle drives both lines low, so the two
+//      MOSFET gates can never be high together.
 void handleMotorRunCommand(uint8_t requestedDirection) {
   unsigned long now = millis();
   // cooldown lockout check (flag + deadline, so rollover cannot re-lock)
@@ -1376,9 +1183,9 @@ void handleMotorRunCommand(uint8_t requestedDirection) {
     sendResponse(motorWaitMessage);
     return;
   }
-  // start the requested direction for the minimum pulse length. The reply is
-  // sent first (reply-before-drive, matching the strip commands) so the hub
-  // gets its answer before any motor switching noise can appear on the link.
+  // Start for the minimum pulse length. The reply goes first, matching the
+  // strip commands, so the hub is answered before any motor switching noise can
+  // appear on the link.
   sendResponse(okMessage);
   motorDirection = requestedDirection;
   motorStopAt = now + MOTOR_PULSE_MS;
@@ -1386,15 +1193,13 @@ void handleMotorRunCommand(uint8_t requestedDirection) {
   digitalWrite((requestedDirection == motorFwd) ? MOTOR_FWD_PIN : MOTOR_REV_PIN, HIGH);
 }
 
-// Reports whether the strip is currently emitting any light: scans the
-// pixel buffer and returns true as soon as a non-black pixel is found
-// (so a lit strip costs almost nothing to detect), false when every pixel
-// is black. Adafruit_NeoPixel applies the brightness scaling as colors are
-// stored, so this reflects what the strip is ACTUALLY displaying: a running
-// or paused effect reads as lit, while a cleared strip or a fill with color
-// 0,0,0 reads as blank. Brightness alone can no longer blank the strip,
-// since the level maps onto MIN_BRIGHTNESS..MAX_BRIGHTNESS, though a very
-// dark color at the dimmest level can still scale down to black.
+// Reports whether the strip is emitting any light, returning true as soon as a
+// non-black pixel is found so a lit strip costs almost nothing to detect.
+// Brightness scaling is applied as colors are stored, so this reflects what the
+// strip ACTUALLY displays: a running or paused effect reads as lit, a cleared
+// strip or a 0,0,0 fill as blank. Brightness alone cannot blank the strip, since
+// the level maps onto MIN_BRIGHTNESS..MAX_BRIGHTNESS, though a very dark color
+// at the dimmest level can still scale to black.
 bool isStripLit() {
   for (uint16_t _idx = 0; _idx < NUM_LEDS; _idx++) {
     if (strip.getPixelColor(_idx) != 0) {
@@ -1404,52 +1209,42 @@ bool isStripLit() {
   return false;
 }
 
-// Reports the brightness as the linear 0-255 level last commanded on register
-// 16, which is exactly what the UI slider was set to. The stored level is
-// returned rather than back-calculated from the hardware brightness: the
-// perceptual curve in setBrightnessLevel() collapses many levels onto the same
-// hardware value at the dim end, so the hardware value alone can no longer
-// recover the level.
+// Reports the linear 0-255 level last commanded on register 16 - exactly what
+// the UI slider was set to. The stored level is returned rather than
+// back-calculated, because the perceptual curve in setBrightnessLevel()
+// collapses many levels onto the same hardware value at the dim end.
 uint16_t showLedsBrightness() {
   return ledBrightnessLevel;
 }
 
-// Turns the whole strip off. The strip's brightness is already whatever
-// setBrightnessLevel() last applied, so it is not re-sent here (nor in the
-// two helpers below) - that call was a no-op on every path.
+// Turns the whole strip off. Brightness is already whatever
+// setBrightnessLevel() last applied, so it is not re-sent here.
 void clearStrip() {
   strip.clear();
   strip.show();
 }
 
-// Fills every pixel with the currently staged red/green/blue color, and clears
-// the staged-channel bits: the color has been applied, so the next automatic
-// fill waits for a fresh set of all three channels rather than firing on the
-// next single channel that happens to arrive.
+// Fills every pixel with the staged red/green/blue color. Holds no state, so
+// calling it twice with the same channels simply paints the same color again.
 void fillStripWithStagedColor() {
   for (uint16_t _idx = 0; _idx < NUM_LEDS; _idx++) {
     strip.setPixelColor(_idx, stagedRed, stagedGreen, stagedBlue);
   }
   strip.show();
-  stagedColorBits = 0;
 }
 
-// Sets the display brightness from a 0-255 level, mapped PERCEPTUALLY onto the
-// compile-time MIN_BRIGHTNESS..MAX_BRIGHTNESS window. The eye's response to
-// light is roughly logarithmic: a linear map spends most of its visible change
-// in the bottom few slider steps and the whole top half looks the same. The
-// level is therefore squared before scaling (hw = MIN + span * (level/255)^2,
-// the standard integer approximation of the perceptual curve), which is the
-// inverse shape - equal LEVEL steps then read as equal BRIGHTNESS steps.
-// Level 0 still gives MIN_BRIGHTNESS (dimmest visible, never fully dark) and
-// 255 still gives MAX_BRIGHTNESS; only the path between them changes. Keeping
-// the hardware brightness above 0 also avoids Adafruit_NeoPixel's
-// setBrightness(0) case, which rescales the pixel buffer to all-zero and
-// permanently discards the stored colors. The raw level is stored for
-// showLedsBrightness(), since the curve rounds too coarsely to invert. Applies
-// immediately by rescaling the current display; a running effect also picks it
-// up on its next frame. Called after the reply is sent, so the show() here
-// still respects the reply-before-show rule.
+// Sets the display brightness from a 0-255 level, mapped perceptually onto the
+// MIN_BRIGHTNESS..MAX_BRIGHTNESS window. The eye's response to light is roughly
+// logarithmic, so a linear map spends most of its visible change in the bottom
+// few slider steps. Squaring the level first (hw = MIN + span * (level/255)^2)
+// is the inverse shape, so equal level steps read as equal brightness steps.
+// Level 0 still gives MIN_BRIGHTNESS and 255 still gives MAX_BRIGHTNESS; only
+// the path between them changes. Staying above 0 also avoids
+// setBrightness(0), which rescales the pixel buffer to all-zero and discards
+// the stored colors. The raw level is kept for showLedsBrightness(), since the
+// curve rounds too coarsely to invert. Applies at once by rescaling the current
+// display; a running effect picks it up on its next frame. Called after the
+// reply is sent, so the show() here still respects reply-before-show.
 void setBrightnessLevel(uint8_t level) {
   ledBrightnessLevel = level; // remembered linearly for the UI read-back
   uint16_t brightnessSpan = MAX_BRIGHTNESS - MIN_BRIGHTNESS;
@@ -1462,15 +1257,14 @@ void setBrightnessLevel(uint8_t level) {
   strip.show();
 }
 
-// Sends a delimiter-framed ("|message|\n") response back to the hub over the
-// hardware serial link. HardwareSerial::print() only queues bytes into the
-// transmit buffer and returns, so the reply is flushed before returning: the
-// callers that update the strip right after replying (reply-before-show)
-// depend on the reply already being on the wire before show() turns interrupts
-// off. HardwareSerial::flush() waits for the TRANSMIT buffer to drain and,
-// unlike SoftwareSerial's, leaves the receive buffer alone, so a command that
-// arrives during the reply is still queued and handled. Reception continues on
-// interrupt throughout, so nothing is lost while this waits.
+// Sends a delimiter-framed ("|message|\n") reply to the hub. print() only
+// queues bytes into the transmit buffer, so the reply is flushed before
+// returning: callers that update the strip immediately afterwards depend on it
+// already being on the wire before show() turns interrupts off.
+// HardwareSerial::flush() drains the TRANSMIT buffer and, unlike
+// SoftwareSerial's, leaves the receive buffer alone, so a command arriving
+// during the reply is still queued. Reception continues on interrupt
+// throughout, so nothing is lost while this waits.
 void sendResponse(const char* message) {
   Serial.print(respDelimiter);
   Serial.print(message);
