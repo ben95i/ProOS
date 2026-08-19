@@ -39,18 +39,6 @@ function splitByDelimiter(str, delimiter = '-') {
     return [before, after];
 }
 
-function extractResponse(str, delimiter = '|') {
-    if (!str) return '';
-    const outstr = str.replace(/[\\"\n]/g, '');
-    if (!outstr || delimiter == null) return outstr;
-    const first = outstr.indexOf(delimiter);
-    if (first === -1) return outstr;
-    const last = outstr.lastIndexOf(delimiter);
-    return last > first
-        ? outstr.substring(first + 1, last) 
-        : outstr.substring(first + 1);
-}
-
 function padOctet(value) {
   return String(value).padStart(3, "0");
 }
@@ -108,6 +96,19 @@ class RoomManager {
     }
 }
 
+function extractResponse(str, delim) {
+    if (!str) return str;
+    // allows newline characters \n only remove all \'s
+    const outstr = str.replace(/\\n|[\\"]/g, m => m === '\\n' ? '\n' : '');
+    if (delim === '') return outstr;
+    const first = outstr.indexOf(delim);
+    if (first === -1) return outstr;
+    const last = outstr.lastIndexOf(delim);
+    return last > first
+        ? outstr.substring(first + 1, last) 
+        : outstr.substring(first + 1);
+}
+
 async function commonAPIRequest(server, delim) {
     try {
         const response = await fetch(server, { 
@@ -122,12 +123,12 @@ async function commonAPIRequest(server, delim) {
 
 async function callPico(target, arg1, arg2 = '') {
     if (arg1 === "") return "callPico: argument cannot be empty";
-    return await commonAPIRequest(`http://${target}:4000/api?${arg1},,${arg2}~`, null);
+    return await commonAPIRequest(`http://${target}:4000/api?${arg1},,${arg2}~`, '');
 }
 
-async function callApi(target, arg1, arg2 = '') {
+async function callApi(target, arg1, arg2 = '', delim = '|') {
     if (arg1 === "") return "callApi: argument cannot be empty";
-    return await commonAPIRequest(`http://${target}:80/api?var=${arg2}&arg=${arg1}&action=main`, '|');
+    return await commonAPIRequest(`http://${target}:80/api?var=${arg2}&arg=${arg1}&action=main`, delim);
 }
 
 async function brComCall(cmd, pos = '') {
@@ -348,16 +349,17 @@ async function executeMain(baseWWW, firstArg, secondArg) {
             return await lrXmit(lrcmds.var1, lrcmds.var2);
         case "lrstatus":
             const lrRoom = new RoomManager();
-            const [wlRaw, wkst, hifi] = await Promise.all([
+            const [l1, l2, l3] = await Promise.all([
                 windowLamp1Status(),
                 lrXmit("wkststate"),
                 lrXmit("hifistate")
             ]);
-            const [wl1, wl2] = splitByDelimiter(wlRaw, '~');
-            lrRoom.addDevice('Window Lamp', wl1);
-            lrRoom.addDevice('Lamp Backlight', wl2);
-            lrRoom.addDevice('Desktop PC', wkst);
-            lrRoom.addDevice('Stereo System', hifi);
+            const [l1a, l1b] = 
+                splitByDelimiter(l1, '~');
+            lrRoom.addDevice('Window Lamp', l1a);
+            lrRoom.addDevice('Lamp Backlight', l1b);
+            lrRoom.addDevice('Desktop PC', l2);
+            lrRoom.addDevice('Stereo System', l3);
             lrRoom.updateRoomState();
             return lrRoom.getData();
         case "lrlightson":
@@ -377,7 +379,7 @@ async function executeMain(baseWWW, firstArg, secondArg) {
             return await brXmit(brcmds.var1, brcmds.var2);
         case "brstatus":
             const brRoom = new RoomManager();
-            const [lamp, bedleds, retro, macs, tv, pc, amp] = await Promise.all([
+            const [b1, b2, b3, b4, b5, b6, b7] = await Promise.all([
                 brXmit("brlamp1"),
                 brXmit("bed_leds_sts"),
                 brXmit("retropi"),
@@ -386,13 +388,13 @@ async function executeMain(baseWWW, firstArg, secondArg) {
                 brXmit("brpc"),
                 callApi(IP_ADRS.brpi, "ampstate")
             ]);
-            brRoom.addDevice('Desk Lamp', lamp);
-            brRoom.addDevice('Bed Lights', bedleds);
-            brRoom.addDevice('RetroPi TV', retro);
-            brRoom.addDevice('Vintage Macs', macs);
-            brRoom.addDevice('Bedroom TV', tv);
-            brRoom.addDevice('Bedroom PC', pc);
-            brRoom.addDevice('Audio System', amp);
+            brRoom.addDevice('Desk Lamp',    b1);
+            brRoom.addDevice('Bed Lights',   b2);
+            brRoom.addDevice('RetroPi TV',   b3);
+            brRoom.addDevice('Vintage Macs', b4);
+            brRoom.addDevice('Bedroom TV',   b5);
+            brRoom.addDevice('Bedroom PC',   b6);
+            brRoom.addDevice('Audio System', b7);
             brRoom.updateRoomState();
             return brRoom.getData();
         case "bron":
@@ -410,8 +412,9 @@ async function executeMain(baseWWW, firstArg, secondArg) {
                 callApi(IP_ADRS.brpc, "sleep")
             ]).catch(() => {});
             return "OK";
-        case "stop-br":
-            return await callApi(IP_ADRS.brpi, "stoprelax");
+        case "relaxmenu":
+        case "relaxstop":
+            return await callApi(IP_ADRS.brpi, firstArg, '', '');
         case "status":
             try { return await runStatusUpdate(baseWWW); } 
             catch (exc) { return "status update exception: " + exc.message; }

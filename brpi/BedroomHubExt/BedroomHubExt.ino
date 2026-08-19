@@ -6,7 +6,123 @@
  * the same framed serial protocol as AutomateHub_1.
  * -----------------------------------------------------------
  *
- * Link: hardware USART at 9600 baud - pin 0 = RX (hub ExtSerial2 TX), pin 1 =
+ * v1 - 07/26/2026 - SoftwareSerial link, hello only
+ * v2 - 07/26/2026 - hardware Serial (pins 0/1) link + WS2812 control
+ * v3 - 07/26/2026 - back to SoftwareSerial link (RX 10 / TX 11) + WS2812 control
+ * v4 - 07/26/2026 - strip lit-status query (11008) + fast effect resume
+ * v5 - 07/27/2026 - brightness floor, burst-aware effect resume, trailing
+ *                   terminator no longer re-arms the long holdoff
+ * v6 - 07/31/2026 - theater-chase and comet effects, per-effect speed
+ * v7 - 08/01/2026 - adjustable-chair motor control (non-blocking pulses,
+ *                   burst extension, run-time limit + cooldown lockout,
+ *                   direction settle time)
+ * v8 - 08/01/2026 - motor cumulative duty-cycle limiter (leaky-bucket run
+ *                   budget) + both-pins-high hardware interlock guard
+ * v9 - 08/01/2026 - motor code simplified: duty bucket alone now enforces
+ *                   the 60 s run cap (redundant run timer/clamp removed),
+ *                   pin read-back guard dropped (GPIOs drive MOSFET gates
+ *                   directly and every start passes through both-pins-low)
+ * v10- 08/02/2026 - smooth hue animation: the rainbow/cycle hue now advances
+ *                   from elapsed time in 1/4096-hue fixed point instead of a
+ *                   fixed jump per frame, so a frame delayed or skipped by
+ *                   link traffic no longer changes the animation speed. Frame
+ *                   intervals lowered (speed unchanged, see the tuning notes)
+ *                   for finer per-frame color steps, catch-up is clamped so a
+ *                   long holdoff cannot cause a color jump, gamma is now a
+ *                   compile-time option, and every effect re-checks the link
+ *                   immediately before strip.show() so the raised frame rate
+ *                   does not cost command responsiveness
+ * v11- 08/02/2026 - LED/effect code consolidated: one global EFFECT_INTERVAL_MS
+ *                   for every effect (per-effect intervals and
+ *                   currentEffectInterval() dropped), a per-effect SPEED step
+ *                   for all four effects including the two pattern ones, the
+ *                   four separate position variables replaced by one shared
+ *                   phase accumulator, and the link re-check / strip.show() /
+ *                   phase advance hoisted out of the four renderers into
+ *                   serviceEffects() so each exists exactly once. static_assert
+ *                   guards removed - the valid range of every tuning constant
+ *                   is documented instead
+ * v12- 08/02/2026 - effect resume command (011007) removed; pause is now
+ *                   cleared by re-issuing an effect command, which also
+ *                   rewinds that effect to its origin. Command value 7 is
+ *                   left unused so the rest of the map is unchanged
+ * v13- 08/02/2026 - perceptual brightness: register 16's 0-255 level is now
+ *                   mapped through a square-law curve (the standard integer
+ *                   approximation of the eye's response) before it is applied
+ *                   to the strip, so the level scales evenly in PERCEIVED
+ *                   steps instead of bunching all visible change into the
+ *                   bottom of the range. The commanded level itself is stored
+ *                   and echoed back linearly, so the UI slider is unaffected
+ * v14- 08/11/2026 - hub link moved from SoftwareSerial (RX 10 / TX 11) to the
+ *                   Uno's hardware USART on pins 0/1; the SoftwareSerial
+ *                   library, its port object and its pin defines are gone.
+ *                   sendResponse() now ends with Serial.flush() so a reply is
+ *                   still completely on the wire before the function returns,
+ *                   which is what the reply-before-show ordering relies on:
+ *                   HardwareSerial::print() only queues into the TX buffer,
+ *                   and unlike SoftwareSerial::flush(), HardwareSerial's
+ *                   flush() drains that TX buffer and does NOT touch the
+ *                   receive buffer, so no queued command is discarded.
+ *                   Nothing else changed - protocol, command map, effects,
+ *                   power and motor logic are all untouched
+ * v16- 08/11/2026 - fix: no response reached the hub when forwarded through
+ *                   AutomateHub's SoftwareSerial ExtSerial2 (direct to the Pi
+ *                   worked). The hub is deaf while it bit-bangs the terminator
+ *                   byte it sends after each frame's '>', and the hardware
+ *                   USART here answers fast enough to land inside that window,
+ *                   so the reply's leading '|' was lost and the hub timed out.
+ *                   The reply now waits for that terminator (REPLY_GUARD_MS
+ *                   cap) before it is sent
+ * v21- 08/11/2026 - fix: the fade never ran. Its abort test was linkIsBusy(),
+ *                   but the fade is reached from inside decodeMessage(), where
+ *                   serialMsgEnd is still set for the command being answered
+ *                   and the master's terminator byte is already buffered by
+ *                   waitForMasterTerminator() - so it was always true and the
+ *                   fade cut to black on step 1, blanking instantly. It now
+ *                   samples the pending byte count once and aborts only on
+ *                   growth past it, which is what a NEW command looks like.
+ *                   Command 011000 also fades a static color out now, not just
+ *                   a running effect; color-to-color changes stay instant
+ * v20- 08/14/2026 - fade snapshot stored as three bytes per pixel instead of a
+ *                   packed 32-bit color, saving one byte per pixel of stack
+ *                   (180 rather than 240 at 60 pixels) for the length of a
+ *                   fade. It is repacked per pixel per step so scaleColor()
+ *                   still does the scaling; no behavior change
+ * v19- 08/14/2026 - removed command 011002 (fill all) and its case; staging
+ *                   the three color channels is now the only path to a solid
+ *                   color, and fillStripWithStagedColor() is reached only from
+ *                   there. Command value 2 joins 3 and 10 as a gap that
+ *                   answers with the error frame. Tidied alongside it, with no
+ *                   change in behavior: fadeStripOut() now reuses scaleColor()
+ *                   rather than repeating its math per channel, drops the
+ *                   clearStrip() that used to rewrite an already-black strip
+ *                   after the last fade step, and returns immediately when the
+ *                   strip is not lit instead of writing black over black
+ * v18- 08/14/2026 - stopEffect() now fades the strip out over STOP_FADE_MS
+ *                   instead of leaving the last frame frozen on the pixels.
+ *                   Staging all three color channels (registers 12/13/14)
+ *                   fills the strip on its own; command 011002 still works but
+ *                   is no longer required. Removed: command 011003 (set one
+ *                   pixel), command 011010 (theater chase) and register 15
+ *                   (stage pixel index), along with their effect, draw
+ *                   function, pattern constants and the staged-color helper
+ *                   that only the chase used. Remaining command values are
+ *                   UNCHANGED - 3 and 10 are simply gaps now and reply with
+ *                   the error frame, so nothing else on the hub side moves
+ * v17- 08/14/2026 - color cycle: pixels are now fanned across a small hue
+ *                   range (CYCLE_DITHER_SPREAD) so the strip dissolves across
+ *                   an output quantization step instead of every pixel
+ *                   stepping together, which is what made the orange-to-red
+ *                   part of the wheel visibly jump.
+ *                   Effect 7 is now a loading bar rather than a comet: a solid
+ *                   bar fills the strip over a dimmed background of the
+ *                   opposite hue, then restarts from the other end with a
+ *                   fresh random color pair. COMET_TAIL_LEN is gone and
+ *                   COMET_PIXEL_STEP / COMET_PERIOD are now BAR_PIXEL_STEP /
+ *                   BAR_PERIOD; the bar ignores the staged color, so registers
+ *                   12-14 now only feed the theater chase
+ *
+ * Link: hardware UART at 9600 baud - pin 0 = RX (hub ExtSerial2 TX), pin 1 =
  * TX (hub ExtSerial2 RX). On an Uno this port is shared with the USB/bootloader
  * connection, so the hub link must be disconnected while programming. Pin 13
  * (built-in LED) lights while a frame is being received and answered.

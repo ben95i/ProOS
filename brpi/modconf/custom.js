@@ -1,3 +1,4 @@
+const fs = require('fs');
 const { execFile } = require('child_process');
 const util = require('util');
 const execFileAsync = util.promisify(execFile);
@@ -14,7 +15,18 @@ let isLEDflashing = false;
 
 const SUDO = '/usr/bin/sudo';
 const ZTERM = '/usr/bin/ztermcom';
-const RELAX = '/opt/rpi/relaxrun.sh';
+
+const RELAX_CMD = '/opt/rpi/relaxrun.sh';
+const RELAX_MENU = '/var/www/html/menus/relaxmenu.txt';
+const RELAX_MENU_TAG = 'relaxmenu';
+const RELAX_ACTIVE_TAG = 'relaxactive';
+const RELAX_STOP_ROW = 'stop|relaxstop|Stop';
+
+// Currently running relaxrun.sh command (arg2), or null when nothing is running.
+let relaxState = null;
+
+// Cached relaxmenu.txt contents, reloaded when the file's mtime changes.
+let relaxMenuCache = { mtimeMs: null, entries: [] };
 
 const fifoQueue = [];
 let isQueueProcessing = false;
@@ -104,6 +116,86 @@ function hexToRgb(hex_in) {
   };
 }
 
+// --- relax menu / state -----------------------------------------------------
+
+// Parse relaxmenu.txt into [{ command, display }]. Blank lines and lines
+// starting with # are ignored. Result is cached until the file's mtime changes.
+function loadRelaxMenu() {
+    try {
+        const { mtimeMs } = fs.statSync(RELAX_MENU);
+        if (mtimeMs === relaxMenuCache.mtimeMs) return relaxMenuCache.entries;
+        const entries = fs.readFileSync(RELAX_MENU, 'utf8')
+            .split(/\r?\n/)
+            .map(line => line.trim())
+            .filter(line => line.length > 0 && !line.startsWith('#'))
+            .map(line => {
+                const parts = line.split('|');
+                return {
+                    command: (parts[0] || '').trim(),
+                    display: parts.slice(1).join('|').trim()
+                };
+            })
+            .filter(entry => entry.command.length > 0);
+        relaxMenuCache = { mtimeMs, entries };
+    } catch (error) {
+        console.error(`Failed to read ${RELAX_MENU}: ${error.message}`);
+    }
+    return relaxMenuCache.entries;
+}
+
+function isKnownRelaxCommand(cmd) {
+    const menu = loadRelaxMenu();
+    // If the menu file can't be read at all, don't block playback on validation.
+    if (menu.length === 0) return true;
+    return menu.some(entry => entry.command === cmd);
+}
+
+// Stops relaxrun.sh and clears the tracked state. State is cleared on failure
+// too, so a bad/absent process can never leave the UI stuck showing "active".
+async function stopRelax() {
+    try {
+        await execFileAsync(SUDO, [RELAX_CMD, 'stop'], { timeout: PROCESS_TIMEOUT });
+        return { ok: true };
+    } catch (error) {
+        return { ok: false, error: error.message };
+    } finally {
+        relaxState = null;
+    }
+}
+
+// Enforces a single running instance: any existing sound is stopped first.
+async function startRelax(cmd) {
+    if (relaxState !== null) {
+        const stopped = await stopRelax();
+        if (!stopped.ok) {
+            return `Failed to stop running relaxrun: ${stopped.error}`;
+        }
+    }
+    try {
+        const { stdout } = await execFileAsync(SUDO, [RELAX_CMD, cmd], { timeout: PROCESS_TIMEOUT });
+        relaxState = cmd;
+        return stdout;
+    } catch (error) {
+        relaxState = null; // not running
+        return `relaxrun failed: ${error.message}`;
+    }
+}
+
+// COMMAND|relaxmenu|DISPLAY_NAME  (or relaxactive for the running command).
+// When one of the menu commands is active, "stop|relaxstop|Stop" is prepended.
+function relaxDisplayMenu() {
+    const menu = loadRelaxMenu();
+    if (menu.length === 0) return `unable to read ${RELAX_MENU}`;
+    const lines = menu.map(({ command, display }) =>
+        `${command}|${command === relaxState ? RELAX_ACTIVE_TAG : RELAX_MENU_TAG}|${display}`);
+    if (menu.some(({ command }) => command === relaxState)) {
+        lines.unshift(RELAX_STOP_ROW);
+    }
+    return lines.join('\n');
+}
+
+// ---------------------------------------------------------------------------
+
 const optAMode = async () => await ztermCom(USB_SERIAL, "02002");
 const optBMode = async () => await ztermCom(USB_SERIAL, "02001");
 const coaxMode = async () => await ztermCom(USB_SERIAL, "02003");
@@ -132,26 +224,25 @@ async function exeCustom(ramDisk, arg1, arg2 = "") {
             return;
         }
         case "relax": {
+            const requested = String(arg2 || "").trim();
+            if (!requested)  return "relax: no sound specified";
+            if (!isKnownRelaxCommand(requested)) {
+                return `relax: unknown sound "${requested}"`;
+            }
             if (await powerStatus() === "1") {
                 await coaxMode();
             } else {
                 await ztermCom(USB_SERIAL, "01003");
             }
-            try {
-                const { stdout } = await execFileAsync(SUDO, [RELAX, arg2], { timeout: PROCESS_TIMEOUT });
-                return stdout;
-            } catch (e) {
-                return `relaxrun failed: ${e.message}`;
-            }
+            return await startRelax(requested);
         }
-        case "stoprelax":
-            try {
-                await execFileAsync(SUDO, [RELAX, 'stop'], { timeout: PROCESS_TIMEOUT });
-            } catch (e) {
-                return `Failed to stop relaxrun: ${e.message}`;
-            }
+        case "relaxmenu":    return relaxDisplayMenu();
+        case "relaxstop": {
+            const stopped = await stopRelax();
+            if (!stopped.ok) return `Failed to stop relaxrun: ${stopped.error}`;
             await optAMode();
             return "OK";
+        }
         case "opt-a":        return await optAMode();
         case "opt-b":        return await optBMode();
         case "coaxial":      return await coaxMode();
@@ -164,17 +255,19 @@ async function exeCustom(ramDisk, arg1, arg2 = "") {
         case "volstate":     return await ztermCom(USB_SERIAL, "01007");
         case "ampstate":     return await powerStatus();        
         case "ampstateon":   return await ztermCom(USB_SERIAL, "01004");
-        case "ampstateoff":
+        case "ampstateoff": {
             await ztermCom(USB_SERIAL, "01002");
-            try {
-                await execFileAsync(SUDO, [RELAX, 'stop'], { timeout: PROCESS_TIMEOUT });
-            } catch (e) {
-                return `Failed to stop relaxrun: ${e.message}`;
-            }
+            const stopped = await stopRelax();
+            if (!stopped.ok) return `Failed to stop relaxrun: ${stopped.error}`;
             return "OK";
+        }
         case "amptogglepwr": {
-            if (await powerStatus() === "1") await ztermCom(USB_SERIAL, "01002");
-            else await onLastInput();
+            if (await powerStatus() === "1") {
+                await ztermCom(USB_SERIAL, "01002");
+                await stopRelax();
+            } else {
+                await onLastInput();
+            }
             return "OK";
         }
         case "hwcom":

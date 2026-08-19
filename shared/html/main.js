@@ -359,9 +359,9 @@ function topNavTemplate(f) {
 </div>`;
 }
 registerListeners({
-  'btn-dyn-mainmenu':    () => showDynMenu('mainmenu'),
+  'btn-dyn-mainmenu':    () => showDynFileMenu('mainmenu'),
   'btn-menu-pimainmenu': () => showMenu('pi-mainmenu'),
-  'btn-dyn-thememenu':   () => showDynMenu('thememenu'),
+  'btn-dyn-thememenu':   () => showDynFileMenu('thememenu'),
   'btn-show-bookmarks':  () => showBookmarks(),
   'nav_stats_menu':      () => showStatusMenu()
 });
@@ -459,9 +459,9 @@ function mainGridTemplate(f) {
 </div>`;
 }
 registerListeners({
-  'btn-dyn-ledcolormenu':  () => showDynMenu('ledcolormenu'),
+  'btn-dyn-ledcolormenu':  () => showDynFileMenu('ledcolormenu'),
   'btn-fc-color-prompt':   () => openColorPrompt('leds', 'hex', '3args'),
-  'btn-dyn-ledeffectmenu': () => showDynMenu('ledeffectmenu'),
+  'btn-dyn-ledeffectmenu': () => showDynFileMenu('ledeffectmenu'),
   'btn-power-fc_leds':     () => showPowerMenu('fc_leds'),
   'btn-cmd-leds-shuffle':  () => sendCmd('leds', 'shuffle'),
   'btn-cmd-leds-stop':     () => sendCmd('leds', 'stop'),
@@ -645,9 +645,7 @@ function bedroomGridTemplate() {
     <button type="button" class="button" id="btn-dyn-relaxmenu">
       <span class="button__text"><i class="fad fa-snooze"></i> Relax</span>
     </button>
-    <div class="dd-content dd-button" id="relaxmenu">
-      <a id="btn-cmd-stop-br"> Stop<i class="fad fa-stop"></i></a>
-    </div>
+    <div class="dd-content dd-button" id="relaxmenu"></div>
   </div>
   <div class="dropdown">
     <button type="button" class="button" id="btn-power-brlamp1">
@@ -720,8 +718,7 @@ registerListeners({
   'bed_leds-colorcycle':  () => sendCmd('main', 'brxmit', 'bed_leds_cs'),
   'bed_leds-sweep':       () => sendCmd('main', 'brxmit', 'bed_leds_sw'),
   'bed_leds-stop':        () => sendCmd('main', 'brxmit', 'bed_leds_off'),
-  'btn-dyn-relaxmenu':    () => showDynMenu('relaxmenu'),
-  'btn-cmd-stop-br':      () => sendCmd('main', 'stop-br'),
+  'btn-dyn-relaxmenu':    () => showDynAPIMenu('relaxmenu'),
   'btn-power-brlamp1':    () => showPowerMenu('brxmit', 'brlamp1'),
   'br-voldwnbtn':         () => sendVol(VOLUME_ACTIONS.voldwnbtn),
   'br-volmutebtn':        () => sendVol(VOLUME_ACTIONS.volmutebtn),
@@ -1447,7 +1444,7 @@ function showBookmarks() {
     return;
   }
   // draw bookmarks
-  showDynMenu("bookmarks");
+  showDynFileMenu("bookmarks");
   // render the edit/add buttons next to the bookmarks star on demand;
   // removeBookmarks() removes them again (no show/hide toggling)
   renderBookmarkButtons();
@@ -2440,7 +2437,7 @@ function savePOST(file, data) {
 
 //// Dynamic Menus ////
 
-function showDynMenu(menu) {
+function showDynFileMenu(menu) {
   let _elem = document.getElementById(menu);
   if (_elem.style.display === 'block') {
     _elem.style.display = 'none';
@@ -2448,11 +2445,26 @@ function showDynMenu(menu) {
     removeDropdowns();
      _elem.style.display = 'block';
     // build URL / append data
-    const url = location.protocol+ "//" +location.hostname + "/api/read?file=" + menu;
+    const url = location.protocol + "//" +location.hostname + "/api/read?file=" + menu;
     loadMenu(url).then((data) => { // wait for response
       if (menu === 'bookmarks') {
         showBookmarkSearch();
       }
+      drawMenu(data, menu);
+    });  
+  }
+}
+
+function showDynAPIMenu(menu) {
+  let _elem = document.getElementById(menu);
+  if (_elem.style.display === 'block') {
+    _elem.style.display = 'none';
+  } else {
+    removeDropdowns();
+     _elem.style.display = 'block';
+    // build URL / append data
+    const url = location.protocol + "//"+ location.hostname + "/api?var=&arg=" + menu + "&action=main";
+    loadMenu(url).then((data) => { // wait for response
       drawMenu(data, menu);
     });  
   }
@@ -2521,7 +2533,7 @@ function createListItem(col0_in, col1, col2, menuid) {
         if (effect_cmd == 'textscroll') {
           openTextScroll();
         } else {
-          sendCmd('leds',effect_cmd,'');
+          sendCmd('leds', effect_cmd);
         }
       });
       break;
@@ -2533,10 +2545,27 @@ function createListItem(col0_in, col1, col2, menuid) {
       });
       break;
     case 'relaxmenu': 
+    case 'relaxactive': 
       // relax menu
       _elm.addEventListener("click", function() {
         sendCmd('main', 'relax', col0);
       });
+      if (col1 == 'relaxactive') {
+        let relaxplay = document.createElement('i');
+        relaxplay.classList.add('fad');
+        relaxplay.classList.add('fa-play');
+        _elm.appendChild(relaxplay);
+      }
+      break;
+    case 'relaxstop': 
+      // relax menu
+      _elm.addEventListener("click", function() {
+        sendCmd('main', 'relaxstop');
+      });
+      let relaxstop = document.createElement('i');
+      relaxstop.classList.add('fad');
+      relaxstop.classList.add('fa-stop');
+      _elm.appendChild(relaxstop);
       break;
     case 'link': 
       // URL menu

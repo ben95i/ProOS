@@ -15,7 +15,7 @@ BINDMNTS="/mnt/bindmnts"
 TANK_DATA="$TANK_ROOT/data"
 TANK_MEDIA="$TANK_ROOT/media"
 TANK_SNAPS="$TANK_ROOT/.zfs/snapshot"
-PROOS_DIR="$TANK_DATA/ProOS"
+PROOS_DIR="$TANK_DATA/Projects/ProOS"
 RSYNC_BIN="nice -n 19 ionice -c 3 rsync"
 RSYNC_OPTIONS="-aP --delete --delete-excluded"
 
@@ -197,7 +197,7 @@ if [[ "$CMD" == "backupstd" || "$CMD" == "backupchk" ]]; then
           echo "flash drive not connected $POOL"
         else
           #### Data Share ####
-          if [ ! -e "$TANK_DATA/ProOS" ]; then
+          if [ ! -e "$PROOS_DIR" ]; then
             echo "Data' share not found!"
           else
             echo "syncing 'Data' share to $POOL drive..."
@@ -223,7 +223,7 @@ if [[ "$CMD" == "backupstd" || "$CMD" == "backupchk" ]]; then
           echo "hard drive not connected $POOL"
         else      
           #### Data Share ####
-          if [ ! -e "$TANK_DATA/ProOS" ]; then
+          if [ ! -e "$PROOS_DIR" ]; then
             echo "Data' share not found!"
           else
             echo "syncing 'Data' share to $POOL drive..."
@@ -583,11 +583,11 @@ if [ "$CMD" == "pve_vmsbkp" ]; then
   ###
   echo " "
   echo "Copying VM's to Datastore..."
-  rsync --progress -a /var/lib/vz/dump/vzdump-* $TANK_DATA/ProOS/pve/vmbkps/
-  chmod -R 777 $TANK_DATA/ProOS/pve/vmbkps/*.vma.zst
-  chmod -R 777 $TANK_DATA/ProOS/pve/vmbkps/*.tar.zst
-  chmod -R 777 $TANK_DATA/ProOS/pve/vmbkps/*.conf
-  chmod -R 777 $TANK_DATA/ProOS/pve/vmbkps/*.log
+  rsync --progress -a /var/lib/vz/dump/vzdump-* $PROOS_DIR/pve/vmbkps/
+  chmod -R 777 $PROOS_DIR/pve/vmbkps/*.vma.zst
+  chmod -R 777 $PROOS_DIR/pve/vmbkps/*.tar.zst
+  chmod -R 777 $PROOS_DIR/pve/vmbkps/*.conf
+  chmod -R 777 $PROOS_DIR/pve/vmbkps/*.log
   echo "Backup Complete."
   rm -f "$RAMDISK/pvebackup.lock"
   END_ROUTINE
