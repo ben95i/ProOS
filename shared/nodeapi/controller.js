@@ -98,7 +98,6 @@ class RoomManager {
 
 function extractResponse(str, delim) {
     if (!str) return str;
-    // allows newline characters \n only remove all \'s
     const outstr = str.replace(/\\n|[\\"]/g, m => m === '\\n' ? '\n' : '');
     if (delim === '') return outstr;
     const first = outstr.indexOf(delim);
@@ -109,7 +108,7 @@ function extractResponse(str, delim) {
         : outstr.substring(first + 1);
 }
 
-async function commonAPIRequest(server, delim) {
+async function commonAPIRequest(server, delim = '') {
     try {
         const response = await fetch(server, { 
             signal: AbortSignal.timeout(PROCESS_TIMEOUT)});
@@ -123,7 +122,8 @@ async function commonAPIRequest(server, delim) {
 
 async function callPico(target, arg1, arg2 = '') {
     if (arg1 === "") return "callPico: argument cannot be empty";
-    return await commonAPIRequest(`http://${target}:4000/api?${arg1},,${arg2}~`, '');
+    const response = await commonAPIRequest(`http://${target}:4000/api?${arg1},,${arg2}~`);
+    return response.replaceAll('\n', '');
 }
 
 async function callApi(target, arg1, arg2 = '', delim = '|') {
@@ -132,18 +132,18 @@ async function callApi(target, arg1, arg2 = '', delim = '|') {
 }
 
 async function brComCall(cmd, pos = '') {
-    return decodeXmitCmd(pos, await callApi(IP_ADRS.brpi, "hwcom", cmd));
+    return decodeXmitCmd(await callApi(IP_ADRS.brpi, "hwcom", cmd), pos);
 }
 
 async function lrComCall(cmd, pos = '') {
-    return decodeXmitCmd(pos, await callApi(IP_ADRS.lrxmit, "extcom", cmd));
+    return decodeXmitCmd(await callApi(IP_ADRS.lrxmit, "extcom", cmd), pos);
 }
 
-function decodeXmitCmd(pos, out){
-    if (pos === '') return out;
-    if (out && out.length === 1) return out;
-    if (out && out.length === 3) return out[parseInt(pos)] === "9" ? "1" : "0";
-    return `invalid response: ${out}`;
+function decodeXmitCmd(str, pos){
+    if (pos === '') return str;
+    if (str && str.length === 1) return str;
+    if (str && str.length === 3) return str[parseInt(pos)] === "9" ? "1" : "0";
+    return `invalid response: ${str}`;
 }
 
 function parseInputData(input, marker) {

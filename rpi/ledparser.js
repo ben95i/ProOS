@@ -186,7 +186,7 @@ async function OPCLEDparser(baseWWW, CommandIn = "", secondaryArgument = "") {
         return await apiResponse.text();
     } catch (e) {}
 
-    const registeredCppEffects = ["orbits", "noise", "chase", "miami", "stripes", "spectro", "oscope", "textscroll"];
+    const registeredCppEffects = ["orbits", "noise", "chase", "miami", "stripes", "spectro", "oscope", "textscroll", "maze"];
     if (registeredCppEffects.includes(effectCommand)) {
         let binaryArgs = [currentLedHardware];
 
@@ -207,11 +207,8 @@ async function OPCLEDparser(baseWWW, CommandIn = "", secondaryArgument = "") {
 
         // Scrolling Text        
         if (effectCommand === "textscroll") {
-          const tsWebSafeBase64 = secondaryArgument;
-          if (tsWebSafeBase64 == "" || tsWebSafeBase64 == null) {
-            return "TextScroll: argument cannot be empty";
-          }
-          const tsWebUnsafeBase64 = tsWebSafeBase64.replace(/-/g, "+").replace(/_/g, "/").replace(/@/g, "=");
+          if (secondaryArgument == "" || secondaryArgument == null) return "TextScroll: argument cannot be empty";
+          const tsWebUnsafeBase64 = secondaryArgument.replace(/-/g, "+").replace(/_/g, "/").replace(/@/g, "=");
           const tsDecodedCommands = Buffer.from(tsWebUnsafeBase64, 'base64').toString('utf8');
           const tsCommandArray = tsDecodedCommands.split("|"); 
           const tsMessage = tsCommandArray[0];
@@ -220,7 +217,6 @@ async function OPCLEDparser(baseWWW, CommandIn = "", secondaryArgument = "") {
           const tsSpeed = tsCommandArray[3]; 
           binaryArgs.push(tsMessage, tsColor, tsFont, tsSpeed);
         }
-
 
         await executeEffectProcess(`${EFFECTS_DIRECTORY_PATH}/${effectCommand}`, binaryArgs, `cpp_${effectCommand}`);
         return `Binary Effect: ${effectCommand}`;

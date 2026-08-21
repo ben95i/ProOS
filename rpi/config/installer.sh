@@ -527,6 +527,16 @@ if ! cmp -s $LED_EF/textscroll.cpp $SRC_BKP/textscroll.cpp; then
 fi
 mv -f $LED_EF/textscroll.cpp $SRC_BKP/
 #######################################################
+if [ ! -f "$SRC_BKP/maze.cpp" ]; then
+  touch $SRC_BKP/maze.cpp
+fi
+if ! cmp -s $LED_EF/maze.cpp $SRC_BKP/maze.cpp; then
+    echo "Compiling LED Maze Program..."
+    rm -f $LED_EF/maze
+    g++ -std=c++17 -O2 $LED_EF/maze.cpp $LED_EF/ledlayout.cpp $LED_EF/opcclient.cpp -o $LED_EF/maze -pthread
+fi
+mv -f $LED_EF/maze.cpp $SRC_BKP/
+#######################################################
 if [ ! -f "$SRC_BKP/mp4toleds.cpp" ]; then
   touch $SRC_BKP/mp4toleds.cpp
 fi

@@ -3,6 +3,7 @@ triangles|ledmenu|Triangles
 abstract|ledmenu|Abstract
 flames|ledmenu|Flames
 tunnel|ledmenu|Tunnel
+maze|ledmenu|Maze
 warp|ledmenu|Warp
 rays|ledmenu|Rays
 noise|ledmenu|Noise
@@ -29,6 +30,5 @@ ink|ledmenu|Ink
 gas|ledmenu|Gas
 water|ledmenu|Water
 strobe|ledmenu|Strobe
-tetris|ledmenu|Tetris
 gold|ledmenu|Gold
 chase|ledmenu|Chase

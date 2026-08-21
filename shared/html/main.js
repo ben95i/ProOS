@@ -2508,6 +2508,12 @@ window.drawMenu = function(data, menu) {
     }
     // store menu name at end of array
     App.fileData.push(menu);
+    // scroll only if the menu runs past the bottom of the viewport
+    const menuElement = document.getElementById(menu);
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+    if (menuElement && menuElement.getBoundingClientRect().bottom > viewportHeight) {
+      scrollToBottom();
+    }
   } else {
     showPopup("[drawMenu] no data to parse.");
   }
@@ -2699,6 +2705,13 @@ function removeDynMenus() {
     }
     App.dynMenuActive = 0;
   }
+}
+
+function scrollToBottom() {
+  window.scrollTo({
+    top: document.body.scrollHeight,
+    behavior: 'smooth'
+  });
 }
 
 function openColorPrompt(command, argument, cmd_type = '') {

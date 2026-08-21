@@ -151,52 +151,6 @@ body {
   display: none;
 }
 
-/*
- *  Homepage Styles
- */
-
-.grid {
-  display: flex;
-  flex-wrap: nowrap;
-  flex-direction: row;
-  align-items: flex-start;
-  justify-content: center;
-  white-space: nowrap;
-  min-height: 100%;  
-  height: 100%;
-}
-
-.grid::-webkit-scrollbar {
-  display: none;
-}
-
-.grid-sep {
-	border: none;
-  outline: none;
-  margin: 0;
-  padding: 0px;
-}
-
-.column-left {
-	border: none;
-  outline: none;
-  margin-top: 0px;
-  margin-bottom: 0px;
-  margin-right: 7px;
-  margin-left: 0px;
-  padding: 0px;
-}
-
-.column-right {
-	border: none;
-  outline: none;
-  margin-top: 5px;
-  margin-bottom: 0px;
-  margin-right: 0px;
-  margin-left: 0px;
-  margin: 0;
-}
-
 .banner__text {
   display: none;
   margin-top: 6px;
@@ -508,17 +462,63 @@ input.chkbox {
   overflow: clip;
 }
 
-/* adjust elements when screen width is less-than 900px */
-@media screen and (max-width: 900px) {
-  .column-left {
-    margin: 0px;
-  }
+.grid-sep {
+	border: none;
+  outline: none;
+  margin: 0;
+  padding: 0px;
+}
+
+.grid {
+  display: flex;
+  flex-wrap: nowrap;
+  justify-content: center;
+  white-space: nowrap;
+  min-height: 100%;  
+  height: 100%;
+  flex-direction: column;
+  align-items: center;
+}
+
+.grid::-webkit-scrollbar {
+  display: none;
+}
+
+.column-right {
+	border: none;
+  outline: none;
+  margin-top: 5px;
+  margin-bottom: 0px;
+  margin-right: 0px;
+  margin-left: 0px;
+  margin: 0;
+}
+
+.column-left {
+	border: none;
+  outline: none;
+  padding: 0px;
+  margin: 0;
+}
+
+/* adjust elements */
+
+@media screen and (max-height: 700px) {
   .grid {
-    flex-direction: column;
-    align-items: center;
+    flex-direction: row;
+    align-items: flex-start;
   }
+  .column-left {
+    margin-top: 0px;
+    margin-bottom: 0px;
+    margin-right: 7px;
+    margin-left: 0px;
+  }
+}
+
+@media screen and (max-width: 900px) {
   .log-popup {
-    width: 95%; /* log window width */  
+    width: 95%;
   }
 }
 
@@ -703,15 +703,15 @@ input.chkbox {
 }
 
 .bookmark-editmode a {
-    color: var(--alert-red);
-    text-decoration: underline
+  color: var(--alert-red);
+  text-decoration: underline
 }
 
 .bookmark-editmode a:active,
 .bookmark-editmode a:hover,
 .bookmark-editmode a.dd-selected {
-    background-color: var(--alert-red);
-    color: #eeeeee;
+  background-color: var(--alert-red);
+  color: #eeeeee;
 }
 
 #bookmarks {
