@@ -26,7 +26,7 @@ IGNORE=(
     "drives.txt"        # read by backupstd/backupchk
     "pwd.txt"           # ZFS load-key passphrase
     "fusearch.txt"      # gocryptfs passfile
-    "bookmarks.txt"     # bookmarks bind link
+    "*.save.txt"        # persistant files
     "*.lock"            # backupsvr.lock / pvebackup.lock
     "*.tmp"
 )

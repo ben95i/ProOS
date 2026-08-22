@@ -3,19 +3,19 @@
 
 import { requestThrottle, setTheme, classDisplay, checkElemIsVisibleByID,
   addClassToElem, removeWindow, cleanString, base64URLSafeEncode, splitMenuData, 
-  isNumeric, mapNumber, splitByDelimiter, sendCmd, timeoutInterval } from './utils.js';
+  isNumeric, mapNumber, splitByDelimiter, sendCmd, timeoutInterval,
+  html, showPopup, loadMenu, savePOST, scrollToBottom } from './utils.js';
 import ToggleSwitch, { toggleSwitchCallback } from './switch.js';
 import RoomStateManager from './roomstate.js';
 import AnimatedBackground from './stars.js';
 import ColorPrompt from './colorprompt.js';
 import WeatherWidget from './weather.js';
+import Lists from './lists.js';
+import Bookmarks from './bookmarks.js';
 import { deviceType } from './device.js';
 import { SSIDpwd } from './wifi.js';
 
 const MAIN_SITE = "Automate";
-const BKM_INACTIVE = 0;
-const BKM_OPEN_MODE = 1;
-const BKM_EDIT_MODE = 2;
 const ROOM_CONFIGS = {
   'lr':   { 
     name: 'Living Room',
@@ -45,12 +45,12 @@ const DELEGATED_LISTENERS = {};
 window.App = {
   starBackground: null,
   roomStateManager: null,
+  lists: null,
+  bookmarks: null,
   activeSwitches: [],
   fileData: [],
   serverCmdData: null,
-  messagePopupTimer: null,
   dynMenuActive: 0,
-  bookmarkState: 0,
   volPopupTimer: null,
   sysModel: null,
   activityTimeout: null,
@@ -172,7 +172,7 @@ function loadPage() {
 function handleClicks(event) {
   resetActivityTimer();
   // disable click events when in bookmark edit mode
-  if (App.bookmarkState === BKM_EDIT_MODE) {
+  if (App.bookmarks && App.bookmarks.isEditMode()) {
     if (event.target.className !== "editFav__win") {
       event.stopPropagation();
     }
@@ -225,7 +225,7 @@ window.removeDropdowns = function() {
   classDisplay("dd-content", "none");
   removeDynMenus();
   if (App.sysModel === MAIN_SITE) {
-    removeBookmarks();
+    if (App.bookmarks) App.bookmarks.close();
     if (App.activeSwitches && App.activeSwitches.length > 0) {
       App.activeSwitches.forEach(toggle => {
         if (typeof toggle.destroy === 'function') toggle.destroy();
@@ -236,16 +236,6 @@ window.removeDropdowns = function() {
       window.weatherWidget.closeMenu();
     }
   }
-}
-
-function removeBookmarks() {
-  const elem = document.getElementById("bookmarks");
-  if (elem) elem.classList.remove("bookmark-editmode");
-  const bkmButtons = document.getElementById("bookmark-buttons");
-  if (bkmButtons) bkmButtons.remove();
-  removeBookmarkSearch();
-  closeBookmarkPrompt();
-  App.bookmarkState = BKM_INACTIVE;
 }
 
 function openRoomDropdown() {
@@ -363,26 +353,9 @@ registerListeners({
   'btn-menu-pimainmenu': () => showMenu('pi-mainmenu'),
   'btn-dyn-thememenu':   () => showDynFileMenu('thememenu'),
   'btn-show-bookmarks':  () => showBookmarks(),
+  'btn-edit-bookmark':   () => App.bookmarks && App.bookmarks.editMode(),
+  'btn-add-bookmark':    () => App.bookmarks && App.bookmarks.addBookmark(),
   'nav_stats_menu':      () => showStatusMenu()
-});
-
-// bookmark edit/add buttons -- rendered on demand by showBookmarks() right
-// after the bookmarks star, and removed by removeBookmarks(); same
-// render-only pattern as the room grids, no show/hide toggling
-function bookmarkButtonsTemplate() {
-  return `
-  <div class="bookmark-buttons" id="bookmark-buttons">
-    <a id="btn-edit-bookmark">
-      <i class="fad fa-edit"></i>
-    </a>
-    <a id="btn-add-bookmark">
-      <i class="fad fa-folder-plus"></i>
-    </a>
-  </div>`;
-}
-registerListeners({
-  'btn-edit-bookmark': () => editBookmark(),
-  'btn-add-bookmark':  () => addBookmark()
 });
 
 function navDropdownsTemplate(f) {
@@ -501,8 +474,8 @@ function roomControlsTemplate() {
     </div>
   </div>
   <p class="grid-sep"></p>
-  <button type="button" class="button" id="btn-yt-link">
-    <span class="button__text"><i class="fab fa-youtube"></i> YouTube</span>
+  <button type="button" class="button" id="btn-media-link">
+    <span class="button__text"><i class="fad fa-mp3-player"></i> Media</span>
   </button>
   <button type="button" class="button" id="btn-show-temphumid">
     <span class="button__text">
@@ -510,8 +483,8 @@ function roomControlsTemplate() {
       <i class="fad fa-humidity large__icon"></i>
     </span>
   </button>
-  <button type="button" class="button" id="btn-media-link">
-    <span class="button__text"><i class="fad fa-mp3-player"></i> Media</span>
+  <button type="button" class="button" id="btn-lists">
+    <span class="button__text"><i class="fad fa-tasks"></i> Lists</span>
   </button>
   <p class="grid-sep"></p>
   <button type="button" class="button" id="btn-open-cam">
@@ -531,7 +504,7 @@ function roomControlsTemplate() {
 }
 registerListeners({
   'btn-media-link':     () => GoToExtPage('media.home'),
-  'btn-yt-link':        () => GoToExtPage('youtube.com'),
+  'btn-lists':          () => showLists(),
   'btn-menu-allmenu':   () => showMenu('allmenu'),
   'btn-menu-pwrmenu':   () => showMenu('pwrmenu'),
   'btn-power-on':       () => sendCmd('main', 'allon'),
@@ -1397,393 +1370,31 @@ function setAmpVolume(_cmd, _device, _maxvol) {
   });
 }
 
-// add HTTPs prefix if not defined
-function addHTTPtoURL(linkin) {
-  let linkout;
-  if (linkin === "" || linkin === null) {
-    linkout = "";
-  } else {  
-    if (linkin.toLowerCase().startsWith('http://', 0) || 
-        linkin.toLowerCase().startsWith('https://', 0)) {
-      linkout = linkin;
-    } else {
-      linkout = "https://" + linkin;
-    }
+//// Lists Window ////
+
+// opens the lists window (clicking again closes it); the window keeps its own
+// state and talks to the same read / write file API the bookmarks use,
+// checking each write so it can report the connection status
+function showLists() {
+  removeDropdowns();
+  if (!App.lists) {
+    App.lists = new Lists();
   }
-  return linkout;
+  App.lists.activate();
 }
 
 //// Bookmarks Menu ////
 
-// close add / edit window
-function closeBookmarkPrompt() {
-  // re-enable click outside of window
-  document.querySelectorAll("*:not(#editFav__prompt)").forEach(elem1 => {
-    elem1.style.pointerEvents = "";
-  }); 
-  // un-highlight selected item
-  for (let idx = 0; idx <= App.fileData.length; idx++) {
-    const _menuid = "menu-" + idx;
-    const elem2 = document.getElementById(_menuid);
-    if (elem2) {
-      if(elem2.classList.contains('dd-selected')) {
-        elem2.classList.remove("dd-selected");
-      }
-    }
-  }
-  const favPrompt = document.getElementById("editFav__prompt");
-  if (favPrompt) {
-    favPrompt.remove();
-  }  
-}
-
+// star button: the Bookmarks class owns the menu, its buttons, the add/edit
+// window and the file; it is handed removeDropdowns() so cancelling closes
+// every menu exactly as it did before
 function showBookmarks() {
-  // hide menu if clicked while open
-  if (App.bookmarkState !== BKM_INACTIVE) {
-    removeDropdowns();
-    return;
-  }
-  // draw bookmarks
-  showDynFileMenu("bookmarks");
-  // render the edit/add buttons next to the bookmarks star on demand;
-  // removeBookmarks() removes them again (no show/hide toggling)
-  renderBookmarkButtons();
-  // link open mode
-  App.bookmarkState = BKM_OPEN_MODE;
-}
-
-function renderBookmarkButtons() {
-  if (document.getElementById("bookmark-buttons")) return;
-  const starBtn = document.getElementById("btn-show-bookmarks");
-  if (!starBtn) return;
-  starBtn.insertAdjacentHTML("afterend", bookmarkButtonsTemplate());
-}
-
-function showBookmarkSearch() {
-  const elem = document.getElementById("bookmarks");
-  if (elem) {
-    // draw menu container with search icon + text input box
-    const searchMenuItem = document.createElement("a");
-    searchMenuItem.id = "bookmark__search";
-    searchMenuItem.classList.add("nohide");
-    searchMenuItem.innerHTML = html`
-      <input type="text" id="bookmark__search_txt" class="nohide" placeholder="Search here..." autocorrect="off" autocapitalize="none">
-    `;
-    elem.appendChild(searchMenuItem);
-    const searchBox = document.getElementById("bookmark__search_txt");
-    // focus keyboard on search text box
-    searchBox.focus();
-    // filter list as the user types
-    searchMenuItem.addEventListener("input", function searchInputListener() {
-      filterBookmarkItems(searchBox.value);
+  if (!App.bookmarks) {
+    App.bookmarks = new Bookmarks({
+      removeDropdowns: removeDropdowns
     });
   }
-}
-
-function filterBookmarkItems(termIn) {
-  const searchTerm = termIn.toLowerCase();
-  const bookmarks = document.getElementById("bookmarks");
-  if (bookmarks) {
-    [...bookmarks.getElementsByClassName("bookmarked__item")].forEach((elem) => {
-      const bookmarkText = elem.textContent.toLowerCase();
-      elem.style.display = bookmarkText.includes(searchTerm) ? "list-item" : "none";
-    });
-  }
-}
-
-function removeBookmarkSearch() {
-  const search = document.getElementById("bookmark__search");
-  if (search) search.remove();
-  const search_txt = document.getElementById("bookmark__search_txt");
-  if (search_txt) search_txt.remove();
-}
-
-async function lookupURL() {
-  const urlBoxElem = document.getElementById("editFav__urlbox");
-  const nameBoxElem = document.getElementById("editFav__namebox");
-  if (urlBoxElem && nameBoxElem) {
-    nameBoxElem.value = "Processing...";
-    // read URL box
-    let urlin = urlBoxElem.value;
-    if (urlin === null || urlin == "") {
-      // read from clipboard if URL empty
-      urlin = await navigator.clipboard.readText();
-    }
-    // add HTTPs to URL
-    let url = addHTTPtoURL(urlin);
-    urlBoxElem.value = url;
-    let encoded_url = base64URLSafeEncode(url);
-    // search for URLs title
-    sendCmd('main', 'sitelookup', encoded_url).then((data) => {
-      if (data === null || data == "") {
-        // URL lookup failed actions
-        nameBoxElem.value = "Not Found";
-        setTimeout(function() {
-          if (urlBoxElem && nameBoxElem) {
-            nameBoxElem.value = null;
-            urlBoxElem.value = null;
-          }
-        }, 2000);
-      } else { 
-        // remove invalid characters, write to name box
-        nameBoxElem.value = cleanString(data);
-      }
-    });
-  }
-}
-
-function shiftMenuUp(elem) {
-  if (elem) {
-    if(elem.previousElementSibling)
-      elem.parentNode.insertBefore(elem, elem.previousElementSibling);
-  }
-}
-
-function shiftMenuDown(elem) {
-  if (elem) {
-    if(elem.nextElementSibling)
-      elem.parentNode.insertBefore(elem.nextElementSibling, elem);
-  }
-}
-
-function saveBookmarks() {
-  let _file = "";
-  const bookmarks = document.getElementById("bookmarks");
-  if (!bookmarks) {
-    return;
-  }
-  // loop through edited bookmarks
-  [...bookmarks.getElementsByClassName('bookmarked__item')].forEach(elem => {
-    if (elem) {
-      const url = Object.values(elem.url).join("");
-      const name = elem.innerText;
-      // build output file
-      _file += url + "|bkmrk|" + name + "\n";
-    }
-  });
-  // transmit file
-  savePOST('bookmarks', [_file]);
-}
-
-function editBookmark() {
-  // hide menu if clicked while open
-  if (App.bookmarkState === BKM_EDIT_MODE) {
-    removeDropdowns();
-    return;
-  }
-  enableEditAddMode();
-}
-
-function addBookmark() {
-  enableEditAddMode();
-  // create new unique menu ID (0 -> 0, 1 -> 1, n>1 -> n-1)
-  const _datalen = App.fileData.length;
-  const _newid = _datalen <= 1 ? _datalen : _datalen - 1;
-  // add temporary entry to menu array
-  App.fileData.push("placeholder");
-  // create placeholder menu item
-  const navElement = document.getElementById("bookmarks");
-  const _elm = document.createElement("a");
-  _elm.id = `menu-${_newid}`;
-  _elm.innerText = "New Bookmark";
-  _elm.classList.add("bookmarked__item");
-  // store URL
-  Object.defineProperty(_elm, "url", {
-    enumerable: false,
-    writable: true,
-    value: "about:blank"
-  });
-  // define click action
-  _elm.addEventListener("click", function () {
-    clickBookmark(_newid);
-  });
-  // highlight selected item
-  _elm.classList.add("dd-selected");
-  // insert item below
-  navElement.insertBefore(_elm, navElement.firstChild);
-  // add new window
-  drawBookmarkPrompt(true, null, null, _elm);
-}
-
-function enableEditAddMode() {
-  const elem = document.getElementById("bookmarks");
-  if (elem) { // change color of menu
-    elem.classList.add("bookmark-editmode");
-  }
-  // remove
-  removeBookmarkSearch();
-  App.bookmarkState = BKM_EDIT_MODE;
-  closeBookmarkPrompt();
-}
-
-function clickBookmark(id) {
-  const elem = document.getElementById(`menu-${id}`);
-  if (!elem) return;
-  const url = elem.url; // Object.values(str).join("") returned the same string
-  const name = elem.innerText;
-  if (App.bookmarkState === BKM_OPEN_MODE) {
-    if (!(url === null || url == "" || url == "about:blank")) {
-      // open URL in new tab
-      window.open(url, "_blank");
-    }
-  }
-  if (App.bookmarkState === BKM_EDIT_MODE) {
-    // edit bookmark item
-    closeBookmarkPrompt();
-    elem.classList.add("dd-selected"); // highlight selected item
-    drawBookmarkPrompt(false, url, name, elem);
-  }
-}
-
-async function drawBookmarkPrompt(add, url, name, elem) {
-  // create window: banner text, name box, URL box, six action buttons
-  const editFavPrompt = document.createElement("div");
-  editFavPrompt.className = "editFav__win";
-  editFavPrompt.id = "editFav__prompt";
-  editFavPrompt.classList.add("prompt_win");
-  const bannerText = add === true ? "Add Bookmark" : "Edit Bookmark";
-  editFavPrompt.innerHTML = html`
-    <div class="editFav__toptext">${bannerText}</div>
-    <input type="text" id="editFav__namebox" class="editFav__textbox"
-           autocorrect="off" autocapitalize="none">
-    <input type="text" id="editFav__urlbox" class="editFav__textbox"
-           autocorrect="off" autocapitalize="none">
-    <button class="editFav__button button fad fa-arrow-up" type="button"></button>
-    <button class="editFav__button button fad fa-search" type="button"></button>
-    <button class="editFav__button button fad fa-arrow-down" type="button"></button>
-    <button class="editFav__button button fad fa-save" type="button"></button>
-    <button class="editFav__button button fad fa-times-octagon" type="button"></button>
-    <button class="editFav__button button fad fa-trash-alt" type="button"></button>
-  `;
-  // element references (buttons in DOM order: row1 up/lookup, row2 down/save,
-  // row3 cancel/delete)
-  const editFavText = editFavPrompt.querySelector(".editFav__toptext");
-  const nameBox = editFavPrompt.querySelector("#editFav__namebox");
-  const urlBox = editFavPrompt.querySelector("#editFav__urlbox");
-  const [editFavUpBtn, editFavLookupBtn, editFavDownBtn,
-         editFavSaveBtn, editFavCancelBtn, editFavDeleteBtn] =
-    editFavPrompt.querySelectorAll("button");
-  // set values via properties (null coerces to "" exactly as before)
-  nameBox.value = name;
-  urlBox.value = url;
-  if (add === true) { // add new mode placeholders
-    nameBox.placeholder = "Enter Name";
-    urlBox.placeholder = "Enter URL";
-  }
-  // display window on page
-  document.body.appendChild(editFavPrompt);
-  // handle button actions
-  editFavPrompt.addEventListener("click", function handleButtonClicks(btn_event) {
-    if (btn_event.target.tagName !== "BUTTON") { return; }
-    // move up button action
-    if (btn_event.target === editFavUpBtn) {
-      shiftMenuUp(elem);
-    }
-    // move down button action
-    if (btn_event.target === editFavDownBtn) {
-      shiftMenuDown(elem);
-    }
-    // cancel button action
-    if (btn_event.target === editFavCancelBtn) {
-      editFavPrompt.removeEventListener("click", handleButtonClicks);
-      removeDropdowns();
-    }
-    // lookup URL action
-    if (btn_event.target === editFavLookupBtn) {
-      lookupURL();
-    }
-    // save button action
-    if (btn_event.target === editFavSaveBtn) {
-      // do not allow empty URL or name
-      let stopsave = false;
-      if (nameBox.value === null || nameBox.value == "") {
-        nameBox.placeholder = "Name cannot be empty";
-        stopsave = true;
-      }
-      if (urlBox.value === null || urlBox.value == "") {
-        urlBox.placeholder = "URL cannot be empty";
-        stopsave = true;
-      }
-      if (stopsave === true) {
-        return;
-      }
-      // update changed values
-      if (elem) {
-        // save name to menu object
-        const _boxname = nameBox.value.replaceAll("|", "-");
-        // name length limiter
-        const maxNameLength = 42;
-        if (_boxname.length >= maxNameLength) {
-          elem.innerText = `${_boxname.substring(0, maxNameLength)}...`;
-        } else {
-          elem.innerText = _boxname;
-        }
-        // save URL to menu object
-        const _boxurl = addHTTPtoURL(urlBox.value.replaceAll("|", "-"));
-        elem.url = _boxurl;
-        urlBox.value = _boxurl;
-        editFavText.innerHTML = "Changes Saved";
-      }
-      // save to file
-      saveBookmarks();
-      // close dropdown
-      editFavPrompt.removeEventListener("click", handleButtonClicks);
-      closeBookmarkPrompt();
-    }
-    // delete button action
-    if (btn_event.target === editFavDeleteBtn) {
-      elem.remove();
-      // save to file
-      saveBookmarks();
-      // close dropdown
-      editFavPrompt.removeEventListener("click", handleButtonClicks);
-      closeBookmarkPrompt();
-    }
-  });
-}
-
-// Tag function for building DOM markup with template literals.
-// Strips whitespace between tags so the resulting DOM contains no stray
-// text nodes -- output is identical to element-by-element createElement()
-// construction (whitespace text nodes between inline-block elements would
-// otherwise render as visible gaps).
-function html(strings, ...values) {
-  return strings
-    .reduce((out, str, i) => out + str + (i < values.length ? values[i] : ""), "")
-    .replace(/>\s+</g, "><")
-    .trim();
-}
-
-function showPopup(message) {
-  const win_name = "msg-popup";
-  const text_name = "msg-text";
-  let msgpopwin = document.getElementById(win_name);
-  if (!msgpopwin) { // window does not exist
-    // draw window (popup container + message text box)
-    msgpopwin = document.createElement("div");
-    msgpopwin.classList.add("popup-alert");
-    msgpopwin.id = win_name;
-    msgpopwin.innerHTML = html`<div id="${text_name}"></div>`;
-    // add to page
-    document.body.appendChild(msgpopwin);
-  }
-  msgpopwin.classList.remove("fade-out");
-  // set message text
-  const msgtext = document.getElementById(text_name);
-  msgtext.innerHTML = message;
-  // reset hide window timeout
-  clearTimeout(App.messagePopupTimer);
-  // hide window after delay
-  App.messagePopupTimer = setTimeout(() => {
-    // fade out window
-    msgpopwin.classList.add("fade-out");
-    // wait for the transition to end before removing window
-    msgpopwin.addEventListener("animationend", () => {
-      if (msgpopwin.isConnected) {
-        msgpopwin.remove();
-      }
-    }, { once: true });
-  }, 4000); // hide delay in (ms)
+  App.bookmarks.toggle();
 }
 
 /// Temperature & Humidity ///
@@ -2006,7 +1617,7 @@ async function getPassword(_type) {
     removeDropdowns();
     const result = await passwordPrompt();
     if (result !== null && result !== "" && result !== undefined) {
-      savePOST(_type, [result]);
+      savePOST(_type, [result], afterPOSTActions);
     }
   } catch (e) {
     // user cancelled -- nothing to do
@@ -2415,26 +2026,6 @@ async function loadLog(file) {
   App.serverCmdData = null;
 }
 
-// save file API POST call
-function savePOST(file, data) {
-  const url = location.protocol + "//" + location.hostname + "/api/write?file=" + file;
-  // submit request
-  const xhr = new XMLHttpRequest();
-  xhr.open("POST", url);
-  xhr.setRequestHeader("Content-Type", "text/plain");
-  xhr.onreadystatechange = function() {
-    if (xhr.readyState === XMLHttpRequest.DONE) {
-      if (xhr.status == 200) {
-        // action on successful transmit
-        afterPOSTActions(file);
-      } else {
-        showPopup("[savePOST] failed to send: " + file);
-      }
-    }
-  }
-  xhr.send(data);
-}
-
 //// Dynamic Menus ////
 
 function showDynFileMenu(menu) {
@@ -2447,9 +2038,6 @@ function showDynFileMenu(menu) {
     // build URL / append data
     const url = location.protocol + "//" +location.hostname + "/api/read?file=" + menu;
     loadMenu(url).then((data) => { // wait for response
-      if (menu === 'bookmarks') {
-        showBookmarkSearch();
-      }
       drawMenu(data, menu);
     });  
   }
@@ -2467,18 +2055,6 @@ function showDynAPIMenu(menu) {
     loadMenu(url).then((data) => { // wait for response
       drawMenu(data, menu);
     });  
-  }
-}
-
-async function loadMenu(url) {
-  try {
-    const response = await fetch(url, {
-      method: "GET"
-    });
-    // return response
-    return await response.text();
-  } catch (error) {
-    showPopup("[loadMenu] failed to fetch: " + error);
   }
 }
 
@@ -2603,18 +2179,6 @@ function createListItem(col0_in, col1, col2, menuid) {
       _elm.classList.add('slider-wide_container');
       _elm.classList.add('no-hover');
       break;
-    case 'bkmrk': 
-      // bookmarks menu 
-      _elm.classList.add('bookmarked__item');
-      Object.defineProperty(_elm, "url", {
-        enumerable: false,
-        writable: true,
-        value: col0
-      });
-      _elm.addEventListener("click", function() {
-        clickBookmark(menuid);
-      });
-      break;
     case 'subs':
       // subwoofer volume toggle
       const submode = subwooferVolumeEnabled();
@@ -2707,13 +2271,6 @@ function removeDynMenus() {
   }
 }
 
-function scrollToBottom() {
-  window.scrollTo({
-    top: document.body.scrollHeight,
-    behavior: 'smooth'
-  });
-}
-
 function openColorPrompt(command, argument, cmd_type = '') {
   const colorPrompt = new ColorPrompt('color-popup', (strippedHex) => {
     let cmd;
@@ -2792,6 +2349,11 @@ function destroyPageServices() {
   if (App.starBackground) {
     App.starBackground.destroy();
     App.starBackground = null;
+  }
+  // lists window
+  if (App.lists) {
+    App.lists.destroy();
+    App.lists = null;
   }
   // weather widget
   if (window.weatherWidget && typeof window.weatherWidget.remove === 'function') {

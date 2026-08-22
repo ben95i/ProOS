@@ -68,7 +68,9 @@ app.get('/api/read', [
         });
         const fileArg = req.query.file;
         let subdir = 'menus';
-        if (fileArg === 'sysout' || fileArg === 'bookmarks') {
+        if (fileArg === 'sysout' || 
+            fileArg === 'bookmarks.save' ||
+            fileArg === 'lists.save' ) {
           subdir = 'ram';
         }
         const filePath = safePath(subdir, fileArg);

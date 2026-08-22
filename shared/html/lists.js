@@ -1,0 +1,873 @@
+// Automate Website - Lists Window
+//
+// Two classes live here:
+//   ListStore - the list data, the file on the server and the edit lock
+//   Lists     - the window itself (default export, used by main.js)
+//
+// Centered window holding a set of lists; selecting one swaps the window over
+// to the items inside it. Both levels support add, rename, multi-select delete
+// and drag re-ordering. Items add a round completed button: un-checked items
+// float to the top of the list, checked items sit below in their saved order,
+// and only checked items can be dragged.
+//
+// Saved file (lists), one line per item:
+//   LIST_ID|LIST_NAME|ITEM_ID|ITEM_NAME|CHECK_STATE
+// The order of the rows in the file IS the order of the lists and their items,
+// so nothing has to carry a position number. A list with no items keeps its
+// line with the item fields left empty.
+//
+// The first row of the file is the edit lock, not a list:
+//   LOCK|STATE|OWNER_TOKEN|TIMESTAMP|0
+// Whoever opens the window first claims the lock and edits; anyone opening it
+// while the lock is held gets a read only window. The lock is released on
+// close and expires on its own if a browser goes away without closing (the
+// owner re-stamps the timestamp while the window is open).
+//
+// Every write is checked: the dot in the top right corner is green while the
+// server is answering and red once a write fails. A failed write changes
+// nothing on the server, the edits stay in memory, and closing the window
+// offers to retry or discard them.
+//
+// Same file API as the bookmarks menu: GET /api/read?file=lists.save and
+// POST /api/write?file=lists.save (text/plain body).
+
+import { splitMenuData, cleanString, isNumeric, removeWindow, showPopup,
+  dragGripElement, DragSort } from './utils.js';
+
+const FILE_NAME = 'lists.save';
+const WIN_TITLE = 'Lists';
+// element IDs
+const WIN_ID = 'list__win';
+const LIST_ID = 'list__list';
+const TITLE_ID = 'list__title';
+const DOT_ID = 'list__dot';
+const STATUS_ID = 'list__status';
+const OVERLAY_ID = 'list__overlay';
+const BACK_BTN_ID = 'list__btn-back';
+const ADD_BTN_ID = 'list__btn-add';
+const DEL_BTN_ID = 'list__btn-del';
+const CLOSE_BTN_ID = 'list__btn-close';
+const RETRY_BTN_ID = 'list__btn-retry';
+const DISCARD_BTN_ID = 'list__btn-discard';
+const DEL_ICON_ID = 'list__del-icon';
+// file layout
+const COL_DELIMITER = '|'; // separates the columns of a row
+const LOCK_TAG = 'LOCK';   // marks the first row of the file
+const LOCK_EXPIRE_MS = 180000; // a lock left behind is ignored after 3 min
+const LOCK_BEAT_MS = 60000;    // owner re-stamps the lock every minute
+const LOCK_SETTLE_MS = 600;    // let a competing claim land before checking
+// stored names are printable ASCII only, with the column separator "|" and
+// the path characters "/" and "\" swapped out
+const MAX_NAME_LENGTH = 64;
+const COMBINING_MARKS = /[\u0300-\u036f]/g;
+const NON_ASCII = /[^\x20-\x7E]/g;
+const RESERVED_CHARS = /[|/\\]/g;
+const EXTRA_SPACES = /\s{2,}/g;
+// window views
+const VIEW_LISTS = 0;
+const VIEW_ITEMS = 1;
+// list modes
+const MODE_OPEN = 0;
+const MODE_SELECT = 1;
+
+//// shared helpers ////
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function apiURL(action) {
+  return `${location.protocol}//${location.hostname}/api/${action}?file=${FILE_NAME}`;
+}
+
+// names are trimmed to printable ASCII and kept to one line of sane length
+export function cleanName(value) {
+  const text = cleanString(value === null || value === undefined ? '' : String(value));
+  const name = (text || '')
+    .normalize("NFD")             // split accents off their base letter
+    .replace(COMBINING_MARKS, "") // "Cafe" keeps the "e", loses the accent
+    .replace(NON_ASCII, "")
+    .replace(RESERVED_CHARS, "-")
+    .replace(EXTRA_SPACES, " ")   // close up any gaps left behind
+    .trim();
+  return name.length >= MAX_NAME_LENGTH
+    ? `${name.substring(0, MAX_NAME_LENGTH)}...`
+    : name;
+}
+
+function nextId(entries) {
+  return entries.reduce((highest, entry) => Math.max(highest, entry.id), -1) + 1;
+}
+
+/*
+ *  ListStore - list data, file transfer and the edit lock
+ */
+
+export class ListStore {
+
+  constructor(onChange) {
+    // called when the store changes something the window has to re-draw
+    this.onChange = typeof onChange === 'function' ? onChange : function () {};
+    this.data = [];         // [{ id, name, items: [{ id, name, checked }] }]
+    this.readOnly = false;  // another user holds the lock, or nothing loaded
+    this.lockOwned = false; // this window holds the lock
+    this.online = null;     // last server exchange: true / false / not tried
+    this.dirty = false;     // edits in memory that the server has not taken
+    this.beatTimer = null;
+    this.saving = null;     // in-flight save, so writes cannot overlap
+    this.queued = false;
+    // identifies this window in the lock row (ASCII, no separators)
+    this.token = Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
+  }
+
+  //// server ////
+
+  // returns the file text, or null when the server cannot be reached
+  async read() {
+    try {
+      const response = await fetch(apiURL('read'), { method: 'GET' });
+      if (!response.ok) {
+        throw new Error(`status ${response.status}`);
+      }
+      const text = await response.text();
+      this.online = true;
+      return text;
+    } catch (error) {
+      this.online = false;
+      return null;
+    }
+  }
+
+  // returns true only when the server confirms the write; a failed attempt
+  // leaves the file on the server exactly as it was
+  async write(text) {
+    try {
+      const response = await fetch(apiURL('write'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: text
+      });
+      this.online = response.ok === true;
+      return this.online;
+    } catch (error) {
+      this.online = false;
+      return false;
+    }
+  }
+
+  //// file text ////
+
+  // file text -> rows of columns, blank lines dropped
+  rows(text) {
+    if (typeof text !== 'string' || text === "") {
+      return [];
+    }
+    return splitMenuData(text)
+      .map(row => cleanString(row))
+      .filter(row => row)
+      .map(row => row.split(COL_DELIMITER));
+  }
+
+  lockLine(held) {
+    const owner = held === true ? this.token : '';
+    const stamp = held === true ? Date.now() : 0;
+    return [LOCK_TAG, held === true ? '1' : '0', owner, stamp, '0']
+      .join(COL_DELIMITER) + "\n";
+  }
+
+  parseLock(text) {
+    const row = this.rows(text).find(cols => cols[0] === LOCK_TAG);
+    if (!row) {
+      return null;
+    }
+    const stamp = (row[3] || '').trim();
+    return {
+      state: row[1] === '1' ? 1 : 0,
+      token: (row[2] || '').trim(),
+      time: isNumeric(stamp) ? Number(stamp) : 0
+    };
+  }
+
+  // 0=ListID, 1=ListName, 2=ItemID, 3=ItemName, 4=CheckState
+  // rows arrive in order, and the map keeps them that way
+  parse(text) {
+    const found = new Map();
+    this.rows(text).forEach(cols => {
+      if (cols.length < 2 || !isNumeric(cols[0])) {
+        return; // not a list row (the lock row lands here)
+      }
+      const listId = Number(cols[0]);
+      let entry = found.get(listId);
+      if (!entry) {
+        entry = { id: listId, name: cleanName(cols[1]), items: [] };
+        found.set(listId, entry);
+      }
+      // empty item fields mark a list that has no items yet
+      const itemName = cleanName(cols[3]);
+      if (!isNumeric(cols[2]) || itemName === "") {
+        return;
+      }
+      entry.items.push({
+        id: Number(cols[2]),
+        name: itemName,
+        checked: (cols[4] || '').trim() === '1'
+      });
+    });
+    return [...found.values()];
+  }
+
+  // the list rows on their own, without the leading lock row
+  buildBody() {
+    let _file = "";
+    this.data.forEach(entry => {
+      const head = `${entry.id}|${entry.name}`;
+      if (entry.items.length === 0) {
+        _file += head + "|||0\n";
+        return;
+      }
+      entry.items.forEach(item => {
+        _file += `${head}|${item.id}|${item.name}|${item.checked === true ? '1' : '0'}\n`;
+      });
+    });
+    return _file;
+  }
+
+  build() {
+    return this.lockLine(this.lockOwned) + this.buildBody();
+  }
+
+  //// session ////
+
+  // loads the file and takes the edit lock when it is free
+  async open() {
+    this.dirty = false;
+    const text = await this.read();
+    if (text === null) {
+      // nothing loaded, so there is nothing safe to write back
+      this.data = [];
+      this.readOnly = true;
+      this.lockOwned = false;
+      return;
+    }
+    this.data = this.parse(text);
+    if (this.lockIsBusy(this.parseLock(text))) {
+      this.readOnly = true;
+      this.lockOwned = false;
+      return;
+    }
+    this.readOnly = false;
+    this.lockOwned = true;
+    if (await this.save()) {
+      this.startBeat();
+      // runs in the background so the window draws without waiting on it
+      this.confirmLock();
+    }
+  }
+
+  // a lock counts only while it is held by somebody else and still fresh
+  lockIsBusy(lock) {
+    if (!lock || lock.state !== 1 || lock.token === "" || lock.token === this.token) {
+      return false;
+    }
+    return (Date.now() - lock.time) < LOCK_EXPIRE_MS;
+  }
+
+  // the file API has no compare-and-set, so two windows can claim the lock at
+  // the same moment; wait for any competing write to land, then read the lock
+  // back and stand down if the other one won
+  async confirmLock() {
+    await sleep(LOCK_SETTLE_MS);
+    if (this.lockOwned !== true) {
+      return; // window closed, or the lock was already handed back
+    }
+    const text = await this.read();
+    if (text === null || this.lockOwned !== true) {
+      return;
+    }
+    const lock = this.parseLock(text);
+    if (lock && lock.token === this.token) {
+      return; // still ours
+    }
+    this.stopBeat();
+    this.lockOwned = false;
+    this.readOnly = true;
+    this.dirty = false;
+    this.data = this.parse(text);
+    showPopup(`[${WIN_TITLE}] another user is editing, opened read only.`);
+    this.onChange();
+  }
+
+  canWrite() {
+    return this.lockOwned === true && this.readOnly !== true;
+  }
+
+  // saves the list; repeat calls while a write is in flight are folded into
+  // one follow-up write instead of stacking up
+  save() {
+    if (!this.canWrite()) {
+      return Promise.resolve(true);
+    }
+    this.dirty = true;
+    this.queued = true;
+    if (!this.saving) {
+      this.saving = this.runQueue();
+    }
+    return this.saving;
+  }
+
+  async runQueue() {
+    let sent = false;
+    while (this.queued) {
+      this.queued = false;
+      sent = await this.write(this.build());
+    }
+    this.dirty = !sent;
+    this.saving = null;
+    return sent;
+  }
+
+  // keeps the timestamp fresh so the lock does not expire while in use
+  startBeat() {
+    this.stopBeat();
+    this.beatTimer = setInterval(() => this.save(), LOCK_BEAT_MS);
+  }
+
+  stopBeat() {
+    if (this.beatTimer) {
+      clearInterval(this.beatTimer);
+      this.beatTimer = null;
+    }
+  }
+
+  // hands the lock back; unsaved edits are never pushed out on the way (the
+  // server is unreachable in that case anyway) -- the lock expires instead
+  release() {
+    this.stopBeat();
+    if (this.lockOwned !== true) {
+      return;
+    }
+    this.lockOwned = false;
+    if (this.dirty !== true) {
+      this.write(this.lockLine(false) + this.buildBody());
+    }
+  }
+
+  // throws the session away without writing anything
+  abandon() {
+    this.stopBeat();
+    this.lockOwned = false;
+    this.dirty = false;
+  }
+}
+
+/*
+ *  Lists - the window
+ */
+
+export default class Lists {
+
+  constructor() {
+    this.store = new ListStore(() => this.render());
+    this.view = VIEW_LISTS;
+    this.mode = MODE_OPEN;
+    this.openId = null;   // list being viewed
+    this.editing = false; // inline name box is open
+    // shared drag engine (same grip and behaviour as the bookmarks menu)
+    this.dragSort = new DragSort({
+      rowClass: 'list__row',
+      onDrop: () => this.commitOrder()
+    });
+    // window level listeners, attached as a set
+    this.listeners = {
+      click: this.handleClick.bind(this),
+      pointerdown: (event) => { if (!this.editing) this.dragSort.start(event); },
+      pointermove: (event) => this.dragSort.move(event),
+      pointerup: (event) => this.dragSort.end(event),
+      pointercancel: (event) => this.dragSort.end(event)
+    };
+  }
+
+  //// window lifecycle ////
+
+  isOpen() {
+    return document.getElementById(WIN_ID) !== null;
+  }
+
+  // opens the window, or closes it again if it is already on-screen
+  async activate() {
+    if (this.isOpen()) {
+      this.closeWindow();
+      return;
+    }
+    this.view = VIEW_LISTS;
+    this.mode = MODE_OPEN;
+    this.openId = null;
+    this.drawWindow();
+    this.render();
+    await this.store.open();
+    if (!this.isOpen()) {
+      this.store.release(); // closed while loading, hand the lock straight back
+      return;
+    }
+    if (this.store.online === false) {
+      showPopup(`[${WIN_TITLE}] server connection not available.`);
+    }
+    this.render();
+  }
+
+  // close button: edits the server has not taken ask first
+  closeWindow() {
+    if (this.store.dirty === true) {
+      this.showOverlay(true);
+      return;
+    }
+    this.destroy();
+  }
+
+  destroy() {
+    this.dragSort.cancel();
+    this.store.release();
+    removeWindow(WIN_ID);
+    this.editing = false;
+    this.view = VIEW_LISTS;
+    this.mode = MODE_OPEN;
+    this.openId = null;
+  }
+
+  drawWindow() {
+    if (this.isOpen()) {
+      return;
+    }
+    const markup = `
+<div id="${WIN_ID}" class="prompt_win list__win nohide">
+  <span class="list__dot" id="${DOT_ID}"></span>
+  <div class="list__header">
+    <button type="button" class="list__navbtn" id="${BACK_BTN_ID}">
+      <i class="fad fa-chevron-left"></i>
+    </button>
+    <div class="list__title" id="${TITLE_ID}">${WIN_TITLE}</div>
+  </div>
+  <div class="list__list scroll-bar-style" id="${LIST_ID}"></div>
+  <div class="list__actions">
+    <div class="list__status" id="${STATUS_ID}">
+      <i class="fad fa-lock"></i>Read/Only
+    </div>
+    <button type="button" class="button button__sml list__btn" id="${CLOSE_BTN_ID}">
+      <span class="button__text"><i class="fad fa-times-octagon"></i></span>
+    </button>
+    <button type="button" class="button button__sml list__btn" id="${DEL_BTN_ID}">
+      <span class="button__text"><i class="fad fa-trash-alt" id="${DEL_ICON_ID}"></i></span>
+    </button>
+    <button type="button" class="button button__sml list__btn" id="${ADD_BTN_ID}">
+      <span class="button__text"><i class="fad fa-edit"></i></span>
+    </button>
+  </div>
+  <div class="list__overlay" id="${OVERLAY_ID}">
+    <div class="list__dialog">
+      <div class="list__dialog-msg">Server connection not available</div>
+      <div class="list__dialog-btns">
+        <button type="button" class="button list__dlg-btn" id="${DISCARD_BTN_ID}">
+          <span class="button__text">Discard</span>
+        </button>
+        <button type="button" class="button list__dlg-btn" id="${RETRY_BTN_ID}">
+          <span class="button__text">Retry</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>`;
+    document.body.insertAdjacentHTML('beforeend', markup.trim());
+    const win = document.getElementById(WIN_ID);
+    Object.keys(this.listeners).forEach(name => {
+      win.addEventListener(name, this.listeners[name]);
+    });
+  }
+
+  //// list data ////
+
+  openList() {
+    if (this.openId === null) {
+      return null;
+    }
+    return this.store.data.find(entry => entry.id === this.openId) || null;
+  }
+
+  // the array the current view works on
+  activeList() {
+    if (this.view !== VIEW_ITEMS) {
+      return this.store.data;
+    }
+    const entry = this.openList();
+    return entry ? entry.items : [];
+  }
+
+  setActiveList(entries) {
+    if (this.view !== VIEW_ITEMS) {
+      this.store.data = entries;
+      return;
+    }
+    const entry = this.openList();
+    if (entry) {
+      entry.items = entries;
+    }
+  }
+
+  findEntry(id) {
+    return this.activeList().find(entry => entry.id === id) || null;
+  }
+
+  // un-checked items are floated to the top; both groups keep the order they
+  // are saved in, so checking an item drops it straight back where it was
+  visibleRows() {
+    const entries = this.activeList();
+    if (this.view !== VIEW_ITEMS) {
+      return entries;
+    }
+    return entries.filter(item => item.checked !== true)
+      .concat(entries.filter(item => item.checked === true));
+  }
+
+  // only checked items can be dragged; everything in the list view can
+  isMovable(entry) {
+    return this.view !== VIEW_ITEMS || entry.checked === true;
+  }
+
+  // re-draws, writes the list out and refreshes the connection dot
+  commit() {
+    this.render();
+    this.store.save().then(() => this.updateDot());
+  }
+
+  //// drawing ////
+
+  listElem() {
+    return document.getElementById(LIST_ID);
+  }
+
+  rowById(id) {
+    const list = this.listElem();
+    return list ? list.querySelector(`.list__row[data-id="${id}"]`) : null;
+  }
+
+  render() {
+    const list = this.listElem();
+    if (!list) {
+      return;
+    }
+    const items = this.view === VIEW_ITEMS;
+    const entry = this.openList();
+    // title / back button
+    document.getElementById(TITLE_ID).innerText =
+      items && entry ? entry.name : WIN_TITLE;
+    document.getElementById(BACK_BTN_ID).style.visibility =
+      items ? "visible" : "hidden";
+    // rows
+    list.innerHTML = "";
+    const rows = this.visibleRows();
+    if (rows.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = "list__empty";
+      empty.innerText = items ? "No items yet" : "No lists yet";
+      list.appendChild(empty);
+    } else {
+      rows.forEach(row => list.appendChild(this.createRow(row)));
+    }
+    this.renderActions();
+    this.updateDot();
+  }
+
+  createRow(entry) {
+    const items = this.view === VIEW_ITEMS;
+    const done = items && entry.checked === true;
+    // a read only window moves nothing
+    const fixed = this.store.readOnly === true || !this.isMovable(entry);
+    const row = document.createElement('div');
+    row.className = "list__row";
+    row.dataset.id = entry.id;
+    row.appendChild(dragGripElement(fixed));
+    if (items) {
+      row.appendChild(this.createCell('span',
+        "list__round" + (done ? " list__round--on" : ""),
+        '<i class="fad fa-check"></i>'));
+    }
+    const label = document.createElement('span');
+    label.className = "list__label";
+    label.innerText = entry.name;
+    row.appendChild(label);
+    // the label is the rename target, so the rest of the row is a separate
+    // filler that carries the open / complete tap
+    row.appendChild(this.createCell('span', "list__fill", ""));
+    if (this.mode === MODE_SELECT) {
+      const chkbox = document.createElement('input');
+      chkbox.type = "checkbox";
+      chkbox.className = "list__chk";
+      row.appendChild(chkbox);
+    } else if (!items) {
+      row.appendChild(this.createCell('i', "fad fa-chevron-right list__arrow", ""));
+    }
+    return row;
+  }
+
+  createCell(tag, className, inner) {
+    const cell = document.createElement(tag);
+    cell.className = className;
+    if (inner) {
+      cell.innerHTML = inner;
+    }
+    return cell;
+  }
+
+  selectedIds() {
+    const list = this.listElem();
+    if (!list || this.mode !== MODE_SELECT) {
+      return [];
+    }
+    return [...list.getElementsByClassName('list__row')]
+      .filter(row => row.querySelector('.list__chk').checked === true)
+      .map(row => Number(row.dataset.id));
+  }
+
+  renderActions() {
+    // read only: everything that would write the file is taken off-screen
+    const readOnly = this.store.readOnly === true;
+    document.getElementById(STATUS_ID).style.display = readOnly ? "flex" : "none";
+    [ADD_BTN_ID, DEL_BTN_ID].forEach(id => {
+      document.getElementById(id).style.display = readOnly ? "none" : "";
+    });
+    if (readOnly) {
+      return;
+    }
+    // the delete button becomes an X once something is selected
+    const confirm = this.selectedIds().length > 0;
+    const icon = document.getElementById(DEL_ICON_ID);
+    icon.classList.toggle("fa-times", confirm);
+    icon.classList.toggle("fa-trash-alt", !confirm);
+  }
+
+  // green while the server is answering, red once a write has failed
+  updateDot() {
+    const dot = document.getElementById(DOT_ID);
+    if (!dot) {
+      return;
+    }
+    const online = this.store.online;
+    dot.style.display = online === null ? "none" : "block";
+    dot.classList.toggle("list__dot--off", online === false);
+  }
+
+  showOverlay(show) {
+    const overlay = document.getElementById(OVERLAY_ID);
+    if (overlay) {
+      overlay.style.display = show === true ? "flex" : "none";
+    }
+  }
+
+  //// actions ////
+
+  setMode(mode) {
+    this.mode = mode;
+    this.render();
+  }
+
+  showItems(id) {
+    this.openId = id;
+    this.view = VIEW_ITEMS;
+    this.setMode(MODE_OPEN);
+  }
+
+  showLists() {
+    this.openId = null;
+    this.view = VIEW_LISTS;
+    this.setMode(MODE_OPEN);
+  }
+
+  addEntry() {
+    this.mode = MODE_OPEN;
+    const entries = this.activeList();
+    const entry = this.view === VIEW_ITEMS
+      ? { id: nextId(entries), name: "New Item", checked: false }
+      : { id: nextId(entries), name: "New List", items: [] };
+    entries.push(entry);
+    this.render();
+    // open the name box on the new row
+    const row = this.rowById(entry.id);
+    if (row && typeof row.scrollIntoView === 'function') {
+      row.scrollIntoView({ block: 'nearest' });
+    }
+    this.beginRename(entry.id, true);
+  }
+
+  // first press turns on the selection check boxes, the second either deletes
+  // what is selected (staying in select mode) or leaves select mode again
+  deleteAction() {
+    if (this.mode !== MODE_SELECT) {
+      this.setMode(MODE_SELECT);
+      return;
+    }
+    const ids = this.selectedIds();
+    if (ids.length === 0) {
+      this.setMode(MODE_OPEN);
+      return;
+    }
+    this.setActiveList(this.activeList().filter(entry => !ids.includes(entry.id)));
+    this.commit();
+  }
+
+  toggleItem(id) {
+    const item = this.findEntry(id);
+    if (item) {
+      item.checked = !item.checked;
+      this.commit();
+    }
+  }
+
+  beginRename(id, isNew = false) {
+    const row = this.rowById(id);
+    const entry = this.findEntry(id);
+    const label = row ? row.querySelector('.list__label') : null;
+    if (!label || !entry || this.editing || this.store.readOnly === true) {
+      return;
+    }
+    this.editing = true;
+    const namebox = document.createElement('input');
+    namebox.type = "text";
+    namebox.className = "list__namebox";
+    namebox.setAttribute("autocorrect", "off");
+    namebox.setAttribute("autocapitalize", "none");
+    namebox.value = entry.name;
+    label.replaceWith(namebox);
+    namebox.focus();
+    namebox.select();
+    let closed = false;
+    const finish = (save) => {
+      if (closed) {
+        return;
+      }
+      closed = true;
+      this.editing = false;
+      const name = save === true ? cleanName(namebox.value) : "";
+      if (name !== "") {
+        entry.name = name;
+      } else if (isNew === true) {
+        // a new entry left un-named is dropped again
+        this.setActiveList(this.activeList().filter(other => other.id !== id));
+      } else {
+        this.render(); // nothing changed, no write needed
+        return;
+      }
+      this.commit();
+    };
+    namebox.addEventListener('blur', () => finish(true));
+    namebox.addEventListener('keydown', (key_event) => {
+      if (key_event.key === 'Enter' || key_event.key === 'Escape') {
+        key_event.preventDefault();
+        finish(key_event.key === 'Enter');
+      }
+    });
+  }
+
+  //// unsaved changes dialog ////
+
+  async retrySave() {
+    const sent = await this.store.save();
+    this.updateDot();
+    if (sent) {
+      this.showOverlay(false);
+      this.destroy();
+    }
+  }
+
+  discardChanges() {
+    this.store.abandon();
+    this.showOverlay(false);
+    this.destroy();
+  }
+
+  //// click handling ////
+
+  handleClick(event) {
+    const button = event.target.closest('button');
+    if (button) {
+      this.handleButton(button.id);
+      return;
+    }
+    const row = event.target.closest('.list__row');
+    if (!row || this.editing || event.target.closest('.drag-grip')) {
+      return;
+    }
+    const id = Number(row.dataset.id);
+    if (this.mode === MODE_SELECT) {
+      // tapping anywhere on the row selects it
+      const chkbox = row.querySelector('.list__chk');
+      if (event.target !== chkbox) {
+        chkbox.checked = !chkbox.checked;
+      }
+      this.renderActions();
+      return;
+    }
+    // tapping the name (or the few pixels of padding around it) renames
+    if (this.store.readOnly !== true && event.target.closest('.list__label')) {
+      this.beginRename(id, false);
+      return;
+    }
+    if (this.view !== VIEW_ITEMS) {
+      this.showItems(id);
+      return;
+    }
+    if (this.store.readOnly !== true) {
+      this.toggleItem(id); // checking an item writes the file
+    }
+  }
+
+  handleButton(id) {
+    switch (id) {
+      // the unsaved changes dialog owns the window while it is up
+      case RETRY_BTN_ID:
+        this.retrySave();
+        return;
+      case DISCARD_BTN_ID:
+        this.discardChanges();
+        return;
+      case CLOSE_BTN_ID:
+        this.closeWindow();
+        return;
+      case BACK_BTN_ID:
+        this.showLists();
+        return;
+    }
+    // read only allows nothing that would write the file
+    if (this.store.readOnly === true) {
+      return;
+    }
+    if (id === ADD_BTN_ID) {
+      this.addEntry();
+    } else if (id === DEL_BTN_ID) {
+      this.deleteAction();
+    }
+  }
+
+  //// drag to re-order ////
+
+  // reads the new order back out of the window and saves it; the rows that
+  // cannot be dragged keep the slots they already hold, so an un-checked item
+  // stays where it is until it is checked again
+  commitOrder() {
+    const list = this.listElem();
+    if (!list) {
+      return;
+    }
+    const entries = this.activeList();
+    const slots = [];
+    entries.forEach((entry, idx) => {
+      if (this.isMovable(entry)) { slots.push(idx); }
+    });
+    const moved = [...list.getElementsByClassName('list__row')]
+      .map(row => entries.find(entry => entry.id === Number(row.dataset.id)))
+      .filter(entry => entry && this.isMovable(entry));
+    if (moved.length !== slots.length) {
+      return;
+    }
+    moved.forEach((entry, idx) => { entries[slots[idx]] = entry; });
+    this.commit();
+  }
+}

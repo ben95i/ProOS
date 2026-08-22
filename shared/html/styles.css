@@ -42,6 +42,8 @@
   --main-trans-50: color-mix(in srgb, var(--main-color), transparent 50%);
   --sec-black-20: color-mix(in srgb, var(--nav-menus-color), #000 20%);
   --sec-black-40: color-mix(in srgb, var(--nav-menus-color), #000 40%);
+  --sec-50-black: color-mix(in srgb, var(--nav-menus-color) 50%, #000);
+  --sec-60-black: color-mix(in srgb, var(--nav-menus-color) 60%, #000);
   --sec-75-black: color-mix(in srgb, var(--nav-menus-color) 75%, #000);
   --red-trans-35: color-mix(in srgb, var(--alert-red), transparent 35%);
 }
@@ -700,6 +702,21 @@ input.chkbox {
 
 .bookmark-buttons {
   display: flex;
+}
+
+/* bookmark rows carry the shared drag handle, so the name sits beside it */
+.bookmarked__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.bookmarked__label {
+  flex: 1 1 auto;
+  min-width: 0px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .bookmark-editmode a {
@@ -1618,4 +1635,273 @@ input.chkbox {
 #bed__btn-close {
   width: 150px;
   height: 65px;
+}
+/*
+ *  Lists Window
+ */
+
+.list__win {
+  /* fixed so the window stays centered on a scrolled page */
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  /* 300px unless a name needs more room, and never wider than the screen */
+  width: max-content;
+  min-width: 400px;
+  max-width: 90vw;
+  height: 65vh;
+  padding: 5px 8px 0 8px;
+}
+
+.list__header {
+  display: flex;
+  align-items: center;
+  padding: 5px 5px 8px 5px;
+}
+
+.list__navbtn {
+  border: none;
+  outline: none;
+  padding: 0px;
+  width: 45px;
+  height: 40px;
+  cursor: default;
+  background-color: transparent;
+  color: var(--main-40-white);
+}
+
+.list__title {
+  flex-grow: 1;
+  padding-right: 45px; /* balances the back button */
+  text-align: center;
+  color: #fff;
+  font-size: 25px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.list__list {
+  /* grows into the spare space left by the minimum window height */
+  flex: 1 1 auto;
+  min-height: 0px;
+  border-radius: 5px;
+  background-color: var(--sec-60-black);
+  overflow-y: auto;
+  overflow-x: auto;
+}
+
+.list__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: max-content;
+  min-width: 100%;
+  padding: 12px 12px;
+  color: #fff;
+  text-align: left;
+  background-color: var(--sec-black-20);
+  border-bottom: 1px solid var(--sec-50-black);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.list__row:last-child {
+  border-bottom: none;
+}
+
+.list__row:active {
+  background-color: var(--main-white-50);
+  color: #000;
+}
+
+/* shared drag handle -- lists window and bookmarks menu */
+.drag-grip {
+  flex-shrink: 0;
+  padding: 0px 2px;
+  font-size: 20px;
+  color: var(--main-40-white);
+  touch-action: none;
+  cursor: grab;
+}
+
+.drag-grip--off {
+  visibility: hidden;
+}
+
+/* row being dragged, in either list */
+.drag-row--active {
+  position: relative;
+  z-index: 2;
+  border-radius: 5px;
+  background-color: var(--main-color);
+  color: #fff;
+  box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.5);
+}
+
+.list__round {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 2px solid var(--main-40-white);
+  transition: background-color 0.15s ease;
+}
+
+.list__round i {
+  font-size: 17px;
+  color: #fff;
+  opacity: 0;
+}
+
+.list__round--on {
+  background-color: var(--main-color);
+  border-color: var(--main-color);
+}
+
+.list__round--on i {
+  opacity: 1;
+}
+
+.list__label {
+  /* rename target -- a few pixels of padding around the text are part of it */
+  flex-shrink: 0;
+  padding: 4px 6px;
+  margin: -4px -2px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+/* the rest of the row: opens the list / ticks the item off */
+.list__fill {
+  flex: 1 1 auto;
+  min-width: 20px;
+  align-self: stretch;
+}
+
+.list__arrow {
+  flex-shrink: 0;
+  font-size: 20px;
+  color: var(--main-40-white);
+}
+
+.list__chk {
+  flex-shrink: 0;
+  margin: 0px;
+  width: 22px;
+  height: 22px;
+}
+
+.list__namebox {
+  flex-grow: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  border-radius: 8px;
+  padding: 4px 6px;
+  font-size: 22px;
+  color: #000;
+}
+
+.list__empty {
+  padding: 20px 10px;
+  text-align: center;
+  font-size: 20px;
+  color: #a6a9ad;
+}
+
+.list__actions {
+  display: flex;
+  flex-wrap: nowrap;
+  justify-content: center;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+/* connection dot -- green while the server answers, red after a failed write */
+.list__dot {
+  display: none;
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background-color: var(--green-ind);
+  box-shadow: 0px 0px 6px var(--green-ind);
+}
+
+.list__dot--off {
+  background-color: var(--alert-red);
+  box-shadow: 0px 0px 6px var(--alert-red);
+}
+
+/* unsaved changes dialog, covers the window until it is answered */
+.list__overlay {
+  display: none;
+  position: absolute;
+  top: 0px;
+  left: 0px;
+  right: 0px;
+  bottom: 0px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 15px;
+  background-color: rgba(0, 0, 0, 0.75);
+}
+
+.list__dialog {
+  padding: 20px;
+  text-align: center;
+}
+
+.list__dialog-msg {
+  padding-bottom: 15px;
+  font-size: 25px;
+  color: #fff;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.list__dialog-btns {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+.list__dlg-btn {
+  width: 130px;
+  height: 60px;
+  font-size: 22px;
+}
+
+/* read only notice -- pushes the buttons over to the right */
+.list__status {
+  display: none;
+  align-self: center;
+  margin-right: auto;
+  padding-bottom: 5px;
+  padding-left: 8px;
+  font-size: 20px;
+  color: var(--main-40-white);
+  white-space: nowrap;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.list__status i {
+  padding-right: 6px;
+}
+
+.list__btn {
+  width: 115px;
+  height: 60px;
 }

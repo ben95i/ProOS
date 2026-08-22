@@ -3,25 +3,55 @@
 
 RAM_DISK="/mnt/ramdisk"
 DS_PATH="/mnt/datastore/data/Documents"
-BMK_BKP="$DS_PATH/Bookmarks.txt"
-RAM_BMKS="$RAM_DISK/bookmarks.txt"
+
+BKP_BMKS="$DS_PATH/Bookmarks.txt"
+OLD_BMKS="$DS_PATH/.Bookmarks.bak"
+RAM_BMKS="$RAM_DISK/bookmarks.save.txt"
 
 if [ -f "$RAM_BMKS" ]; then
   echo "saving bookmarks to disk..."
-  cp -fv $BMK_BKP $DS_PATH/.Bookmarks.bak
-  rsync -a $RAM_BMKS $BMK_BKP
-  chown tank:shared $BMK_BKP
-  chmod 666 $BMK_BKP
+  cp -fv $BKP_BMKS $OLD_BMKS
+  rsync -a $RAM_BMKS $BKP_BMKS
+  chown tank:shared $BKP_BMKS
+  chmod 666 $BKP_BMKS
+  chmod 666 $RAM_BMKS
 else
   echo "bookmarks file not found in RAM disk, restoring..."
   if [ -f "$RAM_DISK/sysout.txt" ]; then
-  	if [ -f "$BMK_BKP" ]; then
+  	if [ -f "$BKP_BMKS" ]; then
     	echo "restoring bookmarks from backup..."
-	    cp -fv $BMK_BKP $RAM_BMKS
+	    cp -fv $BKP_BMKS $RAM_BMKS
 	    chown tank:shared $RAM_BMKS
       chmod 666 $RAM_BMKS
     else
       echo "bookmarks backup not found, restore aborted!"
+    fi
+  else
+    echo "RAM disk not connected, restore aborted!"
+  fi	
+fi
+
+LISTS_BKP="$DS_PATH/Lists.txt"
+LISTS_OLD="$DS_PATH/.Lists.bak"
+RAM_LISTS="$RAM_DISK/lists.save.txt"
+
+if [ -f "$RAM_LISTS" ]; then
+  echo "saving lists to disk..."
+  cp -fv $LISTS_BKP $LISTS_OLD
+  rsync -a $RAM_LISTS $LISTS_BKP
+  chown tank:shared $LISTS_BKP
+  chmod 666 $LISTS_BKP
+  chmod 666 $RAM_LISTS
+else
+  echo "lists file not found in RAM disk, restoring..."
+  if [ -f "$RAM_DISK/sysout.txt" ]; then
+  	if [ -f "$LISTS_BKP" ]; then
+    	echo "restoring lists from backup..."
+	    cp -fv $LISTS_BKP $RAM_LISTS
+	    chown tank:shared $RAM_LISTS
+      chmod 666 $RAM_LISTS
+    else
+      echo "lists backup not found, restore aborted!"
     fi
   else
     echo "RAM disk not connected, restore aborted!"

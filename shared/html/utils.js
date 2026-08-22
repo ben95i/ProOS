@@ -227,3 +227,213 @@ export function rgbToHsv(red, green, blue) {
   const value = maxColorComponent;
   return { hue: hue, saturation: saturation, value: value };
 }
+//// Shared UI helpers ////
+// Moved here out of main.js so bookmarks.js / lists.js can use the same copy.
+
+// Tag function for building DOM markup with template literals.
+// Strips whitespace between tags so the resulting DOM contains no stray
+// text nodes -- output is identical to element-by-element createElement()
+// construction (whitespace text nodes between inline-block elements would
+// otherwise render as visible gaps).
+export function html(strings, ...values) {
+  return strings
+    .reduce((out, str, i) => out + str + (i < values.length ? values[i] : ""), "")
+    .replace(/>\s+</g, "><")
+    .trim();
+}
+
+let messagePopupTimer = null;
+
+export function showPopup(message) {
+  const win_name = "msg-popup";
+  const text_name = "msg-text";
+  let msgpopwin = document.getElementById(win_name);
+  if (!msgpopwin) { // window does not exist
+    // draw window (popup container + message text box)
+    msgpopwin = document.createElement("div");
+    msgpopwin.classList.add("popup-alert");
+    msgpopwin.id = win_name;
+    msgpopwin.innerHTML = html`<div id="${text_name}"></div>`;
+    // add to page
+    document.body.appendChild(msgpopwin);
+  }
+  msgpopwin.classList.remove("fade-out");
+  // set message text
+  const msgtext = document.getElementById(text_name);
+  msgtext.innerHTML = message;
+  // reset hide window timeout
+  clearTimeout(messagePopupTimer);
+  // hide window after delay
+  messagePopupTimer = setTimeout(() => {
+    // fade out window
+    msgpopwin.classList.add("fade-out");
+    // wait for the transition to end before removing window
+    msgpopwin.addEventListener("animationend", () => {
+      if (msgpopwin.isConnected) {
+        msgpopwin.remove();
+      }
+    }, { once: true });
+  }, 4000); // hide delay in (ms)
+}
+
+// read a menu / list file
+export async function loadMenu(url) {
+  try {
+    const response = await fetch(url, {
+      method: "GET"
+    });
+    // return response
+    return await response.text();
+  } catch (error) {
+    showPopup("[loadMenu] failed to fetch: " + error);
+  }
+}
+
+// save file API POST call
+export function savePOST(file, data, onSuccess) {
+  const url = location.protocol + "//" + location.hostname + "/api/write?file=" + file;
+  // submit request
+  const xhr = new XMLHttpRequest();
+  xhr.open("POST", url);
+  xhr.setRequestHeader("Content-Type", "text/plain");
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState === XMLHttpRequest.DONE) {
+      if (xhr.status == 200) {
+        // action on successful transmit
+        if (typeof onSuccess === 'function') {
+          onSuccess(file);
+        }
+      } else {
+        showPopup("[savePOST] failed to send: " + file);
+      }
+    }
+  }
+  xhr.send(data);
+}
+
+export function scrollToBottom() {
+  window.scrollTo({
+    top: document.body.scrollHeight,
+    behavior: 'smooth'
+  });
+}
+
+//// Drag to re-order ////
+
+// grip handle markup, shared by every draggable list so the icon matches
+export const DRAG_GRIP_CLASS = 'drag-grip';
+export const DRAG_GRIP_OFF_CLASS = 'drag-grip--off';
+export const DRAG_GRIP_HTML = '<i class="fad fa-grip-lines"></i>';
+
+export function dragGripElement(fixed = false) {
+  const grip = document.createElement('span');
+  grip.className = DRAG_GRIP_CLASS + (fixed === true ? ` ${DRAG_GRIP_OFF_CLASS}` : '');
+  grip.innerHTML = DRAG_GRIP_HTML;
+  return grip;
+}
+
+// Pointer drag re-ordering for a list of rows. The row is moved in the DOM
+// while it is dragged, so the caller only has to read the new order back out
+// of the container when onDrop fires.
+//   rowClass  class every draggable row carries
+//   onDrop    called once the row is released
+export class DragSort {
+
+  constructor(options = {}) {
+    this.rowClass = options.rowClass || 'drag-row';
+    this.onDrop = typeof options.onDrop === 'function' ? options.onDrop : function () {};
+    this.drag = null;
+  }
+
+  // returns true when the event started a drag
+  start(event) {
+    const grip = event.target.closest(`.${DRAG_GRIP_CLASS}`);
+    if (!grip || grip.classList.contains(DRAG_GRIP_OFF_CLASS)) {
+      return false;
+    }
+    const row = grip.closest(`.${this.rowClass}`);
+    if (!row) {
+      return false;
+    }
+    event.preventDefault();
+    this.drag = {
+      row: row,
+      grip: grip,
+      pointer: event.pointerId,
+      startY: event.clientY,
+      offset: 0
+    };
+    row.classList.add("drag-row--active");
+    if (grip.setPointerCapture) {
+      grip.setPointerCapture(event.pointerId);
+    }
+    return true;
+  }
+
+  // next / previous row that is allowed to swap with the dragged row
+  neighbour(row, forward) {
+    const next = forward === true ? row.nextElementSibling : row.previousElementSibling;
+    if (!next || !next.classList.contains(this.rowClass)) {
+      return null;
+    }
+    // rows that cannot be dragged hold their place
+    return next.querySelector(`.${DRAG_GRIP_OFF_CLASS}`) ? null : next;
+  }
+
+  move(event) {
+    const drag = this.drag;
+    if (!drag || event.pointerId !== drag.pointer) {
+      return;
+    }
+    event.preventDefault();
+    drag.offset = event.clientY - drag.startY;
+    // step over a neighbour once the row has travelled past its mid-point,
+    // then re-base the offset so the row stays under the pointer
+    let stepped = true;
+    while (stepped) {
+      const forward = drag.offset > 0;
+      const other = this.neighbour(drag.row, forward);
+      const reach = other ? other.offsetHeight : 0;
+      stepped = other !== null && reach > 0 && Math.abs(drag.offset) > (reach / 2);
+      if (stepped) {
+        if (forward) {
+          drag.row.parentNode.insertBefore(other, drag.row);
+          drag.startY += reach;
+          drag.offset -= reach;
+        } else {
+          drag.row.parentNode.insertBefore(drag.row, other);
+          drag.startY -= reach;
+          drag.offset += reach;
+        }
+      }
+    }
+    drag.row.style.transform = `translateY(${drag.offset}px)`;
+  }
+
+  end(event) {
+    const drag = this.drag;
+    if (!drag || (event && event.pointerId !== drag.pointer)) {
+      return;
+    }
+    this.cancel();
+    this.onDrop();
+  }
+
+  // drops the drag without reporting it (used when tearing down)
+  cancel() {
+    const drag = this.drag;
+    if (!drag) {
+      return;
+    }
+    drag.row.style.transform = "";
+    drag.row.classList.remove("drag-row--active");
+    if (drag.grip.hasPointerCapture && drag.grip.hasPointerCapture(drag.pointer)) {
+      drag.grip.releasePointerCapture(drag.pointer);
+    }
+    this.drag = null;
+  }
+
+  isDragging() {
+    return this.drag !== null;
+  }
+}
