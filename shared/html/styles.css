@@ -167,8 +167,8 @@ body {
 .scroll-bar-style::-webkit-scrollbar-track {
   margin-top: 3px;
   margin-bottom: 3px;
-  background-color: #000;
   border-radius: 5px;
+  background: transparent; 
 }
 
 .scroll-bar-style::-webkit-scrollbar-thumb {
@@ -719,16 +719,12 @@ input.chkbox {
   white-space: nowrap;
 }
 
-.bookmark-editmode a {
-  color: var(--alert-red);
-  text-decoration: underline
-}
-
-.bookmark-editmode a:active,
-.bookmark-editmode a:hover,
-.bookmark-editmode a.dd-selected {
-  background-color: var(--alert-red);
-  color: #eeeeee;
+/* per-row edit pencil, opens the add / edit window for that bookmark */
+.bookmarked__edit {
+  flex-shrink: 0;
+  padding: 0px 2px;
+  font-size: 20px;
+  color: var(--main-40-white);
 }
 
 #bookmarks {
@@ -1800,18 +1796,45 @@ input.chkbox {
   height: 22px;
 }
 
+/* rename box -- same look as the bookmarks "Search here..." box, sized in JS
+   to the space the name already had so the row does not change size */
 .list__namebox {
-  flex-grow: 1;
-  min-width: 0;
-  border: none;
-  outline: none;
-  border-radius: 8px;
+  flex: none;
+  min-width: 0px;
+  /* matches .list__label, so the row height does not shift */
   padding: 4px 6px;
-  font-size: 22px;
-  color: #000;
+  margin: -4px -2px;
+  color: #fff;
+  background-color: var(--main-40-black);
+  box-shadow: 0 0 15px var(--main-40-white);
+  border: 3px solid #000;
+  outline: none;
+}
+
+.list__namebox::placeholder {
+  color: #c1c1c1;
+}
+
+.list__namebox:focus {
+  outline: 3px solid var(--main-40-white);
 }
 
 .list__empty {
+  padding: 20px 10px;
+  text-align: center;
+  font-size: 20px;
+  color: #a6a9ad;
+}
+
+/* un-checked count on a list row -- same text as the empty state */
+.list__count {
+  flex-shrink: 0;
+  font-size: 20px;
+  color: #a6a9ad;
+}
+
+/* total item count, at the bottom of an open list */
+.list__total {
   padding: 20px 10px;
   text-align: center;
   font-size: 20px;

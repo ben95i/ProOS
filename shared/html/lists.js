@@ -61,7 +61,7 @@ const LOCK_SETTLE_MS = 600;    // let a competing claim land before checking
 const MAX_NAME_LENGTH = 64;
 const COMBINING_MARKS = /[\u0300-\u036f]/g;
 const NON_ASCII = /[^\x20-\x7E]/g;
-const RESERVED_CHARS = /[|/\\]/g;
+const RESERVED_CHARS = /[\0\r\n|/\\]/g;
 const EXTRA_SPACES = /\s{2,}/g;
 // window views
 const VIEW_LISTS = 0;
@@ -85,10 +85,10 @@ export function cleanName(value) {
   const text = cleanString(value === null || value === undefined ? '' : String(value));
   const name = (text || '')
     .normalize("NFD")             // split accents off their base letter
-    .replace(COMBINING_MARKS, "") // "Cafe" keeps the "e", loses the accent
-    .replace(NON_ASCII, "")
-    .replace(RESERVED_CHARS, "-")
-    .replace(EXTRA_SPACES, " ")   // close up any gaps left behind
+    .replace(COMBINING_MARKS, '') // "Cafe" keeps the "e", loses the accent
+    .replace(NON_ASCII, '')
+    .replace(RESERVED_CHARS, '')
+    .replace(EXTRA_SPACES, ' ')   // close up any gaps left behind
     .trim();
   return name.length >= MAX_NAME_LENGTH
     ? `${name.substring(0, MAX_NAME_LENGTH)}...`
@@ -527,6 +527,11 @@ export default class Lists {
       .concat(entries.filter(item => item.checked === true));
   }
 
+  // items still un-checked, shown on the right of a list row
+  openCount(entry) {
+    return entry.items.filter(item => item.checked !== true).length;
+  }
+
   // only checked items can be dragged; everything in the list view can
   isMovable(entry) {
     return this.view !== VIEW_ITEMS || entry.checked === true;
@@ -571,6 +576,13 @@ export default class Lists {
       list.appendChild(empty);
     } else {
       rows.forEach(row => list.appendChild(this.createRow(row)));
+      if (items) {
+        // total for the list, sitting at the bottom of the rows
+        const total = document.createElement('div');
+        total.className = "list__total";
+        total.innerText = `${rows.length} ${rows.length === 1 ? 'item' : 'items'}`;
+        list.appendChild(total);
+      }
     }
     this.renderActions();
     this.updateDot();
@@ -597,6 +609,15 @@ export default class Lists {
     // the label is the rename target, so the rest of the row is a separate
     // filler that carries the open / complete tap
     row.appendChild(this.createCell('span', "list__fill", ""));
+    if (!items) {
+      // how many items in that list are still un-checked
+      const count = document.createElement('span');
+      count.className = "list__count";
+      let unchecked = this.openCount(entry);
+      if (unchecked == 0) unchecked = '';
+      count.innerText = unchecked;
+      row.appendChild(count);
+    }
     if (this.mode === MODE_SELECT) {
       const chkbox = document.createElement('input');
       chkbox.type = "checkbox";
@@ -735,6 +756,7 @@ export default class Lists {
     namebox.setAttribute("autocorrect", "off");
     namebox.setAttribute("autocapitalize", "none");
     namebox.value = entry.name;
+    this.sizeNamebox(namebox, row, label);
     label.replaceWith(namebox);
     namebox.focus();
     namebox.select();
@@ -764,6 +786,27 @@ export default class Lists {
         finish(key_event.key === 'Enter');
       }
     });
+  }
+
+  // The box takes over the space the name and the filler beside it already
+  // occupy, so the row keeps the width and height it had before the rename
+  // started (rows are max-content, so a box that sized itself would drag the
+  // whole window wider). The filler steps aside for the duration.
+  sizeNamebox(namebox, row, label) {
+    const fill = row.querySelector('.list__fill');
+    const labelBox = label.getBoundingClientRect();
+    const rightEdge = fill ? fill.getBoundingClientRect().right : labelBox.right;
+    const width = Math.round(rightEdge - labelBox.left);
+    const height = Math.round(labelBox.height);
+    if (width <= 0 || height <= 0) {
+      return; // nothing rendered to measure against
+    }
+    namebox.style.width = `${width}px`;
+    namebox.style.height = `${height}px`;
+    if (fill) {
+      // the box now covers the filler and the gap that was between them
+      fill.style.display = "none";
+    }
   }
 
   //// unsaved changes dialog ////

@@ -24,7 +24,7 @@ const SEARCH_ID = 'bookmark__search';
 const SEARCH_BOX_ID = 'bookmark__search_txt';
 const PROMPT_ID = 'editFav__prompt';
 const ITEM_CLASS = 'bookmarked__item';
-const EDIT_MODE_CLASS = 'bookmark-editmode';
+const EDIT_ICON_CLASS = 'bookmarked__edit';
 const SELECTED_CLASS = 'dd-selected';
 const FILE_TYPE = 'bkmrk';           // column 1 of every row
 const MAX_NAME_LENGTH = 42;
@@ -57,6 +57,7 @@ export default class Bookmarks {
     this.removeDropdowns = typeof options.removeDropdowns === 'function'
       ? options.removeDropdowns : function () {};
     this.state = BKM_INACTIVE;
+    this.pendingAdd = null; // placeholder row waiting on the add window
     this.dragSort = new DragSort({
       rowClass: ITEM_CLASS,
       onDrop: () => this.save()
@@ -103,9 +104,8 @@ export default class Bookmarks {
 
   // called by removeDropdowns()
   close() {
-    const menu = this.menuElem();
-    if (menu) {
-      menu.classList.remove(EDIT_MODE_CLASS);
+    this.discardPendingAdd();
+    if (this.menuElem()) {
       this.clearMenu();
     }
     const buttons = document.getElementById(BUTTONS_ID);
@@ -118,7 +118,8 @@ export default class Bookmarks {
     this.state = BKM_INACTIVE;
   }
 
-  // edit / add buttons, rendered next to the star on demand
+  // add button, rendered next to the star on demand (editing is started from
+  // the pencil on each row)
   renderButtons() {
     if (document.getElementById(BUTTONS_ID)) {
       return;
@@ -127,9 +128,6 @@ export default class Bookmarks {
     if (starBtn) {
       starBtn.insertAdjacentHTML("afterend", html`
         <div class="bookmark-buttons" id="${BUTTONS_ID}">
-          <a id="btn-edit-bookmark">
-            <i class="fad fa-edit"></i>
-          </a>
           <a id="btn-add-bookmark">
             <i class="fad fa-folder-plus"></i>
           </a>
@@ -154,7 +152,7 @@ export default class Bookmarks {
     this.showSearch();
   }
 
-  // 0=URL, 1=Type, 2=Name
+  // 0=URL, 2=Name
   drawMenu(data) {
     const menu = this.menuElem();
     if (!menu) {
@@ -166,10 +164,10 @@ export default class Bookmarks {
         return;
       }
       const cols = line.split("|");
-      if (cols.length < 3) {
+      if (cols.length < 2) {
         return;
       }
-      menu.appendChild(this.createItem(cols[0], cols[2].trim()));
+      menu.appendChild(this.createItem(cols[0], cols[1].trim()));
     });
     menu.addEventListener('pointerdown', this.listeners.pointerdown);
     menu.addEventListener('pointermove', this.listeners.pointermove);
@@ -198,6 +196,11 @@ export default class Bookmarks {
     label.classList.add('bookmarked__label');
     label.innerText = name;
     item.appendChild(label);
+    // edit pencil, opens the add / edit window for this row
+    const editIcon = document.createElement('span');
+    editIcon.classList.add(EDIT_ICON_CLASS);
+    editIcon.innerHTML = '<i class="fad fa-link"></i>';
+    item.appendChild(editIcon);
     // store URL on the element, as the menu always has
     Object.defineProperty(item, "url", {
       enumerable: false,
@@ -218,7 +221,7 @@ export default class Bookmarks {
     this.items().forEach(item => {
       const url = Object.values(item.url).join("");
       // build output file
-      _file += url + `|${FILE_TYPE}|` + this.itemName(item) + "\n";
+      _file += `${url}|${this.itemName(item)}\n`;
     });
     // transmit file
     savePOST(FILE_NAME, [_file]);
@@ -284,40 +287,56 @@ export default class Bookmarks {
 
   //// add / edit mode ////
 
-  editMode() {
-    // hide menu if clicked while open
-    if (this.state === BKM_EDIT_MODE) {
-      this.removeDropdowns();
-      return;
-    }
-    this.enableEditAddMode();
-  }
-
   addBookmark() {
-    this.enableEditAddMode();
     const menu = this.menuElem();
     if (!menu) {
       return;
     }
+    this.discardPendingAdd();
+    this.closePrompt();
     // create placeholder menu item
     const item = this.createItem("about:blank", "New Bookmark");
     // highlight selected item
     item.classList.add(SELECTED_CLASS);
-    // insert item below
-    menu.insertBefore(item, menu.firstChild);
+    // insert item at the top of the bookmarks, below the search box
+    menu.insertBefore(item, this.firstItem());
+    this.pendingAdd = item;
+    this.state = BKM_EDIT_MODE;
     // add new window
     this.drawPrompt(true, null, null, item);
   }
 
-  enableEditAddMode() {
-    const menu = this.menuElem();
-    if (menu) { // change color of menu
-      menu.classList.add(EDIT_MODE_CLASS);
-    }
-    // remove
-    this.removeSearch();
-    this.state = BKM_EDIT_MODE;
+  // opens the add / edit window on a row; called by the row pencil and by
+  // clicking any other row while the window is already up
+  editItem(item) {
+    this.discardPendingAdd();
     this.closePrompt();
+    this.state = BKM_EDIT_MODE;
+    item.classList.add(SELECTED_CLASS); // highlight selected item
+    this.drawPrompt(false, item.url, this.itemName(item), item);
+  }
+
+  // closes the window but leaves the bookmarks menu on-screen
+  endEditMode() {
+    this.discardPendingAdd();
+    this.closePrompt();
+    if (this.state !== BKM_INACTIVE) {
+      this.state = BKM_OPEN_MODE;
+    }
+  }
+
+  // an add that was never saved leaves nothing behind
+  discardPendingAdd() {
+    if (this.pendingAdd) {
+      this.pendingAdd.remove();
+      this.pendingAdd = null;
+    }
+  }
+
+  // first bookmark row, so inserts land under the search box
+  firstItem() {
+    const items = this.items();
+    return items.length > 0 ? items[0] : null;
   }
 
   clickItem(item, event) {
@@ -326,18 +345,17 @@ export default class Bookmarks {
         (event && event.target.closest('.drag-grip'))) {
       return;
     }
-    const url = item.url;
-    if (this.state === BKM_OPEN_MODE) {
-      if (!(url === null || url == "" || url == "about:blank")) {
-        // open URL in new tab
-        window.open(url, "_blank");
-      }
+    // the pencil always opens the window on its own row, and while the window
+    // is up any row that is clicked becomes the one being edited
+    if ((event && event.target.closest(`.${EDIT_ICON_CLASS}`)) ||
+        this.state === BKM_EDIT_MODE) {
+      this.editItem(item);
+      return;
     }
-    if (this.state === BKM_EDIT_MODE) {
-      // edit bookmark item
-      this.closePrompt();
-      item.classList.add(SELECTED_CLASS); // highlight selected item
-      this.drawPrompt(false, url, this.itemName(item), item);
+    const url = item.url;
+    if (!(url === null || url == "" || url == "about:blank")) {
+      // open URL in new tab
+      window.open(url, "_blank");
     }
   }
 
@@ -405,9 +423,9 @@ export default class Bookmarks {
       if (btn_event.target === editFavDownBtn) {
         this.shiftItemDown(item);
       }
-      // cancel button action
+      // cancel button action -- closes the window, not the bookmarks menu
       if (btn_event.target === editFavCancelBtn) {
-        this.removeDropdowns();
+        this.endEditMode();
       }
       // lookup URL action
       if (btn_event.target === editFavLookupBtn) {
@@ -444,18 +462,25 @@ export default class Bookmarks {
           urlBox.value = _boxurl;
           editFavText.innerHTML = "Changes Saved";
         }
+        // the new row is a real bookmark now
+        if (this.pendingAdd === item) {
+          this.pendingAdd = null;
+        }
         // save to file
         this.save();
-        // close dropdown
-        this.closePrompt();
+        // close window, leaving the menu open
+        this.endEditMode();
       }
       // delete button action
       if (btn_event.target === editFavDeleteBtn) {
+        if (this.pendingAdd === item) {
+          this.pendingAdd = null;
+        }
         item.remove();
         // save to file
         this.save();
-        // close dropdown
-        this.closePrompt();
+        // close window, leaving the menu open
+        this.endEditMode();
       }
     });
   }

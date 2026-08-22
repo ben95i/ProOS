@@ -68,11 +68,7 @@ app.get('/api/read', [
         });
         const fileArg = req.query.file;
         let subdir = 'menus';
-        if (fileArg === 'sysout' || 
-            fileArg === 'bookmarks.save' ||
-            fileArg === 'lists.save' ) {
-          subdir = 'ram';
-        }
+        if (fileArg === 'sysout' || fileArg?.includes('.save')) subdir = 'ram';
         const filePath = safePath(subdir, fileArg);
         const file = readFileSync(filePath, 'utf8');
         res.status(200).json(file.slice(-maxReadSize));

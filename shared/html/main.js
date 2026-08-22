@@ -353,7 +353,6 @@ registerListeners({
   'btn-menu-pimainmenu': () => showMenu('pi-mainmenu'),
   'btn-dyn-thememenu':   () => showDynFileMenu('thememenu'),
   'btn-show-bookmarks':  () => showBookmarks(),
-  'btn-edit-bookmark':   () => App.bookmarks && App.bookmarks.editMode(),
   'btn-add-bookmark':    () => App.bookmarks && App.bookmarks.addBookmark(),
   'nav_stats_menu':      () => showStatusMenu()
 });
@@ -484,7 +483,7 @@ function roomControlsTemplate() {
     </span>
   </button>
   <button type="button" class="button" id="btn-lists">
-    <span class="button__text"><i class="fad fa-tasks"></i> Lists</span>
+    <span class="button__text"><i class="fad fa-list-ol"></i> Lists</span>
   </button>
   <p class="grid-sep"></p>
   <button type="button" class="button" id="btn-open-cam">
@@ -537,8 +536,13 @@ function livingRoomGridTemplate() {
     </button>
     <div class="dd-content ind-button" id="wkststate-menu"></div>
   </div>
-  <button type="button" class="button">
-  </button>
+  <div class="dropdown">
+    <button type="button" class="button" id="btn-power-clr1">
+      <span class="button__text" id="clr1-text"><i class="fad fa-light-ceiling"></i> Ceiling</span>
+      <span class="button__text" id="clr1-spinner"></span>
+    </button>
+    <div class="dd-content ind-button" id="clr1-menu"></div>
+  </div>
   <p class="grid-sep"></p>
   <button type="button" class="button" id="lr-voldwnbtn">
       <span class="button__text"><i class="fad fa-volume-down fa-lg"></i></span>
@@ -586,6 +590,7 @@ function livingRoomGridTemplate() {
 registerListeners({
   'btn-power-wkststate':   () => showPowerMenu('lrxmit', 'wkststate'),
   'btn-power-wl1_dual':    () => showPowerMenu('lrxmit', 'wl1_dual'),
+  'btn-power-clr1':        () => showPowerMenu('lrxmit', 'clr1'),
   'lr-voldwnbtn':          () => sendVol(VOLUME_ACTIONS.voldwnbtn),
   'lr-volmutebtn':         () => sendVol(VOLUME_ACTIONS.volmutebtn),
   'lr-volupbtn':           () => sendVol(VOLUME_ACTIONS.volupbtn),
@@ -2087,8 +2092,16 @@ window.drawMenu = function(data, menu) {
     // scroll only if the menu runs past the bottom of the viewport
     const menuElement = document.getElementById(menu);
     const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
-    if (menuElement && menuElement.getBoundingClientRect().bottom > viewportHeight) {
-      scrollToBottom();
+    if (menuElement) {
+      const rect = menuElement.getBoundingClientRect();
+      if (rect.bottom > viewportHeight) {
+        const currentTop = window.pageYOffset || document.documentElement.scrollTop;
+        const menuTop = rect.top + currentTop;
+        // only move down, and never past the top of the menu
+        if (menuTop > currentTop) {
+          window.scrollTo({ top: menuTop, behavior: 'smooth' });
+        }
+      }
     }
   } else {
     showPopup("[drawMenu] no data to parse.");
