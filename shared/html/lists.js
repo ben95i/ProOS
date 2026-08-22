@@ -459,7 +459,7 @@ export default class Lists {
       <span class="button__text"><i class="fad fa-trash-alt" id="${DEL_ICON_ID}"></i></span>
     </button>
     <button type="button" class="button button__sml list__btn" id="${ADD_BTN_ID}">
-      <span class="button__text"><i class="fad fa-edit"></i></span>
+      <span class="button__text"><i class="fad fa-folder-plus"></i></span>
     </button>
   </div>
   <div class="list__overlay" id="${OVERLAY_ID}">
@@ -719,19 +719,21 @@ export default class Lists {
   }
 
   // first press turns on the selection check boxes, the second either deletes
-  // what is selected (staying in select mode) or leaves select mode again
+  // what is selected or leaves select mode again; either way the list ends up
+  // back in its normal state
   deleteAction() {
     if (this.mode !== MODE_SELECT) {
       this.setMode(MODE_SELECT);
       return;
     }
     const ids = this.selectedIds();
-    if (ids.length === 0) {
-      this.setMode(MODE_OPEN);
+    if (ids.length > 0) {
+      this.setActiveList(this.activeList().filter(entry => !ids.includes(entry.id)));
+      this.mode = MODE_OPEN; // the delete is done, drop out of select mode
+      this.commit();
       return;
     }
-    this.setActiveList(this.activeList().filter(entry => !ids.includes(entry.id)));
-    this.commit();
+    this.setMode(MODE_OPEN);
   }
 
   toggleItem(id) {

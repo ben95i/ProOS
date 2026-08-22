@@ -2368,6 +2368,13 @@ function destroyPageServices() {
     App.lists.destroy();
     App.lists = null;
   }
+  // bookmarks menu -- the add/edit window is a direct child of <body>, so it
+  // outlives removeInjectedPage(); a stale BKM_EDIT_MODE would also keep
+  // handleClicks() swallowing every click on the newly drawn page
+  if (App.bookmarks) {
+    App.bookmarks.close();
+    App.bookmarks = null;
+  }
   // weather widget
   if (window.weatherWidget && typeof window.weatherWidget.remove === 'function') {
     window.weatherWidget.remove();

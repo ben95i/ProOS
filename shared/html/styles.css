@@ -46,6 +46,7 @@
   --sec-60-black: color-mix(in srgb, var(--nav-menus-color) 60%, #000);
   --sec-75-black: color-mix(in srgb, var(--nav-menus-color) 75%, #000);
   --red-trans-35: color-mix(in srgb, var(--alert-red), transparent 35%);
+  --menu-glow: 0px 0px 2px #fff, 0px 0px 7px var(--main-40-white), 0px 0px 16px var(--main-color);
 }
 
 body {
@@ -650,15 +651,13 @@ input.chkbox {
 
 @media (hover: hover) {
   .dd-content a:hover {
-    border-radius: 5px;
-    background-color: var(--main-white-50);
-    color: #000;
+    color: #fff;
+    text-shadow: var(--menu-glow);
   }
 }
 .dd-content a:active {
-  border-radius: 5px;
-  background-color: var(--main-white-50);
-  color: #000;
+  color: #fff;
+  text-shadow: var(--menu-glow);
 }
 
 
@@ -1711,9 +1710,14 @@ input.chkbox {
   border-bottom: none;
 }
 
+@media (hover: hover) {
+  .list__row:hover {
+    text-shadow: var(--menu-glow);
+  }
+}
+
 .list__row:active {
-  background-color: var(--main-white-50);
-  color: #000;
+  text-shadow: var(--menu-glow);
 }
 
 /* shared drag handle -- lists window and bookmarks menu */
