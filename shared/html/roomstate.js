@@ -44,8 +44,27 @@ export default class RoomStateManager {
     svg.appendChild(trafficLightIcon);
     svg.appendChild(spinnerCircle);
     this.container.appendChild(svg);
+    // Refresh spinner, riding the same circle as the countdown ring while a
+    // status request is in flight. Semi-transparent so the status light still
+    // reads through it, and click-through so it never steals the tap.
+    const refreshSpinner = document.createElement('span');
+    refreshSpinner.id = 'roomStatusRefresh';
+    refreshSpinner.className = 'roomstatus-spinner';
+    this.container.appendChild(refreshSpinner);
     // Attach self-contained click listener
     this.container.addEventListener('click', this.roomStateClick);
+  }
+
+  // shows / hides the rotating refresh ring; the countdown ring is put away
+  // first so only one of the two is ever turning
+  setRefreshing(on) {
+    if (!this.container) {
+      return;
+    }
+    if (on === true) {
+      this.container.classList.remove('status-loading');
+    }
+    this.container.classList.toggle('status-refreshing', on === true);
   }
 
   async showRoomState() {
@@ -54,12 +73,13 @@ export default class RoomStateManager {
     const lightIcon = document.getElementById("trafficLightIcon");
     this.container.classList.remove('status-loading');
     let cmd = App.currentRoom + 'status';
-    lightIcon.classList.add("status-pending");
+    this.setRefreshing(true);
     try {
       const resp = await sendCmd('main', cmd, '');
+      this.setRefreshing(false);
       this.devices = [];
       this.roomState = null;
-      lightIcon.classList.remove("status-error", "status-pending");
+      lightIcon.classList.remove("status-error");
       if (resp.roomState === null) {
         lightIcon.classList.add("status-error");
         this.hideRoomState();
@@ -86,6 +106,7 @@ export default class RoomStateManager {
         }, refreshRate * 1000);
       });
     } catch (err) {
+      this.setRefreshing(false);
       lightIcon.classList.add("status-error");
       this.hideRoomState();
     }
@@ -128,8 +149,9 @@ export default class RoomStateManager {
     this.stopRoomStateTimer();
     const lightIcon = document.getElementById("trafficLightIcon");
     this.container.classList.remove('status-loading');
+    this.setRefreshing(false);
     if (lightIcon) {
-      lightIcon.classList.remove("status-pending", "status-off", "status-on");
+      lightIcon.classList.remove("status-off", "status-on");
     }
   }
 

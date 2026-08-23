@@ -114,6 +114,7 @@ body {
 }
 
 #status_anchor {
+  position: relative;
   width: 50px;
   height: 60px;
   display: inline-flex !important;
@@ -136,8 +137,39 @@ body {
   fill: transparent;
 }
 
-#trafficLightIcon.status-pending {
-  fill-opacity: 0.7;
+/* Refresh spinner, drawn while a status request is in flight. It rides the
+   same circle the countdown ring does: the 50-unit viewBox is drawn at 45px,
+   so the r=23 path is a 41.4px centre-line and its 5-unit stroke is 4.5px.
+   A border ring is measured outside-in, so the box is 41.4 + 4.5 = 45.9px.
+   Centred with margins rather than a transform, because the shared rotation
+   keyframes animate transform and would otherwise throw the centring away. */
+.roomstatus-spinner {
+  width: 45.9px;
+  height: 45.9px;
+  top: 50%;
+  left: 50%;
+  margin-left: -22.95px;
+  /* half the box, plus the 1px the svg sits above centre from its margin */
+  margin-top: -23.95px;
+  z-index: 1;
+  border-top-width: 4.5px;
+  border-right-width: 4.5px;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+#status_anchor.status-refreshing .roomstatus-spinner {
+  opacity: 0.55;
+  visibility: visible;
+}
+
+/* never both rings at once: the countdown drops out the moment a refresh
+   starts, without its usual half-second fade */
+#status_anchor.status-refreshing .spinner-path {
+  opacity: 0;
+  visibility: hidden;
+  transition: none;
 }
 
 #trafficLightIcon.status-error {
@@ -709,6 +741,13 @@ input.chkbox {
   display: flex;
 }
 
+/* stand-in first row while the file is loading, swapped for the search box */
+#bookmark__loading {
+  color: #a6a9ad;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 /* bookmark rows carry the shared drag handle, so the name sits beside it */
 .bookmarked__item {
   display: flex;
@@ -731,6 +770,7 @@ input.chkbox {
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
   padding: 5px;
   font-size: 20px;
   line-height: 1;
@@ -740,6 +780,39 @@ input.chkbox {
 
 /* the saved favicon, drawn at the size it is stored at so it stays sharp.
    Always a circle: the corners of the square source are clipped away. */
+/* the icon sits in its own holder inside the button, so the spinner that
+   rings it survives a favicon redraw */
+.bookmarked__glyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+/* Spinner ring around the favicon, from the tap until the edit window is up.
+   32px around a 24px icon, centred with margins rather than a transform --
+   the shared rotation keyframes animate transform and would undo it. */
+.bookmark-spinner {
+  width: 32px;
+  height: 32px;
+  top: 50%;
+  left: 50%;
+  margin-left: -16px;
+  margin-top: -16px;
+}
+
+/* the two-class selectors win over the shared rule's display, whatever the
+   order of the two blocks in this file */
+.bookmarked__edit .bookmark-spinner {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.bookmarked__edit--loading .bookmark-spinner {
+  opacity: 0.85;
+  visibility: visible;
+}
+
 .bookmarked__favicon {
   display: block;
   width: 24px;
@@ -938,6 +1011,27 @@ input.chkbox {
   margin-left: 8px;
   height: 50px;
   width: 155px;
+}
+
+/* the site lookup button reporting on itself: the icon classes come off, so
+   what is left is the page font */
+.editFav__button--text {
+  overflow: hidden;
+  /* .button transitions "all" -- nothing about the message should ease in */
+  transition: none;
+}
+
+/* The message lives in its own element because .button transitions "all" --
+   a font-size set on the button would be animated from 24px down as the
+   text appears, which reads as the text shrinking. */
+.editFav__button-msg {
+  display: block;
+  pointer-events: none; /* the press belongs to the button */
+  font-size: 17px;
+  line-height: 1.15;
+  white-space: normal;
+  transition: none;
+  animation: none;
 }
 
 /* banner row: title centred, favicon parked on the right-hand edge. Sized
@@ -1302,7 +1396,7 @@ input.chkbox {
   margin-top: 12px;
 }
 
-.btn-spinner, .right-nav-spinner {
+.btn-spinner, .right-nav-spinner, .roomstatus-spinner, .bookmark-spinner {
   pointer-events: none;
   position: absolute;
   border-radius: 50%;
@@ -1741,15 +1835,14 @@ input.chkbox {
   border-radius: 5px;
   background-color: var(--sec-60-black);
   overflow-y: auto;
-  overflow-x: auto;
+  overflow-x: hidden;
 }
 
 .list__row {
   display: flex;
   align-items: center;
   gap: 10px;
-  width: max-content;
-  min-width: 100%;
+  width: auto;
   padding: 12px 12px;
   color: #fff;
   text-align: left;
@@ -1826,11 +1919,16 @@ input.chkbox {
 
 .list__label {
   /* rename target -- a few pixels of padding around the text are part of it */
-  flex-shrink: 0;
+  flex-shrink: 1;
+  min-width: 0px;
   padding: 4px 6px;
   margin: -4px -2px;
   border-radius: 6px;
   white-space: nowrap;
+  /* the window still grows to fit a long name up to its max-width; past that
+     the name is cut short here rather than widening the row */
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* the rest of the row: opens the list / ticks the item off */

@@ -31,11 +31,26 @@ const MENU_ID = 'bookmarks';         // drop-down container, drawn by main.js
 const BUTTONS_ID = 'bookmark-buttons';
 const STAR_BTN_ID = 'btn-show-bookmarks';
 const SEARCH_ID = 'bookmark__search';
+const LOADING_ID = 'bookmark__loading';
 const SEARCH_BOX_ID = 'bookmark__search_txt';
 const PROMPT_ID = 'editFav__prompt';
 const ITEM_CLASS = 'bookmarked__item';
 const EDIT_ICON_CLASS = 'bookmarked__edit';
 const FAV_ICON_CLASS = 'bookmarked__favicon';
+const GLYPH_CLASS = 'bookmarked__glyph';
+const SPINNER_CLASS = 'bookmark-spinner';
+const ROW_LOADING_CLASS = 'bookmarked__edit--loading';
+// the lookup button reports on itself instead of writing into the name box
+const LOOKUP_ICON_CLASS = 'fa-search';
+const LOOKUP_TEXT_CLASS = 'editFav__button--text';
+const LOOKUP_MSG_CLASS = 'editFav__button-msg';
+const LOOKUP_BUSY_MSG = 'Processing...';
+const LOOKUP_FAIL_MSG = 'Site Lookup Error!';
+// The backend can answer with its own failure text instead of a title. The
+// match is the whole answer, so a real page title that happens to mention
+// the phrase is still a title.
+const LOOKUP_FAIL_REPLY = /^site\s*lookup\s*error!?$/i;
+const LOOKUP_ERROR_MS = 3000; // how long the answer sits before the icon is back
 const PREVIEW_ID = 'editFav__iconpreview';
 const PREVIEW_EMPTY_CLASS = 'editFav__iconpreview--empty';
 const SELECTED_CLASS = 'dd-selected';
@@ -106,6 +121,9 @@ export default class Bookmarks {
     this.readOnly = false;   // another user held the lock when we last looked
     this.loadedBody = "";    // the file as it was when the menu was drawn
     this.confirming = null;  // claim waiting to be confirmed, if any
+    this.loading = false;    // the file is on its way in
+    this.lookupBtn = null;   // site lookup button of the open window
+    this.lookupTimer = null; // error text waiting to turn back into the icon
     // one editor at a time, shared with the lists window (utils.js)
     this.lock = new FileLock({
       read: () => readFile(FILE_NAME),
@@ -170,7 +188,10 @@ export default class Bookmarks {
       buttons.remove();
     }
     this.dragSort.cancel();
+    this.clearRowLoading();
     this.removeSearch();
+    this.removeLoading();
+    this.loading = false;
     this.closePrompt();
     this.readOnly = false;
     this.loadedBody = "";
@@ -197,17 +218,42 @@ export default class Bookmarks {
   //// file ////
 
   async load() {
+    this.showLoading();
     const { text, busy } = await this.lock.check();
+    this.loading = false;
     if (this.state === BKM_INACTIVE) {
       return; // menu closed while loading
     }
     if (text === null || typeof text !== 'string') {
+      this.removeLoading();
       showPopup("[bookmarks] no data to parse.");
       return;
     }
     this.readOnly = busy;
     this.drawMenu(text);
+    // replaces the loading row
     this.showSearch();
+  }
+
+  // stand-in first row, swapped for the search box once the file is drawn
+  showLoading() {
+    const menu = this.menuElem();
+    if (!menu || document.getElementById(LOADING_ID)) {
+      return;
+    }
+    this.loading = true;
+    const loadingRow = document.createElement("a");
+    loadingRow.id = LOADING_ID;
+    loadingRow.classList.add("nohide");
+    loadingRow.innerText = "Loading...";
+    menu.insertBefore(loadingRow, menu.firstChild);
+  }
+
+  removeLoading() {
+    const loadingRow = document.getElementById(LOADING_ID);
+    if (loadingRow) {
+      loadingRow.remove();
+    }
   }
 
   // re-reads the file and redraws the menu from it
@@ -278,6 +324,15 @@ export default class Bookmarks {
     // the info icon stands in until a lookup fills one in
     const editIcon = document.createElement('span');
     editIcon.classList.add(EDIT_ICON_CLASS);
+    // the icon itself lives in its own holder, so redrawing it leaves the
+    // spinner that rings it alone
+    const glyph = document.createElement('span');
+    glyph.classList.add(GLYPH_CLASS);
+    editIcon.appendChild(glyph);
+    // spinner ring, turning around the icon while the edit window is opening
+    const spinner = document.createElement('span');
+    spinner.classList.add(SPINNER_CLASS);
+    editIcon.appendChild(spinner);
     item.appendChild(editIcon);
     // store URL on the element, as the menu always has
     Object.defineProperty(item, "url", {
@@ -330,9 +385,29 @@ export default class Bookmarks {
   // stores the icon on the row and redraws the edit button to match
   setItemIcon(item, icon) {
     item.icon = validIcon(icon);
-    const holder = item.querySelector(`.${EDIT_ICON_CLASS}`);
-    if (holder) {
-      holder.innerHTML = iconMarkup(item.icon);
+    const glyph = item.querySelector(`.${GLYPH_CLASS}`);
+    if (glyph) {
+      glyph.innerHTML = iconMarkup(item.icon);
+    }
+  }
+
+  // the spinner rings the icon of the row that was clicked, and only while
+  // its window is on its way
+  setRowLoading(item, on) {
+    this.clearRowLoading();
+    if (on === true && item) {
+      const holder = item.querySelector(`.${EDIT_ICON_CLASS}`);
+      if (holder) {
+        holder.classList.add(ROW_LOADING_CLASS);
+      }
+    }
+  }
+
+  clearRowLoading() {
+    const menu = this.menuElem();
+    if (menu) {
+      menu.querySelectorAll(`.${ROW_LOADING_CLASS}`)
+        .forEach(holder => holder.classList.remove(ROW_LOADING_CLASS));
     }
   }
 
@@ -345,6 +420,7 @@ export default class Bookmarks {
     }
     // a redraw calls this again -- never leave a second box behind
     this.removeSearch();
+    this.removeLoading();
     // draw menu container with search icon + text input box
     const searchMenuItem = document.createElement("a");
     searchMenuItem.id = SEARCH_ID;
@@ -511,7 +587,7 @@ export default class Bookmarks {
 
   async addBookmark() {
     const menu = this.menuElem();
-    if (!menu) {
+    if (!menu || this.loading === true) {
       return;
     }
     if (!await this.beginLockedEdit()) {
@@ -538,19 +614,25 @@ export default class Bookmarks {
   // opens the add / edit window on a row; called by the row icon and by
   // clicking any other row while the window is already up
   async editItem(item) {
-    if (!await this.beginLockedEdit()) {
-      return; // another user is editing, or the menu was just redrawn
+    this.setRowLoading(item, true);
+    try {
+      if (!await this.beginLockedEdit()) {
+        return; // another user is editing, or the menu was just redrawn
+      }
+      if (!item.isConnected) {
+        // the row was redrawn or removed while the lock was being taken
+        await this.releaseLock();
+        return;
+      }
+      this.discardPendingAdd();
+      this.closePrompt();
+      this.state = BKM_EDIT_MODE;
+      item.classList.add(SELECTED_CLASS); // highlight selected item
+      this.drawPrompt(false, item.url, this.itemName(item), item);
+    } finally {
+      // the window is up, or the attempt is over
+      this.clearRowLoading();
     }
-    if (!item.isConnected) {
-      // the row was redrawn or removed while the lock was being taken
-      await this.releaseLock();
-      return;
-    }
-    this.discardPendingAdd();
-    this.closePrompt();
-    this.state = BKM_EDIT_MODE;
-    item.classList.add(SELECTED_CLASS); // highlight selected item
-    this.drawPrompt(false, item.url, this.itemName(item), item);
   }
 
   // closes the window, writes the menu out and hands the lock back, leaving
@@ -602,6 +684,8 @@ export default class Bookmarks {
 
   // close add / edit window
   closePrompt() {
+    this.clearLookupTimer();
+    this.lookupBtn = null;
     // re-enable click outside of window
     document.querySelectorAll(`*:not(#${PROMPT_ID})`).forEach(elem => {
       elem.style.pointerEvents = "";
@@ -646,9 +730,12 @@ export default class Bookmarks {
     const editFavText = editFavPrompt.querySelector(".editFav__toplabel");
     const nameBox = editFavPrompt.querySelector("#editFav__namebox");
     const urlBox = editFavPrompt.querySelector("#editFav__urlbox");
+    // reported on directly by lookupURL()
+    this.lookupBtn = null;
     const [editFavUpBtn, editFavLookupBtn, editFavDownBtn,
            editFavSaveBtn, editFavCancelBtn, editFavDeleteBtn] =
       editFavPrompt.querySelectorAll("button");
+    this.lookupBtn = editFavLookupBtn;
     // set values via properties (null coerces to "" exactly as before)
     nameBox.value = name;
     urlBox.value = url;
@@ -767,11 +854,16 @@ export default class Bookmarks {
     }
   }
 
+  // The button reports on itself: its icon gives way to a word while the
+  // lookup runs, and the name box is only ever written on success.
   async lookupURL() {
     const urlBoxElem = document.getElementById("editFav__urlbox");
     const nameBoxElem = document.getElementById("editFav__namebox");
-    if (urlBoxElem && nameBoxElem) {
-      nameBoxElem.value = "Processing...";
+    if (!urlBoxElem || !nameBoxElem) {
+      return;
+    }
+    this.setLookupText(LOOKUP_BUSY_MSG);
+    try {
       // read URL box
       let urlin = urlBoxElem.value;
       if (urlin === null || urlin == "") {
@@ -779,36 +871,90 @@ export default class Bookmarks {
         urlin = await navigator.clipboard.readText();
       }
       // add HTTPs to URL
-      let url = addHTTPtoURL(urlin);
+      const url = addHTTPtoURL(urlin);
+      if (url === "") {
+        this.lookupFailed();
+        return;
+      }
       urlBoxElem.value = url;
-      let encoded_url = base64URLSafeEncode(url);
       // search for the URLs title and favicon
-      sendCmd('main', 'sitelookup', encoded_url).then((data) => {
-        // the API answers { title, icon }; a plain string is still accepted
-        // so an older backend keeps working
-        const title = (data !== null && typeof data === 'object')
-          ? data.title : data;
-        const icon = (data !== null && typeof data === 'object')
-          ? data.icon : "";
-        if (title === null || title === undefined || title == "") {
-          // URL lookup failed actions
-          nameBoxElem.value = "Not Found";
-          this.promptIcon = "";
-          this.drawIconPreview();
-          setTimeout(function() {
-            if (urlBoxElem && nameBoxElem) {
-              nameBoxElem.value = null;
-              urlBoxElem.value = null;
-            }
-          }, 2000);
-        } else {
-          // remove invalid characters, write to name box
-          nameBoxElem.value = cleanString(title);
-          // show the fetched icon, saving writes it to the row
-          this.promptIcon = validIcon(icon);
-          this.drawIconPreview();
-        }
-      });
+      const data = await sendCmd('main', 'sitelookup', base64URLSafeEncode(url));
+      if (data === null || data === undefined) {
+        // sendCmd() swallows the reason, so the request itself failed
+        this.lookupFailed();
+        return;
+      }
+      // the API answers { title, icon }; a plain string is still accepted
+      // so an older backend keeps working
+      const title = (typeof data === 'object') ? data.title : data;
+      const icon = (typeof data === 'object') ? data.icon : "";
+      // remove invalid characters; a title of nothing but spaces is no title
+      const siteName = (cleanString(
+        title === null || title === undefined ? "" : String(title)) || "").trim();
+      if (siteName === "") {
+        // nothing usable came back -- the boxes are left exactly as they were
+        this.lookupFailed();
+        return;
+      }
+      if (LOOKUP_FAIL_REPLY.test(siteName)) {
+        // the answer is the backend reporting a failure, not a title: its own
+        // wording goes on the button and nothing is written
+        this.lookupFailed(siteName);
+        return;
+      }
+      // the only path that writes to the name box
+      nameBoxElem.value = siteName;
+      // show the fetched icon, saving writes it to the row
+      this.promptIcon = validIcon(icon);
+      this.drawIconPreview();
+      this.setLookupIcon();
+    } catch (error) {
+      // a refused clipboard, a dropped connection -- nothing is written
+      this.lookupFailed();
+    }
+  }
+
+  //// lookup button state ////
+
+  // Swaps the magnifier for a message. The text sits in its own element:
+  // the button transitions "all", so a size set on the button itself would
+  // be animated into place instead of just appearing.
+  setLookupText(message) {
+    this.clearLookupTimer();
+    if (this.lookupBtn) {
+      this.lookupBtn.classList.remove('fad', LOOKUP_ICON_CLASS);
+      this.lookupBtn.classList.add(LOOKUP_TEXT_CLASS);
+      this.lookupBtn.innerHTML = "";
+      const label = document.createElement('span');
+      label.className = LOOKUP_MSG_CLASS;
+      label.innerText = message;
+      this.lookupBtn.appendChild(label);
+    }
+  }
+
+  // puts the magnifier back
+  setLookupIcon() {
+    this.clearLookupTimer();
+    if (this.lookupBtn) {
+      this.lookupBtn.innerHTML = "";
+      this.lookupBtn.classList.remove(LOOKUP_TEXT_CLASS);
+      this.lookupBtn.classList.add('fad', LOOKUP_ICON_CLASS);
+    }
+  }
+
+  // the answer sits on the button for a moment, then the icon returns
+  lookupFailed(message = LOOKUP_FAIL_MSG) {
+    this.setLookupText(message);
+    this.lookupTimer = setTimeout(() => {
+      this.lookupTimer = null;
+      this.setLookupIcon();
+    }, LOOKUP_ERROR_MS);
+  }
+
+  clearLookupTimer() {
+    if (this.lookupTimer) {
+      clearTimeout(this.lookupTimer);
+      this.lookupTimer = null;
     }
   }
 }

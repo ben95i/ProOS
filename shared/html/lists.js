@@ -52,6 +52,9 @@ const DISCARD_BTN_ID = 'list__btn-discard';
 const DEL_ICON_ID = 'list__del-icon';
 // file layout
 const COL_DELIMITER = '|'; // separates the columns of a row
+// the file is never written more often than this; edits made in between are
+// folded into the next write, and closing the window writes straight away
+const SAVE_INTERVAL_MS = 10000;
 // stored names are printable ASCII only, with the column separator "|" and
 // the path characters "/" and "\" swapped out
 const MAX_NAME_LENGTH = 64;
@@ -102,6 +105,10 @@ export class ListStore {
     this.dirty = false;     // edits in memory that the server has not taken
     this.saving = null;     // in-flight save, so writes cannot overlap
     this.queued = false;
+    this.lastWrite = 0;     // when the file was last written
+    this.holdTimer = null;  // waiting out the write interval
+    this.holdWake = null;
+    this.flushing = false;  // a flush is asking for the write now
     // one editor at a time, shared with the bookmarks menu (utils.js)
     this.lock = new FileLock({
       read: () => this.read(),
@@ -122,6 +129,9 @@ export class ListStore {
   }
 
   async write(text) {
+    // every write counts against the interval, including the lock claim and
+    // the release, so the file really is only sent at most once per window
+    this.lastWrite = Date.now();
     this.online = await writeFile(FILE_NAME, text);
     return this.online;
   }
@@ -226,8 +236,9 @@ export class ListStore {
     return this.lock.owned === true && this.readOnly !== true;
   }
 
-  // saves the list; repeat calls while a write is in flight are folded into
-  // one follow-up write instead of stacking up
+  // Saves the list. Repeat calls while a write is in flight, or while the
+  // write interval is being waited out, are folded into one later write
+  // instead of stacking up.
   save() {
     if (!this.canWrite()) {
       return Promise.resolve(true);
@@ -241,9 +252,16 @@ export class ListStore {
   }
 
   async runQueue() {
-    let sent = false;
+    let sent = true;
     while (this.queued) {
+      await this.holdOff();
       this.queued = false;
+      if (!this.canWrite()) {
+        // the lock was handed back while the interval was being waited out,
+        // and whoever took it back has written the list already
+        this.saving = null;
+        return sent;
+      }
       sent = await this.write(this.build());
     }
     this.dirty = !sent;
@@ -251,14 +269,66 @@ export class ListStore {
     return sent;
   }
 
+  // waits out whatever is left of the write interval, unless a flush is
+  // asking for the write now
+  holdOff() {
+    const remaining = SAVE_INTERVAL_MS - (Date.now() - this.lastWrite);
+    if (remaining <= 0 || this.flushing === true) {
+      return Promise.resolve();
+    }
+    return new Promise(resolve => {
+      this.holdWake = resolve;
+      this.holdTimer = setTimeout(() => this.wake(), remaining);
+    });
+  }
+
+  // stops waiting on the interval
+  wake() {
+    if (this.holdTimer) {
+      clearTimeout(this.holdTimer);
+      this.holdTimer = null;
+    }
+    if (this.holdWake) {
+      const resume = this.holdWake;
+      this.holdWake = null;
+      resume();
+    }
+  }
+
+  // Writes anything outstanding right now, ignoring the interval. Used when
+  // the window is closing, and to retry after a failed write.
+  async flush() {
+    if (!this.canWrite()) {
+      return true;
+    }
+    this.flushing = true;
+    if (this.dirty === true) {
+      this.queued = true;
+      if (!this.saving) {
+        this.saving = this.runQueue();
+      }
+    }
+    this.wake();
+    const sent = this.saving ? await this.saving : true;
+    this.flushing = false;
+    return sent;
+  }
+
   // hands the lock back; unsaved edits are never pushed out on the way (the
   // server is unreachable in that case anyway) -- the lock expires instead
   release() {
-    this.lock.release(this.dirty !== true);
+    this.queued = false;
+    this.wake();
+    // The release write carries the list, so it saves whatever the interval
+    // was still holding. It is only skipped when the server is known to be
+    // unreachable -- then there is nothing to write to, and the lock expires.
+    this.lock.release(this.online !== false);
   }
 
   // throws the session away without writing anything
   abandon() {
+    this.queued = false;
+    this.wake();
     this.lock.abandon();
     this.dirty = false;
   }
@@ -276,6 +346,7 @@ export default class Lists {
     this.mode = MODE_OPEN;
     this.openId = null;   // list being viewed
     this.editing = false; // inline name box is open
+    this.loading = false; // the file is on its way in
     // shared drag engine (same grip and behaviour as the bookmarks menu)
     this.dragSort = new DragSort({
       rowClass: 'list__row',
@@ -307,8 +378,10 @@ export default class Lists {
     this.mode = MODE_OPEN;
     this.openId = null;
     this.drawWindow();
+    this.loading = true;
     this.render();
     await this.store.open();
+    this.loading = false;
     if (!this.isOpen()) {
       this.store.release(); // closed while loading, hand the lock straight back
       return;
@@ -319,16 +392,22 @@ export default class Lists {
     this.render();
   }
 
-  // close button: edits the server has not taken ask first
-  closeWindow() {
+  // Close button. Anything the write interval was still holding goes out
+  // now; only a write the server refuses stops the window closing.
+  async closeWindow() {
     if (this.store.dirty === true) {
-      this.showOverlay(true);
-      return;
+      const sent = await this.store.flush();
+      this.updateDot();
+      if (!sent) {
+        this.showOverlay(true);
+        return;
+      }
     }
     this.destroy();
   }
 
   destroy() {
+    this.loading = false;
     this.dragSort.cancel();
     this.store.release();
     removeWindow(WIN_ID);
@@ -472,6 +551,16 @@ export default class Lists {
       items ? "visible" : "hidden";
     // rows
     list.innerHTML = "";
+    if (this.loading === true) {
+      // same small text the count uses, until there is a count to show
+      const note = document.createElement('div');
+      note.className = "list__total";
+      note.innerText = "Loading...";
+      list.appendChild(note);
+      this.renderActions();
+      this.updateDot();
+      return;
+    }
     const rows = this.visibleRows();
     if (rows.length === 0) {
       const empty = document.createElement('div');
@@ -480,13 +569,15 @@ export default class Lists {
       list.appendChild(empty);
     } else {
       rows.forEach(row => list.appendChild(this.createRow(row)));
-      if (items) {
-        // total for the list, sitting at the bottom of the rows
-        const total = document.createElement('div');
-        total.className = "list__total";
-        total.innerText = `${rows.length} ${rows.length === 1 ? 'item' : 'items'}`;
-        list.appendChild(total);
-      }
+      // total sitting at the bottom of the rows: the items in the open list,
+      // or every item across all the lists in the main menu
+      const count = items
+        ? rows.length
+        : this.store.data.reduce((sum, entry) => sum + entry.items.length, 0);
+      const total = document.createElement('div');
+      total.className = "list__total";
+      total.innerText = this.totalText(count, items ? 'item' : 'total item');
+      list.appendChild(total);
     }
     this.renderActions();
     this.updateDot();
@@ -533,6 +624,10 @@ export default class Lists {
     return row;
   }
 
+  totalText(count, noun) {
+    return `${count} ${noun}${count === 1 ? '' : 's'}`;
+  }
+
   createCell(tag, className, inner) {
     const cell = document.createElement(tag);
     cell.className = className;
@@ -553,13 +648,16 @@ export default class Lists {
   }
 
   renderActions() {
-    // read only: everything that would write the file is taken off-screen
+    // read only: everything that would write the file is taken off-screen.
+    // While loading they go too, since the list they would change is not in
+    // yet -- but without the read only notice, which is not the reason.
     const readOnly = this.store.readOnly === true;
+    const busy = readOnly || this.loading === true;
     document.getElementById(STATUS_ID).style.display = readOnly ? "flex" : "none";
     [ADD_BTN_ID, DEL_BTN_ID].forEach(id => {
-      document.getElementById(id).style.display = readOnly ? "none" : "";
+      document.getElementById(id).style.display = busy ? "none" : "";
     });
-    if (readOnly) {
+    if (busy) {
       return;
     }
     // the delete button becomes an X once something is selected
@@ -718,7 +816,7 @@ export default class Lists {
   //// unsaved changes dialog ////
 
   async retrySave() {
-    const sent = await this.store.save();
+    const sent = await this.store.flush();
     this.updateDot();
     if (sent) {
       this.showOverlay(false);
