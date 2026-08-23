@@ -5,7 +5,10 @@
 // add-edit window and drag re-ordering.
 //
 // Saved file (bookmarks.save), one line per bookmark:
-//   URL|bkmrk|NAME
+//   URL|NAME|ICON
+// ICON is the site's favicon as a URL-safe base64 PNG (24x24, 32 colours),
+// built by the sitelookup API. It is empty when no icon could be fetched,
+// and rows saved before this column existed simply have two columns.
 // The row order in the file is the menu order, so dragging a row and saving
 // is all the re-ordering that is needed.
 //
@@ -13,8 +16,8 @@
 // (DragSort / drag-grip in utils.js).
 
 import { html, showPopup, loadMenu, savePOST, cleanString,
-  splitMenuData, base64URLSafeEncode, sendCmd, dragGripElement,
-  DragSort } from './utils.js';
+  splitMenuData, base64URLSafeEncode, base64URLSafeToStandard, sendCmd,
+  dragGripElement, DragSort } from './utils.js';
 
 const FILE_NAME = 'bookmarks.save';
 const MENU_ID = 'bookmarks';         // drop-down container, drawn by main.js
@@ -25,9 +28,17 @@ const SEARCH_BOX_ID = 'bookmark__search_txt';
 const PROMPT_ID = 'editFav__prompt';
 const ITEM_CLASS = 'bookmarked__item';
 const EDIT_ICON_CLASS = 'bookmarked__edit';
+const FAV_ICON_CLASS = 'bookmarked__favicon';
+const PREVIEW_ID = 'editFav__iconpreview';
+const PREVIEW_EMPTY_CLASS = 'editFav__iconpreview--empty';
 const SELECTED_CLASS = 'dd-selected';
 const FILE_TYPE = 'bkmrk';           // column 1 of every row
 const MAX_NAME_LENGTH = 42;
+// stand-in shown on any row that has no favicon saved
+const INFO_ICON_HTML = '<i class="fad fa-info-circle"></i>';
+// the alphabet base64URLSafeEncode() produces, nothing else is let through
+const ICON_CHARS = /^[A-Za-z0-9_@-]*$/;
+const MAX_ICON_LENGTH = 8192;
 // menu states
 const BKM_INACTIVE = 0;
 const BKM_OPEN_MODE = 1;
@@ -49,6 +60,34 @@ export function addHTTPtoURL(linkin) {
   return linkout;
 }
 
+// a saved icon is only ever used after it passes this: it goes straight
+// into an <img src>, so anything that is not plain URL-safe base64 is dropped
+function validIcon(icon) {
+  if (!icon || typeof icon !== 'string') {
+    return "";
+  }
+  const trimmed = icon.trim();
+  if (trimmed.length > MAX_ICON_LENGTH || !ICON_CHARS.test(trimmed)) {
+    return "";
+  }
+  return trimmed;
+}
+
+// the stored bytes name their own format: a PNG opens with the signature
+// below, and icons saved before the switch to PNG are JPEG
+function iconMimeType(icon) {
+  return icon.startsWith('iVBORw0KGgo') ? 'image/png' : 'image/jpeg';
+}
+
+// URL-safe base64 back to the standard alphabet a data URI expects
+function iconMarkup(icon) {
+  if (icon === "") {
+    return INFO_ICON_HTML;
+  }
+  return html`<img class="${FAV_ICON_CLASS}" alt="" width="24" height="24"
+    src="data:${iconMimeType(icon)};base64,${base64URLSafeToStandard(icon)}">`;
+}
+
 export default class Bookmarks {
 
   constructor(options = {}) {
@@ -58,6 +97,7 @@ export default class Bookmarks {
       ? options.removeDropdowns : function () {};
     this.state = BKM_INACTIVE;
     this.pendingAdd = null; // placeholder row waiting on the add window
+    this.promptIcon = "";   // icon held by the open add / edit window
     this.dragSort = new DragSort({
       rowClass: ITEM_CLASS,
       onDrop: () => this.save()
@@ -152,7 +192,7 @@ export default class Bookmarks {
     this.showSearch();
   }
 
-  // 0=URL, 2=Name
+  // 0=URL, 1=Name, 2=Icon
   drawMenu(data) {
     const menu = this.menuElem();
     if (!menu) {
@@ -167,7 +207,9 @@ export default class Bookmarks {
       if (cols.length < 2) {
         return;
       }
-      menu.appendChild(this.createItem(cols[0], cols[1].trim()));
+      // rows written before the icon column exists just have two columns
+      const icon = cols.length > 2 ? cols[2] : "";
+      menu.appendChild(this.createItem(cols[0], cols[1].trim(), icon));
     });
     menu.addEventListener('pointerdown', this.listeners.pointerdown);
     menu.addEventListener('pointermove', this.listeners.pointermove);
@@ -187,7 +229,7 @@ export default class Bookmarks {
     this.items().forEach(item => item.remove());
   }
 
-  createItem(url, name) {
+  createItem(url, name, icon) {
     const item = document.createElement('a');
     item.classList.add(ITEM_CLASS);
     // drag handle, same grip the lists window uses
@@ -196,10 +238,10 @@ export default class Bookmarks {
     label.classList.add('bookmarked__label');
     label.innerText = name;
     item.appendChild(label);
-    // edit pencil, opens the add / edit window for this row
+    // the site's favicon, which is also the edit button for this row --
+    // the info icon stands in until a lookup fills one in
     const editIcon = document.createElement('span');
     editIcon.classList.add(EDIT_ICON_CLASS);
-    editIcon.innerHTML = '<i class="fad fa-link"></i>';
     item.appendChild(editIcon);
     // store URL on the element, as the menu always has
     Object.defineProperty(item, "url", {
@@ -207,6 +249,13 @@ export default class Bookmarks {
       writable: true,
       value: url
     });
+    // the icon travels with the row the same way
+    Object.defineProperty(item, "icon", {
+      enumerable: false,
+      writable: true,
+      value: ""
+    });
+    this.setItemIcon(item, icon);
     item.addEventListener("click", (event) => this.clickItem(item, event));
     return item;
   }
@@ -221,7 +270,7 @@ export default class Bookmarks {
     this.items().forEach(item => {
       const url = Object.values(item.url).join("");
       // build output file
-      _file += `${url}|${this.itemName(item)}\n`;
+      _file += `${url}|${this.itemName(item)}|${item.icon}\n`;
     });
     // transmit file
     savePOST(FILE_NAME, [_file]);
@@ -242,6 +291,17 @@ export default class Bookmarks {
     const label = this.labelElem(item);
     if (label) {
       label.innerText = name;
+    }
+  }
+
+  //// item icon ////
+
+  // stores the icon on the row and redraws the edit button to match
+  setItemIcon(item, icon) {
+    item.icon = validIcon(icon);
+    const holder = item.querySelector(`.${EDIT_ICON_CLASS}`);
+    if (holder) {
+      holder.innerHTML = iconMarkup(item.icon);
     }
   }
 
@@ -295,7 +355,7 @@ export default class Bookmarks {
     this.discardPendingAdd();
     this.closePrompt();
     // create placeholder menu item
-    const item = this.createItem("about:blank", "New Bookmark");
+    const item = this.createItem("about:blank", "New Bookmark", "");
     // highlight selected item
     item.classList.add(SELECTED_CLASS);
     // insert item at the top of the bookmarks, below the search box
@@ -345,8 +405,8 @@ export default class Bookmarks {
         (event && event.target.closest('.drag-grip'))) {
       return;
     }
-    // the pencil always opens the window on its own row, and while the window
-    // is up any row that is clicked becomes the one being edited
+    // the favicon always opens the window on its own row, and while the
+    // window is up any row that is clicked becomes the one being edited
     if ((event && event.target.closest(`.${EDIT_ICON_CLASS}`)) ||
         this.state === BKM_EDIT_MODE) {
       this.editItem(item);
@@ -376,14 +436,21 @@ export default class Bookmarks {
   }
 
   drawPrompt(add, url, name, item) {
-    // create window: banner text, name box, URL box, six action buttons
+    // the window edits one icon at a time; a lookup replaces it, saving
+    // writes it back onto the row
+    this.promptIcon = item ? validIcon(item.icon) : "";
+    // create window: banner text with the icon preview beside it, name box,
+    // URL box, six action buttons
     const editFavPrompt = document.createElement("div");
     editFavPrompt.className = "editFav__win";
     editFavPrompt.id = PROMPT_ID;
     editFavPrompt.classList.add("prompt_win");
     const bannerText = add === true ? "Add Bookmark" : "Edit Bookmark";
     editFavPrompt.innerHTML = html`
-      <div class="editFav__toptext">${bannerText}</div>
+      <div class="editFav__toptext">
+        <span class="editFav__toplabel">${bannerText}</span>
+        <span class="editFav__iconpreview" id="${PREVIEW_ID}"></span>
+      </div>
       <input type="text" id="editFav__namebox" class="editFav__textbox"
              autocorrect="off" autocapitalize="none">
       <input type="text" id="editFav__urlbox" class="editFav__textbox"
@@ -397,7 +464,7 @@ export default class Bookmarks {
     `;
     // element references (buttons in DOM order: row1 up/lookup, row2 down/save,
     // row3 cancel/delete)
-    const editFavText = editFavPrompt.querySelector(".editFav__toptext");
+    const editFavText = editFavPrompt.querySelector(".editFav__toplabel");
     const nameBox = editFavPrompt.querySelector("#editFav__namebox");
     const urlBox = editFavPrompt.querySelector("#editFav__urlbox");
     const [editFavUpBtn, editFavLookupBtn, editFavDownBtn,
@@ -412,6 +479,16 @@ export default class Bookmarks {
     }
     // display window on page
     document.body.appendChild(editFavPrompt);
+    // favicon preview, sitting to the right of the banner text. Clicking it
+    // drops the icon; the row keeps its old one until the window is saved.
+    editFavPrompt.querySelector(`#${PREVIEW_ID}`)
+      .addEventListener("click", () => {
+        if (this.promptIcon !== "") {
+          this.promptIcon = "";
+          this.drawIconPreview();
+        }
+      });
+    this.drawIconPreview();
     // handle button actions
     editFavPrompt.addEventListener("click", (btn_event) => {
       if (btn_event.target.tagName !== "BUTTON") { return; }
@@ -460,6 +537,8 @@ export default class Bookmarks {
           const _boxurl = addHTTPtoURL(urlBox.value.replaceAll("|", "-"));
           item.url = _boxurl;
           urlBox.value = _boxurl;
+          // save the looked-up icon to the menu object
+          this.setItemIcon(item, this.promptIcon);
           editFavText.innerHTML = "Changes Saved";
         }
         // the new row is a real bookmark now
@@ -501,6 +580,18 @@ export default class Bookmarks {
 
   //// URL lookup ////
 
+  // redraws the preview beside the banner text from this.promptIcon. With
+  // no icon to show the slot is left empty rather than standing in with the
+  // info icon; the text boxes below are not affected either way.
+  drawIconPreview() {
+    const preview = document.getElementById(PREVIEW_ID);
+    if (preview) {
+      const empty = this.promptIcon === "";
+      preview.classList.toggle(PREVIEW_EMPTY_CLASS, empty);
+      preview.innerHTML = empty ? "" : iconMarkup(this.promptIcon);
+    }
+  }
+
   async lookupURL() {
     const urlBoxElem = document.getElementById("editFav__urlbox");
     const nameBoxElem = document.getElementById("editFav__namebox");
@@ -516,11 +607,19 @@ export default class Bookmarks {
       let url = addHTTPtoURL(urlin);
       urlBoxElem.value = url;
       let encoded_url = base64URLSafeEncode(url);
-      // search for URLs title
+      // search for the URLs title and favicon
       sendCmd('main', 'sitelookup', encoded_url).then((data) => {
-        if (data === null || data == "") {
+        // the API answers { title, icon }; a plain string is still accepted
+        // so an older backend keeps working
+        const title = (data !== null && typeof data === 'object')
+          ? data.title : data;
+        const icon = (data !== null && typeof data === 'object')
+          ? data.icon : "";
+        if (title === null || title === undefined || title == "") {
           // URL lookup failed actions
           nameBoxElem.value = "Not Found";
+          this.promptIcon = "";
+          this.drawIconPreview();
           setTimeout(function() {
             if (urlBoxElem && nameBoxElem) {
               nameBoxElem.value = null;
@@ -529,7 +628,10 @@ export default class Bookmarks {
           }, 2000);
         } else {
           // remove invalid characters, write to name box
-          nameBoxElem.value = cleanString(data);
+          nameBoxElem.value = cleanString(title);
+          // show the fetched icon, saving writes it to the row
+          this.promptIcon = validIcon(icon);
+          this.drawIconPreview();
         }
       });
     }

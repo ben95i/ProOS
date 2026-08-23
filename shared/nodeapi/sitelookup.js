@@ -1,4 +1,9 @@
+const { runFaviconLookup } = require('./favicon');
+
 const ERR_MSG = "Site Lookup Error!";
+
+// the lookup now answers with both fields; icon is "" when none was found
+const errorResult = () => ({ title: ERR_MSG, icon: "" });
 
 async function runSiteLookup(subCmd) {
     try {
@@ -8,11 +13,13 @@ async function runSiteLookup(subCmd) {
         let urlObj = new URL(decodedUrl);
 
         // Handle hardcoded special cases
+        // (the page is not fetched for these, so the favicon lookup falls
+        // through to /favicon.ico on the same origin)
         if (urlObj.hostname === "www.ups.com" || urlObj.hostname === "ups.com") {
-            return "UPS Tracking";
+            return { title: "UPS Tracking", icon: await runFaviconLookup(decodedUrl, '') };
         }
         if (urlObj.hostname === "tools.usps.com") {
-            return "USPS Tracking";
+            return { title: "USPS Tracking", icon: await runFaviconLookup(decodedUrl, '') };
         }
 
         // Fetch the HTML natively (Requires Node.js 18+)
@@ -25,10 +32,14 @@ async function runSiteLookup(subCmd) {
         });
 
         if (!response.ok) {
-            return ERR_MSG;
+            return errorResult();
         }
 
         const html = await response.text();
+
+        // Pull the favicon out of the same markup: 16x16, 32 colours, JPEG,
+        // URL-safe base64. Never throws, answers "" when it cannot build one.
+        const icon = await runFaviconLookup(decodedUrl, html);
 
         // Extract the title using Regex (matches <title> optionally with attributes, and captures the content)
         // The 'i' flag makes it case-insensitive, the 's' flag allows '.' to match newlines
@@ -45,16 +56,16 @@ async function runSiteLookup(subCmd) {
                             .replace(/&#39;/g, "'");
 
             if (title === "") {
-                return ERR_MSG;
+                return errorResult();
             }
-            
+
             // Remove any accidental newlines or extra spaces parsed from the HTML
-            return title.replace(/\s+/g, ' '); 
+            return { title: title.replace(/\s+/g, ' '), icon: icon };
         }
-        return ERR_MSG;
+        return errorResult();
     } catch (e) {
         // This catches invalid URLs, network timeouts, and fetch errors
-        return ERR_MSG;
+        return errorResult();
     }
 }
 

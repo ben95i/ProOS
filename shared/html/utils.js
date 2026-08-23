@@ -133,6 +133,18 @@ export function base64URLSafeEncode(buffer) {
     .replace(/\=/g, '@'); // Convert '=' to '@'
 }
 
+// URL-safe base64 back to the standard alphabet, which is what an
+// <img src="data:..."> expects. Does not decode, only swaps characters.
+export function base64URLSafeToStandard(data) {
+  if (!data) {
+    return '';
+  }
+  return data
+    .replace(/-/g, '+')   // Convert '-' back to '+'
+    .replace(/_/g, '/')   // Convert '_' back to '/'
+    .replace(/@/g, '=');  // Convert '@' back to '='
+}
+
 export function isNumeric(value) {
   // Coerce to number and check if it's an integer. 
   // We check typeof to prevent empty strings ("") from converting to 0.
