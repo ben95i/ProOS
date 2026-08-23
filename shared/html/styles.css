@@ -424,6 +424,43 @@ input.chkbox {
   margin-left: auto;
 }
 
+/* Room selector. #room_center takes every pixel the two icon groups leave
+   behind and centers the selector inside it, so the selector re-centers on
+   its own as icons appear or disappear. min-width: 0 lets the slot shrink
+   below the label's natural width instead of pushing the icons apart, which
+   is what makes the truncation below possible. */
+#room_center {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+#room_anchor {
+  max-width: 100%;
+  min-width: 0;
+  height: 60px;
+  padding: 0px 8px 0px 8px;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+#room_anchor i {  /* the icon keeps its size; only the name gives way */
+  flex: 0 0 auto;
+}
+
+/* long names clip to an ellipsis rather than overrunning the nav icons */
+#current-room-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .left-padding {
   padding-left: 8px;
 }
@@ -566,7 +603,7 @@ input.chkbox {
   bottom: 10px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 996;
+  z-index: 997;
   border: 1px solid var(--border-color);
   border-radius: 15px;
   background-color: var(--sec-black-40);
@@ -643,6 +680,15 @@ input.chkbox {
   display: block;
 }
 
+/* room menu, centered under the selector. .dd-menu is fixed, so only the
+   horizontal placement is overridden -- it still drops from the nav. The
+   50% here is the starting point; positionRoomDropdown() overwrites left
+   with the selector's own centre each time the menu opens. */
+#main-room-dropdown {
+  left: 50%;
+  transform: translateX(-50%);
+}
+
 .dd-selected {
   border-radius: 5px;
   background-color: var(--main-color);
@@ -670,7 +716,7 @@ input.chkbox {
      which iOS Safari does not always repaint cleanly. Text inside is now
      fully opaque, which it was not before. */
   background-color: color-mix(in srgb, var(--nav-menus-color), transparent 4%);
-  z-index: 998;
+  z-index: 997;
 }
 
 /* links inside the dropdown menu */
@@ -1013,25 +1059,26 @@ input.chkbox {
   width: 155px;
 }
 
-/* the site lookup button reporting on itself: the icon classes come off, so
-   what is left is the page font */
-.editFav__button--text {
-  overflow: hidden;
-  /* .button transitions "all" -- nothing about the message should ease in */
+/* the site lookup button while a lookup is running -- its own glyph class is
+   taken off, and the turning icon inside stands in for it */
+.editFav__button--busy {
   transition: none;
 }
 
-/* The message lives in its own element because .button transitions "all" --
-   a font-size set on the button would be animated from 24px down as the
-   text appears, which reads as the text shrinking. */
-.editFav__button-msg {
-  display: block;
-  pointer-events: none; /* the press belongs to the button */
-  font-size: 17px;
-  line-height: 1.15;
-  white-space: normal;
+/* the lookup button while it is reporting a failure */
+.editFav__button--failed {
+  color: var(--alert-red);
   transition: none;
-  animation: none;
+}
+
+/* The refresh icon is a child element rather than the button's own glyph, so
+   the shared rotation keyframes turn the icon and not the whole button.
+   Inline-block keeps the box tight around the glyph so it spins on centre. */
+.editFav__button-spin {
+  display: inline-block;
+  pointer-events: none; /* the press belongs to the button */
+  animation: rotation 1s linear infinite;
+  transition: none;
 }
 
 /* banner row: title centred, favicon parked on the right-hand edge. Sized

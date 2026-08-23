@@ -1,9 +1,10 @@
 const { runFaviconLookup } = require('./favicon');
 
-const ERR_MSG = "Site Lookup Error!";
-
-// the lookup now answers with both fields; icon is "" when none was found
-const errorResult = () => ({ title: ERR_MSG, icon: "" });
+// The lookup answers with both fields; icon is "" when none was found.
+// A failure answers an empty title rather than an error string: the website
+// reports it with a glyph on the lookup button, so a message here would only
+// get written into the name box as though it were the site's real title.
+const errorResult = () => ({ title: "", icon: "" });
 
 async function runSiteLookup(subCmd) {
     try {

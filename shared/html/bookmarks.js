@@ -42,15 +42,22 @@ const SPINNER_CLASS = 'bookmark-spinner';
 const ROW_LOADING_CLASS = 'bookmarked__edit--loading';
 // the lookup button reports on itself instead of writing into the name box
 const LOOKUP_ICON_CLASS = 'fa-search';
-const LOOKUP_TEXT_CLASS = 'editFav__button--text';
-const LOOKUP_MSG_CLASS = 'editFav__button-msg';
-const LOOKUP_BUSY_MSG = 'Processing...';
-const LOOKUP_FAIL_MSG = 'Site Lookup Error!';
+const LOOKUP_BUSY_CLASS = 'editFav__button--busy';
+const LOOKUP_SPIN_CLASS = 'editFav__button-spin';
+const LOOKUP_SPIN_ICON = 'fad fa-sync';
+const LOOKUP_FAIL_ICON_CLASS = 'fa-exclamation-triangle';
+const LOOKUP_FAIL_CLASS = 'editFav__button--failed';
 // The backend can answer with its own failure text instead of a title. The
 // match is the whole answer, so a real page title that happens to mention
 // the phrase is still a title.
 const LOOKUP_FAIL_REPLY = /^site\s*lookup\s*error!?$/i;
-const LOOKUP_ERROR_MS = 3000; // how long the answer sits before the icon is back
+const LOOKUP_ERROR_MS = 3000; // how long the fail icon sits before the magnifier
+// why a lookup gave up, reported in a popup while the button just shows the
+// fail icon -- the name box is never touched on any of these
+const LOOKUP_NO_URL = 'no URL to look up';
+const LOOKUP_NO_CLIPBOARD = 'no URL entered, and the clipboard could not be read';
+const LOOKUP_NO_ANSWER = 'no answer from the server';
+const LOOKUP_NO_TITLE = 'the site returned no title';
 const PREVIEW_ID = 'editFav__iconpreview';
 const PREVIEW_EMPTY_CLASS = 'editFav__iconpreview--empty';
 const SELECTED_CLASS = 'dd-selected';
@@ -862,26 +869,32 @@ export default class Bookmarks {
     if (!urlBoxElem || !nameBoxElem) {
       return;
     }
-    this.setLookupText(LOOKUP_BUSY_MSG);
-    try {
-      // read URL box
-      let urlin = urlBoxElem.value;
-      if (urlin === null || urlin == "") {
-        // read from clipboard if URL empty
+    this.setLookupBusy();
+    // read URL box
+    let urlin = urlBoxElem.value;
+    if (urlin === null || urlin == "") {
+      // read from clipboard if URL empty
+      try {
         urlin = await navigator.clipboard.readText();
-      }
-      // add HTTPs to URL
-      const url = addHTTPtoURL(urlin);
-      if (url === "") {
-        this.lookupFailed();
+      } catch (error) {
+        // the browser refused the clipboard, or there is nothing on it
+        this.lookupFailed(LOOKUP_NO_CLIPBOARD);
         return;
       }
-      urlBoxElem.value = url;
+    }
+    // add HTTPs to URL
+    const url = addHTTPtoURL(urlin);
+    if (url === "") {
+      this.lookupFailed(LOOKUP_NO_URL);
+      return;
+    }
+    urlBoxElem.value = url;
+    try {
       // search for the URLs title and favicon
       const data = await sendCmd('main', 'sitelookup', base64URLSafeEncode(url));
       if (data === null || data === undefined) {
         // sendCmd() swallows the reason, so the request itself failed
-        this.lookupFailed();
+        this.lookupFailed(LOOKUP_NO_ANSWER);
         return;
       }
       // the API answers { title, icon }; a plain string is still accepted
@@ -893,12 +906,12 @@ export default class Bookmarks {
         title === null || title === undefined ? "" : String(title)) || "").trim();
       if (siteName === "") {
         // nothing usable came back -- the boxes are left exactly as they were
-        this.lookupFailed();
+        this.lookupFailed(LOOKUP_NO_TITLE);
         return;
       }
       if (LOOKUP_FAIL_REPLY.test(siteName)) {
         // the answer is the backend reporting a failure, not a title: its own
-        // wording goes on the button and nothing is written
+        // wording is the reason, and nothing is written
         this.lookupFailed(siteName);
         return;
       }
@@ -909,42 +922,53 @@ export default class Bookmarks {
       this.drawIconPreview();
       this.setLookupIcon();
     } catch (error) {
-      // a refused clipboard, a dropped connection -- nothing is written
-      this.lookupFailed();
+      // anything the lookup itself threw -- nothing is written
+      this.lookupFailed(String(error && error.message ? error.message : error));
     }
   }
 
   //// lookup button state ////
 
-  // Swaps the magnifier for a message. The text sits in its own element:
-  // the button transitions "all", so a size set on the button itself would
-  // be animated into place instead of just appearing.
-  setLookupText(message) {
+  // Swaps the magnifier for a turning refresh icon while the lookup runs.
+  // The icon is a child element, not the button's own glyph, so the rotation
+  // turns the icon rather than the whole button.
+  setLookupBusy() {
     this.clearLookupTimer();
-    if (this.lookupBtn) {
-      this.lookupBtn.classList.remove('fad', LOOKUP_ICON_CLASS);
-      this.lookupBtn.classList.add(LOOKUP_TEXT_CLASS);
-      this.lookupBtn.innerHTML = "";
-      const label = document.createElement('span');
-      label.className = LOOKUP_MSG_CLASS;
-      label.innerText = message;
-      this.lookupBtn.appendChild(label);
+    if (!this.lookupBtn) {
+      return;
+    }
+    this.lookupBtn.innerHTML = "";
+    this.lookupBtn.classList.remove('fad', LOOKUP_ICON_CLASS,
+      LOOKUP_FAIL_ICON_CLASS, LOOKUP_FAIL_CLASS);
+    this.lookupBtn.classList.add(LOOKUP_BUSY_CLASS);
+    const spinner = document.createElement('i');
+    spinner.className = `${LOOKUP_SPIN_ICON} ${LOOKUP_SPIN_CLASS}`;
+    this.lookupBtn.appendChild(spinner);
+  }
+
+  // puts the magnifier back, or shows the fail icon in its place
+  setLookupIcon(iconClass = LOOKUP_ICON_CLASS) {
+    this.clearLookupTimer();
+    if (!this.lookupBtn) {
+      return;
+    }
+    this.lookupBtn.innerHTML = "";
+    this.lookupBtn.classList.remove(LOOKUP_BUSY_CLASS, LOOKUP_FAIL_CLASS,
+      LOOKUP_ICON_CLASS, LOOKUP_FAIL_ICON_CLASS);
+    this.lookupBtn.classList.add('fad', iconClass);
+    if (iconClass === LOOKUP_FAIL_ICON_CLASS) {
+      this.lookupBtn.classList.add(LOOKUP_FAIL_CLASS);
     }
   }
 
-  // puts the magnifier back
-  setLookupIcon() {
-    this.clearLookupTimer();
-    if (this.lookupBtn) {
-      this.lookupBtn.innerHTML = "";
-      this.lookupBtn.classList.remove(LOOKUP_TEXT_CLASS);
-      this.lookupBtn.classList.add('fad', LOOKUP_ICON_CLASS);
-    }
-  }
-
-  // the answer sits on the button for a moment, then the icon returns
-  lookupFailed(message = LOOKUP_FAIL_MSG) {
-    this.setLookupText(message);
+  // The button only reports that it failed; the reason goes to the popup,
+  // where there is room for it. Nothing is written to either text box.
+  lookupFailed(reason) {
+    // the backend's own wording may already end in punctuation
+    const detail = String(reason).trim();
+    const stop = /[.!?]$/.test(detail) ? "" : ".";
+    showPopup(`[bookmarks] site lookup failed: ${detail}${stop}`);
+    this.setLookupIcon(LOOKUP_FAIL_ICON_CLASS);
     this.lookupTimer = setTimeout(() => {
       this.lookupTimer = null;
       this.setLookupIcon();

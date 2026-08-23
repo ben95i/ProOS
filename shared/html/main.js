@@ -255,7 +255,25 @@ function openRoomDropdown() {
     drawMenu(menuDataString, menuname);
     // show dropdown
     _elem.style.display = 'block';
+    positionRoomDropdown(_elem);
   }
+}
+
+// centres the room menu on the selector, which moves as nav icons come and
+// go; measured after the menu is shown so its width is known, then clamped
+// so a wide menu never hangs off either edge of the screen
+function positionRoomDropdown(_elem) {
+  const anchor = document.getElementById('room_anchor');
+  if (!_elem || !anchor) return;
+  const rect = anchor.getBoundingClientRect();
+  const halfWidth = _elem.offsetWidth / 2;
+  const edgeGap = 5;
+  const minLeft = halfWidth + edgeGap;
+  const maxLeft = window.innerWidth - halfWidth - edgeGap;
+  let center = rect.left + (rect.width / 2);
+  if (center < minLeft) center = minLeft;
+  if (center > maxLeft) center = maxLeft;
+  _elem.style.left = `${center}px`;
 }
 
 function selectRoom(_mode) {
@@ -338,6 +356,16 @@ function topNavTemplate(f) {
   </a>
   <a id="status_anchor">
   </a>
+  <!-- room selector: #room_center is the flexible slot between the left and
+       right icon groups, so the selector re-centres itself whenever icons
+       are added or removed (the bookmarks add icon, for one) and shrinks
+       rather than running under them when the bar gets tight -->
+  <div id="room_center">
+    <a id="room_anchor">
+      <i id="current-room-icon"></i>
+      <span id="current-room-label"></span>
+    </a>
+  </div>
   <div id="topnav-right">
     <a id="weather_anchor">
     </a>
@@ -353,6 +381,7 @@ registerListeners({
   'btn-menu-pimainmenu': () => showMenu('pi-mainmenu'),
   'btn-dyn-thememenu':   () => showDynFileMenu('thememenu'),
   'btn-show-bookmarks':  () => showBookmarks(),
+  'room_anchor':         () => openRoomDropdown(),
   'btn-add-bookmark':    () => App.bookmarks && App.bookmarks.addBookmark(),
   'nav_stats_menu':      () => showStatusMenu()
 });
@@ -376,6 +405,7 @@ function navDropdownsTemplate(f) {
   <div class="dd-content dd-menu" id="thememenu"></div>
   <div class="dd-content dd-menu" id="bookmarks"></div>
   <div class="dd-content dd-menu" id="roomstatus"></div>
+  <div class="dd-content dd-menu" id="main-room-dropdown"></div>
 </div>
 <div class="nav_dd_right" data-app-injected>
   <div class="dd-content dd-menu ind-button" id="statsmenu"></div>
@@ -489,13 +519,10 @@ function roomControlsTemplate() {
   <button type="button" class="button" id="btn-open-cam">
     <span class="button__text"><i class="fad fa-door-open"></i> Doorway</span>
   </button>
-  <div class="dropdown">
-    <button type="button" class="button dark_btn" id="main-room-btn">
-      <i id="current-room-icon"></i>
-      <span class="button__text" id="current-room-label"></span>
-    </button>
-    <div class="dd-content dd-button" id="main-room-dropdown"></div>
-  </div>
+  <!-- placeholder, no handler registered for it yet -->
+  <button type="button" class="button dark_btn" id="btn-tbd">
+    <span class="button__text">TBD</span>
+  </button>
   <button type="button" class="button" id="btn-open-log-svr">
     <span class="button__text"><i class="fad fa-terminal"></i> Server</span>
   </button>
@@ -515,7 +542,6 @@ registerListeners({
   'btn-cmd-lightson':   () => sendCmd('main', 'lightson'),
   'btn-cmd-lightsoff':  () => sendCmd('main', 'lightsoff'),
   'btn-open-cam':       () => openCamWindow(),
-  'main-room-btn':      () => openRoomDropdown(),
   'btn-open-log-svr':   () => openLogWindow()
 });
 

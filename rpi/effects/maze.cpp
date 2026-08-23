@@ -31,7 +31,7 @@ constexpr const char* DEFAULT_LED_TYPE_ARGUMENT = "8x8";
 constexpr int DEFAULT_COMPLEXITY_LEVEL = 7;
 constexpr float DEFAULT_SCROLL_SPEED_ROWS_PER_SECOND = 20.0f;
 constexpr float DEFAULT_HOLD_DURATION_SECONDS = 2.5f;
-constexpr float DEFAULT_SOLVE_DURATION_SECONDS = 10.0f;
+constexpr float DEFAULT_SOLVE_DURATION_SECONDS = 14.0f;
 constexpr int DEFAULT_TARGET_ANIMATION_FPS = 60;
 
 // Accepted bounds for the operator supplied tuning values.
@@ -69,7 +69,7 @@ constexpr uint8_t DIRECTION_FLAG_WEST  = 0x08;
 // Palette contrast guarantees. See ContrastingPaletteGenerator for the reasoning
 // behind using a perceptual distance instead of a plain luminance ratio.
 constexpr float MINIMUM_PERCEPTUAL_COLOR_DISTANCE = 250.0f;
-constexpr float MINIMUM_HUE_SEPARATION = 30.0f;
+constexpr float MINIMUM_HUE_SEPARATION = 28.0f;
 constexpr float MAXIMUM_HUE_SEPARATION = 72.0f;
 constexpr float BRIGHT_ELEMENT_MINIMUM_BRIGHTNESS = 78.0f;
 constexpr float BRIGHT_ELEMENT_MAXIMUM_BRIGHTNESS = 100.0f;
@@ -78,16 +78,21 @@ constexpr float DARK_ELEMENT_MAXIMUM_BRIGHTNESS = 24.0f;
 constexpr float DARKENING_REFINEMENT_FACTOR = 0.72f;
 constexpr float ABSOLUTE_MINIMUM_BRIGHTNESS = 1.5f;
 constexpr int MAXIMUM_PALETTE_REFINEMENT_STEPS = 12;
-constexpr float INVERTED_SCHEME_PROBABILITY = 0.25f;
 
-// How often the background and the trail trade places, so that the maze sits in a
-// field of the opposing colour and the solver cuts through it in near black.
-constexpr float TRAIL_BACKGROUND_SWAP_PROBABILITY = 0.25f;
+// One of the trail's possible colours is no colour at all: the LEDs along the
+// solver's path simply switch off. A black trail can only be seen against a lit
+// field, so when it is chosen the maze is drawn over a bright background with the
+// wall hue pushed close to complementary, and neither is allowed to darken past
+// LIT_FIELD_MINIMUM_BRIGHTNESS.
+constexpr float BLACK_TRAIL_PROBABILITY = 0.3f;
+constexpr float LIT_FIELD_MINIMUM_HUE_SEPARATION = 40.0f;
+constexpr float LIT_FIELD_MAXIMUM_HUE_SEPARATION = 60.0f;
+constexpr float LIT_FIELD_MINIMUM_BRIGHTNESS = 45.0f;
 
 // Trail intensity is stored as a byte per pixel so the head can be drawn at
 // fractional coverage; these are its two saturating endpoints.
 constexpr uint8_t TRAIL_INTENSITY_ABSENT = 0;
-constexpr uint8_t TRAIL_INTENSITY_FULL = 250;
+constexpr uint8_t TRAIL_INTENSITY_FULL = 255;
 
 // Tolerance used when grouping normalised coordinates into discrete rows/columns.
 constexpr float COORDINATE_CLUSTER_TOLERANCE = 0.0001f;
@@ -122,16 +127,6 @@ struct MazeColorPalette {
     PixelColorState wallColorState;
     PixelColorState backgroundColorState;
     PixelColorState trailColorState;
-};
-
-/**
- * @brief An axis aligned block of display pixels.
- */
-struct PixelRectangle {
-    int originX;
-    int originY;
-    int spanX;
-    int spanY;
 };
 
 /**
@@ -182,20 +177,13 @@ struct TrailMove {
 };
 
 /**
- * @brief A generated maze: its wall bitmap, its geometry, and the recorded walk
- * a depth first solver takes from the entrance to the exit.
+ * @brief One maze: its wall bitmap, its geometry, the recorded walk a depth first
+ * solver takes from the entrance to the exit, and the palette it is drawn in.
  */
-struct GeneratedMaze {
+struct MazeFrame {
     std::vector<uint8_t> wallOccupancyMask;
     std::vector<TrailMove> trailMoveSequence;
     MazeGeometry geometry;
-};
-
-/**
- * @brief A generated maze paired with the palette it is drawn in.
- */
-struct RenderedMazeFrame {
-    GeneratedMaze generatedMaze;
     MazeColorPalette assignedColorPalette;
 };
 
@@ -355,7 +343,8 @@ public:
  *     any dark background could never pass, even though it is highly legible on an
  *     emissive panel.
  *
- * The trail colour is then placed to oppose both of them at once.
+ * The trail is then either placed to oppose both of them at once, or switched off
+ * entirely - see BLACK_TRAIL_PROBABILITY.
  */
 class ContrastingPaletteGenerator {
 private:
@@ -457,32 +446,33 @@ public:
      * @brief Rolls a new palette and refines it until every pair is legible.
      */
     MazeColorPalette generateContrastingPalette() {
+        // The trail is either a lit colour opposing the other two, or no colour at
+        // all. Switching it off inverts the whole look, so the maze has to be drawn
+        // over a lit field rather than a dark one for the path to read.
+        bool trailIsSwitchedOff = (sampleUniformRange(0.0f, 1.0f) < BLACK_TRAIL_PROBABILITY);
+
         float wallHueAngle = sampleUniformRange(0.0f, HSB_MAXIMUM_VALUE);
 
-        float requestedHueSeparation = sampleUniformRange(MINIMUM_HUE_SEPARATION, MAXIMUM_HUE_SEPARATION);
+        float requestedHueSeparation = trailIsSwitchedOff
+            ? sampleUniformRange(LIT_FIELD_MINIMUM_HUE_SEPARATION, LIT_FIELD_MAXIMUM_HUE_SEPARATION)
+            : sampleUniformRange(MINIMUM_HUE_SEPARATION, MAXIMUM_HUE_SEPARATION);
         float backgroundHueAngle = fmodf(wallHueAngle + requestedHueSeparation, HSB_MAXIMUM_VALUE);
 
         float wallSaturationLevel = sampleUniformRange(65.0f, 100.0f);
         float backgroundSaturationLevel = sampleUniformRange(45.0f, 100.0f);
 
-        bool useInvertedScheme = (sampleUniformRange(0.0f, 1.0f) < INVERTED_SCHEME_PROBABILITY);
+        float wallBrightnessLevel = sampleUniformRange(BRIGHT_ELEMENT_MINIMUM_BRIGHTNESS,
+                                                       BRIGHT_ELEMENT_MAXIMUM_BRIGHTNESS);
 
-        float wallBrightnessLevel;
-        float backgroundBrightnessLevel;
+        // A lit field when the trail is off, a near black one when it is not.
+        float backgroundBrightnessLevel = trailIsSwitchedOff
+            ? sampleUniformRange(BRIGHT_ELEMENT_MINIMUM_BRIGHTNESS, BRIGHT_ELEMENT_MAXIMUM_BRIGHTNESS)
+            : sampleUniformRange(DARK_ELEMENT_MINIMUM_BRIGHTNESS, DARK_ELEMENT_MAXIMUM_BRIGHTNESS);
 
-        if (useInvertedScheme == false) {
-            // Common case: a bright maze drawn over a deep, tinted background.
-            wallBrightnessLevel = sampleUniformRange(BRIGHT_ELEMENT_MINIMUM_BRIGHTNESS,
-                                                     BRIGHT_ELEMENT_MAXIMUM_BRIGHTNESS);
-            backgroundBrightnessLevel = sampleUniformRange(DARK_ELEMENT_MINIMUM_BRIGHTNESS,
-                                                           DARK_ELEMENT_MAXIMUM_BRIGHTNESS);
-        } else {
-            // Occasional case: a dark maze silhouetted against a glowing background.
-            wallBrightnessLevel = sampleUniformRange(DARK_ELEMENT_MINIMUM_BRIGHTNESS,
-                                                     DARK_ELEMENT_MAXIMUM_BRIGHTNESS);
-            backgroundBrightnessLevel = sampleUniformRange(BRIGHT_ELEMENT_MINIMUM_BRIGHTNESS,
-                                                           BRIGHT_ELEMENT_MAXIMUM_BRIGHTNESS);
-        }
+        // Refinement may darken an element to separate the pair, but never past the
+        // point where a black trail would stop being visible against it.
+        float permittedBrightnessFloor = trailIsSwitchedOff ? LIT_FIELD_MINIMUM_BRIGHTNESS
+                                                            : ABSOLUTE_MINIMUM_BRIGHTNESS;
 
         PixelColorState resolvedWallColor = ColorConverter::calculateHsbToRgb(
             wallHueAngle, wallSaturationLevel, wallBrightnessLevel);
@@ -496,13 +486,13 @@ public:
             }
 
             // Deepen whichever element is already the darker of the two. Driving it
-            // toward black strictly increases the distance, so this always converges.
+            // toward the floor strictly increases the distance, so this converges.
             if (wallBrightnessLevel >= backgroundBrightnessLevel) {
-                backgroundBrightnessLevel = std::max(ABSOLUTE_MINIMUM_BRIGHTNESS,
+                backgroundBrightnessLevel = std::max(permittedBrightnessFloor,
                                                      backgroundBrightnessLevel * DARKENING_REFINEMENT_FACTOR);
                 wallBrightnessLevel = std::min(HSB_MAXIMUM_VALUE, wallBrightnessLevel * 1.05f);
             } else {
-                wallBrightnessLevel = std::max(ABSOLUTE_MINIMUM_BRIGHTNESS,
+                wallBrightnessLevel = std::max(permittedBrightnessFloor,
                                                wallBrightnessLevel * DARKENING_REFINEMENT_FACTOR);
                 backgroundBrightnessLevel = std::min(HSB_MAXIMUM_VALUE, backgroundBrightnessLevel * 1.05f);
             }
@@ -516,23 +506,10 @@ public:
         MazeColorPalette assembledPalette;
         assembledPalette.wallColorState = resolvedWallColor;
         assembledPalette.backgroundColorState = resolvedBackgroundColor;
-        assembledPalette.trailColorState = selectOpposingTrailColor(
-            wallHueAngle, backgroundHueAngle, resolvedWallColor, resolvedBackgroundColor);
-
-        // Some of the time, hand the background and the trail each other's colour.
-        // The maze then sits in a field of the opposing colour and the solver cuts
-        // through it in near black, which reads as an inversion of the usual look
-        // without disturbing any of the contrast guarantees: the trail colour was
-        // already chosen to stand apart from BOTH of the other two, so exchanging
-        // it with the background leaves all three pairwise distances untouched.
-        //
-        // Only worth doing when the background is the dark element of the pair,
-        // since that is exactly what makes the swapped trail read as black.
-        if (useInvertedScheme == false &&
-            sampleUniformRange(0.0f, 1.0f) < TRAIL_BACKGROUND_SWAP_PROBABILITY) {
-            std::swap(assembledPalette.backgroundColorState, assembledPalette.trailColorState);
-        }
-
+        assembledPalette.trailColorState = trailIsSwitchedOff
+            ? PixelColorState{ 0, 0, 0 }
+            : selectOpposingTrailColor(wallHueAngle, backgroundHueAngle,
+                                       resolvedWallColor, resolvedBackgroundColor);
         return assembledPalette;
     }
 };
@@ -1059,7 +1036,7 @@ public:
     /**
      * @brief Generates one maze, rasterises it, and records its solver walk.
      */
-    void buildMaze(int gridWidth, int gridHeight, int complexityLevel, GeneratedMaze& destinationMaze) {
+    void buildMaze(int gridWidth, int gridHeight, int complexityLevel, MazeFrame& destinationMaze) {
         int corridorThickness = resolveCorridorThickness(gridWidth, gridHeight, complexityLevel);
 
         float normalizedComplexity = static_cast<float>(complexityLevel - MINIMUM_COMPLEXITY_LEVEL)
@@ -1179,8 +1156,8 @@ private:
     MazeStructureGenerator mazeStructureGenerator;
     ContrastingPaletteGenerator contrastingPaletteGenerator;
 
-    RenderedMazeFrame currentMazeFrame;
-    RenderedMazeFrame incomingMazeFrame;
+    MazeFrame currentMazeFrame;
+    MazeFrame incomingMazeFrame;
 
     int animationGridWidth;
     int animationGridHeight;
@@ -1206,15 +1183,14 @@ private:
     /**
      * @brief Fills one maze structure and gives it a fresh palette.
      */
-    void buildFreshMazeFrame(RenderedMazeFrame& destinationFrame) {
+    void buildFreshMazeFrame(MazeFrame& destinationFrame) {
         mazeStructureGenerator.buildMaze(animationGridWidth, animationGridHeight,
-                                         configuredComplexityLevel, destinationFrame.generatedMaze);
+                                         configuredComplexityLevel, destinationFrame);
         destinationFrame.assignedColorPalette = contrastingPaletteGenerator.generateContrastingPalette();
     }
 
     /**
-     * @brief Resolves the one pixel wide strip the trail head covers at a given
-     * slice of a given move.
+     * @brief Stamps one one-pixel-wide slice of the trail into the intensity buffer.
      *
      * A move spans twice the corridor thickness: the gap in the wall, then the
      * destination cell. A forward move sweeps outward from the origin cell. A
@@ -1222,13 +1198,9 @@ private:
      * origin cell, so the deepest pixels go dark first and the head appears to be
      * pulled back the way it came.
      */
-    static PixelRectangle resolveTrailSliceRectangle(const MazeGeometry& geometry,
-                                                     const TrailMove& inspectedMove,
-                                                     int sliceIndex) {
-
+    void writeTrailSlice(const TrailMove& inspectedMove, int sliceIndex, uint8_t intensityValue) {
+        const MazeGeometry& geometry = currentMazeFrame.geometry;
         int corridorThickness = geometry.corridorThickness;
-        int cellOriginX = geometry.resolveCellOriginX(inspectedMove.cellColumn);
-        int cellOriginY = geometry.resolveCellOriginY(inspectedMove.cellRow);
 
         bool travelIsPositive = (inspectedMove.directionIdentifier == DIRECTION_EAST)
                              || (inspectedMove.directionIdentifier == DIRECTION_SOUTH);
@@ -1242,23 +1214,23 @@ private:
             offsetAlongTravel = travelIsPositive ? (corridorThickness + sliceIndex) : (-1 - sliceIndex);
         }
 
+        int sliceOriginX = geometry.resolveCellOriginX(inspectedMove.cellColumn);
+        int sliceOriginY = geometry.resolveCellOriginY(inspectedMove.cellRow);
+        int sliceSpanX = corridorThickness;
+        int sliceSpanY = corridorThickness;
+
         if (travelIsHorizontal == true) {
-            return { cellOriginX + offsetAlongTravel, cellOriginY, 1, corridorThickness };
+            sliceOriginX = sliceOriginX + offsetAlongTravel;
+            sliceSpanX = 1;
+        } else {
+            sliceOriginY = sliceOriginY + offsetAlongTravel;
+            sliceSpanY = 1;
         }
-        return { cellOriginX, cellOriginY + offsetAlongTravel, corridorThickness, 1 };
-    }
 
-    /**
-     * @brief Stamps one slice of the trail into the intensity buffer.
-     */
-    void writeTrailSlice(const TrailMove& inspectedMove, int sliceIndex, uint8_t intensityValue) {
-        PixelRectangle sliceRectangle = resolveTrailSliceRectangle(
-            currentMazeFrame.generatedMaze.geometry, inspectedMove, sliceIndex);
-
-        int clampedStartY = std::max(0, sliceRectangle.originY);
-        int clampedEndY = std::min(animationGridHeight, sliceRectangle.originY + sliceRectangle.spanY);
-        int clampedStartX = std::max(0, sliceRectangle.originX);
-        int clampedEndX = std::min(animationGridWidth, sliceRectangle.originX + sliceRectangle.spanX);
+        int clampedStartY = std::max(0, sliceOriginY);
+        int clampedEndY = std::min(animationGridHeight, sliceOriginY + sliceSpanY);
+        int clampedStartX = std::max(0, sliceOriginX);
+        int clampedEndX = std::min(animationGridWidth, sliceOriginX + sliceSpanX);
 
         for (int targetRow = clampedStartY; targetRow < clampedEndY; ++targetRow) {
             uint8_t* rowPointer = trailIntensityBuffer.data() + (static_cast<size_t>(targetRow) * animationGridWidth);
@@ -1285,8 +1257,8 @@ private:
         activeTrailSliceProgress = 0.0f;
         committedTrailSliceCount = 0;
 
-        const auto& recordedMoves = currentMazeFrame.generatedMaze.trailMoveSequence;
-        int slicesPerMove = currentMazeFrame.generatedMaze.geometry.resolveSlicesPerMove();
+        const auto& recordedMoves = currentMazeFrame.trailMoveSequence;
+        int slicesPerMove = currentMazeFrame.geometry.resolveSlicesPerMove();
 
         // Pace the walk so it always takes the requested number of seconds, however
         // many dead ends this particular maze happens to send the solver down.
@@ -1301,8 +1273,8 @@ private:
      * @brief Advances the trail head, stamping every slice it fully crosses.
      */
     void advanceTrailPlayback(float elapsedDeltaSeconds) {
-        const auto& recordedMoves = currentMazeFrame.generatedMaze.trailMoveSequence;
-        int slicesPerMove = currentMazeFrame.generatedMaze.geometry.resolveSlicesPerMove();
+        const auto& recordedMoves = currentMazeFrame.trailMoveSequence;
+        int slicesPerMove = currentMazeFrame.geometry.resolveSlicesPerMove();
 
         if (recordedMoves.empty() == true || slicesPerMove <= 0) {
             accumulatedHoldTimerSeconds = 0.0f;
@@ -1441,7 +1413,7 @@ public:
         for (int displayRow = 0; displayRow < animationGridHeight; ++displayRow) {
             int sourceRow = displayRow - wholeRowShift;
 
-            const RenderedMazeFrame* sourceFrame;
+            const MazeFrame* sourceFrame;
             const uint8_t* trailRowPointer;
 
             if (sourceRow >= 0) {
@@ -1458,7 +1430,7 @@ public:
             sourceRow = std::clamp(sourceRow, 0, animationGridHeight - 1);
 
             const MazeColorPalette& activePalette = sourceFrame->assignedColorPalette;
-            const uint8_t* wallRowPointer = sourceFrame->generatedMaze.wallOccupancyMask.data()
+            const uint8_t* wallRowPointer = sourceFrame->wallOccupancyMask.data()
                                           + (static_cast<size_t>(sourceRow) * animationGridWidth);
             PixelColorState* destinationRowPointer = gridColorBuffer.data()
                                                    + (static_cast<size_t>(displayRow) * animationGridWidth);
