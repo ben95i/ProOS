@@ -14,10 +14,17 @@
 //
 // Rows carry a grip handle on the left, the same one the lists window uses
 // (DragSort / drag-grip in utils.js).
+//
+// Editing is single-user, on the same lock the lists window uses (FileLock in
+// utils.js): the first row of the file is LOCK|STATE|OWNER_TOKEN|TIMESTAMP|0.
+// The menu is readable by everybody at all times -- the lock is only taken
+// for the moment an edit window is open or a row is being moved, and handed
+// straight back afterwards. While another user holds it the grips are hidden
+// and the edit icons report the menu as read only.
 
-import { html, showPopup, loadMenu, savePOST, cleanString,
-  splitMenuData, base64URLSafeEncode, base64URLSafeToStandard, sendCmd,
-  dragGripElement, DragSort } from './utils.js';
+import { html, showPopup, cleanString, splitMenuData, base64URLSafeEncode,
+  base64URLSafeToStandard, sendCmd, dragGripElement, DragSort, FileLock,
+  readFile, writeFile, LOCK_TAG } from './utils.js';
 
 const FILE_NAME = 'bookmarks.save';
 const MENU_ID = 'bookmarks';         // drop-down container, drawn by main.js
@@ -32,11 +39,9 @@ const FAV_ICON_CLASS = 'bookmarked__favicon';
 const PREVIEW_ID = 'editFav__iconpreview';
 const PREVIEW_EMPTY_CLASS = 'editFav__iconpreview--empty';
 const SELECTED_CLASS = 'dd-selected';
-const FILE_TYPE = 'bkmrk';           // column 1 of every row
 const MAX_NAME_LENGTH = 42;
-// stand-in shown on any row that has no favicon saved
+const LOCKED_MSG = "read/only, locked by another user";
 const INFO_ICON_HTML = '<i class="fad fa-info-circle"></i>';
-// the alphabet base64URLSafeEncode() produces, nothing else is let through
 const ICON_CHARS = /^[A-Za-z0-9_@-]*$/;
 const MAX_ICON_LENGTH = 8192;
 // menu states
@@ -96,11 +101,21 @@ export default class Bookmarks {
     this.removeDropdowns = typeof options.removeDropdowns === 'function'
       ? options.removeDropdowns : function () {};
     this.state = BKM_INACTIVE;
-    this.pendingAdd = null; // placeholder row waiting on the add window
-    this.promptIcon = "";   // icon held by the open add / edit window
+    this.pendingAdd = null;  // placeholder row waiting on the add window
+    this.promptIcon = "";    // icon held by the open add / edit window
+    this.readOnly = false;   // another user held the lock when we last looked
+    this.loadedBody = "";    // the file as it was when the menu was drawn
+    this.confirming = null;  // claim waiting to be confirmed, if any
+    // one editor at a time, shared with the lists window (utils.js)
+    this.lock = new FileLock({
+      read: () => readFile(FILE_NAME),
+      write: (text) => writeFile(FILE_NAME, text),
+      body: () => this.buildBody(),
+      onLost: (text) => this.lockLost(text)
+    });
     this.dragSort = new DragSort({
       rowClass: ITEM_CLASS,
-      onDrop: () => this.save()
+      onDrop: () => this.dropMove()
     });
     this.listeners = {
       pointerdown: (event) => this.dragSort.start(event),
@@ -145,6 +160,8 @@ export default class Bookmarks {
   // called by removeDropdowns()
   close() {
     this.discardPendingAdd();
+    // hand the lock back before the rows this would write are torn down
+    this.releaseLock();
     if (this.menuElem()) {
       this.clearMenu();
     }
@@ -155,6 +172,8 @@ export default class Bookmarks {
     this.dragSort.cancel();
     this.removeSearch();
     this.closePrompt();
+    this.readOnly = false;
+    this.loadedBody = "";
     this.state = BKM_INACTIVE;
   }
 
@@ -178,18 +197,38 @@ export default class Bookmarks {
   //// file ////
 
   async load() {
-    const url = location.protocol + "//" + location.hostname
-      + "/api/read?file=" + FILE_NAME;
-    const data = await loadMenu(url);
+    const { text, busy } = await this.lock.check();
     if (this.state === BKM_INACTIVE) {
       return; // menu closed while loading
     }
-    if (!data || typeof data !== 'string') {
+    if (text === null || typeof text !== 'string') {
       showPopup("[bookmarks] no data to parse.");
       return;
     }
-    this.drawMenu(data);
+    this.readOnly = busy;
+    this.drawMenu(text);
     this.showSearch();
+  }
+
+  // re-reads the file and redraws the menu from it
+  async reload() {
+    const { text, busy } = await this.lock.check();
+    if (this.state === BKM_INACTIVE || text === null) {
+      return false;
+    }
+    this.readOnly = busy;
+    this.drawMenu(text);
+    this.showSearch();
+    return true;
+  }
+
+  // bookmark rows only: the lock row and anything short is left out
+  bookmarkRows(data) {
+    return splitMenuData(data)
+      .map(line => cleanString(line))
+      .filter(line => line)
+      .map(line => line.split("|"))
+      .filter(cols => cols.length >= 2 && cols[0] !== LOCK_TAG);
   }
 
   // 0=URL, 1=Name, 2=Icon
@@ -199,18 +238,14 @@ export default class Bookmarks {
       return;
     }
     this.clearMenu();
-    splitMenuData(data).forEach(line => {
-      if (line === "") {
-        return;
-      }
-      const cols = line.split("|");
-      if (cols.length < 2) {
-        return;
-      }
+    this.bookmarkRows(data).forEach(cols => {
       // rows written before the icon column exists just have two columns
       const icon = cols.length > 2 ? cols[2] : "";
       menu.appendChild(this.createItem(cols[0], cols[1].trim(), icon));
     });
+    // remember the copy this was drawn from, so an edit can tell whether the
+    // file moved on underneath it
+    this.loadedBody = this.buildBody();
     menu.addEventListener('pointerdown', this.listeners.pointerdown);
     menu.addEventListener('pointermove', this.listeners.pointermove);
     menu.addEventListener('pointerup', this.listeners.pointerup);
@@ -232,8 +267,9 @@ export default class Bookmarks {
   createItem(url, name, icon) {
     const item = document.createElement('a');
     item.classList.add(ITEM_CLASS);
-    // drag handle, same grip the lists window uses
-    item.appendChild(dragGripElement());
+    // drag handle, same grip the lists window uses -- hidden outright while
+    // another user is editing, so nothing can be moved
+    item.appendChild(dragGripElement(this.readOnly === true));
     const label = document.createElement('span');
     label.classList.add('bookmarked__label');
     label.innerText = name;
@@ -260,20 +296,15 @@ export default class Bookmarks {
     return item;
   }
 
-  // reads the menu back out in its current order and transmits it
-  save() {
-    const menu = this.menuElem();
-    if (!menu) {
-      return;
-    }
+  // reads the menu back out in its current order
+  buildBody() {
     let _file = "";
     this.items().forEach(item => {
       const url = Object.values(item.url).join("");
       // build output file
       _file += `${url}|${this.itemName(item)}|${item.icon}\n`;
     });
-    // transmit file
-    savePOST(FILE_NAME, [_file]);
+    return _file;
   }
 
   //// item text ////
@@ -312,6 +343,8 @@ export default class Bookmarks {
     if (!menu) {
       return;
     }
+    // a redraw calls this again -- never leave a second box behind
+    this.removeSearch();
     // draw menu container with search icon + text input box
     const searchMenuItem = document.createElement("a");
     searchMenuItem.id = SEARCH_ID;
@@ -345,11 +378,147 @@ export default class Bookmarks {
     if (search_txt) search_txt.remove();
   }
 
+  //// edit lock ////
+  //
+  // Taken for one edit or one move and handed straight back, so the menu is
+  // only locked while somebody is actually changing it.
+
+  // Takes the lock for the operation about to happen. Everything that could
+  // write the file goes through here first, so a stale menu can never
+  // overwrite another user's work: the file is re-read, and if it changed
+  // since this menu was drawn the menu is redrawn and the caller backs off.
+  async beginLockedEdit() {
+    if (this.lock.owned === true) {
+      return true; // already ours, an edit window is open
+    }
+    const { text, busy } = await this.lock.check();
+    if (text === null) {
+      showPopup("[bookmarks] server connection not available.");
+      return false;
+    }
+    if (busy) {
+      this.lockedElsewhere(text);
+      return false;
+    }
+    if (this.bodyFromText(text) !== this.loadedBody) {
+      // somebody else changed the file since this menu was drawn
+      this.readOnly = false;
+      this.drawMenu(text);
+      this.showSearch();
+      showPopup("[bookmarks] reloaded, changed by another user.");
+      return false;
+    }
+    if (!await this.lock.claim(text)) {
+      this.lockedElsewhere(text);
+      return false;
+    }
+    // Two windows can claim in the same moment, so the claim still has to be
+    // confirmed -- but that waits on a settling delay, and holding the edit
+    // window back for it is a visible stall. It runs behind the window
+    // instead: the only thing written before it lands is the claim itself
+    // (the lock row over an unchanged body), and settleClaim() below holds
+    // every later write until the answer is in. A window that loses is shut
+    // again by lockLost().
+    this.confirming = this.lock.confirm();
+    this.confirming.finally(() => { this.confirming = null; });
+    this.readOnly = false;
+    return true;
+  }
+
+  // waits for a claim that is still being confirmed, so nothing is written
+  // while it is still unknown whether this window holds the lock
+  async settleClaim() {
+    if (this.confirming) {
+      await this.confirming;
+    }
+  }
+
+  // Writes the menu out and hands the lock back in the same request. The rows
+  // are only trusted while the menu is still on screen; if it has been torn
+  // down the copy the menu was drawn from goes back instead, so a teardown
+  // can never write an empty file over somebody's bookmarks.
+  async releaseLock() {
+    if (this.lock.owned !== true) {
+      return true;
+    }
+    // Read the rows out before anything is awaited: close() tears the menu
+    // down and clears loadedBody in the same tick this is called from, so
+    // waiting first would leave nothing to write.
+    const body = this.menuElem() ? this.buildBody() : this.loadedBody;
+    await this.settleClaim();
+    if (this.lock.owned !== true) {
+      return true; // the claim was lost, and lockLost() has reported it
+    }
+    this.lock.abandon(); // stops the heartbeat before the closing write
+    const sent = await writeFile(FILE_NAME, this.lock.line(false) + body);
+    if (sent) {
+      this.loadedBody = body;
+    }
+    return sent;
+  }
+
+  async endLockedEdit() {
+    if (!await this.releaseLock()) {
+      showPopup("[bookmarks] failed to save, server connection not available.");
+      return false;
+    }
+    return true;
+  }
+
+  // another window holds the lock: no moving, no editing
+  lockedElsewhere(text) {
+    const wasOpen = this.readOnly !== true;
+    this.readOnly = true;
+    showPopup(`[bookmarks] ${LOCKED_MSG}.`);
+    // only worth redrawing the first time, to take the grips away
+    if (wasOpen && typeof text === 'string') {
+      this.drawMenu(text);
+      this.showSearch();
+    }
+  }
+
+  // a competing window won the lock in the moment we both claimed it
+  lockLost(text) {
+    this.closePrompt();
+    this.discardPendingAdd();
+    if (this.state !== BKM_INACTIVE) {
+      this.state = BKM_OPEN_MODE;
+    }
+    this.lockedElsewhere(text);
+  }
+
+  // the file body as the server has it, in the same shape buildBody() writes
+  bodyFromText(text) {
+    let body = "";
+    this.bookmarkRows(text).forEach(cols => {
+      const icon = cols.length > 2 ? cols[2] : "";
+      body += `${cols[0]}|${cols[1].trim()}|${icon}\n`;
+    });
+    return body;
+  }
+
+  // a row was dragged: take the lock, write the new order, hand it back
+  async dropMove() {
+    if (!await this.beginLockedEdit()) {
+      // could not take it -- put the menu back the way the file has it
+      await this.reload();
+      return;
+    }
+    await this.endLockedEdit();
+  }
+
   //// add / edit mode ////
 
-  addBookmark() {
+  async addBookmark() {
     const menu = this.menuElem();
     if (!menu) {
+      return;
+    }
+    if (!await this.beginLockedEdit()) {
+      return; // another user is editing, or the file moved on
+    }
+    if (!this.menuElem()) {
+      await this.releaseLock(); // menu closed while the lock was being taken
       return;
     }
     this.discardPendingAdd();
@@ -366,9 +535,17 @@ export default class Bookmarks {
     this.drawPrompt(true, null, null, item);
   }
 
-  // opens the add / edit window on a row; called by the row pencil and by
+  // opens the add / edit window on a row; called by the row icon and by
   // clicking any other row while the window is already up
-  editItem(item) {
+  async editItem(item) {
+    if (!await this.beginLockedEdit()) {
+      return; // another user is editing, or the menu was just redrawn
+    }
+    if (!item.isConnected) {
+      // the row was redrawn or removed while the lock was being taken
+      await this.releaseLock();
+      return;
+    }
     this.discardPendingAdd();
     this.closePrompt();
     this.state = BKM_EDIT_MODE;
@@ -376,13 +553,15 @@ export default class Bookmarks {
     this.drawPrompt(false, item.url, this.itemName(item), item);
   }
 
-  // closes the window but leaves the bookmarks menu on-screen
-  endEditMode() {
+  // closes the window, writes the menu out and hands the lock back, leaving
+  // the bookmarks menu on-screen
+  async endEditMode() {
     this.discardPendingAdd();
     this.closePrompt();
     if (this.state !== BKM_INACTIVE) {
       this.state = BKM_OPEN_MODE;
     }
+    await this.endLockedEdit();
   }
 
   // an add that was never saved leaves nothing behind
@@ -545,9 +724,7 @@ export default class Bookmarks {
         if (this.pendingAdd === item) {
           this.pendingAdd = null;
         }
-        // save to file
-        this.save();
-        // close window, leaving the menu open
+        // closing writes the menu out and hands the lock back in one request
         this.endEditMode();
       }
       // delete button action
@@ -556,9 +733,7 @@ export default class Bookmarks {
           this.pendingAdd = null;
         }
         item.remove();
-        // save to file
-        this.save();
-        // close window, leaving the menu open
+        // closing writes the menu out and hands the lock back in one request
         this.endEditMode();
       }
     });

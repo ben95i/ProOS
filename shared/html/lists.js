@@ -32,7 +32,7 @@
 // POST /api/write?file=lists.save (text/plain body).
 
 import { splitMenuData, cleanString, isNumeric, removeWindow, showPopup,
-  dragGripElement, DragSort } from './utils.js';
+  dragGripElement, DragSort, FileLock, readFile, writeFile } from './utils.js';
 
 const FILE_NAME = 'lists.save';
 const WIN_TITLE = 'Lists';
@@ -52,10 +52,6 @@ const DISCARD_BTN_ID = 'list__btn-discard';
 const DEL_ICON_ID = 'list__del-icon';
 // file layout
 const COL_DELIMITER = '|'; // separates the columns of a row
-const LOCK_TAG = 'LOCK';   // marks the first row of the file
-const LOCK_EXPIRE_MS = 180000; // a lock left behind is ignored after 3 min
-const LOCK_BEAT_MS = 60000;    // owner re-stamps the lock every minute
-const LOCK_SETTLE_MS = 600;    // let a competing claim land before checking
 // stored names are printable ASCII only, with the column separator "|" and
 // the path characters "/" and "\" swapped out
 const MAX_NAME_LENGTH = 64;
@@ -71,14 +67,6 @@ const MODE_OPEN = 0;
 const MODE_SELECT = 1;
 
 //// shared helpers ////
-
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-function apiURL(action) {
-  return `${location.protocol}//${location.hostname}/api/${action}?file=${FILE_NAME}`;
-}
 
 // names are trimmed to printable ASCII and kept to one line of sane length
 export function cleanName(value) {
@@ -110,49 +98,32 @@ export class ListStore {
     this.onChange = typeof onChange === 'function' ? onChange : function () {};
     this.data = [];         // [{ id, name, items: [{ id, name, checked }] }]
     this.readOnly = false;  // another user holds the lock, or nothing loaded
-    this.lockOwned = false; // this window holds the lock
     this.online = null;     // last server exchange: true / false / not tried
     this.dirty = false;     // edits in memory that the server has not taken
-    this.beatTimer = null;
     this.saving = null;     // in-flight save, so writes cannot overlap
     this.queued = false;
-    // identifies this window in the lock row (ASCII, no separators)
-    this.token = Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
+    // one editor at a time, shared with the bookmarks menu (utils.js)
+    this.lock = new FileLock({
+      read: () => this.read(),
+      write: (text) => this.write(text),
+      body: () => this.buildBody(),
+      refresh: () => this.save(), // goes through the write queue
+      onLost: (text) => this.lockLost(text)
+    });
   }
 
   //// server ////
 
-  // returns the file text, or null when the server cannot be reached
+  // both remember whether the server answered, which drives the status dot
   async read() {
-    try {
-      const response = await fetch(apiURL('read'), { method: 'GET' });
-      if (!response.ok) {
-        throw new Error(`status ${response.status}`);
-      }
-      const text = await response.text();
-      this.online = true;
-      return text;
-    } catch (error) {
-      this.online = false;
-      return null;
-    }
+    const text = await readFile(FILE_NAME);
+    this.online = text !== null;
+    return text;
   }
 
-  // returns true only when the server confirms the write; a failed attempt
-  // leaves the file on the server exactly as it was
   async write(text) {
-    try {
-      const response = await fetch(apiURL('write'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: text
-      });
-      this.online = response.ok === true;
-      return this.online;
-    } catch (error) {
-      this.online = false;
-      return false;
-    }
+    this.online = await writeFile(FILE_NAME, text);
+    return this.online;
   }
 
   //// file text ////
@@ -166,26 +137,6 @@ export class ListStore {
       .map(row => cleanString(row))
       .filter(row => row)
       .map(row => row.split(COL_DELIMITER));
-  }
-
-  lockLine(held) {
-    const owner = held === true ? this.token : '';
-    const stamp = held === true ? Date.now() : 0;
-    return [LOCK_TAG, held === true ? '1' : '0', owner, stamp, '0']
-      .join(COL_DELIMITER) + "\n";
-  }
-
-  parseLock(text) {
-    const row = this.rows(text).find(cols => cols[0] === LOCK_TAG);
-    if (!row) {
-      return null;
-    }
-    const stamp = (row[3] || '').trim();
-    return {
-      state: row[1] === '1' ? 1 : 0,
-      token: (row[2] || '').trim(),
-      time: isNumeric(stamp) ? Number(stamp) : 0
-    };
   }
 
   // 0=ListID, 1=ListName, 2=ItemID, 3=ItemName, 4=CheckState
@@ -233,7 +184,7 @@ export class ListStore {
   }
 
   build() {
-    return this.lockLine(this.lockOwned) + this.buildBody();
+    return this.lock.line(this.lock.owned) + this.buildBody();
   }
 
   //// session ////
@@ -241,55 +192,29 @@ export class ListStore {
   // loads the file and takes the edit lock when it is free
   async open() {
     this.dirty = false;
-    const text = await this.read();
+    const { text, busy } = await this.lock.check();
     if (text === null) {
       // nothing loaded, so there is nothing safe to write back
       this.data = [];
       this.readOnly = true;
-      this.lockOwned = false;
       return;
     }
     this.data = this.parse(text);
-    if (this.lockIsBusy(this.parseLock(text))) {
+    if (busy) {
       this.readOnly = true;
-      this.lockOwned = false;
       return;
     }
     this.readOnly = false;
-    this.lockOwned = true;
-    if (await this.save()) {
-      this.startBeat();
+    if (await this.lock.claim(text)) {
       // runs in the background so the window draws without waiting on it
-      this.confirmLock();
+      this.lock.confirm();
+    } else {
+      this.readOnly = true;
     }
   }
 
-  // a lock counts only while it is held by somebody else and still fresh
-  lockIsBusy(lock) {
-    if (!lock || lock.state !== 1 || lock.token === "" || lock.token === this.token) {
-      return false;
-    }
-    return (Date.now() - lock.time) < LOCK_EXPIRE_MS;
-  }
-
-  // the file API has no compare-and-set, so two windows can claim the lock at
-  // the same moment; wait for any competing write to land, then read the lock
-  // back and stand down if the other one won
-  async confirmLock() {
-    await sleep(LOCK_SETTLE_MS);
-    if (this.lockOwned !== true) {
-      return; // window closed, or the lock was already handed back
-    }
-    const text = await this.read();
-    if (text === null || this.lockOwned !== true) {
-      return;
-    }
-    const lock = this.parseLock(text);
-    if (lock && lock.token === this.token) {
-      return; // still ours
-    }
-    this.stopBeat();
-    this.lockOwned = false;
+  // a competing window won the lock in the moment we both claimed it
+  lockLost(text) {
     this.readOnly = true;
     this.dirty = false;
     this.data = this.parse(text);
@@ -298,7 +223,7 @@ export class ListStore {
   }
 
   canWrite() {
-    return this.lockOwned === true && this.readOnly !== true;
+    return this.lock.owned === true && this.readOnly !== true;
   }
 
   // saves the list; repeat calls while a write is in flight are folded into
@@ -326,36 +251,15 @@ export class ListStore {
     return sent;
   }
 
-  // keeps the timestamp fresh so the lock does not expire while in use
-  startBeat() {
-    this.stopBeat();
-    this.beatTimer = setInterval(() => this.save(), LOCK_BEAT_MS);
-  }
-
-  stopBeat() {
-    if (this.beatTimer) {
-      clearInterval(this.beatTimer);
-      this.beatTimer = null;
-    }
-  }
-
   // hands the lock back; unsaved edits are never pushed out on the way (the
   // server is unreachable in that case anyway) -- the lock expires instead
   release() {
-    this.stopBeat();
-    if (this.lockOwned !== true) {
-      return;
-    }
-    this.lockOwned = false;
-    if (this.dirty !== true) {
-      this.write(this.lockLine(false) + this.buildBody());
-    }
+    this.lock.release(this.dirty !== true);
   }
 
   // throws the session away without writing anything
   abandon() {
-    this.stopBeat();
-    this.lockOwned = false;
+    this.lock.abandon();
     this.dirty = false;
   }
 }

@@ -449,3 +449,203 @@ export class DragSort {
     return this.drag !== null;
   }
 }
+
+//// Shared file transfer ////
+
+export function fileURL(action, file) {
+  return `${location.protocol}//${location.hostname}/api/${action}?file=${file}`;
+}
+
+// returns the file text, or null when the server cannot be reached
+export async function readFile(file) {
+  try {
+    const response = await fetch(fileURL('read', file), { method: 'GET' });
+    if (!response.ok) {
+      throw new Error(`status ${response.status}`);
+    }
+    return await response.text();
+  } catch (error) {
+    return null;
+  }
+}
+
+// returns true only when the server confirms the write; a failed attempt
+// leaves the file on the server exactly as it was
+export async function writeFile(file, text) {
+  try {
+    const response = await fetch(fileURL('write', file), {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: text
+    });
+    return response.ok === true;
+  } catch (error) {
+    return false;
+  }
+}
+
+export function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+//// Shared edit lock ////
+//
+// One editor at a time for a file that several browsers can open. The lock is
+// the first row of the file itself:
+//   LOCK|STATE|OWNER_TOKEN|TIMESTAMP|0
+// so it travels with the data and needs no second endpoint. The owner
+// re-stamps the timestamp while it holds the lock, and a lock left behind by
+// a browser that went away expires on its own.
+//
+// The owner supplies three callbacks:
+//   read()   async, the file text or null
+//   write()  async (text) => true when the server took it
+//   body()   the data rows to write under the lock row
+// and optionally refresh() (what the heartbeat writes, defaults to lock row +
+// body) and onLost(text) (a competing window won the lock).
+
+export const LOCK_TAG = 'LOCK';
+export const LOCK_EXPIRE_MS = 180000; // a lock left behind is ignored after 3 min
+export const LOCK_BEAT_MS = 60000;    // owner re-stamps the lock every minute
+export const LOCK_SETTLE_MS = 600;    // let a competing claim land before checking
+
+export class FileLock {
+
+  constructor(options = {}) {
+    this.readFile = options.read;
+    this.writeFile = options.write;
+    this.buildBody = options.body;
+    this.refresh = typeof options.refresh === 'function'
+      ? options.refresh
+      : () => this.writeFile(this.line(true) + this.buildBody());
+    this.onLost = typeof options.onLost === 'function' ? options.onLost : function () {};
+    this.owned = false;
+    this.beatTimer = null;
+    // identifies this window in the lock row (ASCII, no separators)
+    this.token = Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
+  }
+
+  // lock row for the top of the file
+  line(held) {
+    const owner = held === true ? this.token : '';
+    const stamp = held === true ? Date.now() : 0;
+    return [LOCK_TAG, held === true ? '1' : '0', owner, stamp, '0'].join('|') + "\n";
+  }
+
+  // the lock row out of file text, or null when the file has none
+  parse(text) {
+    if (typeof text !== 'string' || text === "") {
+      return null;
+    }
+    const row = splitMenuData(text)
+      .map(line => cleanString(line))
+      .filter(line => line)
+      .map(line => line.split('|'))
+      .find(cols => cols[0] === LOCK_TAG);
+    if (!row) {
+      return null;
+    }
+    const stamp = (row[3] || '').trim();
+    return {
+      state: row[1] === '1' ? 1 : 0,
+      token: (row[2] || '').trim(),
+      time: isNumeric(stamp) ? Number(stamp) : 0
+    };
+  }
+
+  // a lock counts only while somebody else holds it and it is still fresh
+  isBusy(text) {
+    const held = this.parse(text);
+    if (!held || held.state !== 1 || held.token === "" || held.token === this.token) {
+      return false;
+    }
+    return (Date.now() - held.time) < LOCK_EXPIRE_MS;
+  }
+
+  // reads the file and reports whether another window is holding it
+  async check() {
+    const text = await this.readFile();
+    return {
+      text: text,
+      busy: text === null ? false : this.isBusy(text),
+      offline: text === null
+    };
+  }
+
+  // takes the lock and starts the heartbeat. Pass the file text when it was
+  // just read, to save a second round trip. Always confirm() afterwards.
+  async claim(text = null) {
+    const fileText = text === null ? await this.readFile() : text;
+    if (fileText === null || this.isBusy(fileText)) {
+      return false;
+    }
+    this.owned = true;
+    if (!await this.writeFile(this.line(true) + this.buildBody())) {
+      this.owned = false;
+      return false;
+    }
+    this.startBeat();
+    return true;
+  }
+
+  // The file API has no compare-and-set, so two windows can claim at the same
+  // moment. Wait for any competing write to land, then read the lock back and
+  // stand down if the other one won. Await it to be certain before writing
+  // anything else, or let it run in the background and handle onLost.
+  async confirm() {
+    await sleep(LOCK_SETTLE_MS);
+    if (this.owned !== true) {
+      return false; // handed back while we waited
+    }
+    const text = await this.readFile();
+    if (text === null || this.owned !== true) {
+      return this.owned; // cannot tell; the heartbeat will settle it
+    }
+    const held = this.parse(text);
+    if (held && held.token === this.token) {
+      return true; // still ours
+    }
+    this.stopBeat();
+    this.owned = false;
+    this.onLost(text);
+    return false;
+  }
+
+  // keeps the timestamp fresh so the lock does not expire while in use
+  startBeat() {
+    this.stopBeat();
+    this.beatTimer = setInterval(() => {
+      if (this.owned === true) {
+        this.refresh();
+      }
+    }, LOCK_BEAT_MS);
+  }
+
+  stopBeat() {
+    if (this.beatTimer) {
+      clearInterval(this.beatTimer);
+      this.beatTimer = null;
+    }
+  }
+
+  // Hands the lock back, writing the data out in the same request. Pass false
+  // when the caller's copy is not safe to write (unsaved edits after a failed
+  // write) -- the lock is then left to expire instead.
+  async release(write = true) {
+    this.stopBeat();
+    if (this.owned !== true) {
+      return true;
+    }
+    this.owned = false;
+    if (write !== true) {
+      return true;
+    }
+    return await this.writeFile(this.line(false) + this.buildBody());
+  }
+
+  // drops the lock without writing anything
+  abandon() {
+    this.stopBeat();
+    this.owned = false;
+  }
+}
