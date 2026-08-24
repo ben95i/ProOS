@@ -13,6 +13,7 @@ export default class RoomStateManager {
     this.roomStateClick = this.roomStateClick.bind(this);
     this.showRoomState = this.showRoomState.bind(this);
     this.hideRoomState = this.hideRoomState.bind(this);
+    this.restartRoomState = this.restartRoomState.bind(this);
     this.stopRoomStateTimer = this.stopRoomStateTimer.bind(this);
     this.buildHTML();
   }
@@ -79,7 +80,7 @@ export default class RoomStateManager {
       this.setRefreshing(false);
       this.devices = [];
       this.roomState = null;
-      lightIcon.classList.remove("status-error");
+      lightIcon.classList.remove("status-error", "status-idle");
       if (resp.roomState === null) {
         lightIcon.classList.add("status-error");
         this.hideRoomState();
@@ -145,6 +146,15 @@ export default class RoomStateManager {
     if (_elem) _elem.style.display = 'block';
   }
 
+  // Room switch: drop the pending countdown and re-fetch straight away. The
+  // light is deliberately left alone -- it holds the last room's value until
+  // the new status lands, so switching rooms never flashes the idle dot,
+  // which is reserved for a real refresh timeout.
+  async restartRoomState() {
+    this.stopRoomStateTimer();
+    await this.showRoomState();
+  }
+
   hideRoomState() {
     this.stopRoomStateTimer();
     const lightIcon = document.getElementById("trafficLightIcon");
@@ -152,6 +162,11 @@ export default class RoomStateManager {
     this.setRefreshing(false);
     if (lightIcon) {
       lightIcon.classList.remove("status-off", "status-on");
+      // an error keeps its own colour; otherwise the dot goes idle-yellow
+      // rather than clearing to transparent
+      if (!lightIcon.classList.contains("status-error")) {
+        lightIcon.classList.add("status-idle");
+      }
     }
   }
 

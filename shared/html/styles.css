@@ -25,6 +25,7 @@
   --alert-red: #fc3535;
   --red-ind: #90191f;
   --green-ind: #30c93f;
+  --orange-ind: #ff4900; 
   --yellow-ind: #ffd000; 
 }
 
@@ -170,6 +171,13 @@ body {
   opacity: 0;
   visibility: hidden;
   transition: none;
+}
+
+/* refresh stopped: the dot stays put in the global yellow, dimmed to half
+   so it reads as idle rather than as a live state */
+#trafficLightIcon.status-idle {
+  fill: var(--orange-ind);
+  fill-opacity: 0.4;
 }
 
 #trafficLightIcon.status-error {
@@ -418,19 +426,32 @@ input.chkbox {
   }
 }
 
+/* The two icon groups each ask for half of whatever the selector leaves
+   over, which puts the selector dead centre in the bar. min-width holds a
+   group at its own content width, so a group that needs more than its half
+   (the bookmarks add icon appearing, for instance) keeps its icons intact
+   and the surplus comes out of the other group's share -- the selector is
+   nudged aside by exactly the overrun, and only when there is one. */
+#topnav-left {
+  display: flex;
+  align-items: center;
+  flex: 1 1 0;
+  min-width: max-content;
+}
+
 #topnav-right {
   display: flex;
   align-items: center;
-  margin-left: auto;
+  flex: 1 1 0;
+  min-width: max-content;
+  justify-content: flex-end;
 }
 
-/* Room selector. #room_center takes every pixel the two icon groups leave
-   behind and centers the selector inside it, so the selector re-centers on
-   its own as icons appear or disappear. min-width: 0 lets the slot shrink
-   below the label's natural width instead of pushing the icons apart, which
-   is what makes the truncation below possible. */
+/* Room selector. Sized by its own content, and the only item in the bar
+   allowed to shrink -- the icon groups are held at max-content, so when the
+   bar runs out of room the name truncates instead of the icons clipping. */
 #room_center {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
   display: flex;
   align-items: center;
@@ -680,10 +701,9 @@ input.chkbox {
   display: block;
 }
 
-/* room menu, centered under the selector. .dd-menu is fixed, so only the
-   horizontal placement is overridden -- it still drops from the nav. The
-   50% here is the starting point; positionRoomDropdown() overwrites left
-   with the selector's own centre each time the menu opens. */
+/* room menu, centred in the bar under the selector. .dd-menu is fixed, so
+   only the horizontal placement is overridden -- it still drops from the
+   nav at its static height. */
 #main-room-dropdown {
   left: 50%;
   transform: translateX(-50%);

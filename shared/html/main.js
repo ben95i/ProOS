@@ -216,8 +216,7 @@ function activityStop() {
 
 async function refreshRoomState() {
   if (App.sysModel === MAIN_SITE && App.roomStateManager) {
-    App.roomStateManager.hideRoomState();
-    App.roomStateManager.showRoomState();
+    App.roomStateManager.restartRoomState();
   }  
 }
 
@@ -255,25 +254,7 @@ function openRoomDropdown() {
     drawMenu(menuDataString, menuname);
     // show dropdown
     _elem.style.display = 'block';
-    positionRoomDropdown(_elem);
   }
-}
-
-// centres the room menu on the selector, which moves as nav icons come and
-// go; measured after the menu is shown so its width is known, then clamped
-// so a wide menu never hangs off either edge of the screen
-function positionRoomDropdown(_elem) {
-  const anchor = document.getElementById('room_anchor');
-  if (!_elem || !anchor) return;
-  const rect = anchor.getBoundingClientRect();
-  const halfWidth = _elem.offsetWidth / 2;
-  const edgeGap = 5;
-  const minLeft = halfWidth + edgeGap;
-  const maxLeft = window.innerWidth - halfWidth - edgeGap;
-  let center = rect.left + (rect.width / 2);
-  if (center < minLeft) center = minLeft;
-  if (center > maxLeft) center = maxLeft;
-  _elem.style.left = `${center}px`;
 }
 
 function selectRoom(_mode) {
@@ -339,27 +320,32 @@ function showMenu(_menu) {
 function topNavTemplate(f) {
   return `
 <div class="topnav nohide" data-app-injected>
+  <!-- the bar is three flex items: the left icon group, the room selector and
+       the right icon group. Both icon groups share the leftover space evenly
+       (see #topnav-left / #topnav-right), which centres the selector in the
+       bar; a group that outgrows its share pushes the selector aside by
+       exactly the overrun and no more. Any icon added to a group at runtime
+       is counted automatically, so nothing needs re-measuring. -->
+  <div id="topnav-left">
+    ${f.isServer ? `
+    <a id="btn-dyn-mainmenu">
+      <i class="fad fa-list"></i>
+    </a>` : ''}
+    ${f.isPiLike ? `
+    <a id="btn-menu-pimainmenu">
+      <i class="fad fa-list"></i>
+    </a>` : ''}
+    <a id="btn-dyn-thememenu">
+      <i class="fad fa-palette"></i>
+    </a>
+    ${f.isServer ? `
+    <a id="btn-show-bookmarks">
+      <i class="fad fa-star"></i>
+    </a>
+    <a id="status_anchor">
+    </a>` : ''}
+  </div>
   ${f.isServer ? `
-  <a id="btn-dyn-mainmenu">
-    <i class="fad fa-list"></i>
-  </a>` : ''}
-  ${f.isPiLike ? `
-  <a id="btn-menu-pimainmenu">
-    <i class="fad fa-list"></i>
-  </a>` : ''}
-  <a id="btn-dyn-thememenu">
-    <i class="fad fa-palette"></i>
-  </a>
-  ${f.isServer ? `
-  <a id="btn-show-bookmarks">
-    <i class="fad fa-star"></i>
-  </a>
-  <a id="status_anchor">
-  </a>
-  <!-- room selector: #room_center is the flexible slot between the left and
-       right icon groups, so the selector re-centres itself whenever icons
-       are added or removed (the bookmarks add icon, for one) and shrinks
-       rather than running under them when the bar gets tight -->
   <div id="room_center">
     <a id="room_anchor">
       <i id="current-room-icon"></i>
@@ -503,8 +489,8 @@ function roomControlsTemplate() {
     </div>
   </div>
   <p class="grid-sep"></p>
-  <button type="button" class="button" id="btn-media-link">
-    <span class="button__text"><i class="fad fa-mp3-player"></i> Media</span>
+  <button type="button" class="button" id="btn-yt-link">
+    <span class="button__text"><i class="fab fa-youtube"></i> YouTube</span>
   </button>
   <button type="button" class="button" id="btn-show-temphumid">
     <span class="button__text">
@@ -512,24 +498,24 @@ function roomControlsTemplate() {
       <i class="fad fa-humidity large__icon"></i>
     </span>
   </button>
-  <button type="button" class="button" id="btn-lists">
-    <span class="button__text"><i class="fad fa-list-ol"></i> Lists</span>
+  <button type="button" class="button" id="btn-media-link">
+    <span class="button__text"><i class="fad fa-mp3-player"></i> Media</span>
   </button>
   <p class="grid-sep"></p>
   <button type="button" class="button" id="btn-open-cam">
     <span class="button__text"><i class="fad fa-door-open"></i> Doorway</span>
   </button>
-  <!-- placeholder, no handler registered for it yet -->
-  <button type="button" class="button dark_btn" id="btn-tbd">
-    <span class="button__text">TBD</span>
-  </button>
   <button type="button" class="button" id="btn-open-log-svr">
     <span class="button__text"><i class="fad fa-terminal"></i> Server</span>
+  </button>
+  <button type="button" class="button" id="btn-lists">
+    <span class="button__text"><i class="fad fa-list-ol"></i> Lists</span>
   </button>
 </div>`;
 }
 registerListeners({
   'btn-media-link':     () => GoToExtPage('media.home'),
+  'btn-yt-link':        () => GoToExtPage('youtube.com'),
   'btn-lists':          () => showLists(),
   'btn-menu-allmenu':   () => showMenu('allmenu'),
   'btn-menu-pwrmenu':   () => showMenu('pwrmenu'),
