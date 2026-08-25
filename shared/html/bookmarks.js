@@ -362,7 +362,9 @@ export default class Bookmarks {
   buildBody() {
     let _file = "";
     this.items().forEach(item => {
-      const url = Object.values(item.url).join("");
+      // item.url is a string; Object.values() used to explode it into
+      // characters and rejoin them, and would throw outright on a null
+      const url = item.url === null || item.url === undefined ? "" : String(item.url);
       // build output file
       _file += `${url}|${this.itemName(item)}|${item.icon}\n`;
     });
@@ -693,10 +695,10 @@ export default class Bookmarks {
   closePrompt() {
     this.clearLookupTimer();
     this.lookupBtn = null;
-    // re-enable click outside of window
-    document.querySelectorAll(`*:not(#${PROMPT_ID})`).forEach(elem => {
-      elem.style.pointerEvents = "";
-    });
+    // A full-document querySelectorAll + inline style write per node used to
+    // run here to re-enable clicking outside the window. Nothing sets
+    // pointerEvents any more, so it was clearing something that is never set:
+    // the orphaned half of a mechanism that has since gone.
     // un-highlight selected item
     this.items().forEach(item => item.classList.remove(SELECTED_CLASS));
     const favPrompt = document.getElementById(PROMPT_ID);

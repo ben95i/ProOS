@@ -5,7 +5,12 @@ export default class ToggleSwitch {
     this.parent = typeof parent === 'string' ? document.getElementById(parent) : parent;
     if (!this.parent) throw new Error(`Parent element not found`);
     this.config = config;
-    this.toggleId = `input-${config.id}` || `input-${Math.random().toString(36).substr(2, 9)}`;
+    // a template literal is always truthy, so the fallback below used to be
+    // unreachable and an id-less switch became "input-undefined" -- two of
+    // those on one page would share an id and one label would drive both
+    this.toggleId = config.id
+      ? `input-${config.id}`
+      : `input-${Math.random().toString(36).substring(2, 11)}`;
     this.cmdHost = config.cmdHost || 'none';
     this.command = config.command || 'none';
     this.onToggleCallback = config.onToggle || null; 

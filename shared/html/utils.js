@@ -3,10 +3,22 @@
 const REFRESH_INTERVAL = 10; // in seconds
 const TIMEOUT_INTERVAL = 50; // in seconds
 
+// Query values are pasted straight into the URL below. Only the characters
+// that would end a value or be read as an escape are encoded; everything the
+// site actually sends (letters, digits, _ - ~ . @, including the '@' that
+// base64URLSafeEncode uses for '=') goes out byte for byte as it always has.
+const QUERY_UNSAFE = /[%&#+=?\s]/g;
+
+function encodeArg(value) {
+  const text = (value === null || value === undefined) ? '' : String(value);
+  return text.replace(QUERY_UNSAFE, (ch) =>
+    '%' + ch.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0'));
+}
+
 // transmit a command
 export async function sendCmd(act, arg1, arg2 = '') {
   // construct API URL
-  const url = location.protocol + "//"+ location.hostname + "/api?var=" + arg2 + "&arg=" + arg1 + "&action=" + act;
+  const url = location.protocol + "//"+ location.hostname + "/api?var=" + encodeArg(arg2) + "&arg=" + encodeArg(arg1) + "&action=" + encodeArg(act);
   // send request
   try {
     const response = await fetch(url, {
@@ -256,6 +268,15 @@ export function html(strings, ...values) {
 
 let messagePopupTimer = null;
 
+// lets the page teardown drop a pending fade (main.js owns the other popups'
+// timers, this one has always lived in this module)
+export function clearPopupTimer() {
+  if (messagePopupTimer) {
+    clearTimeout(messagePopupTimer);
+    messagePopupTimer = null;
+  }
+}
+
 export function showPopup(message) {
   const win_name = "msg-popup";
   const text_name = "msg-text";
@@ -266,6 +287,15 @@ export function showPopup(message) {
     msgpopwin.classList.add("popup-alert");
     msgpopwin.id = win_name;
     msgpopwin.innerHTML = html`<div id="${text_name}"></div>`;
+    // Attached once, for the life of the window. A message arriving mid-fade
+    // takes the class off again, which cancels the animation before it ends:
+    // a {once:true} listener registered per fade would never fire and never
+    // unregister, so they stacked up on this one long-lived element.
+    msgpopwin.addEventListener("animationend", () => {
+      if (msgpopwin.classList.contains("fade-out") && msgpopwin.isConnected) {
+        msgpopwin.remove();
+      }
+    });
     // add to page
     document.body.appendChild(msgpopwin);
   }
@@ -274,17 +304,12 @@ export function showPopup(message) {
   const msgtext = document.getElementById(text_name);
   msgtext.innerHTML = message;
   // reset hide window timeout
-  clearTimeout(messagePopupTimer);
+  clearPopupTimer();
   // hide window after delay
   messagePopupTimer = setTimeout(() => {
-    // fade out window
+    messagePopupTimer = null;
+    // fade out window; the listener above removes it once the fade ends
     msgpopwin.classList.add("fade-out");
-    // wait for the transition to end before removing window
-    msgpopwin.addEventListener("animationend", () => {
-      if (msgpopwin.isConnected) {
-        msgpopwin.remove();
-      }
-    }, { once: true });
   }, 4000); // hide delay in (ms)
 }
 

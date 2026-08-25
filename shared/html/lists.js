@@ -316,13 +316,24 @@ export class ListStore {
 
   // hands the lock back; unsaved edits are never pushed out on the way (the
   // server is unreachable in that case anyway) -- the lock expires instead
-  release() {
+  async release() {
     this.queued = false;
     this.wake();
+    // A queued write can already be on the wire, carrying the lock row with
+    // the lock still held. If that one landed after the release below, the
+    // file was left claimed by a window that had closed, and stayed that way
+    // until the lock expired. Waiting for it puts the two writes in order.
+    if (this.saving) {
+      try {
+        await this.saving;
+      } catch (err) {
+        // a failed save is already reported through the status dot
+      }
+    }
     // The release write carries the list, so it saves whatever the interval
     // was still holding. It is only skipped when the server is known to be
     // unreachable -- then there is nothing to write to, and the lock expires.
-    this.lock.release(this.online !== false);
+    return this.lock.release(this.online !== false);
   }
 
   // throws the session away without writing anything

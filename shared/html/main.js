@@ -1,10 +1,10 @@
 // Automate Website - JavaScript Frontend
 // by Ben Provenzano III
 
-import { requestThrottle, setTheme, classDisplay, checkElemIsVisibleByID,
-  addClassToElem, removeWindow, cleanString, base64URLSafeEncode, splitMenuData, 
+import { requestThrottle, setTheme, classDisplay,
+  addClassToElem, cleanString, base64URLSafeEncode, splitMenuData,
   isNumeric, mapNumber, splitByDelimiter, sendCmd, timeoutInterval,
-  html, showPopup, loadMenu, savePOST, scrollToBottom } from './utils.js';
+  html, showPopup, clearPopupTimer, loadMenu, savePOST } from './utils.js';
 import ToggleSwitch, { toggleSwitchCallback } from './switch.js';
 import RoomStateManager from './roomstate.js';
 import AnimatedBackground from './stars.js';
@@ -47,8 +47,12 @@ window.App = {
   roomStateManager: null,
   lists: null,
   bookmarks: null,
+  colorPrompt: null,
   activeSwitches: [],
   fileData: [],
+  // the <a> rows drawMenu() created, so they can be taken back out without
+  // guessing at their ids
+  dynMenuNodes: [],
   serverCmdData: null,
   dynMenuActive: 0,
   volPopupTimer: null,
@@ -59,6 +63,21 @@ window.App = {
     '00FF00', '8x8', '12.0'
   ]
 };
+
+// Every menu request stamps this before it goes out and checks it when it
+// comes back. Opening another menu -- or closing the menus outright --
+// invalidates whatever is still in the air, so a slow reply can no longer
+// wipe the rows of the menu that is actually on screen.
+let menuDrawToken = 0;
+
+function beginMenuRequest() {
+  menuDrawToken += 1;
+  return menuDrawToken;
+}
+
+function menuRequestCurrent(token) {
+  return token === menuDrawToken;
+}
 
 // runs on page load
 window.addEventListener("DOMContentLoaded", () => {
@@ -161,8 +180,9 @@ function loadPage() {
   setTheme(currentTheme);
   // setup listeners
   setupEventListeners();
-  // initialize background 
-  App.starBackground = new AnimatedBackground('star-canvas');
+  // initialize background, with the saved animation setting applied before
+  // the first frame so a switched-off field never flickers into motion
+  App.starBackground = new AnimatedBackground('star-canvas', starsAnimationEnabled());
   App.starBackground.activate();
   // activate timed services
   resetActivityTimer();
@@ -174,7 +194,12 @@ function handleClicks(event) {
   // disable click events when in bookmark edit mode
   if (App.bookmarks && App.bookmarks.isEditMode()) {
     if (event.target.className !== "editFav__win") {
-      event.stopPropagation();
+      // the button dispatcher below is a second listener on document, and
+      // stopPropagation() does not stop listeners on the same node -- so
+      // delegated buttons used to keep firing right through edit mode. The
+      // edit window's own handlers sit lower down the tree and have already
+      // run by the time this fires.
+      event.stopImmediatePropagation();
     }
     return;
   }
@@ -186,6 +211,54 @@ function handleClicks(event) {
     ].join(', ');
   if (event.target.closest(NO_HIDE_ELEMENTS)) return;
   removeDropdowns();
+}
+//// stars animation setting ////
+
+// Saved the same way the theme colour and the room selection are, so it
+// survives a reload and is applied before the first frame is drawn.
+const STARS_SETTING_KEY = "stars-anim";
+
+// anything other than an explicit "off" is on, so a browser with nothing
+// saved yet gets the animation
+function starsAnimationEnabled() {
+  return localStorage.getItem(STARS_SETTING_KEY) !== "off";
+}
+
+function setStarsAnimation(on) {
+  localStorage.setItem(STARS_SETTING_KEY, on === true ? "on" : "off");
+  if (App.starBackground) {
+    App.starBackground.setEnabled(on === true);
+  }
+}
+
+// Checkbox rows drawn by drawMenu(). A menu file lives on the device, so a
+// browser-side setting has nowhere in it to live -- these are keyed by the
+// name in the row's first column and supply their own read and write.
+const LOCAL_SETTINGS = {
+  'stars': {
+    get: () => starsAnimationEnabled(),
+    set: (on) => setStarsAnimation(on)
+  }
+};
+
+// Rows the site adds to a menu itself, drawn above whatever the file holds.
+// Same host|type|name shape as a file row, so createListItem() handles them
+// with no special case of its own.
+// On a 'chk' row the third field is the icon class rather than a label.
+const MENU_LOCAL_ROWS = {
+  'thememenu': `stars|chk|fad fa-stars\n`
+};
+
+// Puts the site's own rows above the ones the file returned, as plain menu
+// data -- the same thing showPowerMenu() does when it builds its rows by
+// hand. The file's text is run through splitMenuData() first so its outer
+// quoting comes off here rather than ending up buried mid-string.
+function withLocalRows(menu, data) {
+  const localRows = MENU_LOCAL_ROWS[menu];
+  if (!localRows || !data || typeof data !== 'string') {
+    return data;
+  }
+  return localRows + splitMenuData(data).join('\n');
 }
 
 function resetActivityTimer() {
@@ -221,19 +294,27 @@ async function refreshRoomState() {
 }
 
 window.removeDropdowns = function() {
+  // anything still in flight is no longer allowed to draw itself
+  beginMenuRequest();
   classDisplay("dd-content", "none");
   removeDynMenus();
   if (App.sysModel === MAIN_SITE) {
     if (App.bookmarks) App.bookmarks.close();
-    if (App.activeSwitches && App.activeSwitches.length > 0) {
-      App.activeSwitches.forEach(toggle => {
-        if (typeof toggle.destroy === 'function') toggle.destroy();
-      });
-      App.activeSwitches = [];
-    }
+    destroyActiveSwitches();
     if (window.weatherWidget && typeof window.weatherWidget.closeMenu === 'function') {
       window.weatherWidget.closeMenu();
     }
+  }
+}
+
+// toggle switches own pointer listeners, so they are destroyed rather than
+// just dropped whenever their markup goes away
+function destroyActiveSwitches() {
+  if (App.activeSwitches && App.activeSwitches.length > 0) {
+    App.activeSwitches.forEach(toggle => {
+      if (typeof toggle.destroy === 'function') toggle.destroy();
+    });
+    App.activeSwitches = [];
   }
 }
 
@@ -1701,6 +1782,14 @@ function showVolumePopup(vol) {
       </div>
     `;
     // add to page
+    // Attached once, like the message popup: a volume press arriving mid-fade
+    // cancels the animation, so a per-fade {once:true} listener would never
+    // fire and never unregister.
+    volpopwin.addEventListener("animationend", () => {
+      if (volpopwin.classList.contains("fade-out") && volpopwin.isConnected) {
+        volpopwin.remove();
+      }
+    });
     document.body.appendChild(volpopwin);
   }
   volpopwin.classList.remove("fade-out");
@@ -1729,14 +1818,9 @@ function showVolumePopup(vol) {
   clearTimeout(App.volPopupTimer);
   // hide window after delay
   App.volPopupTimer = setTimeout(() => {
-    // fade out window
+    App.volPopupTimer = null;
+    // fade out window; the listener above removes it once the fade ends
     volpopwin.classList.add("fade-out");
-    // wait for the transition to end before removing window
-    volpopwin.addEventListener("animationend", () => {
-      if (volpopwin.isConnected) {
-        volpopwin.remove();
-      }
-    }, { once: true });
   }, 3000); // hide delay in (ms)
 }
 
@@ -1755,6 +1839,7 @@ function showHiFiMoreMenu() {
     let btnSpinner = document.getElementById(menuname + '-spinner');
     btnText.style.visibility = 'hidden';
     btnSpinner.classList.add('btn-spinner');
+    const token = beginMenuRequest();
     sendCmd('main', target, 'curhpfvollim').then((data) => { // GET request
       const resp = cleanString(data); // remove newlines
       let _indtype = 'noind'; // indicator type
@@ -1782,9 +1867,12 @@ function showHiFiMoreMenu() {
       } else {
         _menudata += menuname + '-error|redind|Error\n';
       }
-      // stop spinner animation
+      // stop spinner animation (this button's own, drawn or not)
       btnText.style.visibility = 'visible';
       btnSpinner.classList.remove('btn-spinner');
+      // another menu was opened while this was in the air -- drawing now
+      // would wipe the rows that menu just put on screen
+      if (!menuRequestCurrent(token)) { return; }
       // draw menu items
       drawMenu(_menudata, menuname);
     });
@@ -1806,6 +1894,7 @@ function showHiFiAmpInput() {
     let btnSpinner = document.getElementById(menuname + '-spinner');
     btnText.style.visibility = 'hidden';
     btnSpinner.classList.add('btn-spinner');
+    const token = beginMenuRequest();
     sendCmd('main', target, 'curinput').then((data) => { // GET request
       const resp = cleanString(data); // remove newlines
       // draw menu items
@@ -1842,9 +1931,12 @@ function showHiFiAmpInput() {
       } else {
         _menudata += menuname + '-error|redind|Error\n';
       }
-      // stop spinner animation
+      // stop spinner animation (this button's own, drawn or not)
       btnText.style.visibility = 'visible';
       btnSpinner.classList.remove('btn-spinner');
+      // another menu was opened while this was in the air -- drawing now
+      // would wipe the rows that menu just put on screen
+      if (!menuRequestCurrent(token)) { return; }
       // draw menu items
       drawMenu(_menudata, menuname);
     });
@@ -1866,6 +1958,7 @@ function showBedroomAmpInput() {
     let btnSpinner = document.getElementById('ampinp-spinner');
     btnText.style.visibility = 'hidden';
     btnSpinner.classList.add('btn-spinner');
+    const token = beginMenuRequest();
     sendCmd('main', target, 'inputstate').then((data) => { // GET request
       const resp = cleanString(data); // remove newlines
       let _menudata = '';
@@ -1893,14 +1986,25 @@ function showBedroomAmpInput() {
       } else {
         _menudata += menuname + '-error|redind|Error\n';
       }
-      // stop spinner animation
+      // stop spinner animation (this button's own, drawn or not)
       btnText.style.visibility = 'visible';
       btnSpinner.classList.remove('btn-spinner');
+      // another menu was opened while this was in the air -- drawing now
+      // would wipe the rows that menu just put on screen
+      if (!menuRequestCurrent(token)) { return; }
       // draw menu items
       drawMenu(_menudata, menuname);
     });
   }
 }
+
+// Menus where the slider is a level on something that is either running or
+// not: zero is not a setting, it is off. A reading of 0 draws no slider and
+// hides the Stop row (there is nothing to stop), and the slider that is drawn
+// starts at 1 so it can never be dragged back to off -- Stop does that.
+const LEVEL_MENUS = {
+  'bed_leds': { min: 1, stopRow: 'bed_leds-stop' }
+};
 
 function showPowerMenu(target, menu = null) {
   if (menu == '' || menu == null) menu = target;
@@ -1920,6 +2024,7 @@ function showPowerMenu(target, menu = null) {
     let action = 'main';
     if (menu == 'fc_leds') action = 'leds';
     // transmit request
+    const token = beginMenuRequest();
     sendCmd(action, target, menu).then((data) => {
       let _menudata = '';
       const [cmd1, cmd2] = splitByDelimiter(cleanString(data), '~');
@@ -1941,12 +2046,31 @@ function showPowerMenu(target, menu = null) {
         } else if (isFadeCandyLeds) {
           _menudata += `${cmd1}~leds~fc|slider|\n`;
         } else if (isSingleLedSlider) {
-          _menudata += `${cmd1}~${target}~${menu}|slider|\n`; 
+          const level = LEVEL_MENUS[menu];
+          if (level) {
+            const isOff = Number(cmd1) <= 0;
+            // the Stop row is page markup rather than a drawn row, so it is
+            // shown or hidden here instead of being added to the menu data
+            const stopRow = level.stopRow ? document.getElementById(level.stopRow) : null;
+            if (stopRow) stopRow.style.display = isOff ? 'none' : '';
+            if (isOff === false) {
+              _menudata += `${cmd1}~${target}~${menu}|slider|\n`;
+            }
+          } else {
+            _menudata += `${cmd1}~${target}~${menu}|slider|\n`; 
+          }
         }
       }
-      // stop spinner animation
+      // stop spinner animation (this button's own, drawn or not)
       btnText.style.visibility = 'visible';
       btnSpinner.classList.remove('btn-spinner');
+      if (!menuRequestCurrent(token)) { return; }
+      if (_menudata === '') {
+        // nothing to draw -- an off level leaves the menu with its static
+        // rows only. Any rows from a previous open still have to go.
+        removeDynMenus();
+        return;
+      }
       // draw menu items
       drawMenu(_menudata, menu + '-menu');
     });
@@ -1970,12 +2094,14 @@ function showStatusMenu() {
     statSpinner.classList.add('right-nav-spinner');
     // show menu
     _elem.style.display = 'block';
+    const token = beginMenuRequest();
     sendCmd('main', 'status').then((data) => { // GET request
-      // draw menu items
-      drawMenu(data, _menu);
-      // stop spinner animation
+      // stop spinner animation (this icon's own, drawn or not)
       statIcon.style.visibility = 'visible';
       statSpinner.classList.remove('right-nav-spinner');
+      if (!menuRequestCurrent(token)) { return; }
+      // draw menu items
+      drawMenu(data, _menu);
     });
   }   
 }
@@ -2012,7 +2138,7 @@ function openLogWindow() {
 }
 
 // load entire text file
-async function loadLog(file) {
+function loadLog(file) {
   // build URL / append data
   const url = location.protocol + "//" + location.hostname + "/api/read?file=" + file;
   // read file action
@@ -2023,7 +2149,7 @@ async function loadLog(file) {
     // check for HTTP errors
     if (!response.ok) {
       // trigger the catch block
-      throw new Error;
+      throw new Error(`status ${response.status}`);
     }
     // proceed to the next then if successful
     return response.json(); 
@@ -2054,8 +2180,10 @@ function showDynFileMenu(menu) {
      _elem.style.display = 'block';
     // build URL / append data
     const url = location.protocol + "//" +location.hostname + "/api/read?file=" + menu;
+    const token = beginMenuRequest();
     loadMenu(url).then((data) => { // wait for response
-      drawMenu(data, menu);
+      if (!menuRequestCurrent(token)) { return; }
+      drawMenu(withLocalRows(menu, data), menu);
     });  
   }
 }
@@ -2069,8 +2197,10 @@ function showDynAPIMenu(menu) {
      _elem.style.display = 'block';
     // build URL / append data
     const url = location.protocol + "//"+ location.hostname + "/api?var=&arg=" + menu + "&action=main";
+    const token = beginMenuRequest();
     loadMenu(url).then((data) => { // wait for response
-      drawMenu(data, menu);
+      if (!menuRequestCurrent(token)) { return; }
+      drawMenu(withLocalRows(menu, data), menu);
     });  
   }
 }
@@ -2080,6 +2210,11 @@ window.drawMenu = function(data, menu) {
   // remove any current dynamic menus
   removeDynMenus();
   if (data && typeof data === 'string') {
+    // the container is looked up once instead of once per row, and the rows
+    // land in one append rather than forcing a layout pass each
+    const navElement = document.getElementById(menu);
+    if (!navElement) { return; }
+    const fragment = document.createDocumentFragment();
     // erase global data
     while (App.fileData.length) App.fileData.pop();
     const splitdat = splitMenuData(data);
@@ -2089,30 +2224,30 @@ window.drawMenu = function(data, menu) {
         const linearr = line.split("|");
         if (linearr.length < 3) { continue; }
         App.fileData.push(line); // write to array
-        const navElement = document.getElementById(menu);
         // 0=Host, 1=Type, 2=Name
         const col0 = linearr[0];
         const col1 = linearr[1];
         const col2 = linearr[2].trim();
         // draw menu item
-        navElement.appendChild(createListItem(col0, col1, col2, row));
+        const item = createListItem(col0, col1, col2, row);
+        App.dynMenuNodes.push(item);
+        fragment.appendChild(item);
         App.dynMenuActive = 1;
       }
     }
     // store menu name at end of array
     App.fileData.push(menu);
+    // one append for the whole menu
+    navElement.appendChild(fragment);
     // scroll only if the menu runs past the bottom of the viewport
-    const menuElement = document.getElementById(menu);
     const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
-    if (menuElement) {
-      const rect = menuElement.getBoundingClientRect();
-      if (rect.bottom > viewportHeight) {
-        const currentTop = window.pageYOffset || document.documentElement.scrollTop;
-        const menuTop = rect.top + currentTop;
-        // only move down, and never past the top of the menu
-        if (menuTop > currentTop) {
-          window.scrollTo({ top: menuTop, behavior: 'smooth' });
-        }
+    const rect = navElement.getBoundingClientRect();
+    if (rect.bottom > viewportHeight) {
+      const currentTop = window.pageYOffset || document.documentElement.scrollTop;
+      const menuTop = rect.top + currentTop;
+      // only move down, and never past the top of the menu
+      if (menuTop > currentTop) {
+        window.scrollTo({ top: menuTop, behavior: 'smooth' });
       }
     }
   } else {
@@ -2178,6 +2313,39 @@ function createListItem(col0_in, col1, col2, menuid) {
       // URL menu
       _elm.href = col0;
       break;
+    case 'chk':
+      // Checkbox row for a browser-side setting (see LOCAL_SETTINGS). The
+      // row keeps the menu open, the way the toggle rows do, so the change
+      // can be seen while the menu is still up.
+      const chksettings = LOCAL_SETTINGS[col0];
+      if (!chksettings) break;
+      _elm.classList.add('menu-checkbox');
+      _elm.classList.add('nohide');
+      _elm.classList.add('no-hover');
+      // the row is an icon and its switch, not text
+      _elm.innerText = '';
+      const chkicon = document.createElement('i');
+      chkicon.className = col2;
+      _elm.appendChild(chkicon);
+      // The same ToggleSwitch the device rows use, sized down through its own
+      // width / height config. Nothing is transmitted: the callback writes the
+      // setting instead of sending, and the command is named after it so the
+      // payload reads 'stars-on' / 'stars-off'. (An empty command would not
+      // work -- ToggleSwitch falls back to 'none' on a falsy one.)
+      const chk_cmd = `${col0}-`;
+      const chk_obj = new ToggleSwitch(_elm, {
+        id: `setting-${col0}`,
+        checked: chksettings.get() === true,
+        width: '54px',
+        height: '26px',
+        cmdHost: 'local',
+        command: chk_cmd,
+        onToggle: (payload) => chksettings.set(payload.cmd === `${chk_cmd}on`)
+      });
+      chk_obj.activate();
+      // removeDynMenus() destroys these, same as any other menu switch
+      App.activeSwitches.push(chk_obj);
+      break;
     case 'thm': 
       // theme menu 
       _elm.classList.add('theme-colorbox');
@@ -2189,10 +2357,14 @@ function createListItem(col0_in, col1, col2, menuid) {
     case 'slider':
       // horizontal slider menu
       const maxRange = 255;
+      // a level menu has no meaningful zero; turning it off is the Stop row's
+      // job, so its slider bottoms out at 1
+      const sliderLevel = LEVEL_MENUS[cmd];
+      const minRange = (sliderLevel && sliderLevel.min) ? sliderLevel.min : 0;
       const slider = document.createElement('input');
       slider.classList.add("slider-wide");
       slider.type = 'range';
-      slider.min = 0;
+      slider.min = minRange;
       slider.max = maxRange;
       slider.value = col0;
       slider.step = 1;
@@ -2287,16 +2459,26 @@ const throttledSliderSend = requestThrottle((host, cmd, val) => {
 function removeDynMenus() {
   // only if menu is on-screen 
   if (App.dynMenuActive == 1) {
-    // remove dynamic menu elements (II)
-    for (let idx = 0; idx <= App.fileData.length; idx++) {
-      const menuRemove = document.getElementById('menu-' + idx);
-      if (menuRemove) menuRemove.remove();
-    }
+    // A toggle row carries a ToggleSwitch with pointer listeners on it, so
+    // the switches go before their markup does rather than being left bound
+    // to detached nodes until the next removeDropdowns().
+    destroyActiveSwitches();
+    // the rows drawMenu() created, removed directly instead of looking up
+    // one id per line of the file
+    App.dynMenuNodes.forEach(node => node.remove());
+    App.dynMenuNodes.length = 0;
     App.dynMenuActive = 0;
   }
 }
 
 function openColorPrompt(command, argument, cmd_type = '') {
+  // the previous prompt is destroyed rather than dropped: show() wipes the
+  // anchor's markup, and an instance left behind mid-drag still holds
+  // pointermove / pointerup listeners on window
+  if (App.colorPrompt) {
+    App.colorPrompt.destroy();
+    App.colorPrompt = null;
+  }
   const colorPrompt = new ColorPrompt('color-popup', (strippedHex) => {
     let cmd;
     let arg1;
@@ -2318,6 +2500,7 @@ function openColorPrompt(command, argument, cmd_type = '') {
   });
   colorPrompt.show();
   colorPrompt.updateStateFromHex('#000000', true, false);
+  App.colorPrompt = colorPrompt;
 }
 
 //// End Dynamic Menus ////
@@ -2352,22 +2535,19 @@ App.destroyAll = function() {
   console.log("Exiting...");
   // timers
   if (App.activityTimeout) clearTimeout(App.activityTimeout);
-  if (App.messagePopupTimer) clearTimeout(App.messagePopupTimer);
+  // the message popup's timer lives in utils.js, where it is set -- the old
+  // App.messagePopupTimer was never assigned and so never cleared anything
+  clearPopupTimer();
   if (App.volPopupTimer) clearTimeout(App.volPopupTimer);
   // toggle switches
-  if (App.activeSwitches && App.activeSwitches.length > 0) {
-    App.activeSwitches.forEach(toggle => {
-      if (typeof toggle.destroy === 'function') toggle.destroy();
-    });
-    App.activeSwitches = [];
-  }
+  destroyActiveSwitches();
   destroyPageServices();
 };
 
 function destroyPageServices() {
   // room status display
   if (App.roomStateManager) {
-    App.roomStateManager.stopRoomStateTimer();
+    App.roomStateManager.destroy();
     App.roomStateManager = null;
   }
   // animated background
@@ -2379,6 +2559,11 @@ function destroyPageServices() {
   if (App.lists) {
     App.lists.destroy();
     App.lists = null;
+  }
+  // colour picker -- holds window-level pointer listeners while dragging
+  if (App.colorPrompt) {
+    App.colorPrompt.destroy();
+    App.colorPrompt = null;
   }
   // bookmarks menu -- the add/edit window is a direct child of <body>, so it
   // outlives removeInjectedPage(); a stale BKM_EDIT_MODE would also keep

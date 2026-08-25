@@ -1,12 +1,18 @@
 export default class WeatherWidget {
   constructor(apiUrl = '/api?var=&arg=weather&action=main') {
     this.apiUrl = apiUrl; // Ensure your API endpoint returns the specified JSON
-    this.refreshInterval = 10 * 60 * 100; // 1 minutes in milliseconds
+    // 60,000ms. The old expression (10 * 60 * 100) read like ten minutes and
+    // was in fact one, which is the interval that has been running; the value
+    // is unchanged, only written so it says what it does.
+    this.refreshInterval = 60 * 1000; // 1 minute in milliseconds
     this.timerId = null;
     this.weatherData = null;
     this.container = null;
     this.dropdown = null;
     this.isOpen = false;
+    // set by remove(); a reply that lands afterwards is dropped rather than
+    // written into elements the page has already taken away
+    this.removed = false;
     this._handleOutsideClick = this._handleOutsideClick.bind(this);
     this.toggleMenu = this.toggleMenu.bind(this);
   }
@@ -14,6 +20,9 @@ export default class WeatherWidget {
   activate() {
     if (this.container) return;
     this._renderIcon();
+    // no anchor on this page: nothing was drawn, so nothing is polled either
+    if (!this.container) return;
+    this.removed = false;
     this._renderDropdown();
     this.fetchWeather(); 
     this.timerId = setInterval(() => {
@@ -31,6 +40,7 @@ export default class WeatherWidget {
   }
 
   remove() {
+    this.removed = true;
     if (this.timerId) {
       clearInterval(this.timerId);
       this.timerId = null;
@@ -47,6 +57,7 @@ export default class WeatherWidget {
   }
 
   async fetchWeather() {
+    if (this.removed) return;
     if (this.iconElement && this.spinnerElement) {
       this.iconElement.style.display = 'none';
       this.spinnerElement.style.display = 'inline-block';
@@ -55,9 +66,11 @@ export default class WeatherWidget {
       const response = await fetch(this.apiUrl);
       if (!response.ok) throw new Error('API Network Error');
       const data = await response.json(); 
+      if (this.removed) return; // torn down while the request was in flight
       this.weatherData = data;
       this._updateWeatherUI();
     } catch (error) {
+      if (this.removed) return;
       console.error('Failed to fetch weather data:', error);
       if (this.iconElement && this.spinnerElement) {
         this.spinnerElement.style.display = 'none';

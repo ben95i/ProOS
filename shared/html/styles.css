@@ -19,17 +19,22 @@
   -moz-box-sizing: border-box;
   -webkit-box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;
+}
+
+/* The palette used to be declared on *, which re-declared all eight custom
+   properties on every element in the document -- a per-element style-recalc
+   and memory cost that grew with the DOM, and one that blocked overriding a
+   colour on any subtree. Declared once here they inherit exactly the same
+   values everywhere. */
+:root {
   --nav-menus-color: #36363d;
   --border-color: #878787;
   --slider-bg: #a3a1a1;
   --alert-red: #fc3535;
   --red-ind: #90191f;
   --green-ind: #30c93f;
-  --orange-ind: #ff4900; 
-  --yellow-ind: #ffd000; 
-}
-
-:root {
+  --orange-ind: #ff4900;
+  --yellow-ind: #ffd000;
   --main-40-white: color-mix(in srgb, var(--main-color) 40%, #fff);
   --main-75-white: color-mix(in srgb, var(--main-color) 75%, #fff);
   --main-white-50: color-mix(in srgb, var(--main-color), #fff 50%);
@@ -173,9 +178,22 @@ body {
   transition: none;
 }
 
-/* refresh stopped: the dot stays put in the global yellow, dimmed to half
-   so it reads as idle rather than as a live state */
-#trafficLightIcon.status-idle {
+/* Refresh stopped: the light keeps the colour of the last state that was
+   read and takes a hatch over it, so a reading that is no longer current is
+   never mistaken for a live one. */
+#statusHatch {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.5s ease;
+}
+
+#trafficLightIcon.status-idle ~ #statusHatch {
+  opacity: 0.45;
+}
+
+/* nothing has been read yet, so there is no state to hold: the dot falls
+   back to the global yellow, dimmed to half, as it always did */
+#trafficLightIcon.status-idle:not(.status-on):not(.status-off) {
   fill: var(--orange-ind);
   fill-opacity: 0.4;
 }
@@ -764,6 +782,41 @@ input.chkbox {
   text-shadow: var(--menu-glow);
 }
 
+
+/* a settings row inside a menu: the icon and its checkbox sit in a box cut
+   to the same shape and inset as the colour swatches in the rows below */
+.menu-checkbox {
+  margin: 8px;
+  border-radius: 5px;
+  border: 1px solid var(--border-color);
+  /* pulls the icon and the switch out towards their own ends of the row */
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+.menu-checkbox i {
+  font-size: 22px;
+}
+
+/* ToggleSwitch sets contain: layout paint on its wrapper inline, and paint
+   containment clips to the wrapper box -- which is exactly the track, so the
+   handle's drop shadow was being cut off square along the bottom edge.
+   Layout containment is what the drag actually needs; dropping paint lets the
+   shadow fall outside the track again. Inline styles need the !important. */
+.menu-checkbox .toggle-switch {
+  contain: layout !important;
+}
+
+/* at this size the ON / OFF lettering no longer fits inside the handle, so
+   the switch reads by track colour and handle position alone */
+.menu-checkbox .toggle-text-on,
+.menu-checkbox .toggle-text-off {
+  display: none;
+}
+
+.menu-checkbox .toggle-handle {
+  padding-top: 0;
+}
 
 /* Theme Menu */
 
@@ -1880,6 +1933,18 @@ input.chkbox {
   cursor: default;
   background-color: transparent;
   color: var(--main-40-white);
+}
+
+/* the same glow the drop-down menu rows carry, on the same two states */
+@media (hover: hover) {
+  #list__btn-back:hover {
+    color: #fff;
+    text-shadow: var(--menu-glow);
+  }
+}
+#list__btn-back:active {
+  color: #fff;
+  text-shadow: var(--menu-glow);
 }
 
 .list__title {

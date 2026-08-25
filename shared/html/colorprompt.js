@@ -46,6 +46,7 @@ export default class ColorPrompt {
     // Bound Event Handlers (Stored for memory management/removal)
     this.boundHandleHexInput = this.handleHexInput.bind(this);
     this.boundHandleHueInput = this.handleHueInput.bind(this);
+    this.boundHandleHueRelease = this.handleHueRelease.bind(this);
     this.boundStartMapDrag = this.startMapDrag.bind(this);
     this.boundUpdateMapPointer = this.updateMapPointer.bind(this);
     this.boundStopMapDrag = this.stopMapDrag.bind(this);
@@ -143,6 +144,11 @@ export default class ColorPrompt {
   bindEvents() {
     this.hexInputElement.addEventListener('input', this.boundHandleHexInput);
     this.hueSliderElement.addEventListener('input', this.boundHandleHueInput);
+    // 'change' fires once on release, and forces the value the slider came to
+    // rest on through the throttle -- the same thing stopMapDrag() does for
+    // the map. Without it a release inside the throttle window was dropped
+    // and the lights kept the second-to-last hue.
+    this.hueSliderElement.addEventListener('change', this.boundHandleHueRelease);
     this.colorMapElement.addEventListener('pointerdown', this.boundStartMapDrag);
     this.closeButtonElement.addEventListener('click', this.boundClosePopup);
   }
@@ -153,6 +159,7 @@ export default class ColorPrompt {
   unbindEvents() {
     this.hexInputElement.removeEventListener('input', this.boundHandleHexInput);
     this.hueSliderElement.removeEventListener('input', this.boundHandleHueInput);
+    this.hueSliderElement.removeEventListener('change', this.boundHandleHueRelease);
     this.colorMapElement.removeEventListener('pointerdown', this.boundStartMapDrag);
     this.closeButtonElement.removeEventListener('click', this.boundClosePopup);
   }
@@ -194,6 +201,17 @@ export default class ColorPrompt {
     
     const triggerCallback = true;
     this.updateUIFromState(triggerCallback);
+  }
+
+  /**
+   * The hue slider was released: send the resting value even if the last
+   * 'input' fell inside the throttle window.
+   */
+  handleHueRelease(event) {
+    this.currentHue = parseFloat(event.target.value);
+    this.colorMapBackgroundElement.style.background = `hsl(${this.currentHue}, 100%, 50%)`;
+    this.lastCommandTime = 0;              // force the final color through
+    this.updateUIFromState(true);
   }
 
   /**
