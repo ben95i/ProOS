@@ -353,14 +353,14 @@ const uint8_t regStageBlue         = 14; // stage blue channel
 const uint8_t regBrightness        = 16; // set overall brightness
 
 // --- control-register (11) command values ---
-const uint16_t ctrlLedsOff         = 0; // clear the strip (stops any effect)
-const uint16_t ctrlAbout           = 1; // reply with the hello message
-const uint16_t ctrlRainbow         = 4; // start the rainbow effect
-const uint16_t ctrlCycle           = 5; // start the color-cycle effect
-const uint16_t ctrlPause           = 6; // pause the running effect (freeze, do not clear)
+const uint16_t ctrlAbout           = 0; // reply with the hello message
+const uint16_t ctrlStopLeds        = 1; // clear the strip (stops any effect)
+const uint16_t ctrlPauseLeds       = 2; // pause the running effect (freeze, do not clear)
+const uint16_t ctrlStatusLeds      = 3; // report whether the strip is lit or blank
+const uint16_t ctrlBrightnessLeds  = 4; // show current brightness level
+const uint16_t ctrlRainbow         = 5; // start the rainbow effect
+const uint16_t ctrlCycle           = 6; // start the color-cycle effect
 const uint16_t ctrlSweep           = 7; // start the loading bar effect
-const uint16_t ctrlStripStatus     = 8; // report whether the strip is lit or blank
-const uint16_t ctrlStripBrightness = 9; // show current brightness level
 const uint16_t ctrl1PowerOn        = 31; // switch device #1 on (if currently off)
 const uint16_t ctrl1PowerOff       = 32; // switch device #1 off (if currently on)
 const uint16_t ctrl1PowerStatus    = 33; // report device #1's current power state
@@ -371,14 +371,14 @@ const uint16_t ctrlMotorStop       = 43; // stop the bed motor immediately (alwa
 const uint16_t ctrlMotorStatus     = 44; // report motor state (0=idle, 1=fwd, 2=rev)
 
 // --- reply strings ---
-const char aboutMessage[]      = "BHE: by Ben Provenzano III";
-const char okMessage[]         = "BHE: OK";
-const char errorMessage[]      = "BHE: ERROR!"; // unrecognized register/command or out-of-range value
-const char motorWaitMessage[]  = "BHE: WAIT";    // motor must settle before reversing
-const char motorCoolMessage[]  = "BHE: COOLDOWN"; // motor commands locked out (cooldown)
-const char powerStateOff[]     = "0"; // status reply: device is off
-const char powerStateOn[]      = "1"; // status reply: device is on
-const char motorStateRev[]     = "2"; // motor status reply: running in reverse
+const char aboutMessage[]          = "BHE: by Ben Provenzano III";
+const char okMessage[]             = "BHE: OK";
+const char errorMessage[]          = "BHE: ERROR!"; // unrecognized register/command or out-of-range value
+const char motorWaitMessage[]      = "BHE: WAIT";    // motor must settle before reversing
+const char motorCoolMessage[]      = "BHE: COOLDOWN"; // motor commands locked out (cooldown)
+const char powerStateOff[]         = "0"; // status reply: device is off
+const char powerStateOn[]          = "1"; // status reply: device is on
+const char motorStateRev[]         = "2"; // motor status reply: running in reverse
 
 // --- staged LED state (loaded across commands, then applied) ---
 uint8_t stagedRed = 0;
@@ -1045,7 +1045,7 @@ void handleControlCommand(uint16_t messageData) {
     case ctrlAbout:
       sendResponse(aboutMessage);
       break;
-    case ctrlLedsOff:
+    case ctrlStopLeds:
       sendResponse(okMessage);
       stopEffect();
       fadeStripOut(); // fades a static color out too; a no-op after an effect
@@ -1063,21 +1063,25 @@ void handleControlCommand(uint16_t messageData) {
       sendResponse(okMessage);
       startEffect(effectSweep);
       break;
-    case ctrlPause:
+    case ctrlPauseLeds:
       effectPaused = true;
       sendResponse(okMessage);
       break;
-    case ctrlStripStatus:
+    case ctrlStatusLeds:
       if (isStripLit()) {
         sendResponse(powerStateOn);
       } else {
         sendResponse(powerStateOff);
       }
       break;
-    case ctrlStripBrightness: {
-      char brightnessText[4];
-      itoa(showLedsBrightness(), brightnessText, 10);
-      sendResponse(brightnessText);
+    case ctrlBrightnessLeds: {
+      if (isStripLit()) {
+        char brightnessText[4];
+        itoa(showLedsBrightness(), brightnessText, 10);
+        sendResponse(brightnessText);
+      } else {
+        sendResponse(powerStateOff);
+      }
       break;
     }
     case ctrlMotorFwd:

@@ -70,15 +70,6 @@ window.App = {
 // wipe the rows of the menu that is actually on screen.
 let menuDrawToken = 0;
 
-function beginMenuRequest() {
-  menuDrawToken += 1;
-  return menuDrawToken;
-}
-
-function menuRequestCurrent(token) {
-  return token === menuDrawToken;
-}
-
 // runs on page load
 window.addEventListener("DOMContentLoaded", () => {
   loadPage();
@@ -214,18 +205,14 @@ function handleClicks(event) {
 }
 //// stars animation setting ////
 
-// Saved the same way the theme colour and the room selection are, so it
-// survives a reload and is applied before the first frame is drawn.
-const STARS_SETTING_KEY = "stars-anim";
-
 // anything other than an explicit "off" is on, so a browser with nothing
 // saved yet gets the animation
 function starsAnimationEnabled() {
-  return localStorage.getItem(STARS_SETTING_KEY) !== "off";
+  return localStorage.getItem("stars-anim") !== "off";
 }
 
 function setStarsAnimation(on) {
-  localStorage.setItem(STARS_SETTING_KEY, on === true ? "on" : "off");
+  localStorage.setItem("stars-anim", on === true ? "on" : "off");
   if (App.starBackground) {
     App.starBackground.setEnabled(on === true);
   }
@@ -234,32 +221,12 @@ function setStarsAnimation(on) {
 // Checkbox rows drawn by drawMenu(). A menu file lives on the device, so a
 // browser-side setting has nowhere in it to live -- these are keyed by the
 // name in the row's first column and supply their own read and write.
-const LOCAL_SETTINGS = {
+const WWW_SETTINGS = {
   'stars': {
     get: () => starsAnimationEnabled(),
     set: (on) => setStarsAnimation(on)
   }
 };
-
-// Rows the site adds to a menu itself, drawn above whatever the file holds.
-// Same host|type|name shape as a file row, so createListItem() handles them
-// with no special case of its own.
-// On a 'chk' row the third field is the icon class rather than a label.
-const MENU_LOCAL_ROWS = {
-  'thememenu': `stars|chk|fad fa-stars\n`
-};
-
-// Puts the site's own rows above the ones the file returned, as plain menu
-// data -- the same thing showPowerMenu() does when it builds its rows by
-// hand. The file's text is run through splitMenuData() first so its outer
-// quoting comes off here rather than ending up buried mid-string.
-function withLocalRows(menu, data) {
-  const localRows = MENU_LOCAL_ROWS[menu];
-  if (!localRows || !data || typeof data !== 'string') {
-    return data;
-  }
-  return localRows + splitMenuData(data).join('\n');
-}
 
 function resetActivityTimer() {
   activityBegin();
@@ -529,7 +496,7 @@ function mainGridTemplate(f) {
 }
 registerListeners({
   'btn-dyn-ledcolormenu':  () => showDynFileMenu('ledcolormenu'),
-  'btn-fc-color-prompt':   () => openColorPrompt('leds', 'hex', '3args'),
+  'btn-fc-color-prompt':   () => openColorPrompt('leds', 'hex', true),
   'btn-dyn-ledeffectmenu': () => showDynFileMenu('ledeffectmenu'),
   'btn-power-fc_leds':     () => showPowerMenu('fc_leds'),
   'btn-cmd-leds-shuffle':  () => sendCmd('leds', 'shuffle'),
@@ -786,7 +753,7 @@ registerListeners({
   'btn-bed-adjprompt':    () => bedPrompt(),
   'bed_leds-colorprompt': () => openColorPrompt('brxmit', 'bed_leds_hex_set'),
   'bed_leds-rainbow':     () => sendCmd('main', 'brxmit', 'bed_leds_rb'),
-  'bed_leds-colorcycle':  () => sendCmd('main', 'brxmit', 'bed_leds_cs'),
+  'bed_leds-colorcycle':  () => sendCmd('main', 'brxmit', 'bed_leds_cy'),
   'bed_leds-sweep':       () => sendCmd('main', 'brxmit', 'bed_leds_sw'),
   'bed_leds-stop':        () => sendCmd('main', 'brxmit', 'bed_leds_off'),
   'btn-dyn-relaxmenu':    () => showDynAPIMenu('relaxmenu'),
@@ -2003,7 +1970,7 @@ function showBedroomAmpInput() {
 // hides the Stop row (there is nothing to stop), and the slider that is drawn
 // starts at 1 so it can never be dragged back to off -- Stop does that.
 const LEVEL_MENUS = {
-  'bed_leds': { min: 1, stopRow: 'bed_leds-stop' }
+  'bed_leds': { min: 1, stopRowID: 'bed_leds-stop' }
 };
 
 function showPowerMenu(target, menu = null) {
@@ -2041,22 +2008,20 @@ function showPowerMenu(target, menu = null) {
             _menudata += `${cmd1}~${target}~${menu}|toggle|\n`;
           }
         }
-        if (isDualToggleSlider) {
-          _menudata += `${cmd2}~${target}~${menu}|slider|\n`;
-        } else if (isFadeCandyLeds) {
-          _menudata += `${cmd1}~leds~fc|slider|\n`;
-        } else if (isSingleLedSlider) {
+        if (isDualToggleSlider)   _menudata += `${cmd2}~${target}~${menu}|slider|\n`;
+        else if (isFadeCandyLeds) _menudata += `${cmd1}~leds~fc|slider|\n`;
+        else if (isSingleLedSlider) {
           const level = LEVEL_MENUS[menu];
-          if (level) {
-            const isOff = Number(cmd1) <= 0;
-            // the Stop row is page markup rather than a drawn row, so it is
-            // shown or hidden here instead of being added to the menu data
-            const stopRow = level.stopRow ? document.getElementById(level.stopRow) : null;
-            if (stopRow) stopRow.style.display = isOff ? 'none' : '';
-            if (isOff === false) {
+          if (level) { // custom single LED
+            const leds_off = Number(cmd1) <= 0;
+            const stop_row = level.stopRowID ? document.getElementById(level.stopRowID) : null;
+            if (leds_off === true) {
+              if (stop_row) stop_row.style.display = 'none';
+            } else {
+              if (stop_row) stop_row.style.display = '';
               _menudata += `${cmd1}~${target}~${menu}|slider|\n`;
             }
-          } else {
+          } else { // standard single LED 0-255
             _menudata += `${cmd1}~${target}~${menu}|slider|\n`; 
           }
         }
@@ -2170,6 +2135,35 @@ function loadLog(file) {
 }
 
 //// Dynamic Menus ////
+
+function beginMenuRequest() {
+  menuDrawToken += 1;
+  return menuDrawToken;
+}
+
+function menuRequestCurrent(token) {
+  return token === menuDrawToken;
+}
+
+// Rows the site adds to a menu itself, drawn above whatever the file holds.
+// Same host|type|name shape as a file row, so createListItem() handles them
+// with no special case of its own.
+// On a 'chk' row the third field is the icon class rather than a label.
+const MENU_LOCAL_ROWS = {
+  'thememenu': `stars|chk|fad fa-stars\n`
+};
+
+// Puts the site's own rows above the ones the file returned, as plain menu
+// data -- the same thing showPowerMenu() does when it builds its rows by
+// hand. The file's text is run through splitMenuData() first so its outer
+// quoting comes off here rather than ending up buried mid-string.
+function withLocalRows(menu, data) {
+  const localRows = MENU_LOCAL_ROWS[menu];
+  if (!localRows || !data || typeof data !== 'string') {
+    return data;
+  }
+  return localRows + splitMenuData(data).join('\n');
+}
 
 function showDynFileMenu(menu) {
   let _elem = document.getElementById(menu);
@@ -2313,25 +2307,25 @@ function createListItem(col0_in, col1, col2, menuid) {
       // URL menu
       _elm.href = col0;
       break;
+    case 'thm': 
+      // theme menu 
+      _elm.classList.add('theme-colorbox');
+      _elm.style.setProperty('background-color', col0);
+      _elm.addEventListener("click", function() {
+        setTheme(col0);
+      });
+      break;
     case 'chk':
-      // Checkbox row for a browser-side setting (see LOCAL_SETTINGS). The
-      // row keeps the menu open, the way the toggle rows do, so the change
-      // can be seen while the menu is still up.
-      const chksettings = LOCAL_SETTINGS[col0];
+      // Checkbox row for a browser-side setting
+      const chksettings = WWW_SETTINGS[col0];
       if (!chksettings) break;
       _elm.classList.add('menu-checkbox');
       _elm.classList.add('nohide');
       _elm.classList.add('no-hover');
-      // the row is an icon and its switch, not text
       _elm.innerText = '';
       const chkicon = document.createElement('i');
       chkicon.className = col2;
       _elm.appendChild(chkicon);
-      // The same ToggleSwitch the device rows use, sized down through its own
-      // width / height config. Nothing is transmitted: the callback writes the
-      // setting instead of sending, and the command is named after it so the
-      // payload reads 'stars-on' / 'stars-off'. (An empty command would not
-      // work -- ToggleSwitch falls back to 'none' on a falsy one.)
       const chk_cmd = `${col0}-`;
       const chk_obj = new ToggleSwitch(_elm, {
         id: `setting-${col0}`,
@@ -2346,26 +2340,14 @@ function createListItem(col0_in, col1, col2, menuid) {
       // removeDynMenus() destroys these, same as any other menu switch
       App.activeSwitches.push(chk_obj);
       break;
-    case 'thm': 
-      // theme menu 
-      _elm.classList.add('theme-colorbox');
-      _elm.style.setProperty('background-color', col0);
-      _elm.addEventListener("click", function() {
-        setTheme(col0);
-      });
-      break;
     case 'slider':
       // horizontal slider menu
-      const maxRange = 255;
-      // a level menu has no meaningful zero; turning it off is the Stop row's
-      // job, so its slider bottoms out at 1
-      const sliderLevel = LEVEL_MENUS[cmd];
-      const minRange = (sliderLevel && sliderLevel.min) ? sliderLevel.min : 0;
+      const customMin = LEVEL_MENUS[cmd];
       const slider = document.createElement('input');
       slider.classList.add("slider-wide");
       slider.type = 'range';
-      slider.min = minRange;
-      slider.max = maxRange;
+      slider.min = (customMin && customMin.min) ? customMin.min : 0;
+      slider.max = 255;
       slider.value = col0;
       slider.step = 1;
       slider.addEventListener('input', (event) => {
@@ -2471,7 +2453,7 @@ function removeDynMenus() {
   }
 }
 
-function openColorPrompt(command, argument, cmd_type = '') {
+function openColorPrompt(command, argument, three_args = false) {
   // the previous prompt is destroyed rather than dropped: show() wipes the
   // anchor's markup, and an instance left behind mid-drag still holds
   // pointermove / pointerup listeners on window
@@ -2484,7 +2466,7 @@ function openColorPrompt(command, argument, cmd_type = '') {
     let arg1;
     let arg2;
     // 3-argument command type
-    if (cmd_type === '3args') {
+    if (three_args === true) {
       cmd = command;
       arg1 = argument;
       arg2 = strippedHex;

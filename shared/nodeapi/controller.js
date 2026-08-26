@@ -212,18 +212,21 @@ async function windowLamp1On() {
 
 async function brXmit(arg1, arg2 = '') {
     switch (arg1) {
+        case "brtv":             return await brComCall("11033", "0");
+        case "brtvoff":          return await brComCall("11032");
+        case "brtvon":           return await brComCall("11031");
+
         case "bed_adj_up":       return await brComCall("11041");
         case "bed_adj_dwn":      return await brComCall("11042");
         case "bed_adj_stop":     return await brComCall("11043");
         case "bed_adj_sts":      return await brComCall("11044");
-        case "bed_leds":         return await brComCall("11009");
-        case "bed_leds_sts":     return await brComCall("11008");
-        case "bed_leds_rb":      return await brComCall("11004");
-        case "bed_leds_cs":      return await brComCall("11005");
+        case "bed_leds":         return await brComCall("11004");
+        case "bed_leds_sts":     return await brComCall("11003");
+        case "bed_leds_rb":      return await brComCall("11005");
+        case "bed_leds_cy":      return await brComCall("11006");
         case "bed_leds_sw":      return await brComCall("11007");
-        case "bed_leds_ch":      return await brComCall("11010");
-        case "bed_leds_off":     return await brComCall("11000");
-        case "bed_leds_pause":   return await brComCall("11006");
+        case "bed_leds_off":     return await brComCall("11001");
+        case "bed_leds_pause":   return await brComCall("11002");
         case "bed_leds_set":     return await brComCall(`16${padOctet(arg2)}`);
         case "bed_leds_hex_set": return await callApi(IP_ADRS.brpi, arg1, arg2);
     
@@ -240,10 +243,6 @@ async function brXmit(arg1, arg2 = '') {
         case "retropioff":       return await brComCall("10005");
 
         case "roomth":           return await brComCall("01005");
-
-        case "brtv":             return await brComCall("11033", "0");
-        case "brtvoff":          return await brComCall("11032");
-        case "brtvon":           return await brComCall("11031");
 
         case "brpc":             return await localPing(IP_ADRS.brpc);
         case "brpcoff":  

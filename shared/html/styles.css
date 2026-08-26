@@ -508,74 +508,6 @@ input.chkbox {
   padding-right: 8px;
 }
 
-/* Weather Status */
-
-.weather-icon-container {
-  border: none;
-  outline: none;
-  position: relative;
-  height: 60px;
-  width: 55px;
-}
-
-.weather-icon-container .right-nav-spinner {
-  top: 50%;
-  left: 50%;
-  margin-top: -15px; /* Pull up by half the spinner's 30px height */
-  margin-left: -15px; /* Pull left by half the spinner's 30px width */
-}
-
-.weather-icon-container i {
-  text-decoration: none;
-  text-align: center;
-}
-
-.weather-badge {
-  position: absolute;
-  top: 7px;
-  right: 3px;
-  background-color: var(--main-color);
-  color: #fff;
-  font-size: 15px;
-  font-weight: bold;
-  line-height: 0.75;
-  padding: 3px 2px 1px 2px;
-  border-radius: 5px;
-  box-shadow: 0px 2px 4px rgba(0,0,0,0.5);
-  pointer-events: none;
-  z-index: 2;
-}
-
-.weather-dropdown {
-  pointer-events: none; 
-}
-
-/*
- * Popup Windows
- */
-
-.log-popup {
-  width: 75vw;
-  height: 95%;
-  z-index: 997;
-}
-
-#cam-popup {
-  width: 90vw;
-  height: auto;
-  z-index: 997;
-}
-
-#cam-display {
-  width: 100%;
-  height: auto;
-  max-height: 80vh;
-  aspect-ratio: 16 / 9;
-  margin-bottom: 3px;
-  border-radius: 7px;
-  overflow: clip;
-}
-
 .grid-sep {
 	border: none;
   outline: none;
@@ -615,7 +547,16 @@ input.chkbox {
   margin: 0;
 }
 
-/* adjust elements */
+.prompt_win {
+  border-radius: 15px;
+  background-color: #000;
+  border: 1px solid var(--border-color);
+  position: absolute;
+  color: #fff;
+  z-index: 991;
+  text-decoration: none;
+  text-align: center;
+}
 
 @media screen and (max-height: 700px) {
   .grid {
@@ -636,13 +577,33 @@ input.chkbox {
   }
 }
 
+.log-popup {
+  width: 75vw;
+  height: 95%;
+}
+
+#cam-popup {
+  width: 90vw;
+  height: auto;
+}
+
+#cam-display {
+  width: 100%;
+  height: auto;
+  max-height: 80vh;
+  aspect-ratio: 16 / 9;
+  margin-bottom: 3px;
+  border-radius: 7px;
+  overflow: clip;
+}
+
 .popup-win {
   display: none;
   position: fixed;
   bottom: 10px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 997;
+  z-index: 990;
   border: 1px solid var(--border-color);
   border-radius: 15px;
   background-color: var(--sec-black-40);
@@ -754,7 +715,7 @@ input.chkbox {
      which iOS Safari does not always repaint cleanly. Text inside is now
      fully opaque, which it was not before. */
   background-color: color-mix(in srgb, var(--nav-menus-color), transparent 4%);
-  z-index: 997;
+  z-index: 995;
 }
 
 /* links inside the dropdown menu */
@@ -771,17 +732,57 @@ input.chkbox {
   gap: 7px;
 }
 
-@media (hover: hover) {
-  .dd-content a:hover {
-    color: #fff;
-    text-shadow: var(--menu-glow);
-  }
+.dd-content a:hover {
+  color: #fff;
+  text-shadow: var(--menu-glow);
 }
+
 .dd-content a:active {
   color: #fff;
   text-shadow: var(--menu-glow);
 }
 
+/* Weather Status */
+
+.weather-icon-container {
+  border: none;
+  outline: none;
+  position: relative;
+  height: 60px;
+  width: 55px;
+}
+
+.weather-icon-container .right-nav-spinner {
+  top: 50%;
+  left: 50%;
+  margin-top: -15px; /* Pull up by half the spinner's 30px height */
+  margin-left: -15px; /* Pull left by half the spinner's 30px width */
+}
+
+.weather-icon-container i {
+  text-decoration: none;
+  text-align: center;
+}
+
+.weather-badge {
+  position: absolute;
+  top: 7px;
+  right: 3px;
+  background-color: var(--main-color);
+  color: #fff;
+  font-size: 15px;
+  font-weight: bold;
+  line-height: 0.75;
+  padding: 3px 2px 1px 2px;
+  border-radius: 5px;
+  box-shadow: 0px 2px 4px rgba(0,0,0,0.5);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.weather-dropdown {
+  pointer-events: none; 
+}
 
 /* a settings row inside a menu: the icon and its checkbox sit in a box cut
    to the same shape and inset as the colour swatches in the rows below */
@@ -999,15 +1000,100 @@ input.chkbox {
   margin-right: 16px;
 }
 
-.prompt_win {
-  border-radius: 15px;
-  background-color: #000;
-  border: 1px solid var(--border-color);
+/*
+ *  Edit Bookmarks Prompt Style
+ */
+
+#editFav__prompt {
   position: absolute;
-  color: #fff;
+  display: inline-block;
+  padding-bottom: 10px; 
+  top: 20%;
+  left: 20%;
+  height: auto;
+  width: 360px;
   z-index: 998;
-  text-decoration: none;
+}
+
+.editFav__button {
+  margin-right: 5px;
+  margin-left: 8px;
+  height: 50px;
+  width: 155px;
+}
+
+/* the site lookup button while a lookup is running -- its own glyph class is
+   taken off, and the turning icon inside stands in for it */
+.editFav__button--busy {
+  transition: none;
+}
+
+/* the lookup button while it is reporting a failure */
+.editFav__button--failed {
+  color: var(--alert-red);
+  transition: none;
+}
+
+/* The refresh icon is a child element rather than the button's own glyph, so
+   the shared rotation keyframes turn the icon and not the whole button.
+   Inline-block keeps the box tight around the glyph so it spins on centre. */
+.editFav__button-spin {
+  display: inline-block;
+  pointer-events: none; /* the press belongs to the button */
+  animation: rotation 1s linear infinite;
+  transition: none;
+}
+
+/* banner row: title centred, favicon parked on the right-hand edge. Sized
+   to the same 330px as the text boxes so the icon lines up with their right
+   edge, and the type is large enough that the row is taller than the 24px
+   icon, which keeps the padding above and below it even. */
+.editFav__toptext {
+  position: relative;
+  padding-top: 10px;
+  padding-bottom: 10px;
   text-align: center;
+  margin: 0px auto;
+  width: 330px;
+  color: #fff;
+  font-size: 24px;
+}
+
+.editFav__textbox {
+  border-radius: 15px;
+  margin-bottom: 10px;
+  padding-right: 5px;  
+  padding-left: 5px;    
+  padding-bottom: 10px;  
+  padding-top: 10px;  
+  text-align: left;
+  font-size: 22px;
+  color: #000;
+  width: 330px;
+  height: auto;
+}
+
+/* pinned to the right of the banner row and vertically centred on it, so
+   the title stays centred in the window whether or not an icon is showing.
+   Clicking it clears the icon. */
+.editFav__iconpreview {
+  position: absolute;
+  right: 0px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* nothing to preview: the slot is removed, and because it is positioned
+   out of the flow nothing else in the window shifts */
+.editFav__iconpreview--empty {
+  display: none;
 }
 
 /*
@@ -1112,101 +1198,6 @@ input.chkbox {
 }
 
 /*
- *  Edit Bookmarks Prompt Style
- */
-
-#editFav__prompt {
-  position: absolute;
-  display: inline-block;
-  padding-bottom: 10px; 
-  top: 20%;
-  left: 20%;
-  height: auto;
-  width: 360px;
-}
-
-.editFav__button {
-  margin-right: 5px;
-  margin-left: 8px;
-  height: 50px;
-  width: 155px;
-}
-
-/* the site lookup button while a lookup is running -- its own glyph class is
-   taken off, and the turning icon inside stands in for it */
-.editFav__button--busy {
-  transition: none;
-}
-
-/* the lookup button while it is reporting a failure */
-.editFav__button--failed {
-  color: var(--alert-red);
-  transition: none;
-}
-
-/* The refresh icon is a child element rather than the button's own glyph, so
-   the shared rotation keyframes turn the icon and not the whole button.
-   Inline-block keeps the box tight around the glyph so it spins on centre. */
-.editFav__button-spin {
-  display: inline-block;
-  pointer-events: none; /* the press belongs to the button */
-  animation: rotation 1s linear infinite;
-  transition: none;
-}
-
-/* banner row: title centred, favicon parked on the right-hand edge. Sized
-   to the same 330px as the text boxes so the icon lines up with their right
-   edge, and the type is large enough that the row is taller than the 24px
-   icon, which keeps the padding above and below it even. */
-.editFav__toptext {
-  position: relative;
-  padding-top: 10px;
-  padding-bottom: 10px;
-  text-align: center;
-  margin: 0px auto;
-  width: 330px;
-  color: #fff;
-  font-size: 24px;
-}
-
-.editFav__textbox {
-  border-radius: 15px;
-  margin-bottom: 10px;
-  padding-right: 5px;  
-  padding-left: 5px;    
-  padding-bottom: 10px;  
-  padding-top: 10px;  
-  text-align: left;
-  font-size: 22px;
-  color: #000;
-  width: 330px;
-  height: auto;
-}
-
-/* pinned to the right of the banner row and vertically centred on it, so
-   the title stays centred in the window whether or not an icon is showing.
-   Clicking it clears the icon. */
-.editFav__iconpreview {
-  position: absolute;
-  right: 0px;
-  top: 50%;
-  transform: translateY(-50%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-/* nothing to preview: the slot is removed, and because it is positioned
-   out of the flow nothing else in the window shifts */
-.editFav__iconpreview--empty {
-  display: none;
-}
-
-/*
  *  About Prompt Style
  */
 
@@ -1219,7 +1210,6 @@ input.chkbox {
   height: 340px;
   padding: 15px; 
   color: #fff;
-  z-index: 997; 
 }
 
 #about__btn {
@@ -1314,7 +1304,6 @@ input.chkbox {
   margin-right: -50%;
   width: auto;
   height: auto;
-  z-index: 996;
   border: 1px solid var(--border-color);
   border-radius: 15px;
   background-color:#000;
@@ -1551,7 +1540,7 @@ input.chkbox {
   left: 50%;
   margin-left: -85px;
   padding: 8px;
-  z-index: 997;
+  z-index: 999;
   overflow: hidden;
   resize: none;
 }
@@ -1613,7 +1602,6 @@ input.chkbox {
   left: 50%;
   padding: 15px; 
   color: #fff;
-  z-index: 997; 
 }
 
 #temp_therm_grid {
@@ -1877,7 +1865,6 @@ input.chkbox {
   padding-right: 10px;
   padding-bottom: 10px;  
   color: #fff;
-  z-index: 997;
 }
 
 .bed__title {
