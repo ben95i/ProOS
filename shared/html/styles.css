@@ -933,6 +933,31 @@ input.chkbox {
   visibility: visible;
 }
 
+/* The add button reports on itself the same way a row does, over the read and
+   the write the edit lock takes before the window can open. It has no favicon
+   holder to hang the ring on, so the button itself is the positioning
+   context; 36px rings the 24px icon with the clearance the rows use. */
+#btn-add-bookmark {
+  position: relative;
+}
+
+#btn-add-bookmark .bookmark-spinner {
+  width: 36px;
+  height: 36px;
+  top: 50%;
+  left: 50%;
+  margin-left: -18px;
+  margin-top: -18px;
+  opacity: 0;
+  visibility: hidden;
+}
+
+/* two classes on the button beat the rule above, whatever the block order */
+#btn-add-bookmark.bookmark__add--loading .bookmark-spinner {
+  opacity: 0.85;
+  visibility: visible;
+}
+
 .bookmarked__favicon {
   display: block;
   width: 24px;
@@ -2036,6 +2061,19 @@ input.chkbox {
   opacity: 1;
 }
 
+/* the same button while delete mode is on: red, so picking a row for deletion
+   never reads as ticking it off. The ring turns red as soon as the mode comes
+   on, whether or not the row is picked, so the mode itself is visible; the
+   fill follows on the rows that are actually selected. */
+.list__round--del {
+  border-color: var(--alert-red);
+}
+
+.list__round--del.list__round--on {
+  background-color: var(--alert-red);
+  border-color: var(--alert-red);
+}
+
 .list__label {
   /* rename target -- a few pixels of padding around the text are part of it */
   flex-shrink: 1;
@@ -2061,13 +2099,6 @@ input.chkbox {
   flex-shrink: 0;
   font-size: 20px;
   color: var(--main-40-white);
-}
-
-.list__chk {
-  flex-shrink: 0;
-  margin: 0px;
-  width: 22px;
-  height: 22px;
 }
 
 /* rename box -- same look as the bookmarks "Search here..." box, sized in JS
@@ -2201,4 +2232,10 @@ input.chkbox {
 .list__btn {
   width: 115px;
   height: 60px;
+}
+
+/* the delete button while its mode is on, in the same red as the rings on the
+   rows -- the icon only, so the button keeps its usual face */
+#list__del-icon.list__del-icon--on {
+  color: var(--alert-red);
 }

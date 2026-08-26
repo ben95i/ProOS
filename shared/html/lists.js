@@ -10,6 +10,13 @@
 // float to the top of the list, checked items sit below in their saved order,
 // and only checked items can be dragged.
 //
+// Delete mode uses that same round button rather than a second set of boxes,
+// turned red to say it is deleting and not completing. On the lists view it
+// stands in for the drag grip and the right hand arrow steps aside; on the
+// items view it takes over the completed button for as long as the mode is on
+// (the grip stays in place, hidden, so the rows do not shift sideways). What
+// is selected lives in memory, not in the rows, so a re-draw keeps it.
+//
 // Saved file (lists), one line per item:
 //   LIST_ID|LIST_NAME|ITEM_ID|ITEM_NAME|CHECK_STATE
 // The order of the rows in the file IS the order of the lists and their items,
@@ -32,7 +39,8 @@
 // POST /api/write?file=lists.save (text/plain body).
 
 import { splitMenuData, cleanString, isNumeric, removeWindow, showPopup,
-  dragGripElement, DragSort, FileLock, readFile, writeFile } from './utils.js';
+  dragGripElement, DragSort, FileLock, readFile, writeFile, html,
+  LOCK_BEAT_MS, LOCK_EXPIRE_MS } from './utils.js';
 
 const FILE_NAME = 'lists.save';
 const WIN_TITLE = 'Lists';
@@ -50,6 +58,7 @@ const CLOSE_BTN_ID = 'list__btn-close';
 const RETRY_BTN_ID = 'list__btn-retry';
 const DISCARD_BTN_ID = 'list__btn-discard';
 const DEL_ICON_ID = 'list__del-icon';
+const DEL_ICON_ON_CLASS = 'list__del-icon--on';
 // file layout
 const COL_DELIMITER = '|'; // separates the columns of a row
 // the file is never written more often than this; edits made in between are
@@ -68,6 +77,10 @@ const VIEW_ITEMS = 1;
 // list modes
 const MODE_OPEN = 0;
 const MODE_SELECT = 1;
+// shown in place of the rows while the server is being waited on, so a slow
+// connection never leaves the window sitting empty
+const BUSY_LOAD = 'Loading...';
+const BUSY_SAVE = 'Saving...';
 
 //// shared helpers ////
 
@@ -105,7 +118,13 @@ export class ListStore {
     this.dirty = false;     // edits in memory that the server has not taken
     this.saving = null;     // in-flight save, so writes cannot overlap
     this.queued = false;
+    this.sentBody = null;   // the list text the server is known to hold
+    this.loaded = false;    // a parsed list is standing in this.data
+    this.lastGoodBody = ""; // last body known to be safe to write back
+    this.releasing = null;  // release in flight, so two cannot race
+    this.keepAlive = false; // the queued write is the lock re-stamp
     this.lastWrite = 0;     // when the file was last written
+    this.lastStamp = 0;     // when the server last took a write (lock stamp)
     this.holdTimer = null;  // waiting out the write interval
     this.holdWake = null;
     this.flushing = false;  // a flush is asking for the write now
@@ -113,8 +132,8 @@ export class ListStore {
     this.lock = new FileLock({
       read: () => this.read(),
       write: (text) => this.write(text),
-      body: () => this.buildBody(),
-      refresh: () => this.save(), // goes through the write queue
+      body: () => this.safeBody(),
+      refresh: () => this.touch(), // goes through the write queue
       onLost: (text) => this.lockLost(text)
     });
   }
@@ -133,7 +152,26 @@ export class ListStore {
     // the release, so the file really is only sent at most once per window
     this.lastWrite = Date.now();
     this.online = await writeFile(FILE_NAME, text);
+    // stamped again on the way out: on a slow link the answer can take most
+    // of the interval, and measuring from the start of the exchange would let
+    // the next write follow almost immediately behind it
+    this.lastWrite = Date.now();
+    if (this.online === true) {
+      // the lock row went out with it, so the timestamp on the server is now
+      // this fresh (see stampFresh)
+      this.lastStamp = this.lastWrite;
+    }
     return this.online;
+  }
+
+  // Every write carries the lock row, so every write is also a heartbeat. A
+  // beat landing within one beat of the last confirmed write has nothing to
+  // add: the stamp still has a full spare beat in hand before it could
+  // expire, so the request is dropped. The second test keeps the margin
+  // honest if the timings in utils.js are ever re-tuned.
+  stampFresh() {
+    return (Date.now() - this.lastStamp) < LOCK_BEAT_MS
+      && (LOCK_BEAT_MS * 2) < LOCK_EXPIRE_MS;
   }
 
   //// file text ////
@@ -193,15 +231,39 @@ export class ListStore {
     return _file;
   }
 
-  build() {
-    return this.lock.line(this.lock.owned) + this.buildBody();
+  // What to write for the list rows. this.data is only worth writing while a
+  // list that was actually loaded is standing in it. A session that never
+  // loaded -- a read that failed, or one torn down and re-opened while a
+  // release was still settling -- holds an empty array, and writing that out
+  // would erase the file; the last body known to be good goes back instead,
+  // which is what the server already has, so the write changes nothing.
+  // A loaded list that the user has genuinely emptied still writes empty.
+  safeBody() {
+    return this.loaded === true ? this.buildBody() : this.lastGoodBody;
   }
 
   //// session ////
 
   // loads the file and takes the edit lock when it is free
-  async open() {
+  // Loads the file and takes the edit lock when it is free. onData is called
+  // as soon as the file is parsed: taking the lock is a second round trip
+  // (FileLock.claim writes the lock row back), and on a slow link there is no
+  // reason to hold the rows off-screen for it -- nothing below changes what
+  // they say, only whether they can be edited.
+  async open(onData) {
+    // a release from a previous session can still be settling, and it builds
+    // its body when it resumes -- let it finish before this one resets the
+    // list out from under it
+    if (this.releasing) {
+      try {
+        await this.releasing;
+      } catch (err) {
+        // a failed release is already reported through the status dot
+      }
+    }
     this.dirty = false;
+    this.sentBody = null;
+    this.loaded = false; // nothing trustworthy in this.data until the read is in
     const { text, busy } = await this.lock.check();
     if (text === null) {
       // nothing loaded, so there is nothing safe to write back
@@ -210,6 +272,16 @@ export class ListStore {
       return;
     }
     this.data = this.parse(text);
+    this.loaded = true;
+    // What the server holds: claim() writes this same buildBody() text under
+    // the lock row, so once the claim lands the file really is this. A save
+    // that builds the same text again has nothing to say and is dropped
+    // rather than put on the wire.
+    this.sentBody = this.buildBody();
+    this.lastGoodBody = this.sentBody;
+    if (typeof onData === 'function') {
+      onData();
+    }
     if (busy) {
       this.readOnly = true;
       return;
@@ -227,6 +299,7 @@ export class ListStore {
   lockLost(text) {
     this.readOnly = true;
     this.dirty = false;
+    this.sentBody = null;
     this.data = this.parse(text);
     showPopup(`[${WIN_TITLE}] another user is editing, opened read only.`);
     this.onChange();
@@ -240,10 +313,23 @@ export class ListStore {
   // write interval is being waited out, are folded into one later write
   // instead of stacking up.
   save() {
+    this.dirty = true;
+    return this.queueWrite();
+  }
+
+  // the lock asking for its timestamp to be re-stamped. It goes out through
+  // the same queue, but it is not an edit: marking the window dirty for it
+  // would have the close button flushing, and offering to retry, over a file
+  // that already matches what is in memory.
+  touch() {
+    this.keepAlive = true;
+    return this.queueWrite();
+  }
+
+  queueWrite() {
     if (!this.canWrite()) {
       return Promise.resolve(true);
     }
-    this.dirty = true;
     this.queued = true;
     if (!this.saving) {
       this.saving = this.runQueue();
@@ -259,12 +345,26 @@ export class ListStore {
       if (!this.canWrite()) {
         // the lock was handed back while the interval was being waited out,
         // and whoever took it back has written the list already
-        this.saving = null;
-        return sent;
+        break;
       }
-      sent = await this.write(this.build());
+      const keepAlive = this.keepAlive;
+      this.keepAlive = false;
+      const body = this.safeBody();
+      // Nothing to send: the edits since the last write cancelled each other
+      // out (an item ticked and un-ticked, a rename typed and put back), so
+      // the file on the server is already this text. A lock heartbeat still
+      // goes out, unless a write just re-stamped the lock for it.
+      if (body === this.sentBody && (!keepAlive || this.stampFresh())) {
+        this.dirty = false;
+        continue;
+      }
+      sent = await this.write(this.lock.line(this.lock.owned) + body);
+      this.dirty = !sent;
+      if (sent) {
+        this.sentBody = body;
+        this.lastGoodBody = body; // the server took it, so it is safe to redo
+      }
     }
-    this.dirty = !sent;
     this.saving = null;
     return sent;
   }
@@ -303,10 +403,7 @@ export class ListStore {
     }
     this.flushing = true;
     if (this.dirty === true) {
-      this.queued = true;
-      if (!this.saving) {
-        this.saving = this.runQueue();
-      }
+      this.queueWrite();
     }
     this.wake();
     const sent = this.saving ? await this.saving : true;
@@ -314,10 +411,28 @@ export class ListStore {
     return sent;
   }
 
-  // hands the lock back; unsaved edits are never pushed out on the way (the
-  // server is unreachable in that case anyway) -- the lock expires instead
-  async release() {
+  // Hands the lock back; unsaved edits are never pushed out on the way (the
+  // server is unreachable in that case anyway) -- the lock expires instead.
+  // Only ever one at a time: destroy() fires this without waiting, so a
+  // re-opened window can call it again while the first is still settling,
+  // and two of them would each build their own body.
+  release() {
+    if (this.releasing) {
+      return this.releasing;
+    }
+    const running = this.runRelease();
+    this.releasing = running;
+    running.finally(() => {
+      if (this.releasing === running) {
+        this.releasing = null;
+      }
+    });
+    return running;
+  }
+
+  async runRelease() {
     this.queued = false;
+    this.keepAlive = false;
     this.wake();
     // A queued write can already be on the wire, carrying the lock row with
     // the lock still held. If that one landed after the release below, the
@@ -339,9 +454,12 @@ export class ListStore {
   // throws the session away without writing anything
   abandon() {
     this.queued = false;
+    this.keepAlive = false;
+    this.loaded = false; // nothing in this.data may be written after this
     this.wake();
     this.lock.abandon();
     this.dirty = false;
+    this.sentBody = null;
   }
 }
 
@@ -357,7 +475,11 @@ export default class Lists {
     this.mode = MODE_OPEN;
     this.openId = null;   // list being viewed
     this.editing = false; // inline name box is open
-    this.loading = false; // the file is on its way in
+    this.busy = null;     // label shown while the server is being waited on
+    this.settling = false; // rows are up, the edit lock has not answered yet
+    // rows picked out for deletion, by id. Kept here rather than read back
+    // out of the rows, so a re-draw in the middle of selecting keeps them.
+    this.selected = new Set();
     // shared drag engine (same grip and behaviour as the bookmarks menu)
     this.dragSort = new DragSort({
       rowClass: 'list__row',
@@ -366,7 +488,13 @@ export default class Lists {
     // window level listeners, attached as a set
     this.listeners = {
       click: this.handleClick.bind(this),
-      pointerdown: (event) => { if (!this.editing) this.dragSort.start(event); },
+      // no re-ordering while a name box is open, or while rows are being
+      // picked out for deletion
+      pointerdown: (event) => {
+        if (!this.editing && this.mode !== MODE_SELECT) {
+          this.dragSort.start(event);
+        }
+      },
       pointermove: (event) => this.dragSort.move(event),
       pointerup: (event) => this.dragSort.end(event),
       pointercancel: (event) => this.dragSort.end(event)
@@ -389,10 +517,13 @@ export default class Lists {
     this.mode = MODE_OPEN;
     this.openId = null;
     this.drawWindow();
-    this.loading = true;
-    this.render();
-    await this.store.open();
-    this.loading = false;
+    this.settling = true;
+    try {
+      // the rows go up on the first round trip; the lock takes the second
+      await this.runBusy(BUSY_LOAD, () => this.store.open(() => this.showRows()));
+    } finally {
+      this.settling = false;
+    }
     if (!this.isOpen()) {
       this.store.release(); // closed while loading, hand the lock straight back
       return;
@@ -407,7 +538,7 @@ export default class Lists {
   // now; only a write the server refuses stops the window closing.
   async closeWindow() {
     if (this.store.dirty === true) {
-      const sent = await this.store.flush();
+      const sent = await this.runBusy(BUSY_SAVE, () => this.store.flush());
       this.updateDot();
       if (!sent) {
         this.showOverlay(true);
@@ -418,7 +549,8 @@ export default class Lists {
   }
 
   destroy() {
-    this.loading = false;
+    this.busy = null;
+    this.settling = false;
     this.dragSort.cancel();
     this.store.release();
     removeWindow(WIN_ID);
@@ -426,13 +558,47 @@ export default class Lists {
     this.view = VIEW_LISTS;
     this.mode = MODE_OPEN;
     this.openId = null;
+    this.selected.clear();
+  }
+
+  // Runs an exchange with the server with the label up in place of the rows,
+  // so nothing that waits on a slow connection leaves the window blank. Every
+  // path that awaits the store goes through here, and the label comes down
+  // again whether the exchange worked or threw. A caller that has already
+  // taken the label down itself (showRows) is not re-drawn over.
+  async runBusy(label, action) {
+    this.busy = label;
+    this.render();
+    try {
+      return await action();
+    } finally {
+      const wasBusy = this.busy !== null;
+      this.busy = null;
+      if (wasBusy && this.isOpen()) {
+        this.render();
+      }
+    }
+  }
+
+  // the file is in and parsed: the rows replace the label straight away, and
+  // the buttons stay off until the lock says whether they can be used
+  showRows() {
+    this.busy = null;
+    if (this.isOpen()) {
+      this.render();
+    }
+  }
+
+  // nothing on a row may be edited until the edit lock has answered
+  rowsLocked() {
+    return this.settling === true || this.store.readOnly === true;
   }
 
   drawWindow() {
     if (this.isOpen()) {
       return;
     }
-    const markup = `
+    const markup = html`
 <div id="${WIN_ID}" class="prompt_win list__win nohide">
   <span class="list__dot" id="${DOT_ID}"></span>
   <div class="list__header">
@@ -470,7 +636,7 @@ export default class Lists {
     </div>
   </div>
 </div>`;
-    document.body.insertAdjacentHTML('beforeend', markup.trim());
+    document.body.insertAdjacentHTML('beforeend', markup);
     const win = document.getElementById(WIN_ID);
     Object.keys(this.listeners).forEach(name => {
       win.addEventListener(name, this.listeners[name]);
@@ -562,11 +728,13 @@ export default class Lists {
       items ? "visible" : "hidden";
     // rows
     list.innerHTML = "";
-    if (this.loading === true) {
-      // same small text the count uses, until there is a count to show
+    if (this.busy !== null) {
+      // same small text the count uses, until there is a count to show. This
+      // stands in for the rows in every view, so moving into a list while the
+      // file is still on its way shows the label and not an empty window.
       const note = document.createElement('div');
       note.className = "list__total";
-      note.innerText = "Loading...";
+      note.innerText = this.busy;
       list.appendChild(note);
       this.renderActions();
       this.updateDot();
@@ -596,17 +764,26 @@ export default class Lists {
 
   createRow(entry) {
     const items = this.view === VIEW_ITEMS;
-    const done = items && entry.checked === true;
-    // a read only window moves nothing
-    const fixed = this.store.readOnly === true || !this.isMovable(entry);
+    const select = this.mode === MODE_SELECT;
     const row = document.createElement('div');
     row.className = "list__row";
     row.dataset.id = entry.id;
-    row.appendChild(dragGripElement(fixed));
-    if (items) {
-      row.appendChild(this.createCell('span',
-        "list__round" + (done ? " list__round--on" : ""),
-        '<i class="fad fa-check"></i>'));
+    if (select) {
+      // The round button is the whole left hand side while the mode is on. On
+      // a list row it stands in for the grip; on an item row the grip is kept
+      // but hidden, so the rounds stay on the column they were already in and
+      // the rows do not jump sideways when the mode comes on.
+      if (items) {
+        row.appendChild(dragGripElement(true));
+      }
+      row.appendChild(this.roundElement(this.selected.has(entry.id), true));
+    } else {
+      // a read only window moves nothing
+      row.appendChild(dragGripElement(
+        this.rowsLocked() || !this.isMovable(entry)));
+      if (items) {
+        row.appendChild(this.roundElement(entry.checked === true, false));
+      }
     }
     const label = document.createElement('span');
     label.className = "list__label";
@@ -624,15 +801,21 @@ export default class Lists {
       count.innerText = unchecked;
       row.appendChild(count);
     }
-    if (this.mode === MODE_SELECT) {
-      const chkbox = document.createElement('input');
-      chkbox.type = "checkbox";
-      chkbox.className = "list__chk";
-      row.appendChild(chkbox);
-    } else if (!items) {
+    // the arrow only says "this opens", which delete mode is not doing
+    if (!items && !select) {
       row.appendChild(this.createCell('i', "fad fa-chevron-right list__arrow", ""));
     }
     return row;
+  }
+
+  // The round button, in both of its jobs: the completed toggle on an item
+  // row, and the delete marker on any row while select mode is on. The delete
+  // one is the same button in red, so the two never look like the same thing.
+  roundElement(on, forDelete) {
+    return this.createCell('span', "list__round"
+      + (forDelete === true ? " list__round--del" : "")
+      + (on === true ? " list__round--on" : ""),
+      '<i class="fad fa-check"></i>');
   }
 
   totalText(count, noun) {
@@ -648,34 +831,29 @@ export default class Lists {
     return cell;
   }
 
-  selectedIds() {
-    const list = this.listElem();
-    if (!list || this.mode !== MODE_SELECT) {
-      return [];
-    }
-    return [...list.getElementsByClassName('list__row')]
-      .filter(row => row.querySelector('.list__chk').checked === true)
-      .map(row => Number(row.dataset.id));
-  }
-
   renderActions() {
     // read only: everything that would write the file is taken off-screen.
-    // While loading they go too, since the list they would change is not in
-    // yet -- but without the read only notice, which is not the reason.
-    const readOnly = this.store.readOnly === true;
-    const busy = readOnly || this.loading === true;
+    // While the server is being waited on they go too, since the list they
+    // would change is not settled yet -- but without the read only notice,
+    // which is not the reason.
+    const settling = this.settling === true;
+    const readOnly = !settling && this.store.readOnly === true;
+    const waiting = readOnly || settling || this.busy !== null;
     document.getElementById(STATUS_ID).style.display = readOnly ? "flex" : "none";
     [ADD_BTN_ID, DEL_BTN_ID].forEach(id => {
-      document.getElementById(id).style.display = busy ? "none" : "";
+      document.getElementById(id).style.display = waiting ? "none" : "";
     });
-    if (busy) {
+    if (waiting) {
       return;
     }
-    // the delete button becomes an X once something is selected
-    const confirm = this.selectedIds().length > 0;
+    // the delete button becomes an X once something is selected, and the
+    // icon carries the same red as the rings for as long as the mode is on
+    const select = this.mode === MODE_SELECT;
+    const confirm = this.selected.size > 0;
     const icon = document.getElementById(DEL_ICON_ID);
     icon.classList.toggle("fa-times", confirm);
     icon.classList.toggle("fa-trash-alt", !confirm);
+    icon.classList.toggle(DEL_ICON_ON_CLASS, select);
   }
 
   // green while the server is answering, red once a write has failed
@@ -698,9 +876,15 @@ export default class Lists {
 
   //// actions ////
 
-  setMode(mode) {
+  // Changing mode always drops what was picked out, so leaving delete mode
+  // and coming back never starts with old rows still marked. redraw is off
+  // for the callers that are about to draw anyway.
+  setMode(mode, redraw = true) {
     this.mode = mode;
-    this.render();
+    this.selected.clear();
+    if (redraw === true) {
+      this.render();
+    }
   }
 
   showItems(id) {
@@ -716,7 +900,7 @@ export default class Lists {
   }
 
   addEntry() {
-    this.mode = MODE_OPEN;
+    this.setMode(MODE_OPEN, false);
     const entries = this.activeList();
     const entry = this.view === VIEW_ITEMS
       ? { id: nextId(entries), name: "New Item", checked: false }
@@ -739,14 +923,31 @@ export default class Lists {
       this.setMode(MODE_SELECT);
       return;
     }
-    const ids = this.selectedIds();
-    if (ids.length > 0) {
-      this.setActiveList(this.activeList().filter(entry => !ids.includes(entry.id)));
-      this.mode = MODE_OPEN; // the delete is done, drop out of select mode
-      this.commit();
+    if (this.selected.size === 0) {
+      this.setMode(MODE_OPEN);
       return;
     }
-    this.setMode(MODE_OPEN);
+    const picked = this.selected;
+    this.setActiveList(this.activeList().filter(entry => !picked.has(entry.id)));
+    this.setMode(MODE_OPEN, false); // the delete is done, commit draws it
+    this.commit();
+  }
+
+  // marks a row for deletion, or takes the mark off again. The button is
+  // turned over in place rather than through a re-draw, so a long list does
+  // not rebuild every time one row is picked.
+  toggleSelected(id, row) {
+    const on = !this.selected.has(id);
+    if (on) {
+      this.selected.add(id);
+    } else {
+      this.selected.delete(id);
+    }
+    const round = row.querySelector('.list__round');
+    if (round) {
+      round.classList.toggle("list__round--on", on);
+    }
+    this.renderActions();
   }
 
   toggleItem(id) {
@@ -761,7 +962,7 @@ export default class Lists {
     const row = this.rowById(id);
     const entry = this.findEntry(id);
     const label = row ? row.querySelector('.list__label') : null;
-    if (!label || !entry || this.editing || this.store.readOnly === true) {
+    if (!label || !entry || this.editing || this.rowsLocked()) {
       return;
     }
     this.editing = true;
@@ -827,7 +1028,7 @@ export default class Lists {
   //// unsaved changes dialog ////
 
   async retrySave() {
-    const sent = await this.store.flush();
+    const sent = await this.runBusy(BUSY_SAVE, () => this.store.flush());
     this.updateDot();
     if (sent) {
       this.showOverlay(false);
@@ -855,16 +1056,12 @@ export default class Lists {
     }
     const id = Number(row.dataset.id);
     if (this.mode === MODE_SELECT) {
-      // tapping anywhere on the row selects it
-      const chkbox = row.querySelector('.list__chk');
-      if (event.target !== chkbox) {
-        chkbox.checked = !chkbox.checked;
-      }
-      this.renderActions();
+      // tapping anywhere on the row, the round button included, selects it
+      this.toggleSelected(id, row);
       return;
     }
     // tapping the name (or the few pixels of padding around it) renames
-    if (this.store.readOnly !== true && event.target.closest('.list__label')) {
+    if (!this.rowsLocked() && event.target.closest('.list__label')) {
       this.beginRename(id, false);
       return;
     }
@@ -872,7 +1069,7 @@ export default class Lists {
       this.showItems(id);
       return;
     }
-    if (this.store.readOnly !== true) {
+    if (!this.rowsLocked()) {
       this.toggleItem(id); // checking an item writes the file
     }
   }
@@ -893,8 +1090,8 @@ export default class Lists {
         this.showLists();
         return;
     }
-    // read only allows nothing that would write the file
-    if (this.store.readOnly === true) {
+    // read only, and the wait for the lock, allow nothing that writes
+    if (this.rowsLocked()) {
       return;
     }
     if (id === ADD_BTN_ID) {
