@@ -263,46 +263,6 @@ input.chkbox {
 }
 
 /*
- *  Animations
- */
-
-@keyframes slide-transparency {
-  0% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0;
-  }
-  100% {
-    opacity: 1;
-  }
-}
-
-.fade-out {
-  -webkit-animation: fadeOut 1s;
-  animation: fadeOut 1s;
-  animation-fill-mode: forwards;
-}
-
-@-webkit-keyframes fadeOut {
-  0% { 
-    opacity: 1; 
-  }
-  100% { 
-    opacity: 0; 
-  }
-}
-
-@keyframes fadeOut {
-  0% { 
-    opacity: 1; 
-  }
-  100% { 
-    opacity: 0; 
-  }
-}
-
-/*
  *  Button Styles
  */
  
@@ -432,16 +392,15 @@ input.chkbox {
   outline: none;
 }
 
-@media (hover: hover) {
-  .topnav a:hover {
-    background-color: var(--main-black-30);
-    cursor: pointer;
-    border: none;
-    outline: none;
-  }
-  .topnav i:hover {
-    color: #fff;
-  }
+.topnav a:hover {
+  background-color: var(--main-black-30);
+  cursor: pointer;
+  border: none;
+  outline: none;
+}
+
+.topnav i:hover {
+  color: #fff;
 }
 
 /* The two icon groups each ask for half of whatever the selector leaves
@@ -508,13 +467,6 @@ input.chkbox {
   padding-right: 8px;
 }
 
-.grid-sep {
-	border: none;
-  outline: none;
-  margin: 0;
-  padding: 0px;
-}
-
 .grid {
   display: flex;
   flex-wrap: nowrap;
@@ -530,6 +482,13 @@ input.chkbox {
   display: none;
 }
 
+.grid-sep {
+	border: none;
+  outline: none;
+  margin: 0;
+  padding: 0px;
+}
+
 .column-right {
 	border: none;
   outline: none;
@@ -537,13 +496,6 @@ input.chkbox {
   margin-bottom: 0px;
   margin-right: 0px;
   margin-left: 0px;
-  margin: 0;
-}
-
-.column-left {
-	border: none;
-  outline: none;
-  padding: 0px;
   margin: 0;
 }
 
@@ -558,6 +510,12 @@ input.chkbox {
   text-align: center;
 }
 
+.column-left {
+	border: none;
+  outline: none;
+  padding: 0px;
+  margin: 0;
+}
 @media screen and (max-height: 700px) {
   .grid {
     flex-direction: row;
@@ -571,15 +529,14 @@ input.chkbox {
   }
 }
 
+.log-popup {
+  width: 75vw;
+  height: 95%;
+}
 @media screen and (max-width: 900px) {
   .log-popup {
     width: 95%;
   }
-}
-
-.log-popup {
-  width: 75vw;
-  height: 95%;
 }
 
 #cam-popup {
@@ -733,11 +690,6 @@ input.chkbox {
 }
 
 .dd-content a:hover {
-  color: #fff;
-  text-shadow: var(--menu-glow);
-}
-
-.dd-content a:active {
   color: #fff;
   text-shadow: var(--menu-glow);
 }
@@ -1511,46 +1463,6 @@ input.chkbox {
 }
 
 /*
- *  Spinner Style
- */
-
-.btn-spinner {
-  width: 50px;
-  height: 50px;
-  margin-left: -25px;
-  margin-top: -25px;
-  top: 50%;
-  left: 50%;
-}
-
-.right-nav-spinner {
-  width: 30px;
-  height: 30px;
-  margin-left: -27px;
-  margin-top: 12px;
-}
-
-.btn-spinner, .right-nav-spinner, .roomstatus-spinner, .bookmark-spinner {
-  pointer-events: none;
-  position: absolute;
-  border-radius: 50%;
-  display: inline-block;
-  border-top: 3px solid #fff;
-  border-right: 3px solid transparent;
-  box-sizing: border-box;
-  animation: rotation 1s linear infinite;
-}
-
-@keyframes rotation {
-  0% {
-    transform: rotate(0deg);
-  }
-  100% {
-    transform: rotate(360deg);
-  }
-}
-
-/*
  *  Popups
  */
 
@@ -1948,13 +1860,7 @@ input.chkbox {
 }
 
 /* the same glow the drop-down menu rows carry, on the same two states */
-@media (hover: hover) {
-  #list__btn-back:hover {
-    color: #fff;
-    text-shadow: var(--menu-glow);
-  }
-}
-#list__btn-back:active {
+#list__btn-back:hover {
   color: #fff;
   text-shadow: var(--menu-glow);
 }
@@ -1996,17 +1902,28 @@ input.chkbox {
   -webkit-user-select: none;
 }
 
+/* rows in the lists view stand half again as tall as the item rows: 12px of
+   padding either side becomes 21px */
+.list__row--tall {
+  padding-top: 21px;
+  padding-bottom: 21px;
+}
+
+/* Delete mode swaps the drag grip for a round button, and the round is the
+   taller of the two, so the row grew by the difference every time the mode
+   came on. Pinning both to the round's 30px takes the row height off what the
+   row happens to be holding, so it sits still through the swap. */
+.list__row .drag-grip,
+.list__row .list__label,
+.list__row .list__count {
+  line-height: 30px;
+}
+
 .list__row:last-child {
   border-bottom: none;
 }
 
-@media (hover: hover) {
-  .list__row:hover {
-    text-shadow: var(--menu-glow);
-  }
-}
-
-.list__row:active {
+.list__row:hover {
   text-shadow: var(--menu-glow);
 }
 
@@ -2154,7 +2071,7 @@ input.chkbox {
   padding-top: 8px;
 }
 
-/* connection dot -- green while the server answers, red after a failed write */
+/* save state dot -- green once the server holds what is on screen */
 .list__dot {
   display: none;
   position: absolute;
@@ -2167,7 +2084,56 @@ input.chkbox {
   box-shadow: 0px 0px 6px var(--green-ind);
 }
 
-.list__dot--off {
+/* edits the server has not been given yet; they go out on close, on hide,
+   when the page is unloaded, or when this dot is tapped */
+.list__dot--unsaved {
+  background-color: var(--yellow-ind);
+  box-shadow: 0px 0px 6px var(--yellow-ind);
+}
+
+/* Turns around the status dot while the server is being waited on, in place
+   of any wording in the list area. The dot sits 20px wide at 18px in from the
+   top and right corner, so its centre is 28px in; a 30px ring centred on that
+   leaves a 5px gap all the way round it. */
+.list__spinner {
+  pointer-events: none;
+  position: absolute;
+  display: none;
+  top: 13px;
+  right: 13px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border-top: 3px solid #fff;
+  border-right: 3px solid transparent;
+  box-sizing: border-box;
+  animation: rotation 1s linear infinite;
+  z-index: 1;
+}
+
+.list__spinner--on {
+  display: inline-block;
+}
+
+/* only worth pressing while there is something to save, so it only offers
+   itself then */
+.list__dot--save {
+  cursor: pointer;
+}
+
+/* widens the tap area past the 20px dot without moving or reshaping it */
+.list__dot--save::before {
+  content: "";
+  position: absolute;
+  top: -12px;
+  left: -12px;
+  right: -12px;
+  bottom: -12px;
+}
+
+/* a write failed -- the edits are still in memory, nothing on the server
+   changed, and closing the window offers to retry or discard them */
+.list__dot--error {
   background-color: var(--alert-red);
   box-shadow: 0px 0px 6px var(--alert-red);
 }
@@ -2219,7 +2185,7 @@ input.chkbox {
   padding-bottom: 5px;
   padding-left: 8px;
   font-size: 20px;
-  color: var(--main-40-white);
+  color: #fff;
   white-space: nowrap;
   user-select: none;
   -webkit-user-select: none;
@@ -2238,4 +2204,68 @@ input.chkbox {
    rows -- the icon only, so the button keeps its usual face */
 #list__del-icon.list__del-icon--on {
   color: var(--alert-red);
+}
+
+/*
+ *  Animations
+ */
+
+.btn-spinner {
+  width: 50px;
+  height: 50px;
+  margin-left: -25px;
+  margin-top: -25px;
+  top: 50%;
+  left: 50%;
+}
+
+.right-nav-spinner {
+  width: 30px;
+  height: 30px;
+  margin-left: -27px;
+  margin-top: 12px;
+}
+
+.btn-spinner, .right-nav-spinner, .roomstatus-spinner, .bookmark-spinner {
+  pointer-events: none;
+  position: absolute;
+  border-radius: 50%;
+  display: inline-block;
+  border-top: 3px solid #fff;
+  border-right: 3px solid transparent;
+  box-sizing: border-box;
+  animation: rotation 1s linear infinite;
+}
+
+@keyframes rotation {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.fade-out {
+  -webkit-animation: fadeOut 1s;
+  animation: fadeOut 1s;
+  animation-fill-mode: forwards;
+}
+
+@-webkit-keyframes fadeOut {
+  0% { 
+    opacity: 1; 
+  }
+  100% { 
+    opacity: 0; 
+  }
+}
+
+@keyframes fadeOut {
+  0% { 
+    opacity: 1; 
+  }
+  100% { 
+    opacity: 0; 
+  }
 }

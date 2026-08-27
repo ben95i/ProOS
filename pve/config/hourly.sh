@@ -7,22 +7,22 @@ DS_PATH="/mnt/datastore/data/Documents"
 BKP_BMKS="$DS_PATH/Bookmarks.txt"
 OLD_BMKS="$DS_PATH/.Bookmarks.bak"
 RAM_BMKS="$RAM_DISK/bookmarks.save.txt"
+LCK_BMKS="$RAM_DISK/bookmarks-lock.save.txt"
 
 if [ -f "$RAM_BMKS" ]; then
   echo "saving bookmarks to disk..."
-  cp -fv $BKP_BMKS $OLD_BMKS
+  cp -f $BKP_BMKS $OLD_BMKS
   rsync -a $RAM_BMKS $BKP_BMKS
-  chown tank:shared $BKP_BMKS
-  chmod 666 $BKP_BMKS
-  chmod 666 $RAM_BMKS
+  chmod 666 $RAM_BMKS $BKP_BMKS
 else
   echo "bookmarks file not found in RAM disk, restoring..."
   if [ -f "$RAM_DISK/sysout.txt" ]; then
   	if [ -f "$BKP_BMKS" ]; then
+      echo "creating lock file..."
+      touch $LCK_BMKS
     	echo "restoring bookmarks from backup..."
-	    cp -fv $BKP_BMKS $RAM_BMKS
-	    chown tank:shared $RAM_BMKS
-      chmod 666 $RAM_BMKS
+	    cp -f $BKP_BMKS $RAM_BMKS
+      chmod 666 $RAM_BMKS $LCK_BMKS
     else
       echo "bookmarks backup not found, restore aborted!"
     fi
@@ -34,22 +34,22 @@ fi
 LISTS_BKP="$DS_PATH/Lists.txt"
 LISTS_OLD="$DS_PATH/.Lists.bak"
 RAM_LISTS="$RAM_DISK/lists.save.txt"
+LCK_LISTS="$RAM_DISK/lists-lock.save.txt"
 
 if [ -f "$RAM_LISTS" ]; then
   echo "saving lists to disk..."
-  cp -fv $LISTS_BKP $LISTS_OLD
+  cp -f $LISTS_BKP $LISTS_OLD
   rsync -a $RAM_LISTS $LISTS_BKP
-  chown tank:shared $LISTS_BKP
-  chmod 666 $LISTS_BKP
-  chmod 666 $RAM_LISTS
+  chmod 666 $LISTS_BKP $RAM_LISTS
 else
   echo "lists file not found in RAM disk, restoring..."
   if [ -f "$RAM_DISK/sysout.txt" ]; then
   	if [ -f "$LISTS_BKP" ]; then
+      echo "creating lock file..."
+      touch $LCK_LISTS
     	echo "restoring lists from backup..."
-	    cp -fv $LISTS_BKP $RAM_LISTS
-	    chown tank:shared $RAM_LISTS
-      chmod 666 $RAM_LISTS
+	    cp -f $LISTS_BKP $RAM_LISTS
+      chmod 666 $RAM_LISTS $LCK_LISTS
     else
       echo "lists backup not found, restore aborted!"
     fi

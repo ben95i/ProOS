@@ -7,9 +7,6 @@ RequiresMountsFor=/mnt/ramdisk
 User=root
 Type=simple
 
-# all-writable by default
-UMask=0000
-
 # runs after the tmpfs is mounted, before the watcher starts.
 ExecStartPre=/bin/sh -c 'touch /mnt/ramdisk/sysout.txt && chmod 0666 /mnt/ramdisk/sysout.txt'
 ExecStartPre=-/bin/sh -c '/usr/bin/apicmds.sh clearlog /mnt/ramdisk >> /mnt/ramdisk/sysout.txt 2>&1'

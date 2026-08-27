@@ -529,83 +529,134 @@ export function sleep(ms) {
 // and optionally refresh() (what the heartbeat writes, defaults to lock row +
 // body) and onLost(text) (a competing window won the lock).
 
+// Still exported so the menus can recognise -- and drop -- the leading LOCK|
+// row that older data files carry from when the lock shared their file.
 export const LOCK_TAG = 'LOCK';
-export const LOCK_EXPIRE_MS = 180000; // a lock left behind is ignored after 3 min
-export const LOCK_BEAT_MS = 60000;    // owner re-stamps the lock every minute
-export const LOCK_SETTLE_MS = 600;    // let a competing claim land before checking
+
+//// Shared edit lock ////
+//
+// One editor at a time for a menu that several browsers can open at once. The
+// lock lives in a small file of its own beside the data it guards -- the
+// lists window uses lists-lock.save, the bookmarks menu bookmarks-lock.save --
+// holding a single row:
+//   OWNER_TOKEN|TIMESTAMP
+// A blank token, or a timestamp older than the expiry, means the lock is free.
+//
+// Keeping it out of the data file is what makes re-stamping cheap: it is a one
+// row write to a tiny file, so it can run often without pushing the whole menu
+// back over the wire, and it never touches the data at all. Older data files
+// carry a leading LOCK| row from when the two shared a file; both menus drop
+// that row when they parse, and it goes for good the first time they save.
+
+export const LOCK_EXPIRE_MS = 75000; // a lock left behind is ignored after this
+export const LOCK_BEAT_MS = 15000;   // owner re-stamps the lock this often
+export const LOCK_SETTLE_MS = 600;   // let a competing claim land before checking
 
 export class FileLock {
 
   constructor(options = {}) {
-    this.readFile = options.read;
-    this.writeFile = options.write;
-    this.buildBody = options.body;
-    this.refresh = typeof options.refresh === 'function'
-      ? options.refresh
-      : () => this.writeFile(this.line(true) + this.buildBody());
-    this.onLost = typeof options.onLost === 'function' ? options.onLost : function () {};
+    this.file = options.file; // the lock file this instance guards
+    if (typeof options.onLost === 'function') {
+      this.onLost = options.onLost;
+    } else {
+      this.onLost = function () {};
+    }
+    // called with true / false after every exchange, for a caller that shows
+    // a connection state of its own
+    if (typeof options.onExchange === 'function') {
+      this.onExchange = options.onExchange;
+    } else {
+      this.onExchange = function () {};
+    }
     this.owned = false;
     this.beatTimer = null;
+    this.confirming = null;
     // identifies this window in the lock row (ASCII, no separators)
     this.token = Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
   }
 
-  // lock row for the top of the file
+  //// the row ////
+
+  // the whole file: one row, OWNER_TOKEN|TIMESTAMP
   line(held) {
-    const owner = held === true ? this.token : '';
-    const stamp = held === true ? Date.now() : 0;
-    return [LOCK_TAG, held === true ? '1' : '0', owner, stamp, '0'].join('|') + "\n";
+    if (held === true) {
+      return `${this.token}|${Date.now()}\n`;
+    }
+    return "|0\n";
   }
 
-  // the lock row out of file text, or null when the file has none
+  // lock file text -> { token, stamp }. Anything unreadable counts as free,
+  // which is the same answer a missing file gives.
   parse(text) {
+    const free = { token: "", stamp: 0 };
     if (typeof text !== 'string' || text === "") {
-      return null;
+      return free;
     }
-    const row = splitMenuData(text)
-      .map(line => cleanString(line))
-      .filter(line => line)
-      .map(line => line.split('|'))
-      .find(cols => cols[0] === LOCK_TAG);
-    if (!row) {
-      return null;
+    const rows = splitMenuData(text)
+      .map(row => cleanString(row))
+      .filter(row => row);
+    if (rows.length === 0) {
+      return free;
     }
-    const stamp = (row[3] || '').trim();
-    return {
-      state: row[1] === '1' ? 1 : 0,
-      token: (row[2] || '').trim(),
-      time: isNumeric(stamp) ? Number(stamp) : 0
-    };
+    const cols = rows[0].split('|');
+    if (cols.length < 2) {
+      return free;
+    }
+    if (!isNumeric(cols[1])) {
+      return free;
+    }
+    return { token: cols[0], stamp: Number(cols[1]) };
   }
 
-  // a lock counts only while somebody else holds it and it is still fresh
-  isBusy(text) {
-    const held = this.parse(text);
-    if (!held || held.state !== 1 || held.token === "" || held.token === this.token) {
+  // someone else is editing, and recently enough that they have not gone away
+  busy(text) {
+    if (text === null) {
+      return false; // nothing to go on; claim() refuses on its own
+    }
+    const row = this.parse(text);
+    if (row.token === "") {
       return false;
     }
-    return (Date.now() - held.time) < LOCK_EXPIRE_MS;
+    if (row.token === this.token) {
+      return false;
+    }
+    return (Date.now() - row.stamp) < LOCK_EXPIRE_MS;
   }
 
-  // reads the file and reports whether another window is holding it
-  async check() {
-    const text = await this.readFile();
-    return {
-      text: text,
-      busy: text === null ? false : this.isBusy(text),
-      offline: text === null
-    };
+  //// file ////
+
+  async read() {
+    const text = await readFile(this.file);
+    this.onExchange(text !== null);
+    return text;
   }
 
-  // takes the lock and starts the heartbeat. Pass the file text when it was
-  // just read, to save a second round trip. Always confirm() afterwards.
-  async claim(text = null) {
-    const fileText = text === null ? await this.readFile() : text;
-    if (fileText === null || this.isBusy(fileText)) {
+  async write(text) {
+    const sent = await writeFile(this.file, text);
+    this.onExchange(sent);
+    return sent;
+  }
+
+  //// claiming ////
+
+  // Takes the lock. Pass the lock file text if it has already been read --
+  // opening a menu reads the data and the lock together -- or leave it out
+  // and this reads it. Returns false when another window holds it, or when
+  // the read or the write failed.
+  async claim(text) {
+    let lockText = text;
+    if (lockText === undefined) {
+      lockText = await this.read();
+    }
+    if (lockText === null) {
+      return false; // the lock file could not be read, so do not assume it
+    }
+    if (this.busy(lockText)) {
       return false;
     }
     this.owned = true;
-    if (!await this.writeFile(this.line(true) + this.buildBody())) {
+    const sent = await this.write(this.line(true));
+    if (sent !== true) {
       this.owned = false;
       return false;
     }
@@ -613,51 +664,81 @@ export class FileLock {
     return true;
   }
 
-  // The file API has no compare-and-set, so two windows can claim at the same
-  // moment. Wait for any competing write to land, then read the lock back and
-  // stand down if the other one won. Await it to be certain before writing
-  // anything else, or let it run in the background and handle onLost.
-  async confirm() {
+  // Reads the row back after the settle pause. Two windows that claimed
+  // together both land here, and the one whose token is not in the file
+  // stands down. Left running in the background so the caller draws without
+  // waiting on it; settle() below holds any later write until it lands.
+  confirm() {
+    const running = this.runConfirm();
+    this.confirming = running;
+    running.finally(() => {
+      if (this.confirming === running) {
+        this.confirming = null;
+      }
+    });
+    return running;
+  }
+
+  async runConfirm() {
     await sleep(LOCK_SETTLE_MS);
     if (this.owned !== true) {
-      return false; // handed back while we waited
+      return true; // released or abandoned while the pause ran
     }
-    const text = await this.readFile();
-    if (text === null || this.owned !== true) {
-      return this.owned; // cannot tell; the heartbeat will settle it
+    const text = await this.read();
+    if (text === null) {
+      return true; // nothing to go on, so leave the claim standing
     }
-    const held = this.parse(text);
-    if (held && held.token === this.token) {
-      return true; // still ours
+    if (this.parse(text).token === this.token) {
+      return true;
     }
     this.stopBeat();
     this.owned = false;
-    this.onLost(text);
+    this.onLost();
     return false;
   }
 
-  // keeps the timestamp fresh so the lock does not expire while in use
+  // waits for a confirm that is still running, so nothing is written while it
+  // is still unknown whether this window holds the lock
+  async settle() {
+    if (this.confirming === null) {
+      return;
+    }
+    try {
+      await this.confirming;
+    } catch (error) {
+      // a failed confirm leaves the claim standing, which release handles
+    }
+  }
+
+  //// keeping and handing back ////
+
   startBeat() {
     this.stopBeat();
-    this.beatTimer = setInterval(() => {
-      if (this.owned === true) {
-        this.refresh();
-      }
-    }, LOCK_BEAT_MS);
+    this.beatTimer = setInterval(() => this.refresh(), LOCK_BEAT_MS);
   }
 
   stopBeat() {
-    if (this.beatTimer) {
+    if (this.beatTimer !== null) {
       clearInterval(this.beatTimer);
       this.beatTimer = null;
     }
   }
 
-  // Hands the lock back, writing the data out in the same request. Pass false
-  // when the caller's copy is not safe to write (unsaved edits after a failed
-  // write) -- the lock is then left to expire instead.
-  async release(write = true) {
+  // Re-stamps the timestamp so the lock does not expire under an open window.
+  // One row, to a file of its own -- the menu is not involved, and nothing the
+  // user has not saved goes anywhere.
+  async refresh() {
+    if (this.owned !== true) {
+      return true;
+    }
+    return await this.write(this.line(true));
+  }
+
+  // hands the lock back; write is false when the server is known to be
+  // unreachable, and then the lock is left to expire instead
+  async release(write) {
     this.stopBeat();
+    await this.settle();
     if (this.owned !== true) {
       return true;
     }
@@ -665,10 +746,10 @@ export class FileLock {
     if (write !== true) {
       return true;
     }
-    return await this.writeFile(this.line(false) + this.buildBody());
+    return await this.write(this.line(false));
   }
 
-  // drops the lock without writing anything
+  // drops the claim without writing anything
   abandon() {
     this.stopBeat();
     this.owned = false;

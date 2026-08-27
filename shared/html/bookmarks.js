@@ -26,6 +26,9 @@ import { html, showPopup, cleanString, splitMenuData, base64URLSafeEncode,
   base64URLSafeToStandard, sendCmd, dragGripElement, DragSort, FileLock,
   readFile, writeFile, LOCK_TAG } from './utils.js';
 
+// the edit lock, in a small file of its own beside the bookmarks (utils.js)
+const LOCK_FILE = 'bookmarks-lock.save';
+
 const FILE_NAME = 'bookmarks.save';
 const MENU_ID = 'bookmarks';         // drop-down container, drawn by main.js
 const BUTTONS_ID = 'bookmark-buttons';
@@ -131,16 +134,13 @@ export default class Bookmarks {
     this.loadedBody = "";    // the file as it was when the menu was drawn
     this.menuDrawn = false;  // rows are drawn and safe to read back out
     this.releasing = null;   // release in flight, so two cannot race
-    this.confirming = null;  // claim waiting to be confirmed, if any
     this.loading = false;    // the file is on its way in
     this.lookupBtn = null;   // site lookup button of the open window
     this.lookupTimer = null; // error text waiting to turn back into the icon
-    // one editor at a time, shared with the lists window (utils.js)
+    // one editor at a time, on the same lock the lists window uses (utils.js)
     this.lock = new FileLock({
-      read: () => readFile(FILE_NAME),
-      write: (text) => writeFile(FILE_NAME, text),
-      body: () => this.safeBody(),
-      onLost: (text) => this.lockLost(text)
+      file: LOCK_FILE,
+      onLost: () => this.lockLost()
     });
     this.dragSort = new DragSort({
       rowClass: ITEM_CLASS,
@@ -231,9 +231,20 @@ export default class Bookmarks {
 
   //// file ////
 
+  // Reads the bookmarks and the lock together. They are two files now, so two
+  // requests -- but they go out side by side and come back as a single wait,
+  // which is what the one read used to cost.
+  async readBoth() {
+    const [text, lockText] = await Promise.all([
+      readFile(FILE_NAME),
+      this.lock.read()
+    ]);
+    return { text: text, lockText: lockText, busy: this.lock.busy(lockText) };
+  }
+
   async load() {
     this.showLoading();
-    const { text, busy } = await this.lock.check();
+    const { text, busy } = await this.readBoth();
     this.loading = false;
     if (this.state === BKM_INACTIVE) {
       return; // menu closed while loading
@@ -272,7 +283,7 @@ export default class Bookmarks {
 
   // re-reads the file and redraws the menu from it
   async reload() {
-    const { text, busy } = await this.lock.check();
+    const { text, busy } = await this.readBoth();
     if (this.state === BKM_INACTIVE || text === null) {
       return false;
     }
@@ -529,7 +540,7 @@ export default class Bookmarks {
     if (this.lock.owned === true) {
       return true; // already ours, an edit window is open
     }
-    const { text, busy } = await this.lock.check();
+    const { text, lockText, busy } = await this.readBoth();
     if (!this.menuIsOpen()) {
       return false; // closed while the file was being read; claim nothing
     }
@@ -549,35 +560,28 @@ export default class Bookmarks {
       showPopup("[bookmarks] reloaded, changed by another user.");
       return false;
     }
-    if (!await this.lock.claim(text)) {
+    // the claim is a one row write to the lock file; the bookmarks are not
+    // touched, so nothing is written until the edit is actually finished
+    if (!await this.lock.claim(lockText)) {
       this.lockedElsewhere(text);
       return false;
     }
     // Two windows can claim in the same moment, so the claim still has to be
     // confirmed -- but that waits on a settling delay, and holding the edit
     // window back for it is a visible stall. It runs behind the window
-    // instead: the only thing written before it lands is the claim itself
-    // (the lock row over an unchanged body), and settleClaim() below holds
-    // every later write until the answer is in. A window that loses is shut
-    // again by lockLost().
-    this.confirming = this.lock.confirm();
-    this.confirming.finally(() => { this.confirming = null; });
+    // instead: the only thing written before it lands is the claim itself,
+    // which goes to the lock file and leaves the bookmarks alone, and the
+    // lock's own settle() holds every later write until the answer is in. A
+    // window that loses is shut again by lockLost().
+    this.lock.confirm();
     this.readOnly = false;
     return true;
   }
 
-  // waits for a claim that is still being confirmed, so nothing is written
-  // while it is still unknown whether this window holds the lock
-  async settleClaim() {
-    if (this.confirming) {
-      await this.confirming;
-    }
-  }
-
-  // Writes the menu out and hands the lock back in the same request. The rows
-  // are only trusted while a drawn menu is still on screen; if it has been
-  // torn down the copy the menu was drawn from goes back instead, so a
-  // teardown can never write an empty file over somebody's bookmarks.
+  // Writes the menu out and hands the lock back. The rows are only trusted
+  // while a drawn menu is still on screen; if it has been torn down the copy
+  // the menu was drawn from goes back instead, so a teardown can never write
+  // an empty file over somebody's bookmarks.
   //
   // Only ever one release at a time. close() and the edit window closing can
   // both call this in the same moment, and two of them in flight would each
@@ -605,15 +609,20 @@ export default class Bookmarks {
     // down and clears the rows in the same tick this is called from, so
     // waiting first would leave nothing to write.
     const body = this.safeBody();
-    await this.settleClaim();
+    await this.lock.settle();
     if (this.lock.owned !== true) {
       return true; // the claim was lost, and lockLost() has reported it
     }
-    this.lock.abandon(); // stops the heartbeat before the closing write
-    const sent = await writeFile(FILE_NAME, this.lock.line(false) + body);
+    // The lock is a file of its own now, so handing it back no longer carries
+    // the bookmarks with it: they are written first, while the lock is still
+    // held, and the lock is freed after.
+    const sent = await writeFile(FILE_NAME, body);
     if (sent) {
       this.loadedBody = body;
     }
+    // worth freeing even if that write did not land -- the rows are still in
+    // the menu either way, and a stuck lock helps nobody
+    await this.lock.release(true);
     return sent;
   }
 
@@ -637,13 +646,16 @@ export default class Bookmarks {
     }
   }
 
-  // a competing window won the lock in the moment we both claimed it
-  lockLost(text) {
+  // A competing window won the lock in the moment we both claimed it. The
+  // lock file says so on its own, so the bookmarks are re-read here to redraw
+  // from whatever the winner has: what is on screen may already be behind.
+  async lockLost() {
     this.closePrompt();
     this.discardPendingAdd();
     if (this.state !== BKM_INACTIVE) {
       this.state = BKM_OPEN_MODE;
     }
+    const text = await readFile(FILE_NAME);
     this.lockedElsewhere(text);
   }
 
