@@ -27,7 +27,11 @@ export default class ToggleSwitch {
       padding: 0
     };
     this.ticking = false; 
-    this.rafId = null; 
+    // One frame each, rather than one field shared between them: a pending
+    // move frame used to be overwritten by the release frame, so destroy()
+    // could only ever cancel whichever happened to be current.
+    this.moveRafId = null; 
+    this.upRafId = null; 
     this.clickBlockTimeout = null;
     this._render();
   }
@@ -75,7 +79,8 @@ export default class ToggleSwitch {
     window.removeEventListener('pointermove', this);
     window.removeEventListener('pointerup', this);
     window.removeEventListener('pointercancel', this);
-    if (this.rafId) cancelAnimationFrame(this.rafId); 
+    if (this.moveRafId) cancelAnimationFrame(this.moveRafId); 
+    if (this.upRafId) cancelAnimationFrame(this.upRafId); 
     if (this.clickBlockTimeout) clearTimeout(this.clickBlockTimeout);
     if (this.wrapper && this.wrapper.parentNode) {
       this.wrapper.parentNode.removeChild(this.wrapper); 
@@ -124,7 +129,7 @@ export default class ToggleSwitch {
       this.state.dragProgress = Math.max(0, Math.min(1, progress));
       let currentX = this.state.padding + (this.state.dragProgress * this.state.handleTravelDistance);
       if (!this.ticking) {
-        this.rafId = window.requestAnimationFrame(() => {
+        this.moveRafId = window.requestAnimationFrame(() => {
           if (!this.state.isDragging) {
             this.ticking = false;
             return; 
@@ -157,8 +162,8 @@ export default class ToggleSwitch {
       this.state.blockNextClick = true;
       this.clickBlockTimeout = setTimeout(() => { this.state.blockNextClick = false; }, 300);
       this.wrapper.style.setProperty('--drag-progress', newState ? '1' : '0');
-      this.rafId = window.requestAnimationFrame(() => {
-        this.rafId = window.requestAnimationFrame(() => {
+      this.upRafId = window.requestAnimationFrame(() => {
+        this.upRafId = window.requestAnimationFrame(() => {
           this.wrapper.classList.remove('is-dragging');
           this.wrapper.style.removeProperty('--drag-progress'); 
           this.wrapper.style.removeProperty('--drag-x'); 

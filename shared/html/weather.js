@@ -13,6 +13,10 @@ export default class WeatherWidget {
     // set by remove(); a reply that lands afterwards is dropped rather than
     // written into elements the page has already taken away
     this.removed = false;
+    // bumped per request: the auto-refresh and opening the menu can each have
+    // one in the air, and the slower of the two used to repaint over the
+    // fresher answer
+    this.requestGen = 0;
     this._handleOutsideClick = this._handleOutsideClick.bind(this);
     this.toggleMenu = this.toggleMenu.bind(this);
   }
@@ -41,6 +45,8 @@ export default class WeatherWidget {
 
   remove() {
     this.removed = true;
+    // anything still in flight is dropped by the generation check as well
+    this.requestGen++;
     if (this.timerId) {
       clearInterval(this.timerId);
       this.timerId = null;
@@ -58,6 +64,7 @@ export default class WeatherWidget {
 
   async fetchWeather() {
     if (this.removed) return;
+    const gen = ++this.requestGen;
     if (this.iconElement && this.spinnerElement) {
       this.iconElement.style.display = 'none';
       this.spinnerElement.style.display = 'inline-block';
@@ -66,11 +73,14 @@ export default class WeatherWidget {
       const response = await fetch(this.apiUrl);
       if (!response.ok) throw new Error('API Network Error');
       const data = await response.json(); 
-      if (this.removed) return; // torn down while the request was in flight
+      // torn down while the request was in flight, or a newer request has
+      // gone out since: either way this answer is no longer the current one,
+      // and the request that replaced it owns the spinner
+      if (this.removed || gen !== this.requestGen) return;
       this.weatherData = data;
       this._updateWeatherUI();
     } catch (error) {
-      if (this.removed) return;
+      if (this.removed || gen !== this.requestGen) return;
       console.error('Failed to fetch weather data:', error);
       if (this.iconElement && this.spinnerElement) {
         this.spinnerElement.style.display = 'none';

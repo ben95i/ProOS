@@ -1,0 +1,159 @@
+/*
+ *  Automate -- switch.css
+ *
+ *  ToggleSwitch: track, handle, ON / OFF lettering and the drag state,
+ *  plus the smaller variant used on a menu-checkbox row.
+ *
+ *  Split out of the old single styles.css. Loaded from index.html after
+ *  styles/main.css, which holds the globals (palette, buttons, menus) these
+ *  rules build on.
+ */
+
+/* ToggleSwitch sets contain: layout paint on its wrapper inline, and paint
+   containment clips to the wrapper box -- which is exactly the track, so the
+   handle's drop shadow was being cut off square along the bottom edge.
+   Layout containment is what the drag actually needs; dropping paint lets the
+   shadow fall outside the track again. Inline styles need the !important. */
+.menu-checkbox .toggle-switch {
+  contain: layout !important;
+}
+
+/* at this size the ON / OFF lettering no longer fits inside the handle, so
+   the switch reads by track colour and handle position alone */
+.menu-checkbox .toggle-text-on,
+.menu-checkbox .toggle-text-off {
+  display: none;
+}
+
+.menu-checkbox .toggle-handle {
+  padding-top: 0;
+}
+
+/* Toggle Switches */
+
+.toggle-switch {
+  --local-width: 130px;
+  --local-height: 55px;
+  --local-color-on: var(--main-75-white);
+  --local-color-off: var(--main-20-black);
+  --local-color-handle: var(--slider-bg);
+  --drag-progress: 0;
+  --drag-x: 0px;  
+  width: var(--local-width);
+  height: var(--local-height);
+  position: relative;
+  user-select: none; 
+}
+
+.toggle-input {
+  opacity: 0;
+  top: 0; 
+  left: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+  pointer-events: none;
+  appearance: none;
+  outline: none;
+}
+
+.toggle-label {
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: pointer;
+  position: relative;
+  touch-action: none; 
+}
+
+.toggle-track {
+  width: 100%;
+  height: 100%;
+  border-radius: var(--local-height);
+  background-color: var(--local-color-off);
+  box-shadow: inset 0 2px 5px rgba(0,0,0,0.05);
+  backface-visibility: hidden;
+  transform: translateZ(0);
+  position: relative;
+}
+
+.toggle-handle {
+  --handle-size: calc(var(--local-height) * 0.85);
+  --handle-padding: calc(var(--local-height) * 0.075);
+  width: var(--handle-size);
+  height: var(--handle-size);
+  padding-top: 5px;
+  border-radius: 50%;
+  background-color: var(--local-color-handle);
+  box-shadow: 0px 4px 10px rgba(0,0,0,0.5);
+  position: absolute;
+  top: var(--handle-padding);
+  left: var(--handle-padding); 
+  display: grid;
+  place-items: center;
+  z-index: 2;
+  transition: left 0.3s ease-in-out;
+  will-change: left;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+.toggle-text-on, .toggle-text-off {
+  grid-area: 1 / 1;
+  margin: 0;
+  transition: opacity .3s ease-in-out;
+  line-height: 0.75;
+  font-weight: bold;
+  font-size: calc(var(--local-height) / 3);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  color: #000;
+}
+
+.toggle-text-on {
+  opacity: 0; 
+}
+
+.toggle-text-off {
+  opacity: 1; 
+}
+
+.toggle-input:checked + .toggle-label .toggle-track {
+  background-color: var(--local-color-on);
+}
+
+.toggle-input:checked + .toggle-label .toggle-handle {
+  left: calc(100% - var(--handle-size) - var(--handle-padding));
+}
+
+.toggle-input:checked + .toggle-label .toggle-handle .toggle-text-on { opacity: 1; }
+.toggle-input:checked + .toggle-label .toggle-handle .toggle-text-off { opacity: 0; }
+
+.toggle-switch.is-dragging .toggle-track {
+  background-color: color-mix(
+    in srgb, 
+    var(--local-color-on) calc(var(--drag-progress) * 100%), 
+    var(--local-color-off)
+  ) !important;
+  transition: none !important; 
+}
+
+.toggle-switch.is-dragging .toggle-handle {
+  left: var(--drag-x) !important;
+  transition: none !important;
+}
+
+.toggle-switch.is-dragging .toggle-text-on {
+  opacity: var(--drag-progress) !important;
+  transition: none !important;
+}
+
+.toggle-switch.is-dragging .toggle-text-off {
+  opacity: calc(1 - var(--drag-progress)) !important;
+  transition: none !important;
+}
+
+/* END - Toggle Switches */

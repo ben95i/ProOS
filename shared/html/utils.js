@@ -53,7 +53,11 @@ export function splitMenuData(data) {
 export function requestThrottle(func, limit) {
   let lastFunc;
   let lastRan;
-  return function() {
+  // A declaration rather than a function expression on a const: the throttled
+  // function needs a name now that cancel() hangs off it, and naming it that
+  // way is what the linter asks for. Still a plain function, not an arrow, so
+  // `this` and `arguments` reach the wrapped call exactly as before.
+  function throttled() {
     const context = this;
     const args = arguments;
     if (!lastRan) {
@@ -68,7 +72,16 @@ export function requestThrottle(func, limit) {
         }
       }, limit - (Date.now() - lastRan));
     }
+  }
+  // Drops a trailing call that has not fired yet. Without this the last
+  // value of a drag went out up to `limit` after the menu or window it came
+  // from had been torn down -- a level arriving at a device whose slider is
+  // no longer on screen.
+  throttled.cancel = function() {
+    clearTimeout(lastFunc);
+    lastFunc = undefined;
   };
+  return throttled;
 }
 
 export function setTheme(newTheme) {
@@ -509,6 +522,22 @@ export async function writeFile(file, text) {
   }
 }
 
+// Hands a file to the browser to send on its own. A normal write is awaited,
+// and a page being torn down is exactly when the browser cancels requests
+// still in flight; a beacon is handed over and finished off without the page.
+// There is no answer to read, so this reports only whether the browser
+// accepted it. Shared by the lists window and the bookmarks menu.
+export function sendFileBeacon(file, text) {
+  if (typeof navigator === 'undefined') {
+    return false;
+  }
+  if (typeof navigator.sendBeacon !== 'function') {
+    return false;
+  }
+  const blob = new Blob([text], { type: 'text/plain' });
+  return navigator.sendBeacon(fileURL('write', file), blob) === true;
+}
+
 export function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -671,11 +700,15 @@ export class FileLock {
   confirm() {
     const running = this.runConfirm();
     this.confirming = running;
+    // The promise .finally() hands back is its own, and a rejection travels
+    // down it as well: with nothing attached it surfaced as an unhandled
+    // rejection even though settle() below catches the one that matters.
+    // This branch exists only to end that chain.
     running.finally(() => {
       if (this.confirming === running) {
         this.confirming = null;
       }
-    });
+    }).catch(() => {});
     return running;
   }
 

@@ -24,7 +24,7 @@
 
 import { html, showPopup, cleanString, splitMenuData, base64URLSafeEncode,
   base64URLSafeToStandard, sendCmd, dragGripElement, DragSort, FileLock,
-  readFile, writeFile, LOCK_TAG } from './utils.js';
+  readFile, writeFile, sendFileBeacon, LOCK_TAG } from './utils.js';
 
 // the edit lock, in a small file of its own beside the bookmarks (utils.js)
 const LOCK_FILE = 'bookmarks-lock.save';
@@ -134,6 +134,7 @@ export default class Bookmarks {
     this.loadedBody = "";    // the file as it was when the menu was drawn
     this.menuDrawn = false;  // rows are drawn and safe to read back out
     this.releasing = null;   // release in flight, so two cannot race
+    this.claiming = null;    // claim in flight, so two cannot race
     this.loading = false;    // the file is on its way in
     this.lookupBtn = null;   // site lookup button of the open window
     this.lookupTimer = null; // error text waiting to turn back into the icon
@@ -536,7 +537,29 @@ export default class Bookmarks {
   // write the file goes through here first, so a stale menu can never
   // overwrite another user's work: the file is re-read, and if it changed
   // since this menu was drawn the menu is redrawn and the caller backs off.
-  async beginLockedEdit() {
+  //
+  // Only ever one claim at a time, the same way releaseLock() below allows
+  // only one release. Three paths reach here -- the add button, a row icon
+  // and a drag being dropped -- and none of them is awaited by its caller, so
+  // two taps in quick succession used to run two of these side by side: both
+  // saw an unowned lock, both read the files and both wrote a claim. The add
+  // button had a guard of its own; the rows only had a spinner, which is not
+  // one. A second caller now waits on the first and gets its answer.
+  beginLockedEdit() {
+    if (this.claiming) {
+      return this.claiming;
+    }
+    const running = this.runBeginLockedEdit();
+    this.claiming = running;
+    running.finally(() => {
+      if (this.claiming === running) {
+        this.claiming = null;
+      }
+    }).catch(() => {});
+    return running;
+  }
+
+  async runBeginLockedEdit() {
     if (this.lock.owned === true) {
       return true; // already ours, an edit window is open
     }
@@ -597,7 +620,7 @@ export default class Bookmarks {
       if (this.releasing === running) {
         this.releasing = null;
       }
-    });
+    }).catch(() => {});
     return running;
   }
 
@@ -624,6 +647,33 @@ export default class Bookmarks {
     // the menu either way, and a stuck lock helps nobody
     await this.lock.release(true);
     return sent;
+  }
+
+  // Last chance as the page goes away. An ordinary write is exactly what the
+  // browser cancels during a teardown, so the rows and the lock row are
+  // handed over as beacons instead and finished off without the page. Before
+  // this, an edit open at unload was lost and the lock file kept the token of
+  // a window that no longer existed -- which left the menu read only on the
+  // next visit, since that visit arrives with a new token and its own old row
+  // reads as somebody else editing, until the stamp expires.
+  //
+  // Nothing here can be checked, so it only runs when the lock is really held.
+  unloadBeacon() {
+    if (this.lock.owned !== true) {
+      return false;
+    }
+    // the bookmarks first, while the lock is still held -- the same order
+    // runRelease() writes them in
+    const body = this.safeBody();
+    const handed = sendFileBeacon(FILE_NAME, body);
+    if (handed === true) {
+      this.loadedBody = body;
+    }
+    // then the lock row itself, freed whether or not the rows got away
+    if (sendFileBeacon(LOCK_FILE, this.lock.line(false)) === true) {
+      this.lock.abandon();
+    }
+    return handed;
   }
 
   async endLockedEdit() {

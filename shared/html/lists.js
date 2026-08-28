@@ -51,7 +51,7 @@
 // POST /api/write?file=<name> (text/plain body), for both files.
 
 import { splitMenuData, cleanString, isNumeric, removeWindow, showPopup,
-  dragGripElement, DragSort, FileLock, readFile, writeFile, fileURL,
+  dragGripElement, DragSort, FileLock, readFile, writeFile, sendFileBeacon,
   html } from './utils.js';
 
 const FILE_NAME = 'lists.save';
@@ -168,20 +168,11 @@ export class ListStore {
     return this.online;
   }
 
-  // Hands the file to the browser to send on its own. A normal write is
-  // awaited, and a page being torn down is exactly when the browser cancels
-  // requests still in flight; a beacon is handed over and finished off
-  // without the page. There is no answer to read, so this reports only
-  // whether the browser accepted it.
+  // Hands the file to the browser to send on its own. The implementation
+  // moved to utils.js when the bookmarks menu grew an unload path of its own
+  // and needed the identical thing; this stays as the store's way in.
   writeBeacon(file, text) {
-    if (typeof navigator === 'undefined') {
-      return false;
-    }
-    if (typeof navigator.sendBeacon !== 'function') {
-      return false;
-    }
-    const blob = new Blob([text], { type: 'text/plain' });
-    return navigator.sendBeacon(fileURL('write', file), blob) === true;
+    return sendFileBeacon(file, text);
   }
 
   //// file text ////
@@ -344,11 +335,14 @@ export class ListStore {
     const previous = this.saving;
     const running = this.runSave(previous);
     this.saving = running;
+    // the promise .finally() returns is a new one, and it rejects too; with
+    // nothing attached that showed up as an unhandled rejection even though
+    // every caller of save() handles the failure itself
     running.finally(() => {
       if (this.saving === running) {
         this.saving = null;
       }
-    });
+    }).catch(() => {});
     return running;
   }
 
@@ -456,7 +450,7 @@ export class ListStore {
       if (this.releasing === running) {
         this.releasing = null;
       }
-    });
+    }).catch(() => {});
     return running;
   }
 
@@ -524,13 +518,25 @@ export default class Lists {
       pointerup: (event) => this.dragSort.end(event),
       pointercancel: (event) => this.dragSort.end(event)
     };
-    // Page level listeners, attached once and left in place. They cost
+    // Page level listeners, attached for the life of the instance. They cost
     // nothing while the window is shut: with no lock held there is nothing
     // to write, and every one of them starts by checking exactly that.
-    document.addEventListener('visibilitychange', () => this.handleHidden());
-    window.addEventListener('pagehide', () => this.handleUnload());
-    window.addEventListener('unload', () => this.handleUnload());
-    window.addEventListener('pageshow', (event) => this.handleRestore(event));
+    //
+    // Held on `this` rather than passed as throwaway arrows, so dispose()
+    // can take them off again. They used to be unremovable, which kept every
+    // Lists instance -- its store, its lock token and its heartbeat --
+    // reachable from document and window for the life of the tab: a
+    // re-render (GoToHomePage) left the old one listening beside the new,
+    // and both answered pagehide by writing the same file.
+    this.pageListeners = {
+      hidden: () => this.handleHidden(),
+      unload: () => this.handleUnload(),
+      restore: (event) => this.handleRestore(event)
+    };
+    document.addEventListener('visibilitychange', this.pageListeners.hidden);
+    window.addEventListener('pagehide', this.pageListeners.unload);
+    window.addEventListener('unload', this.pageListeners.unload);
+    window.addEventListener('pageshow', this.pageListeners.restore);
   }
 
   //// saving ////
@@ -636,6 +642,19 @@ export default class Lists {
     this.mode = MODE_OPEN;
     this.openId = null;
     this.selected.clear();
+  }
+
+  // End of life for the instance, as opposed to the window. The close button
+  // uses destroy() instead and keeps the page listeners: a shut window still
+  // has to hand the lock back if the page is hidden while a release is
+  // settling. This is what the page calls when it is letting the instance go
+  // for good.
+  dispose() {
+    document.removeEventListener('visibilitychange', this.pageListeners.hidden);
+    window.removeEventListener('pagehide', this.pageListeners.unload);
+    window.removeEventListener('unload', this.pageListeners.unload);
+    window.removeEventListener('pageshow', this.pageListeners.restore);
+    this.destroy();
   }
 
   // Runs an exchange with the server with the ring turning by the status
@@ -815,6 +834,14 @@ export default class Lists {
     if (!list) {
       return;
     }
+    // A re-draw can arrive mid-drag -- lockLost() reaches here through the
+    // store's onChange -- and it replaces the rows the drag is still holding
+    // a reference to, so the row being carried would be left behind on a
+    // detached node. Dropping it first puts it back where it started, which
+    // is the right answer when the list is about to be rebuilt anyway. A drop
+    // that has already happened cancels to nothing, so the ordinary path
+    // through commitOrder() is untouched.
+    this.dragSort.cancel();
     const items = this.view === VIEW_ITEMS;
     const entry = this.openList();
     // title / back button

@@ -104,9 +104,24 @@ export default class RoomStateManager {
 
   async showRoomState() {
     if (this.isRunning || this.dead) return;
+    // A countdown from the previous cycle can still be armed. activityBegin()
+    // calls this on every click, and the timeout below used to be assigned
+    // straight over the old handle without clearing it: the orphan fired
+    // later, set isRunning false and started a second refresh chain beside
+    // this one, so a busy session ended up polling the device several times
+    // per interval.
+    this.stopRoomStateTimer();
     this.isRunning = true;
     const gen = ++this.requestGen;
     const lightIcon = document.getElementById("trafficLightIcon");
+    // The page was re-rendered underneath this manager. There is nothing left
+    // to paint, and going on would throw here -- and again inside the catch
+    // below, out of the handler, leaving the chain dead and the rejection
+    // unhandled.
+    if (!lightIcon || !this.container) {
+      this.isRunning = false;
+      return;
+    }
     this.container.classList.remove('status-loading');
     let cmd = App.currentRoom + 'status';
     this.setRefreshing(true);
@@ -205,7 +220,11 @@ export default class RoomStateManager {
   hideRoomState() {
     this.stopRoomStateTimer();
     const lightIcon = document.getElementById("trafficLightIcon");
-    this.container.classList.remove('status-loading');
+    // the icon lookup below has always been guarded; the container had not
+    // been, and it goes away in the same re-render the icon does
+    if (this.container) {
+      this.container.classList.remove('status-loading');
+    }
     this.setRefreshing(false);
     if (lightIcon) {
       // An error keeps its own colour and drops the state it replaced.

@@ -184,7 +184,12 @@ function handleClicks(event) {
   resetActivityTimer();
   // disable click events when in bookmark edit mode
   if (App.bookmarks && App.bookmarks.isEditMode()) {
-    if (event.target.className !== "editFav__win") {
+    // closest() rather than a className string compare: drawPrompt() adds
+    // "prompt_win" to the window after setting its class, so className has
+    // read "editFav__win prompt_win" for a while now and the equality test
+    // never matched -- every click in edit mode took the branch below,
+    // including the ones belonging to the window itself.
+    if (!event.target.closest(".editFav__win")) {
       // the button dispatcher below is a second listener on document, and
       // stopPropagation() does not stop listeners on the same node -- so
       // delegated buttons used to keep firing right through edit mode. The
@@ -1207,6 +1212,10 @@ async function bedPrompt() {
         throttledBedDown();
         break;
       case 'bed__btn-close':
+        // a trailing press still inside its 250ms window would otherwise go
+        // out after the window it came from had gone
+        throttledBedUp.cancel();
+        throttledBedDown.cancel();
         bedprompt.removeEventListener('click', handleButtonClicks);
         bedprompt.remove();
         break;
@@ -2262,7 +2271,7 @@ function createListItem(col0_in, col1, col2, menuid) {
   _elm.innerText = col2;
   // configure menu item
   switch (col1) {
-    case 'ledmenu': 
+    case 'ledmenu': {
       // LEDs menu
       const effect_cmd = col0;
       _elm.addEventListener("click", function() {
@@ -2273,15 +2282,17 @@ function createListItem(col0_in, col1, col2, menuid) {
         }
       });
       break;
-    case 'room':
+    }
+    case 'room': {
       // room selector menu
       _elm.addEventListener("click", function() {
         selectRoom(col0);
         refreshRoomState();
       });
       break;
-    case 'relaxmenu': 
-    case 'relaxactive': 
+    }
+    case 'relaxmenu':
+    case 'relaxactive': {
       // relax menu
       _elm.addEventListener("click", function() {
         sendCmd('main', 'relax', col0);
@@ -2293,7 +2304,8 @@ function createListItem(col0_in, col1, col2, menuid) {
         _elm.appendChild(relaxplay);
       }
       break;
-    case 'relaxstop': 
+    }
+    case 'relaxstop': {
       // relax menu
       _elm.addEventListener("click", function() {
         sendCmd('main', 'relaxstop');
@@ -2303,11 +2315,12 @@ function createListItem(col0_in, col1, col2, menuid) {
       relaxstop.classList.add('fa-stop');
       _elm.appendChild(relaxstop);
       break;
-    case 'link': 
+    }
+    case 'link':
       // URL menu
       _elm.href = col0;
       break;
-    case 'thm': 
+    case 'thm': {
       // theme menu 
       _elm.classList.add('theme-colorbox');
       _elm.style.setProperty('background-color', col0);
@@ -2315,7 +2328,8 @@ function createListItem(col0_in, col1, col2, menuid) {
         setTheme(col0);
       });
       break;
-    case 'chk':
+    }
+    case 'chk': {
       // Checkbox row for a browser-side setting
       const chksettings = WWW_SETTINGS[col0];
       if (!chksettings) break;
@@ -2340,7 +2354,8 @@ function createListItem(col0_in, col1, col2, menuid) {
       // removeDynMenus() destroys these, same as any other menu switch
       App.activeSwitches.push(chk_obj);
       break;
-    case 'slider':
+    }
+    case 'slider': {
       // horizontal slider menu
       const customMin = LEVEL_MENUS[cmd];
       const slider = document.createElement('input');
@@ -2358,7 +2373,8 @@ function createListItem(col0_in, col1, col2, menuid) {
       _elm.classList.add('slider-wide_container');
       _elm.classList.add('no-hover');
       break;
-    case 'subs':
+    }
+    case 'subs': {
       // subwoofer volume toggle
       const submode = subwooferVolumeEnabled();
       if (submode === true) {
@@ -2373,7 +2389,8 @@ function createListItem(col0_in, col1, col2, menuid) {
         });
       }
       break;
-    case 'toggle':
+    }
+    case 'toggle': {
       // switch-like toggle menu
       _elm.classList.add('no-hover');
       const tgl_state = col0 === '1' ? true : false;
@@ -2387,6 +2404,7 @@ function createListItem(col0_in, col1, col2, menuid) {
       tgl_obj.activate();
       App.activeSwitches.push(tgl_obj);
       break;
+    }
     case 'noind': 
       // no indicator type status menu
       addStatusListener(_elm, col0, host, cmd);
@@ -2441,6 +2459,9 @@ const throttledSliderSend = requestThrottle((host, cmd, val) => {
 function removeDynMenus() {
   // only if menu is on-screen 
   if (App.dynMenuActive == 1) {
+    // the last value of a drag can still be sitting in the throttle; without
+    // this it went out up to 50ms after the slider had left the page
+    throttledSliderSend.cancel();
     // A toggle row carries a ToggleSwitch with pointer listeners on it, so
     // the switches go before their markup does rather than being left bound
     // to detached nodes until the next removeDropdowns().
@@ -2521,6 +2542,12 @@ App.destroyAll = function() {
   // App.messagePopupTimer was never assigned and so never cleared anything
   clearPopupTimer();
   if (App.volPopupTimer) clearTimeout(App.volPopupTimer);
+  // Bookmarks, before anything is torn down: an open edit and the lock row go
+  // out as beacons, which survive the teardown that cancels the ordinary
+  // write destroyPageServices() would otherwise start and never finish. The
+  // lists window keeps its own pagehide beacon, which fires on iOS where this
+  // handler often does not.
+  if (App.bookmarks) App.bookmarks.unloadBeacon();
   // toggle switches
   destroyActiveSwitches();
   destroyPageServices();
@@ -2537,9 +2564,12 @@ function destroyPageServices() {
     App.starBackground.destroy();
     App.starBackground = null;
   }
-  // lists window
+  // Lists window. dispose() rather than destroy(): the page is letting the
+  // instance go, so its document / window listeners have to come off with it,
+  // or the old instance stays reachable from them and answers pagehide beside
+  // whichever instance replaced it.
   if (App.lists) {
-    App.lists.destroy();
+    App.lists.dispose();
     App.lists = null;
   }
   // colour picker -- holds window-level pointer listeners while dragging

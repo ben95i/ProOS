@@ -6,7 +6,20 @@
   <title id="title">Automate</title>
   <link href="img/automate.png" rel="icon" type="image/x-icon">
   <link href="fonts/fa/css/all.min.css" rel="stylesheet" type="text/css">
-  <link href="styles.css" rel="stylesheet" type="text/css">
+  <!-- One sheet per component, cut out of the old single styles.css.
+       ORDER MATTERS: main.css holds the globals (palette, .button, .dd-content,
+       the shared spinners) and must stay first, because several component
+       rules override one of its rules at equal specificity and only win by
+       coming later. lists.css stays last of the two list-style sheets: it
+       carries the drag handle rules the bookmarks menu also uses. -->
+  <link href="styles/main.css" rel="stylesheet" type="text/css">
+  <link href="styles/stars.css" rel="stylesheet" type="text/css">
+  <link href="styles/roomstate.css" rel="stylesheet" type="text/css">
+  <link href="styles/weather.css" rel="stylesheet" type="text/css">
+  <link href="styles/switch.css" rel="stylesheet" type="text/css">
+  <link href="styles/colorprompt.css" rel="stylesheet" type="text/css">
+  <link href="styles/bookmarks.css" rel="stylesheet" type="text/css">
+  <link href="styles/lists.css" rel="stylesheet" type="text/css">
   <!-- main.js imports wifi.js, device.js and utils.js itself, so they no
        longer need tags of their own -->
   <script type="module" src="main.js"></script>

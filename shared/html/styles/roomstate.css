@@ -1,0 +1,135 @@
+/*
+ *  Automate -- roomstate.css
+ *
+ *  Title-bar room status light: the SVG, its countdown ring, the refresh
+ *  spinner and the idle hatch.
+ *
+ *  Split out of the old single styles.css. Loaded from index.html after
+ *  styles/main.css, which holds the globals (palette, buttons, menus) these
+ *  rules build on.
+ */
+
+/*
+ *  Titlebar Room Status 
+ */
+
+.roomstatus-svgs {
+  width: 45px;
+  height: 45px;
+  margin-bottom: 2px;
+  display: block;
+  overflow: visible;
+}
+
+.spinner-path {
+  transform-origin: center;
+  transform: rotate(-90deg);
+  stroke: var(--main-40-white);
+  stroke-width: 5px;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100; 
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.5s ease, visibility 0.5s ease, stroke-dashoffset 0s; 
+}
+
+#status_anchor {
+  position: relative;
+  width: 50px;
+  height: 60px;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+}
+
+#status_anchor.status-loading .spinner-path {
+  opacity: 1;
+  visibility: visible;
+  stroke-dashoffset: 0;
+  transition: stroke-dashoffset var(--spin-duration, 2s) linear, opacity 0.5s ease, visibility 0.5s ease;
+}
+
+#trafficLightIcon {
+  transition: fill-opacity 0.5s ease;
+  fill-opacity: 1.0;
+  fill: transparent;
+}
+
+/* Refresh spinner, drawn while a status request is in flight. It rides the
+   same circle the countdown ring does: the 50-unit viewBox is drawn at 45px,
+   so the r=23 path is a 41.4px centre-line and its 5-unit stroke is 4.5px.
+   A border ring is measured outside-in, so the box is 41.4 + 4.5 = 45.9px.
+   Centred with margins rather than a transform, because the shared rotation
+   keyframes animate transform and would otherwise throw the centring away. */
+.roomstatus-spinner {
+  width: 45.9px;
+  height: 45.9px;
+  top: 50%;
+  left: 50%;
+  margin-left: -22.95px;
+  /* half the box, plus the 1px the svg sits above centre from its margin */
+  margin-top: -23.95px;
+  z-index: 1;
+  /* These two asked for 4.5px in the old single stylesheet and never got it:
+     the shared spinner rule (.btn-spinner, .right-nav-spinner,
+     .roomstatus-spinner, .bookmark-spinner in main.css) sits further down the
+     cascade at the same specificity, and its `border-top: 3px solid #fff`
+     shorthand re-set the width. The ring has therefore always drawn at 3px.
+     Splitting the file put this rule after that one, which would have handed
+     it the 4.5px and quietly changed the ring, so the value that has actually
+     been rendering is written here instead -- the split changes nothing on
+     screen. Raise both to 4.5px if the thicker ring is wanted. */
+  border-top-width: 3px;
+  border-right-width: 3px;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+#status_anchor.status-refreshing .roomstatus-spinner {
+  opacity: 0.55;
+  visibility: visible;
+}
+
+/* never both rings at once: the countdown drops out the moment a refresh
+   starts, without its usual half-second fade */
+#status_anchor.status-refreshing .spinner-path {
+  opacity: 0;
+  visibility: hidden;
+  transition: none;
+}
+
+/* Refresh stopped: the light keeps the colour of the last state that was
+   read and takes a hatch over it, so a reading that is no longer current is
+   never mistaken for a live one. */
+#statusHatch {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.5s ease;
+}
+
+#trafficLightIcon.status-idle ~ #statusHatch {
+  fill: #000;
+  opacity: 0.45;
+}
+
+/* nothing has been read yet, so there is no state to hold: the dot falls
+   back to the global yellow, dimmed to half, as it always did */
+#trafficLightIcon.status-idle:not(.status-on):not(.status-off) {
+  fill: var(--orange-ind);
+  fill-opacity: 0.4;
+}
+
+#trafficLightIcon.status-error {
+  fill: var(--red-ind);
+}
+
+#trafficLightIcon.status-on {
+  fill: var(--green-ind);
+}
+
+#trafficLightIcon.status-off {
+  fill: #000;
+}

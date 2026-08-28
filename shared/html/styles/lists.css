@@ -1,0 +1,405 @@
+/*
+ *  Automate -- lists.css
+ *
+ *  Lists window: header, rows, round buttons, rename box, status dot and
+ *  the unsaved-changes dialog. Also holds the shared drag handle -- see the
+ *  note above it.
+ *
+ *  Split out of the old single styles.css. Loaded from index.html after
+ *  styles/main.css, which holds the globals (palette, buttons, menus) these
+ *  rules build on.
+ */
+
+/*
+ *  Lists Window
+ */
+
+.list__win {
+  /* fixed so the window stays centered on a scrolled page */
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  /* 300px unless a name needs more room, and never wider than the screen */
+  width: max-content;
+  min-width: 400px;
+  max-width: 90vw;
+  height: 65vh;
+  padding: 5px 8px 0 8px;
+}
+
+.list__header {
+  display: flex;
+  align-items: center;
+  padding: 5px 5px 8px 5px;
+}
+
+.list__navbtn {
+  border: none;
+  outline: none;
+  padding: 0px;
+  width: 45px;
+  height: 40px;
+  cursor: default;
+  background-color: transparent;
+  color: var(--main-40-white);
+}
+
+/* the same glow the drop-down menu rows carry, and gated the same way */
+@media (hover: hover) and (pointer: fine) {
+  #list__btn-back:hover {
+    color: #fff;
+    text-shadow: var(--menu-glow);
+  }
+}
+
+.list__title {
+  flex-grow: 1;
+  padding-right: 45px; /* balances the back button */
+  text-align: center;
+  color: #fff;
+  font-size: 25px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.list__list {
+  /* grows into the spare space left by the minimum window height */
+  flex: 1 1 auto;
+  min-height: 0px;
+  border-radius: 5px;
+  background-color: var(--sec-60-black);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.list__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: auto;
+  padding: 12px 12px;
+  color: #fff;
+  text-align: left;
+  background-color: var(--sec-black-20);
+  border-bottom: 1px solid var(--sec-50-black);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* rows in the lists view stand half again as tall as the item rows: 12px of
+   padding either side becomes 21px */
+.list__row--tall {
+  padding-top: 21px;
+  padding-bottom: 21px;
+}
+
+/* Delete mode swaps the drag grip for a round button, and the round is the
+   taller of the two, so the row grew by the difference every time the mode
+   came on. Pinning both to the round's 30px takes the row height off what the
+   row happens to be holding, so it sits still through the swap. */
+.list__row .drag-grip,
+.list__row .list__label,
+.list__row .list__count {
+  line-height: 30px;
+}
+
+.list__row:last-child {
+  border-bottom: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .list__row:hover {
+    text-shadow: var(--menu-glow);
+  }
+}
+
+/* Shared drag handle -- lists window and bookmarks menu. The engine behind it
+   is DragSort in utils.js, which has no sheet of its own, and the three rules
+   below stay here rather than moving to main.css for a cascade reason:
+   .drag-row--active and .list__row both set background-color at the same
+   specificity, so the dragged row only comes out highlighted while this rule
+   sits after .list__row. main.css is loaded first, so putting them there
+   would have handed the row back its normal background mid-drag. */
+.drag-grip {
+  flex-shrink: 0;
+  padding: 0px 2px;
+  font-size: 20px;
+  color: var(--main-40-white);
+  touch-action: none;
+  cursor: grab;
+}
+
+.drag-grip--off {
+  visibility: hidden;
+}
+
+/* row being dragged, in either list */
+.drag-row--active {
+  position: relative;
+  z-index: 2;
+  border-radius: 5px;
+  background-color: var(--main-color);
+  color: #fff;
+  box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.5);
+}
+
+.list__round {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 2px solid var(--main-40-white);
+  transition: background-color 0.15s ease;
+}
+
+.list__round i {
+  font-size: 17px;
+  color: #fff;
+  opacity: 0;
+}
+
+.list__round--on {
+  background-color: var(--main-color);
+  border-color: var(--main-color);
+}
+
+.list__round--on i {
+  opacity: 1;
+}
+
+/* the same button while delete mode is on: red, so picking a row for deletion
+   never reads as ticking it off. The ring turns red as soon as the mode comes
+   on, whether or not the row is picked, so the mode itself is visible; the
+   fill follows on the rows that are actually selected. */
+.list__round--del {
+  border-color: var(--alert-red);
+}
+
+.list__round--del.list__round--on {
+  background-color: var(--alert-red);
+  border-color: var(--alert-red);
+}
+
+.list__label {
+  /* rename target -- a few pixels of padding around the text are part of it */
+  flex-shrink: 1;
+  min-width: 0px;
+  padding: 4px 6px;
+  margin: -4px -2px;
+  border-radius: 6px;
+  white-space: nowrap;
+  /* the window still grows to fit a long name up to its max-width; past that
+     the name is cut short here rather than widening the row */
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* the rest of the row: opens the list / ticks the item off */
+.list__fill {
+  flex: 1 1 auto;
+  min-width: 20px;
+  align-self: stretch;
+}
+
+.list__arrow {
+  flex-shrink: 0;
+  font-size: 20px;
+  color: var(--main-40-white);
+}
+
+/* rename box -- same look as the bookmarks "Search here..." box, sized in JS
+   to the space the name already had so the row does not change size */
+.list__namebox {
+  flex: none;
+  min-width: 0px;
+  /* matches .list__label, so the row height does not shift */
+  padding: 4px 6px;
+  margin: -4px -2px;
+  color: #fff;
+  background-color: var(--main-40-black);
+  box-shadow: 0 0 15px var(--main-40-white);
+  border: 3px solid #000;
+  outline: none;
+}
+
+.list__namebox::placeholder {
+  color: #c1c1c1;
+}
+
+.list__namebox:focus {
+  outline: 3px solid var(--main-40-white);
+}
+
+.list__empty {
+  padding: 20px 10px;
+  text-align: center;
+  font-size: 20px;
+  color: #a6a9ad;
+}
+
+/* un-checked count on a list row -- same text as the empty state */
+.list__count {
+  flex-shrink: 0;
+  font-size: 20px;
+  color: #a6a9ad;
+}
+
+/* total item count, at the bottom of an open list */
+.list__total {
+  padding: 20px 10px;
+  text-align: center;
+  font-size: 20px;
+  color: #a6a9ad;
+}
+
+.list__actions {
+  display: flex;
+  flex-wrap: nowrap;
+  justify-content: center;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+/* save state dot -- green once the server holds what is on screen */
+.list__dot {
+  display: none;
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background-color: var(--green-ind);
+  box-shadow: 0px 0px 6px var(--green-ind);
+}
+
+/* edits the server has not been given yet; they go out on close, on hide,
+   when the page is unloaded, or when this dot is tapped */
+.list__dot--unsaved {
+  background-color: var(--yellow-ind);
+  box-shadow: 0px 0px 6px var(--yellow-ind);
+}
+
+/* Turns around the status dot while the server is being waited on, in place
+   of any wording in the list area. The dot sits 20px wide at 18px in from the
+   top and right corner, so its centre is 28px in; a 30px ring centred on that
+   leaves a 5px gap all the way round it. */
+.list__spinner {
+  pointer-events: none;
+  position: absolute;
+  display: none;
+  top: 13px;
+  right: 13px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border-top: 3px solid #fff;
+  border-right: 3px solid transparent;
+  box-sizing: border-box;
+  animation: rotation 1s linear infinite;
+  z-index: 1;
+}
+
+.list__spinner--on {
+  display: inline-block;
+}
+
+/* only worth pressing while there is something to save, so it only offers
+   itself then */
+.list__dot--save {
+  cursor: pointer;
+}
+
+/* widens the tap area past the 20px dot without moving or reshaping it */
+.list__dot--save::before {
+  content: "";
+  position: absolute;
+  top: -12px;
+  left: -12px;
+  right: -12px;
+  bottom: -12px;
+}
+
+/* a write failed -- the edits are still in memory, nothing on the server
+   changed, and closing the window offers to retry or discard them */
+.list__dot--error {
+  background-color: var(--alert-red);
+  box-shadow: 0px 0px 6px var(--alert-red);
+}
+
+/* unsaved changes dialog, covers the window until it is answered */
+.list__overlay {
+  display: none;
+  position: absolute;
+  top: 0px;
+  left: 0px;
+  right: 0px;
+  bottom: 0px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 15px;
+  background-color: rgba(0, 0, 0, 0.75);
+}
+
+.list__dialog {
+  padding: 20px;
+  text-align: center;
+}
+
+.list__dialog-msg {
+  padding-bottom: 15px;
+  font-size: 25px;
+  color: #fff;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.list__dialog-btns {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+.list__dlg-btn {
+  width: 130px;
+  height: 60px;
+  font-size: 22px;
+}
+
+/* read only notice -- pushes the buttons over to the right */
+.list__status {
+  display: none;
+  align-self: center;
+  margin-right: auto;
+  padding-bottom: 5px;
+  padding-left: 8px;
+  font-size: 20px;
+  color: #fff;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.list__status i {
+  padding-right: 6px;
+}
+
+.list__btn {
+  width: 115px;
+  height: 60px;
+}
+
+/* the delete button while its mode is on, in the same red as the rings on the
+   rows -- the icon only, so the button keeps its usual face */
+#list__del-icon.list__del-icon--on {
+  color: var(--alert-red);
+}
