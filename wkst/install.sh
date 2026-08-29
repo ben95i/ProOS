@@ -80,22 +80,21 @@ alias ll='ls -la'
 alias mgmt='ssh ben@mgmt -i /home/ben/.ssh/mgmt_ben.rsa'
 alias esp='source "/home/ben/.espressif/tools/activate_idf_v6.0.1.sh"; echo "switch to the projects directory, and then run:"; echo "idf.py -p /dev/ttyUSB0 flash"'
 SPINNER=("|" "/" "-" "\\")
-echo "Press any key for a local shell."
-RUN_MGMT=true
+echo "Press any key to connect to the server."
+RUN_MGMT=false
 LOOPS=50
 for (( I=LOOPS; I>=1; I-- )); do
     SEC=$(( (I + 9) / 10 ))
     SPIN_IDX=$(( (LOOPS - I) % 4 ))
     SPIN_CHAR=${SPINNER[$SPIN_IDX]}
-    printf "\rConnecting to server in %2d seconds... %s " "$SEC" "$SPIN_CHAR"
+    printf "\rOpening local shell in%2d seconds... %s " "$SEC" "$SPIN_CHAR"
     if read -r -t 0.1 -n 1 -s KEY; then
-        RUN_MGMT=false
+        RUN_MGMT=true
         break
     fi
 done
-echo -e "\n"
+printf "\rOpening local shell...\e[K\n"
 if [ "$RUN_MGMT" = true ]; then
-    echo -e "Logging on to server..."
     mgmt
 else 
     timeout 30 bash -c fastfetch

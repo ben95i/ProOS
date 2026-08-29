@@ -427,3 +427,89 @@
 #list__del-icon.list__del-icon--on {
   color: var(--alert-red);
 }
+
+/*
+ *  Encrypted lists
+ *
+ *  The lock in the top left corner, the badge on a row and the password
+ *  prompt. The prompt is the unsaved-changes dialog's markup with boxes in
+ *  it, so it inherits .list__overlay / .list__dialog / .list__dlg-btn above
+ *  and the boxes inherit .list__namebox -- only what differs is here.
+ */
+
+/* the lock shares the corner with the back button and its glow with it */
+@media (hover: hover) and (pointer: fine) {
+  #list__btn-lock:hover {
+    color: #fff;
+    text-shadow: var(--menu-glow);
+  }
+}
+
+/* open: the same white the header text carries, so the state reads at a
+   glance from across the room rather than only from the icon's shape */
+#list__lock-icon.list__lock-icon--on {
+  color: #fff;
+  text-shadow: var(--menu-glow);
+}
+
+/* On a list row: a badge saying the list is encrypted, and on the row being
+   added, the button that makes it one. Sized to the round button beside it so
+   the row keeps its height either way. */
+.list__rowlock {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  font-size: 17px;
+  color: var(--main-40-white);
+  /* the press must not take the focus off the name box on the same row --
+     see rowLockElement() -- and nothing here should look selectable either */
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+
+.list__rowlock--on {
+  color: #fff;
+  text-shadow: var(--menu-glow);
+}
+
+/* password boxes: the rename box's look, at the width of the dialog */
+.list__pwbox {
+  display: block;
+  width: 260px;
+  margin: 0 auto 12px auto;
+  font-size: 20px;
+  text-align: center;
+}
+
+/* wrong password, mismatched pair, or a write that did not land */
+.list__pwerr {
+  min-height: 24px;
+  padding-bottom: 8px;
+  font-size: 18px;
+  color: var(--alert-red);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Held down for three seconds, the lock offers a password change. The colour
+   creeps across that time on its own, so the hold shows it is counting
+   without anything having to drive it -- the class goes on when the press
+   starts and comes off when it ends, and the transition is the whole
+   animation. */
+#list__lock-icon.list__lock-icon--hold {
+  color: var(--yellow-ind);
+  transition: color 3s linear;
+}
+
+/* a long press on a button is a text selection or a callout everywhere else;
+   here it is the gesture itself */
+#list__btn-lock {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+}

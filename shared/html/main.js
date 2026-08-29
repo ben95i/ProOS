@@ -796,11 +796,11 @@ function svrOptMainTemplate() {
     </div>
   </div>
   <div class="dropdown">
-    <button type="button" class="button svropt_button" id="btn-menu-pve">
-      <span class="button__text"><i class="fad fa-microchip"></i> PVE</span>
+    <button type="button" class="button svropt_button" id="btn-menu-system">
+      <span class="button__text"><i class="fad fa-microchip"></i> System</span>
     </button>
-    <div class="dd-content dd-button" id="pve-menu">
-      <a id="btn-ext-pve"><i class="fad fa-link"></i> Open</a>
+    <div class="dd-content dd-button" id="system-menu">
+      <a id="btn-ext-system"><i class="fad fa-link"></i> Open</a>
       <a id="btn-open-regions"><i class="fad fa-th"></i> Regions</a>
       <a id="btn-open-backup"><i class="fad fa-sync"></i> Backup</a>
       <a id="btn-svr-syslog"><i class="fad fa-tachometer"></i> Status</a>
@@ -877,8 +877,8 @@ registerListeners({
   'btn-svr-startxana':    () => serverAction('startxana'),
   'btn-svr-stopxana':     () => serverAction('stopxana'),
   'btn-svr-restorexana':  () => serverAction('restorexana'),
-  'btn-menu-pve':         () => showMenu('pve-menu'),
-  'btn-ext-pve':          () => GoToExtPage('pve:8006'),
+  'btn-menu-system':      () => showMenu('system-menu'),
+  'btn-ext-system':       () => GoToExtPage('pve:8006'),
   'btn-open-backup':      () => openServerPanel(svrOptBackupTemplate),
   'btn-open-regions':     () => openServerPanel(svrOptRegionsTemplate),
   'btn-svr-syslog':       () => serverAction('syslog'),

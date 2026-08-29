@@ -50,12 +50,39 @@
 // Same file API as the bookmarks menu: GET /api/read?file=<name> and
 // POST /api/write?file=<name> (text/plain body), for both files.
 
+//
+// Encrypted lists
+//
+// A list can be locked. Its name and every item in it are held on one row as
+// a single AES-256-GCM blob:
+//   LIST_ID|!ENC|0|E1.<iv>.<ciphertext>|0
+// so nothing about it is in the file as itself -- not the name, not the item
+// count, not whether anything is ticked off. An older parser reads that row
+// as a list with no items rather than as damage.
+//
+// The key comes from a password, through the shared helpers in utils.js: one
+// PBKDF2 pass gives both the AES key and a verifier, and only a hash of the
+// verifier is stored, in lists-pwd.save. That file is the whole answer to
+// "is a password set up" -- blank means no. Nothing in it opens a list.
+//
+// The lock button in the top left corner is the only way in. While it is
+// locked the encrypted lists are not drawn, not counted and not opened; they
+// sit in memory as the blobs they arrived as, and are written back untouched.
+// Unlocking asks for the password, decrypts them in place and draws them
+// beside the rest. Locking again -- by pressing it, or by closing the window
+// -- saves first, then drops the key and the plaintext together.
+//
+// The key never leaves this tab: not to storage, not to a cookie, and not to
+// the server, which holds ciphertext and a hash and can read neither.
+
 import { splitMenuData, cleanString, isNumeric, removeWindow, showPopup,
   dragGripElement, DragSort, FileLock, readFile, writeFile, sendFileBeacon,
-  html } from './utils.js';
+  html, FileCrypt, cryptoReady, isCryptBlob, cryptContext,
+  encryptText } from './utils.js';
 
 const FILE_NAME = 'lists.save';
 const LOCK_FILE = 'lists-lock.save';
+const PWD_FILE = 'lists-pwd.save';
 const WIN_TITLE = 'Lists';
 // element IDs
 const WIN_ID = 'list__win';
@@ -72,6 +99,23 @@ const RETRY_BTN_ID = 'list__btn-retry';
 const DISCARD_BTN_ID = 'list__btn-discard';
 const DEL_ICON_ID = 'list__del-icon';
 const DEL_ICON_ON_CLASS = 'list__del-icon--on';
+// lock button and the password prompt it raises
+const LOCK_BTN_ID = 'list__btn-lock';
+const LOCK_ICON_ID = 'list__lock-icon';
+const LOCK_ICON_ON_CLASS = 'list__lock-icon--on';
+const PWD_OVERLAY_ID = 'list__pwd';
+const PWD_MSG_ID = 'list__pwd-msg';
+const PWD_BOX_ID = 'list__pwd-box';
+const PWD_BOX2_ID = 'list__pwd-box2';
+const PWD_BOX3_ID = 'list__pwd-box3';
+const PWD_ERR_ID = 'list__pwd-err';
+const PWD_OK_BTN_ID = 'list__btn-pwd-ok';
+const PWD_CANCEL_BTN_ID = 'list__btn-pwd-cancel';
+const ROW_LOCK_CLASS = 'list__rowlock';
+const ROW_LOCK_ON_CLASS = 'list__rowlock--on';
+const LOCK_HOLD_CLASS = 'list__lock-icon--hold';
+// how long the lock has to be held down to offer a password change
+const LOCK_HOLD_MS = 2500;
 const DOT_UNSAVED_CLASS = 'list__dot--unsaved';
 const DOT_SAVE_CLASS = 'list__dot--save';
 const SPINNER_ID = 'list__spinner';
@@ -108,6 +152,14 @@ const VIEW_ITEMS = 1;
 // list modes
 const MODE_OPEN = 0;
 const MODE_SELECT = 1;
+// What stands in the name column of an encrypted row. It is not a name and
+// cannot be mistaken for one: cleanName() takes "!" through untouched, but
+// every real name has been through it too and none of them come out as this.
+const ENC_MARK = '!ENC';
+// password prompt modes
+const PWD_SETUP = 0;  // no password yet -- pick one, twice
+const PWD_UNLOCK = 1; // one is set -- enter it
+const PWD_CHANGE = 2; // the old one and the new one, twice
 
 //// shared helpers ////
 
@@ -186,9 +238,14 @@ export class ListStore {
     this.dirty = false;     // edits in memory that the server has not been given
     this.saving = null;     // in-flight save, so writes cannot overlap
     this.sentBody = null;   // the list text the server is known to hold
+    this.wireBody = null;   // the list text on the wire right now, if any
     this.loaded = false;    // a parsed list is standing in this.data
     this.lastGoodBody = ""; // last body known to be safe to write back
     this.releasing = null;  // release in flight, so two cannot race
+    this.sealing = null;    // re-encrypt in flight, awaited before a write
+    // the password for the encrypted lists, and the key while it is entered
+    // (utils.js). Starts locked, every time.
+    this.crypt = new FileCrypt({ file: PWD_FILE });
     // one editor at a time, in a file of its own (utils.js)
     this.lock = new FileLock({
       file: LOCK_FILE,
@@ -221,12 +278,20 @@ export class ListStore {
   //// file text ////
 
   // file text -> rows of columns, blank lines dropped
+  //
+  // Anything outside printable ASCII is taken out of a row before it is
+  // split. Nothing this file holds is written with such a character in it --
+  // names are cleaned on the way in and a blob is base64 -- so a row carrying
+  // one has been damaged in transit, and dropping the damage is what lets the
+  // rest of the row still be read.
   rows(text) {
     if (typeof text !== 'string' || text === "") {
       return [];
     }
     return splitMenuData(text)
       .map(row => cleanString(row))
+      .filter(row => row)
+      .map(row => row.replace(NON_ASCII, ''))
       .filter(row => row)
       .map(row => row.split(COL_DELIMITER));
   }
@@ -240,10 +305,37 @@ export class ListStore {
         return; // not a list row (the lock row lands here)
       }
       const listId = Number(cols[0]);
+      // An encrypted list is one row and stays sealed: the name column says
+      // so, and everything the list holds is in the blob on it. It is kept
+      // whether or not it can be opened, so a locked window writes it back
+      // exactly as it arrived.
+      if (cols[1] === ENC_MARK) {
+        const blob = (cols[3] || '').trim();
+        if (!found.has(listId) && blob !== "") {
+          // A blob that no longer looks like one is still kept, and still
+          // written back. It cannot be opened and it will not be re-encrypted,
+          // but a row nobody can read is worth more than a row that quietly
+          // disappears the next time the file is saved.
+          found.set(listId, {
+            id: listId,
+            name: "",
+            items: [],
+            enc: true,     // this list is held encrypted
+            open: false,   // its blob has been decrypted into name / items
+            stale: false,  // it has been edited since the blob was made
+            bad: !isCryptBlob(blob),
+            blob: blob
+          });
+        }
+        return;
+      }
       let entry = found.get(listId);
       if (!entry) {
         entry = { id: listId, name: cleanName(cols[1]), items: [] };
         found.set(listId, entry);
+      }
+      if (entry.enc === true) {
+        return; // a plain row cannot join an encrypted list
       }
       // empty item fields mark a list that has no items yet
       const itemName = cleanItemName(decodeLines(cols[3]));
@@ -263,6 +355,18 @@ export class ListStore {
   buildBody() {
     let _file = "";
     this.data.forEach(entry => {
+      if (entry.enc === true) {
+        // One row, and the blob is all of it. sealOpen() has already refreshed
+        // it for anything edited since; a list still sealed writes back the
+        // blob it was read as, which is the only thing that could be done with
+        // it anyway -- including one that arrived damaged, which is kept so it
+        // can be looked at rather than lost. A blob that somehow went missing
+        // takes its row with it rather than writing a half list.
+        if (typeof entry.blob === 'string' && entry.blob !== "") {
+          _file += `${entry.id}|${ENC_MARK}|0|${entry.blob}|0\n`;
+        }
+        return;
+      }
       const head = `${entry.id}|${entry.name}`;
       if (entry.items.length === 0) {
         _file += head + "|||0\n";
@@ -292,6 +396,179 @@ export class ListStore {
       return this.buildBody();
     }
     return this.lastGoodBody;
+  }
+
+  //// encrypted lists ////
+  //
+  // An encrypted list is the same entry as any other while it is open: the
+  // window adds items to it, renames it and re-orders it without knowing.
+  // The difference is only in how it reaches the file, and that is all here.
+
+  unlocked() {
+    return this.crypt.isUnlocked();
+  }
+
+  // is there anything encrypted to unlock in the first place
+  hasSealed() {
+    return this.data.some(entry => entry.enc === true);
+  }
+
+  // an entry the window is allowed to draw: everything, less the encrypted
+  // lists that have not been opened
+  isHidden(entry) {
+    return entry.enc === true && entry.open !== true;
+  }
+
+  // the whole list, as the one string that goes inside the blob
+  sealText(entry) {
+    return JSON.stringify({
+      n: entry.name,
+      i: entry.items.map(item => ({
+        i: item.id,
+        n: item.name,
+        c: item.checked === true ? 1 : 0
+      }))
+    });
+  }
+
+  // and back again. Anything that is not the shape it went in as is refused
+  // rather than half loaded.
+  readSealed(entry, text) {
+    let held = null;
+    try {
+      held = JSON.parse(text);
+    } catch (error) {
+      return false;
+    }
+    if (!held || typeof held.n !== 'string' || !Array.isArray(held.i)) {
+      return false;
+    }
+    entry.name = cleanName(held.n);
+    entry.items = held.i
+      .filter(item => item && isNumeric(String(item.i)))
+      .map(item => ({
+        id: Number(item.i),
+        name: cleanItemName(String(item.n)),
+        checked: Number(item.c) === 1
+      }))
+      .filter(item => item.name !== "");
+    return true;
+  }
+
+  // Opens every sealed list the key fits. One that will not open is left
+  // sealed and counted: it belongs to another password, or it has been
+  // tampered with, and either way overwriting it would be worse than leaving
+  // it where it is.
+  async unsealAll() {
+    let opened = 0;
+    let failed = 0;
+    if (!this.unlocked()) {
+      return { opened: opened, failed: failed };
+    }
+    for (const entry of this.data) {
+      if (entry.enc !== true || entry.open === true) {
+        continue;
+      }
+      const text = await this.crypt.decrypt(entry.blob, cryptContext(FILE_NAME, entry.id));
+      if (text === null || !this.readSealed(entry, text)) {
+        failed += 1;
+        continue;
+      }
+      entry.open = true;
+      entry.stale = false;
+      opened += 1;
+    }
+    return { opened: opened, failed: failed };
+  }
+
+  // Re-encrypts every open list that has been edited since its blob was made.
+  // A fresh IV every time, so the same list never goes to the file as the
+  // same bytes twice.
+  async sealOpen() {
+    if (!this.unlocked()) {
+      return true;
+    }
+    let done = true;
+    for (const entry of this.data) {
+      if (entry.enc !== true || entry.open !== true || entry.stale !== true) {
+        continue;
+      }
+      const blob = await this.crypt.encrypt(
+        this.sealText(entry), cryptContext(FILE_NAME, entry.id));
+      if (blob === null) {
+        done = false; // the key went while this was running
+        continue;
+      }
+      entry.blob = blob;
+      entry.stale = false;
+    }
+    return done;
+  }
+
+  // Kicks a seal off in the background after an edit, so the blobs are
+  // already fresh by the time anything wants to write them -- including the
+  // beacon on the way out of the page, which cannot wait for anything. It is
+  // a few milliseconds of AES over one list; the write paths await it anyway.
+  sealSoon() {
+    const running = this.sealOpen();
+    this.sealing = running;
+    running.finally(() => {
+      if (this.sealing === running) {
+        this.sealing = null;
+      }
+    }).catch(() => {});
+    return running;
+  }
+
+  async settleSeal() {
+    if (this.sealing === null) {
+      return;
+    }
+    try {
+      await this.sealing;
+    } catch (error) {
+      // a seal that threw leaves the entry stale, and the next one redoes it
+    }
+  }
+
+  // Shuts the encrypted lists again: the blobs are brought up to date, then
+  // the plaintext and the key are dropped together. The caller saves first --
+  // this is the point of no return for anything still in memory.
+  async lockUp() {
+    await this.sealOpen();
+    this.data.forEach(entry => {
+      if (entry.enc !== true) {
+        return;
+      }
+      entry.name = "";
+      entry.items = [];
+      entry.open = false;
+      entry.stale = false;
+    });
+    this.crypt.lock();
+  }
+
+  // Turns a list into an encrypted one, or back into a plain one. Only ever
+  // on a list the user is adding, and only while the key is in hand.
+  setSealed(entry, sealed) {
+    if (!entry) {
+      return false;
+    }
+    if (sealed === true) {
+      if (!this.unlocked()) {
+        return false;
+      }
+      entry.enc = true;
+      entry.open = true;
+      entry.stale = true;
+      entry.blob = null;
+    } else {
+      delete entry.enc;
+      delete entry.open;
+      delete entry.stale;
+      delete entry.blob;
+    }
+    return true;
   }
 
   //// session ////
@@ -325,6 +602,11 @@ export class ListStore {
     }
     this.data = this.parse(text);
     this.loaded = true;
+    // a window re-opened while the key is still in hand shows what it showed
+    // before, rather than making the password be entered a second time
+    if (this.unlocked()) {
+      await this.unsealAll();
+    }
     // what the server holds: a save that builds this same text again has
     // nothing to say and is dropped rather than put on the wire
     this.sentBody = this.buildBody();
@@ -355,6 +637,9 @@ export class ListStore {
     } else {
       this.data = this.parse(text);
       this.loaded = true;
+      if (this.unlocked()) {
+        await this.unsealAll();
+      }
     }
     showPopup(`[${WIN_TITLE}] another user is editing, opened read only.`);
     this.onChange();
@@ -369,6 +654,20 @@ export class ListStore {
   // only records that the server is now behind, which turns the dot yellow.
   markChanged() {
     this.dirty = true;
+    // The edit may have been to an encrypted list, and there is no cheap way
+    // to know which from here -- so every open one is marked and re-sealed.
+    // It is AES over a few kilobytes, and it keeps the blobs ready for a
+    // write that cannot wait, rather than only for the ones that can.
+    let any = false;
+    this.data.forEach(entry => {
+      if (entry.enc === true && entry.open === true) {
+        entry.stale = true;
+        any = true;
+      }
+    });
+    if (any) {
+      this.sealSoon();
+    }
   }
 
   // Writes the list out, if there is anything the server has not been given.
@@ -404,6 +703,9 @@ export class ListStore {
     if (this.dirty !== true) {
       return true; // the server is already holding this list
     }
+    // nothing goes out until every encrypted list has been brought up to date
+    await this.settleSeal();
+    await this.sealOpen();
     const body = this.safeBody();
     if (body === this.sentBody) {
       // the edits since the last write cancelled each other out, so the file
@@ -411,7 +713,11 @@ export class ListStore {
       this.dirty = false;
       return true;
     }
+    // what is on the wire right now, so the beacon on the way out of the page
+    // does not send the same text a second time
+    this.wireBody = body;
     const sent = await this.write(body);
+    this.wireBody = null;
     if (sent === true) {
       this.sentBody = body;
       this.lastGoodBody = body; // the server took it, so it is safe to redo
@@ -423,6 +729,10 @@ export class ListStore {
   // The last-chance save for a page that is going away. It cannot be awaited
   // and it cannot be checked, so it is only worth sending when there really
   // is something outstanding.
+  //
+  // Nothing can be encrypted here either -- WebCrypto is a promise and the
+  // page is not waiting. It sends the blobs sealSoon() has already made,
+  // which is why that runs on every edit rather than only before a write.
   saveBeacon() {
     if (!this.canWrite()) {
       return false;
@@ -431,6 +741,14 @@ export class ListStore {
       return false;
     }
     const body = this.safeBody();
+    // A save started when the page was hidden is often still on the wire when
+    // it is unloaded a moment later. Sending the same text again behind it
+    // gains nothing and puts two writes on one file at once, which is how the
+    // file used to end up with a hole in it -- the server writes atomically
+    // now, but the second request is still pointless.
+    if (body === this.wireBody) {
+      return false;
+    }
     const handed = this.writeBeacon(FILE_NAME, body);
     if (handed === true) {
       // taken on trust: there is no answer to wait for
@@ -538,6 +856,12 @@ export default class Lists {
     this.mode = MODE_OPEN;
     this.openId = null;   // list being viewed
     this.editing = false; // inline name box is open
+    this.newId = null;    // row being added, while its name box is open
+    this.pwdMode = null;  // password prompt: setup / unlock, or not up
+    this.pwdDone = null;  // what to run once it has been answered
+    this.holdTimer = null; // the lock is being held down
+    this.held = false;     // it was held long enough, so the press is spent
+    this.epoch = 0;       // counts openings, so a late teardown knows its own
     this.busy = false;    // an exchange with the server is being waited on
     this.settling = false; // rows are up, the edit lock has not answered yet
     // rows picked out for deletion, by id. Kept here rather than read back
@@ -554,13 +878,24 @@ export default class Lists {
       // no re-ordering while a name box is open, or while rows are being
       // picked out for deletion
       pointerdown: (event) => {
+        this.holdStart(event);
         if (!this.editing && this.mode !== MODE_SELECT) {
           this.dragSort.start(event);
         }
       },
-      pointermove: (event) => this.dragSort.move(event),
-      pointerup: (event) => this.dragSort.end(event),
-      pointercancel: (event) => this.dragSort.end(event)
+      pointermove: (event) => {
+        // a finger that slides off the lock has changed its mind
+        this.holdCheck(event);
+        this.dragSort.move(event);
+      },
+      pointerup: (event) => {
+        this.holdCancel();
+        this.dragSort.end(event);
+      },
+      pointercancel: (event) => {
+        this.holdCancel();
+        this.dragSort.end(event);
+      }
     };
     // Page level listeners, attached for the life of the instance. They cost
     // nothing while the window is shut: with no lock held there is nothing
@@ -640,6 +975,7 @@ export default class Lists {
       this.closeWindow();
       return;
     }
+    this.epoch += 1;
     this.view = VIEW_LISTS;
     this.mode = MODE_OPEN;
     this.openId = null;
@@ -678,10 +1014,30 @@ export default class Lists {
   destroy() {
     this.busy = false;
     this.settling = false;
+    this.holdCancel();
+    this.held = false;
     this.dragSort.cancel();
-    this.store.release();
+    // The release writes out anything still unsaved, and that write needs the
+    // key -- so the lock comes after it rather than beside it. Closing the
+    // window is one of the two ways the encrypted lists are shut again.
+    const releasing = this.store.release();
+    // A window closed and opened again in the moment that release takes would
+    // otherwise have the key taken back off it by the chain below, after it
+    // had been entered again. The count says which window this belongs to.
+    this.epoch += 1;
+    const token = this.epoch;
+    Promise.resolve(releasing)
+      .catch(() => {})
+      .then(() => {
+        if (this.epoch === token) {
+          return this.store.lockUp();
+        }
+      })
+      .catch(() => {});
     removeWindow(WIN_ID);
+    this.closePassword();
     this.editing = false;
+    this.newId = null;
     this.view = VIEW_LISTS;
     this.mode = MODE_OPEN;
     this.openId = null;
@@ -749,23 +1105,32 @@ export default class Lists {
     if (this.isOpen()) {
       return;
     }
+    // The back button starts hidden. The window always opens on the lists
+    // view, and the first render() is a round trip away -- without this the
+    // back button is on screen beside the lock for the length of the read,
+    // which on a slow link is long enough to look like both belong there.
+    // render() owns the slot from its first draw onward.
     const markup = html`
 <div id="${WIN_ID}" class="prompt_win list__win nohide">
   <span class="list__dot" id="${DOT_ID}"></span>
   <span class="list__spinner" id="${SPINNER_ID}"></span>
   <div class="list__header">
-    <button type="button" class="list__navbtn" id="${BACK_BTN_ID}">
+    <button type="button" class="list__navbtn" id="${BACK_BTN_ID}"
+      style="display: none;">
       <i class="fad fa-chevron-left"></i>
+    </button>
+    <button type="button" class="list__navbtn" id="${LOCK_BTN_ID}">
+      <i class="fad fa-lock" id="${LOCK_ICON_ID}"></i>
     </button>
     <div class="list__title" id="${TITLE_ID}">${WIN_TITLE}</div>
   </div>
   <div class="list__list scroll-bar-style" id="${LIST_ID}"></div>
   <div class="list__actions">
-    <button type="button" class="button button__sml list__btn" id="${CLOSE_BTN_ID}">
-      <span class="button__text"><i class="fad fa-times-octagon"></i></span>
-    </button>
     <button type="button" class="button button__sml list__btn" id="${ADD_BTN_ID}">
       <span class="button__text"><i class="fad fa-folder-plus"></i></span>
+    </button>
+    <button type="button" class="button button__sml list__btn" id="${CLOSE_BTN_ID}">
+      <span class="button__text"><i class="fad fa-times-octagon"></i></span>
     </button>
     <button type="button" class="button button__sml list__btn" id="${DEL_BTN_ID}">
       <span class="button__text"><i class="fad fa-trash-alt" id="${DEL_ICON_ID}"></i></span>
@@ -787,11 +1152,47 @@ export default class Lists {
       </div>
     </div>
   </div>
+  <div class="list__overlay" id="${PWD_OVERLAY_ID}">
+    <div class="list__dialog">
+      <div class="list__dialog-msg" id="${PWD_MSG_ID}">Enter password</div>
+      <input type="password" class="list__namebox list__pwbox" id="${PWD_BOX_ID}"
+        autocorrect="off" autocapitalize="none" spellcheck="false">
+      <input type="password" class="list__namebox list__pwbox" id="${PWD_BOX2_ID}"
+        autocorrect="off" autocapitalize="none" spellcheck="false"
+        placeholder="Repeat password">
+      <input type="password" class="list__namebox list__pwbox" id="${PWD_BOX3_ID}"
+        autocorrect="off" autocapitalize="none" spellcheck="false"
+        placeholder="Repeat new password">
+      <div class="list__pwerr" id="${PWD_ERR_ID}"></div>
+      <div class="list__dialog-btns">
+        <button type="button" class="button list__dlg-btn" id="${PWD_CANCEL_BTN_ID}">
+          <span class="button__text">Cancel</span>
+        </button>
+        <button type="button" class="button list__dlg-btn" id="${PWD_OK_BTN_ID}">
+          <span class="button__text">Unlock</span>
+        </button>
+      </div>
+    </div>
+  </div>
 </div>`;
     document.body.insertAdjacentHTML('beforeend', markup);
     const win = document.getElementById(WIN_ID);
     Object.keys(this.listeners).forEach(name => {
       win.addEventListener(name, this.listeners[name]);
+    });
+    // Enter answers the password prompt and Escape drops it, the same way the
+    // name box on a row behaves. The boxes live for the life of the window, so
+    // these are attached once here rather than every time the prompt opens.
+    [PWD_BOX_ID, PWD_BOX2_ID, PWD_BOX3_ID].forEach(id => {
+      document.getElementById(id).addEventListener('keydown', (key_event) => {
+        if (key_event.key === 'Enter') {
+          key_event.preventDefault();
+          this.passwordSubmit();
+        } else if (key_event.key === 'Escape') {
+          key_event.preventDefault();
+          this.closePassword();
+        }
+      });
     });
   }
 
@@ -836,7 +1237,8 @@ export default class Lists {
   visibleRows() {
     const entries = this.activeList();
     if (this.view !== VIEW_ITEMS) {
-      return entries;
+      // a locked list is not drawn at all -- no row, no name, no count
+      return entries.filter(entry => !this.store.isHidden(entry));
     }
     return entries.filter(item => item.checked !== true)
       .concat(entries.filter(item => item.checked === true));
@@ -847,9 +1249,16 @@ export default class Lists {
     return entry.items.filter(item => item.checked !== true).length;
   }
 
-  // only checked items can be dragged; everything in the list view can
+  // Only checked items can be dragged; everything in the list view can --
+  // except a locked list, which has no row on screen to drag. Saying so here
+  // is what keeps commitOrder() working while one is hidden: it pairs the
+  // rows it can see with the slots they came from, and a list with no row
+  // has to be left out of both halves or the two no longer line up.
   isMovable(entry) {
-    return this.view !== VIEW_ITEMS || entry.checked === true;
+    if (this.view !== VIEW_ITEMS) {
+      return !this.store.isHidden(entry);
+    }
+    return entry.checked === true;
   }
 
   // Records an edit and re-draws. Nothing goes to the server here -- the dot
@@ -894,11 +1303,18 @@ export default class Lists {
       title = entry.name;
     }
     document.getElementById(TITLE_ID).innerText = title;
+    // The two share the corner: the back button belongs to the items view and
+    // the lock to the lists view, and neither is ever wanted at the same time
+    // as the other. Sharing the slot rather than sitting beside it is what
+    // leaves the header -- and the title centred in it -- exactly as it was.
     let backVisibility = "hidden";
     if (items) {
       backVisibility = "visible";
     }
     document.getElementById(BACK_BTN_ID).style.visibility = backVisibility;
+    document.getElementById(BACK_BTN_ID).style.display = items ? "" : "none";
+    document.getElementById(LOCK_BTN_ID).style.display = items ? "none" : "";
+    this.updateLockIcon();
     // rows
     list.innerHTML = "";
     if (this.busy === true && this.store.loaded !== true) {
@@ -969,6 +1385,12 @@ export default class Lists {
         row.appendChild(this.roundElement(entry.checked === true, false));
       }
     }
+    // The lock on a list row: a badge on one that is encrypted, and a button
+    // on the row being added, which is the one moment the choice can be made.
+    // It is not offered on an item row -- a list is encrypted whole.
+    if (!items && (entry.enc === true || this.newId === entry.id)) {
+      row.appendChild(this.rowLockElement(entry.enc === true, this.newId === entry.id));
+    }
     const label = document.createElement('span');
     label.className = "list__label";
     // an item that runs to more than one line wraps instead of being cut off
@@ -1009,6 +1431,38 @@ export default class Lists {
       className += " list__round--on";
     }
     return this.createCell('span', className, '<i class="fad fa-check"></i>');
+  }
+
+  // The lock on a row. While it is a button it must not take the focus: the
+  // name box on that same row is open, and letting the press blur it would
+  // commit the name and rebuild the row out from under the press. Cancelling
+  // pointerdown leaves the focus where it is; the click still arrives.
+  rowLockElement(on, pressable) {
+    const cell = this.createCell('span', ROW_LOCK_CLASS,
+      '<i class="fad fa-lock"></i>');
+    if (on === true) {
+      cell.classList.add(ROW_LOCK_ON_CLASS);
+    }
+    if (pressable === true) {
+      cell.addEventListener('pointerdown', (event) => event.preventDefault());
+    }
+    return cell;
+  }
+
+  // the header lock: shut while the encrypted lists are, open once they are
+  updateLockIcon() {
+    const icon = document.getElementById(LOCK_ICON_ID);
+    if (!icon) {
+      return;
+    }
+    const open = this.store.unlocked();
+    icon.classList.toggle("fa-lock-open", open);
+    icon.classList.toggle("fa-lock", !open);
+    icon.classList.toggle(LOCK_ICON_ON_CLASS, open);
+    const button = document.getElementById(LOCK_BTN_ID);
+    if (button) {
+      button.title = open ? "Lock encrypted lists" : "Unlock encrypted lists";
+    }
   }
 
   totalText(count, noun) {
@@ -1212,6 +1666,9 @@ export default class Lists {
       entry = { id: nextId(entries), name: "New List", items: [] };
     }
     entries.push(entry);
+    // Remembered for as long as its name box is open: it is the row the lock
+    // is offered on, and the row that is dropped again if it is left unnamed.
+    this.newId = entry.id;
     // the new row is a change in its own right: with nothing saving on a
     // timer any more, hiding the page before the name box is answered would
     // otherwise leave it behind
@@ -1313,6 +1770,9 @@ export default class Lists {
       }
       closed = true;
       this.editing = false;
+      if (this.newId === id) {
+        this.newId = null; // named, or dropped -- either way it is not new now
+      }
       let name = "";
       if (save === true) {
         if (multi) {
@@ -1407,6 +1867,416 @@ export default class Lists {
     this.destroy();
   }
 
+  //// encrypted lists ////
+
+  // The lock in the corner. Unlocked, it locks; locked, it asks for the
+  // password, or for a new one when the record file says none has been set.
+  // onDone is what the row lock hands in: what to do once the way is open.
+  async lockPress(onDone) {
+    if (!cryptoReady()) {
+      // WebCrypto is only handed out on a secure origin, and there is no
+      // second-best version of this worth falling back to
+      showPopup(`[${WIN_TITLE}] encryption needs an https connection.`);
+      return;
+    }
+    if (this.store.unlocked()) {
+      await this.lockLists();
+      return;
+    }
+    const state = await this.runBusy(() => this.store.crypt.status());
+    if (state === null) {
+      showPopup(`[${WIN_TITLE}] server connection not available.`);
+      return;
+    }
+    if (state.ready === true) {
+      this.showPassword(PWD_UNLOCK, onDone);
+      return;
+    }
+    // no password yet, and setting one writes a file
+    if (!this.store.canWrite()) {
+      showPopup(`[${WIN_TITLE}] another user is editing, opened read only.`);
+      return;
+    }
+    this.showPassword(PWD_SETUP, onDone);
+  }
+
+  // Shuts the encrypted lists again. Anything outstanding goes to the server
+  // first: the key is about to go, and with it the only way to encrypt what
+  // is still in memory. A write that fails leaves everything open, because
+  // locking on top of it would throw the edits away.
+  async lockLists() {
+    if (this.store.dirty === true) {
+      const sent = await this.runBusy(() => this.store.save());
+      this.updateDot();
+      if (!sent) {
+        showPopup(`[${WIN_TITLE}] changes not saved, still unlocked.`);
+        return false;
+      }
+    }
+    await this.store.lockUp();
+    // the list being viewed may be one that has just gone
+    const entry = this.openList();
+    if (this.view === VIEW_ITEMS && (!entry || this.store.isHidden(entry))) {
+      this.showLists();
+      return true;
+    }
+    this.setMode(this.mode, false);
+    this.render();
+    return true;
+  }
+
+  //// password prompt ////
+
+  showPassword(mode, onDone) {
+    const overlay = document.getElementById(PWD_OVERLAY_ID);
+    if (!overlay) {
+      return;
+    }
+    this.pwdMode = mode;
+    if (typeof onDone === 'function') {
+      this.pwdDone = onDone;
+    } else {
+      this.pwdDone = null;
+    }
+    const setup = mode === PWD_SETUP;
+    const change = mode === PWD_CHANGE;
+    const first = document.getElementById(PWD_BOX_ID);
+    const second = document.getElementById(PWD_BOX2_ID);
+    const third = document.getElementById(PWD_BOX3_ID);
+    let heading = "Enter lists password";
+    let action = "Unlock";
+    if (setup) {
+      heading = "Set a lists password";
+      action = "Set";
+    } else if (change) {
+      heading = "Change lists password";
+      action = "Change";
+    }
+    document.getElementById(PWD_MSG_ID).innerText = heading;
+    document.getElementById(PWD_OK_BTN_ID)
+      .querySelector('.button__text').innerText = action;
+    first.value = "";
+    second.value = "";
+    third.value = "";
+    // The first box is whichever password the user already knows, so a change
+    // reads down the boxes in the order it happens: the old one, then the new
+    // one twice.
+    if (setup) {
+      first.placeholder = "New password";
+    } else if (change) {
+      first.placeholder = "Current password";
+    } else {
+      first.placeholder = "Password";
+    }
+    second.placeholder = change ? "New password" : "Repeat password";
+    first.setAttribute("autocomplete", setup ? "new-password" : "current-password");
+    second.setAttribute("autocomplete", "new-password");
+    third.setAttribute("autocomplete", "new-password");
+    second.style.display = (setup || change) ? "" : "none";
+    third.style.display = change ? "" : "none";
+    this.showPasswordError("");
+    overlay.style.display = "flex";
+    first.focus();
+  }
+
+  showPasswordError(text) {
+    const line = document.getElementById(PWD_ERR_ID);
+    if (line) {
+      line.innerText = text || "";
+    }
+  }
+
+  // The boxes are emptied on the way out: a password left sitting in an input
+  // is one more place it can be read from than it needs to be.
+  closePassword() {
+    const overlay = document.getElementById(PWD_OVERLAY_ID);
+    if (overlay) {
+      overlay.style.display = "none";
+    }
+    [PWD_BOX_ID, PWD_BOX2_ID, PWD_BOX3_ID].forEach(id => {
+      const box = document.getElementById(id);
+      if (box) {
+        box.value = "";
+      }
+    });
+    this.pwdMode = null;
+    this.pwdDone = null;
+    this.showPasswordError("");
+  }
+
+  async passwordSubmit() {
+    if (this.pwdMode === null) {
+      return;
+    }
+    const first = document.getElementById(PWD_BOX_ID);
+    const second = document.getElementById(PWD_BOX2_ID);
+    const third = document.getElementById(PWD_BOX3_ID);
+    const password = first.value;
+    const setup = this.pwdMode === PWD_SETUP;
+    if (this.pwdMode === PWD_CHANGE) {
+      await this.passwordChange(password, second.value, third.value);
+      return;
+    }
+    if (setup && password !== second.value) {
+      this.showPasswordError("passwords do not match");
+      second.value = "";
+      second.focus();
+      return;
+    }
+    // The derivation is deliberately slow -- that is the whole point of it --
+    // so the ring by the status dot turns while it runs.
+    let out = null;
+    if (setup) {
+      out = await this.runBusy(() => this.store.crypt.setup(password));
+    } else {
+      out = await this.runBusy(() => this.store.crypt.unlock(password));
+    }
+    if (!this.isOpen()) {
+      return; // the window went while the key was being worked out
+    }
+    if (out.ok !== true) {
+      this.showPasswordError(out.error);
+      first.value = "";
+      second.value = "";
+      first.focus();
+      return;
+    }
+    const done = this.pwdDone;
+    this.closePassword();
+    // whatever was already encrypted opens now
+    const found = await this.runBusy(() => this.store.unsealAll());
+    if (found.failed > 0) {
+      showPopup(`[${WIN_TITLE}] ${found.failed} encrypted list(s) would not open.`);
+    }
+    this.render();
+    if (done) {
+      done();
+    }
+  }
+
+  //// the lock on a row ////
+
+  // Pressed on the row being added, this is what makes the list an encrypted
+  // one. The key has to be in hand first, so an unlock -- or a first password
+  // -- comes before the choice takes effect.
+  toggleRowCrypt(id) {
+    if (this.view === VIEW_ITEMS || this.rowsLocked()) {
+      return;
+    }
+    const entry = this.store.data.find(other => other.id === id);
+    if (!entry || this.newId !== id) {
+      return; // the badge on a saved row says what it is, and is not a switch
+    }
+    if (entry.enc === true) {
+      this.store.setSealed(entry, false);
+      this.markRowLock(id, false);
+      this.store.markChanged();
+      this.updateDot();
+      return;
+    }
+    if (this.store.unlocked()) {
+      // the name box is still open on this row, so nothing is re-drawn: the
+      // badge is turned over where it stands and the name commits as usual
+      this.store.setSealed(entry, true);
+      this.markRowLock(id, true);
+      this.store.markChanged();
+      this.updateDot();
+      return;
+    }
+    // The prompt takes the focus, which closes the name box and commits what
+    // has been typed so far. The row itself stays, so it is picked up again
+    // on the way back -- as the new row it still is, if that is what it was.
+    const wasNew = this.newId === id;
+    this.lockPress(() => {
+      const later = this.store.data.find(other => other.id === id);
+      if (!later) {
+        return; // the box was left empty and the row went with it
+      }
+      this.store.setSealed(later, true);
+      if (wasNew) {
+        this.newId = id;
+      }
+      this.commit();
+      this.reopenName(id, wasNew);
+    });
+  }
+
+  markRowLock(id, on) {
+    const row = this.rowById(id);
+    if (!row) {
+      return;
+    }
+    const cell = row.querySelector(`.${ROW_LOCK_CLASS}`);
+    if (cell) {
+      cell.classList.toggle(ROW_LOCK_ON_CLASS, on === true);
+    }
+  }
+
+  reopenName(id, isNew) {
+    const row = this.rowById(id);
+    if (!row) {
+      return;
+    }
+    if (typeof row.scrollIntoView === 'function') {
+      row.scrollIntoView({ block: 'nearest' });
+    }
+    this.beginRename(id, isNew === true);
+  }
+
+  //// changing the password ////
+  //
+  // Held down rather than tapped, and only while the lists are locked. The
+  // change re-encrypts every locked list under the new key and writes them
+  // out, so it is one thing at a time -- offering it half way through a
+  // session with lists open on screen, edits in memory and a save outstanding
+  // would be three.
+
+  // The press has begun on the lock. Only a locked window starts counting:
+  // holding it while the lists are open does nothing but lock them, which is
+  // what the tap does anyway.
+  holdStart(event) {
+    this.holdCancel();
+    if (!event.target.closest(`#${LOCK_BTN_ID}`)) {
+      return;
+    }
+    if (this.store.unlocked()) {
+      return;
+    }
+    const icon = document.getElementById(LOCK_ICON_ID);
+    if (icon) {
+      // the icon warms up over the three seconds, so the hold is visibly
+      // doing something rather than looking like a press that missed
+      icon.classList.add(LOCK_HOLD_CLASS);
+    }
+    this.holdTimer = setTimeout(() => {
+      this.holdTimer = null;
+      this.held = true; // the click that follows is spent on this
+      this.clearHoldStyle();
+      this.changePress();
+    }, LOCK_HOLD_MS);
+  }
+
+  holdCheck(event) {
+    if (this.holdTimer === null) {
+      return;
+    }
+    if (!event.target.closest(`#${LOCK_BTN_ID}`)) {
+      this.holdCancel();
+    }
+  }
+
+  holdCancel() {
+    if (this.holdTimer !== null) {
+      clearTimeout(this.holdTimer);
+      this.holdTimer = null;
+    }
+    this.clearHoldStyle();
+  }
+
+  clearHoldStyle() {
+    const icon = document.getElementById(LOCK_ICON_ID);
+    if (icon) {
+      icon.classList.remove(LOCK_HOLD_CLASS);
+    }
+  }
+
+  // the lock has been held for its three seconds
+  async changePress() {
+    if (!cryptoReady()) {
+      showPopup(`[${WIN_TITLE}] encryption needs an https connection.`);
+      return;
+    }
+    if (this.store.unlocked()) {
+      return; // it was unlocked while the hold ran
+    }
+    // the re-encrypted lists have to go back to the server, so this needs the
+    // edit lock as much as any other write does
+    if (!this.store.canWrite()) {
+      showPopup(`[${WIN_TITLE}] another user is editing, opened read only.`);
+      return;
+    }
+    const state = await this.runBusy(() => this.store.crypt.status());
+    if (state === null) {
+      showPopup(`[${WIN_TITLE}] server connection not available.`);
+      return;
+    }
+    if (state.ready !== true) {
+      showPopup(`[${WIN_TITLE}] no list password has been set.`);
+      return;
+    }
+    this.showPassword(PWD_CHANGE);
+  }
+
+  async passwordChange(oldPassword, newPassword, repeated) {
+    const second = document.getElementById(PWD_BOX2_ID);
+    const third = document.getElementById(PWD_BOX3_ID);
+    if (newPassword !== repeated) {
+      this.showPasswordError("new passwords do not match");
+      third.value = "";
+      third.focus();
+      return;
+    }
+    const out = await this.runBusy(() => this.store.crypt.change(
+      oldPassword, newPassword, (nextKey) => this.rekeyLists(nextKey)));
+    if (!this.isOpen()) {
+      return; // the window went while the keys were being worked out
+    }
+    if (out.ok !== true) {
+      this.showPasswordError(out.error);
+      document.getElementById(PWD_BOX_ID).value = "";
+      second.value = "";
+      third.value = "";
+      document.getElementById(PWD_BOX_ID).focus();
+      return;
+    }
+    this.closePassword();
+    // The change leaves the new key in hand; the lists were never opened and
+    // are not being opened now, so it goes straight back out again.
+    await this.store.lockUp();
+    this.updateDot();
+    this.render();
+    if (out.error) {
+      showPopup(`[${WIN_TITLE}] ${out.error}.`);
+    } else {
+      showPopup(`[${WIN_TITLE}] password changed.`);
+    }
+  }
+
+  // Handed the new key by change(): every locked list is opened with the old
+  // key -- which is still the one the store is holding at this point -- and
+  // sealed again under the new one, and the whole file goes back to the
+  // server. Nothing is swapped in until all of them have come out, and a
+  // write that does not land puts the old blobs back, so the file and the
+  // password record never disagree about which key opens what.
+  async rekeyLists(nextKey) {
+    const swapped = [];
+    for (const entry of this.store.data) {
+      if (entry.enc !== true) {
+        continue;
+      }
+      const context = cryptContext(FILE_NAME, entry.id);
+      const text = await this.store.crypt.decrypt(entry.blob, context);
+      if (text === null) {
+        return false; // one that will not open, so nothing is changed
+      }
+      const blob = await encryptText(nextKey, text, context);
+      if (blob === null) {
+        return false;
+      }
+      swapped.push({ entry: entry, next: blob, held: entry.blob });
+    }
+    if (swapped.length === 0) {
+      return true; // a password with nothing encrypted under it yet
+    }
+    swapped.forEach(one => { one.entry.blob = one.next; });
+    this.store.markChanged();
+    const sent = await this.store.save();
+    if (sent !== true) {
+      swapped.forEach(one => { one.entry.blob = one.held; });
+    }
+    return sent;
+  }
+
   //// click handling ////
 
   handleClick(event) {
@@ -1420,7 +2290,16 @@ export default class Lists {
       return;
     }
     const row = event.target.closest('.list__row');
-    if (!row || this.editing || event.target.closest('.drag-grip')) {
+    if (!row) {
+      return;
+    }
+    // Ahead of the editing guard on purpose: the lock is pressed while the
+    // name box on that row is open, which is the only time it is a button.
+    if (event.target.closest(`.${ROW_LOCK_CLASS}`)) {
+      this.toggleRowCrypt(Number(row.dataset.id));
+      return;
+    }
+    if (this.editing || event.target.closest('.drag-grip')) {
       return;
     }
     const id = Number(row.dataset.id);
@@ -1452,11 +2331,29 @@ export default class Lists {
       case DISCARD_BTN_ID:
         this.discardChanges();
         return;
+      // so does the password prompt
+      case PWD_OK_BTN_ID:
+        this.passwordSubmit();
+        return;
+      case PWD_CANCEL_BTN_ID:
+        this.closePassword();
+        return;
       case CLOSE_BTN_ID:
         this.closeWindow();
         return;
       case BACK_BTN_ID:
         this.showLists();
+        return;
+      // Unlocking only reads, so it is offered on a read only window too --
+      // the setup path checks for itself before it writes anything.
+      case LOCK_BTN_ID:
+        if (this.held === true) {
+          // the press was answered by the hold, and the click it leaves
+          // behind would otherwise ask for the password a second time
+          this.held = false;
+          return;
+        }
+        this.lockPress();
         return;
     }
     // read only, and the wait for the lock, allow nothing that writes
