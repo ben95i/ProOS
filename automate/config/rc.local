@@ -17,9 +17,6 @@ echo " Welcome to ProOS"
 echo " by Ben Provenzano III"
 echo "*"
 
-## allow non-root user to ping hosts
-echo "0 65535" > /proc/sys/net/ipv4/ping_group_range
-
 ## web server
 systemctl restart nodeapi
 systemctl restart lighttpd

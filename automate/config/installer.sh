@@ -86,6 +86,9 @@ touch /root/.hushlogin
 chmod 644 /root/.hushlogin
 chown root:root /root/.hushlogin
 
+## Allow Ping Raw Sockets
+setcap cap_net_raw+p /usr/bin/ping
+
 ## Node.JS API Server
 cp -f $TMPDIR/nodeapi.service /etc/systemd/system/
 chmod 644 /etc/systemd/system/nodeapi.service
@@ -135,25 +138,35 @@ chmod u=rwx,g=rx,o=rx /etc/sudoers.d/www-perms
 chmod u=r,g=r,o= /etc/sudoers.d/www-perms
 
 ## Minify JS/CSS
+## Minify JS/CSS
 MIN_BEFORE_TOTAL=0
 MIN_AFTER_TOTAL=0
+echo "Compressing website components."
 printf '%-26s %10s %10s %10s\n' 'FILE' 'BEFORE KB' 'AFTER KB' 'SAVED KB'
 printf -- '-----------------------------------------------------------\n'
 for CSSFILE in "$WWWPATH"/styles/*.css; do
   [ -e "$CSSFILE" ] || continue
   MIN_SIZE_BEFORE=$(wc -c < "$CSSFILE")
-  if yui-compressor "$CSSFILE" > "$CSSFILE.tmp" && [ -s "$CSSFILE.tmp" ]; then
+  if yui-compressor "$CSSFILE" > "$CSSFILE.tmp" \
+     && [ -s "$CSSFILE.tmp" ] \
+     && [ "$(wc -c < "$CSSFILE.tmp")" -lt "$MIN_SIZE_BEFORE" ]; then
     mv -f "$CSSFILE.tmp" "$CSSFILE"
     chmod 644 "$CSSFILE"
     MIN_SIZE_AFTER=$(wc -c < "$CSSFILE")
     awk -v f="styles/${CSSFILE##*/}" -v b="$MIN_SIZE_BEFORE" -v a="$MIN_SIZE_AFTER" 'BEGIN {
-      printf "%-26s %10.1f %10.1f %10.1f\n", f, b/1024, a/1024, (b - a)/1024 }'
+      s = (b - a) / 1024
+      if (s > -0.05 && s < 0.05) s = 0
+      printf "%-26s %10.1f %10.1f %10.1f\n", f, b/1024, a/1024, s }'
   else
-    echo "minify failed, keeping original: $CSSFILE" >&2
+    if [ -s "$CSSFILE.tmp" ]; then
+      MIN_NOTE='no change'
+    else
+      MIN_NOTE='failed'
+    fi
     rm -f "$CSSFILE.tmp"
     MIN_SIZE_AFTER=$MIN_SIZE_BEFORE
-    awk -v f="styles/${CSSFILE##*/}" -v b="$MIN_SIZE_BEFORE" 'BEGIN {
-      printf "%-26s %10.1f %10.1f %10s\n", f, b/1024, b/1024, "skipped" }'
+    awk -v f="styles/${CSSFILE##*/}" -v b="$MIN_SIZE_BEFORE" -v n="$MIN_NOTE" 'BEGIN {
+      printf "%-26s %10.1f %10.1f %10s\n", f, b/1024, b/1024, n }'
   fi
   MIN_BEFORE_TOTAL=$(( MIN_BEFORE_TOTAL + MIN_SIZE_BEFORE ))
   MIN_AFTER_TOTAL=$(( MIN_AFTER_TOTAL + MIN_SIZE_AFTER ))
@@ -163,18 +176,25 @@ for JSFILE in "$WWWPATH"/*.js; do
   case "$JSFILE" in *.min.js) continue ;; esac
   MIN_SIZE_BEFORE=$(wc -c < "$JSFILE")
   if uglifyjs --warn --compress --output "$JSFILE.tmp" -- "$JSFILE" \
-     && [ -s "$JSFILE.tmp" ]; then
+     && [ -s "$JSFILE.tmp" ] \
+     && [ "$(wc -c < "$JSFILE.tmp")" -lt "$MIN_SIZE_BEFORE" ]; then
     mv -f "$JSFILE.tmp" "$JSFILE"
     chmod 644 "$JSFILE"
     MIN_SIZE_AFTER=$(wc -c < "$JSFILE")
     awk -v f="${JSFILE##*/}" -v b="$MIN_SIZE_BEFORE" -v a="$MIN_SIZE_AFTER" 'BEGIN {
-      printf "%-26s %10.1f %10.1f %10.1f\n", f, b/1024, a/1024, (b - a)/1024 }'
+      s = (b - a) / 1024
+      if (s > -0.05 && s < 0.05) s = 0
+      printf "%-26s %10.1f %10.1f %10.1f\n", f, b/1024, a/1024, s }'
   else
-    echo "minify failed, keeping original: $JSFILE" >&2
+    if [ -s "$JSFILE.tmp" ]; then
+      MIN_NOTE='no change'
+    else
+      MIN_NOTE='failed'
+    fi
     rm -f "$JSFILE.tmp"
     MIN_SIZE_AFTER=$MIN_SIZE_BEFORE
-    awk -v f="${JSFILE##*/}" -v b="$MIN_SIZE_BEFORE" 'BEGIN {
-      printf "%-26s %10.1f %10.1f %10s\n", f, b/1024, b/1024, "skipped" }'
+    awk -v f="${JSFILE##*/}" -v b="$MIN_SIZE_BEFORE" -v n="$MIN_NOTE" 'BEGIN {
+      printf "%-26s %10.1f %10.1f %10s\n", f, b/1024, b/1024, n }'
   fi
   MIN_BEFORE_TOTAL=$(( MIN_BEFORE_TOTAL + MIN_SIZE_BEFORE ))
   MIN_AFTER_TOTAL=$(( MIN_AFTER_TOTAL + MIN_SIZE_AFTER ))
@@ -182,8 +202,10 @@ done
 printf -- '-----------------------------------------------------------\n'
 awk -v b="$MIN_BEFORE_TOTAL" -v a="$MIN_AFTER_TOTAL" 'BEGIN {
   pct = (b > 0) ? (b - a) * 100 / b : 0
+  s = (b - a) / 1024
+  if (s > -0.05 && s < 0.05) s = 0
   printf "%-26s %10.1f %10.1f %10.1f   (%.1f%% smaller)\n", \
-    "TOTAL", b/1024, a/1024, (b - a)/1024, pct }'
+    "TOTAL", b/1024, a/1024, s, pct }'
 chown -R "$WWW_NAME":"$WWW_GROUP" $WWWPATH/styles/*.css
 chown -R "$WWW_NAME":"$WWW_GROUP" $WWWPATH/*.js
 
