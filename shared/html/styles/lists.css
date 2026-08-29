@@ -76,6 +76,10 @@
   background-color: var(--sec-60-black);
   overflow-y: auto;
   overflow-x: hidden;
+  /* keeps a fling that runs off the end of the rows inside this panel rather
+     than handing it on to the page behind the window -- on iOS that chaining
+     is what leaves the panel parked in an overscrolled state */
+  overscroll-behavior: contain;
 }
 
 .list__row {

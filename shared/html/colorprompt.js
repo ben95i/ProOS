@@ -196,11 +196,8 @@ export default class ColorPrompt {
   handleHueInput(event) {
     const newHueValue = parseFloat(event.target.value);
     this.currentHue = newHueValue;
-    
     this.colorMapBackgroundElement.style.background = `hsl(${this.currentHue}, 100%, 50%)`;
-    
-    const triggerCallback = true;
-    this.updateUIFromState(triggerCallback);
+    this.updateUIFromState(true);
   }
 
   /**

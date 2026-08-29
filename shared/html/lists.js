@@ -936,6 +936,7 @@ export default class Lists {
       total.innerText = this.totalText(count, noun);
       list.appendChild(total);
     }
+    this.clampScroll(list);
     this.renderActions();
     this.updateDot();
   }
@@ -1149,12 +1150,56 @@ export default class Lists {
     this.openId = id;
     this.view = VIEW_ITEMS;
     this.setMode(MODE_OPEN);
+    this.resetScroll();
   }
 
   showLists() {
     this.openId = null;
     this.view = VIEW_LISTS;
     this.setMode(MODE_OPEN);
+    this.resetScroll();
+  }
+
+  // A view change swaps the rows for a different, usually shorter, set. The
+  // list is a scroll container and its scrollTop outlives the rows being
+  // replaced, so coming back from a long list to a shorter one leaves it
+  // scrolled past the end of the new content -- an empty panel until the
+  // browser gets round to clamping it. Every view starts at the top instead.
+  //
+  // On iOS that needs more than writing scrollTop. The window is a fixed,
+  // transformed box, so the panel inside it scrolls on its own thread, and a
+  // fling carries on there after the finger has gone: a scrollTop written
+  // into the middle of one is overridden the next time the fling updates, and
+  // the panel is left parked past the end of the new rows with nothing to
+  // paint. Taking the overflow away for a moment ends the fling and drops the
+  // scroller back to the main thread, so the reset holds.
+  resetScroll() {
+    const list = this.listElem();
+    if (!list) {
+      return;
+    }
+    const overflow = list.style.overflowY;
+    list.style.overflowY = "hidden";
+    list.scrollTop = 0;
+    // reading a layout value applies the change now rather than at the end of
+    // the frame, which is what actually stops the fling
+    void list.offsetHeight;
+    list.style.overflowY = overflow;
+    list.scrollTop = 0;
+  }
+
+  // Rows can leave without the view changing -- a delete, or items floating
+  // up as they are checked off -- and the same stale scrollTop shows an empty
+  // panel. Anything past the new end is pulled back to it.
+  clampScroll(list) {
+    let furthest = list.scrollHeight - list.clientHeight;
+    if (furthest < 0) {
+      // the rows no longer fill the panel, so there is nothing to scroll
+      furthest = 0;
+    }
+    if (list.scrollTop > furthest) {
+      list.scrollTop = furthest;
+    }
   }
 
   addEntry() {
@@ -1270,7 +1315,11 @@ export default class Lists {
       this.editing = false;
       let name = "";
       if (save === true) {
-        name = multi ? cleanItemName(namebox.value) : cleanName(namebox.value);
+        if (multi) {
+          name = cleanItemName(namebox.value);
+        } else {
+          name = cleanName(namebox.value);
+        }
       }
       if (name !== "") {
         entry.name = name;

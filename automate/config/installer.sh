@@ -57,6 +57,35 @@ cp $TMPDIR/sysctl.conf /etc
 chmod 644 /etc/sysctl.conf
 chown root:root /etc/sysctl.conf
 
+## Boot Service
+cp -f $TMPDIR/rc.local /etc/
+chmod +x /etc/rc.local
+chown root:root /etc/rc.local
+cp -f $TMPDIR/rc-local.service /etc/systemd/system/
+chmod 644 /etc/systemd/system/rc-local.service
+chown root:root /etc/systemd/system/rc-local.service
+systemctl enable rc-local
+
+## Disable Root Password
+passwd -d root
+
+## Auto SSH Login Key for root
+mkdir -p /root/.ssh
+cp -f $TMPDIR/authorized_keys /root/.ssh/
+
+## SSH Configuration
+cp -f $TMPDIR/sshd_config /etc/ssh/
+chmod 644 /etc/ssh/sshd_config
+chown root:root /etc/ssh/sshd_config
+
+## Profile Configuration
+cp -f $TMPDIR/profile /root/.profile
+chmod +x /root/.profile
+chown root:root /root/.profile
+touch /root/.hushlogin
+chmod 644 /root/.hushlogin
+chown root:root /root/.hushlogin
+
 ## Node.JS API Server
 cp -f $TMPDIR/nodeapi.service /etc/systemd/system/
 chmod 644 /etc/systemd/system/nodeapi.service
@@ -90,8 +119,6 @@ chown root:root /etc/lighttpd/root_ca.crt
 mkdir -p $WWWPATH
 chown -R "$WWW_NAME":"$WWW_GROUP" $TMPDIR/html
 rsync -a $TMPDIR/html/ $WWWPATH/
-chmod g+rx $WWWPATH
-chown "$WWW_NAME":"$WWW_GROUP" $WWWPATH
 mkdir -p /var/www/sessions
 chmod -R g+rx /var/www/sessions
 chown -R "$WWW_NAME":"$WWW_GROUP" /var/www/sessions
@@ -108,45 +135,57 @@ chmod u=rwx,g=rx,o=rx /etc/sudoers.d/www-perms
 chmod u=r,g=r,o= /etc/sudoers.d/www-perms
 
 ## Minify JS/CSS
-yui-compressor $WWWPATH/styles.css > $WWWPATH/styles.min.css
-uglifyjs --warn --compress --output $WWWPATH/utils.min.js -- $WWWPATH/utils.js
-uglifyjs --warn --compress --output $WWWPATH/main.min.js -- $WWWPATH/main.js
-mv -f $WWWPATH/styles.min.css $WWWPATH/styles.css
-mv -f $WWWPATH/utils.min.js $WWWPATH/utils.js
-mv -f $WWWPATH/main.min.js $WWWPATH/main.js
-chmod 644 $WWWPATH/styles.css
-chown 644 $WWWPATH/utils.js
-chmod 644 $WWWPATH/main.js
-chown -R "$USER1_NAME":"$GROUP_NAME" $WWWPATH
-
-## Boot Service
-cp -f $TMPDIR/rc.local /etc/
-chmod +x /etc/rc.local
-chown root:root /etc/rc.local
-cp -f $TMPDIR/rc-local.service /etc/systemd/system/
-chmod 644 /etc/systemd/system/rc-local.service
-chown root:root /etc/systemd/system/rc-local.service
-systemctl enable rc-local
-
-## Disable Root Password
-passwd -d root
-
-## Auto SSH Login Key for root
-mkdir -p /root/.ssh
-cp -f $TMPDIR/authorized_keys /root/.ssh/
-
-## SSH Configuration
-cp -f $TMPDIR/sshd_config /etc/ssh/
-chmod 644 /etc/ssh/sshd_config
-chown root:root /etc/ssh/sshd_config
-
-## Profile Configuration
-cp -f $TMPDIR/profile /root/.profile
-chmod +x /root/.profile
-chown root:root /root/.profile
-touch /root/.hushlogin
-chmod 644 /root/.hushlogin
-chown root:root /root/.hushlogin
+MIN_BEFORE_TOTAL=0
+MIN_AFTER_TOTAL=0
+printf '%-26s %10s %10s %10s\n' 'FILE' 'BEFORE KB' 'AFTER KB' 'SAVED KB'
+printf -- '-----------------------------------------------------------\n'
+for CSSFILE in "$WWWPATH"/styles/*.css; do
+  [ -e "$CSSFILE" ] || continue
+  MIN_SIZE_BEFORE=$(wc -c < "$CSSFILE")
+  if yui-compressor "$CSSFILE" > "$CSSFILE.tmp" && [ -s "$CSSFILE.tmp" ]; then
+    mv -f "$CSSFILE.tmp" "$CSSFILE"
+    chmod 644 "$CSSFILE"
+    MIN_SIZE_AFTER=$(wc -c < "$CSSFILE")
+    awk -v f="styles/${CSSFILE##*/}" -v b="$MIN_SIZE_BEFORE" -v a="$MIN_SIZE_AFTER" 'BEGIN {
+      printf "%-26s %10.1f %10.1f %10.1f\n", f, b/1024, a/1024, (b - a)/1024 }'
+  else
+    echo "minify failed, keeping original: $CSSFILE" >&2
+    rm -f "$CSSFILE.tmp"
+    MIN_SIZE_AFTER=$MIN_SIZE_BEFORE
+    awk -v f="styles/${CSSFILE##*/}" -v b="$MIN_SIZE_BEFORE" 'BEGIN {
+      printf "%-26s %10.1f %10.1f %10s\n", f, b/1024, b/1024, "skipped" }'
+  fi
+  MIN_BEFORE_TOTAL=$(( MIN_BEFORE_TOTAL + MIN_SIZE_BEFORE ))
+  MIN_AFTER_TOTAL=$(( MIN_AFTER_TOTAL + MIN_SIZE_AFTER ))
+done
+for JSFILE in "$WWWPATH"/*.js; do
+  [ -e "$JSFILE" ] || continue
+  case "$JSFILE" in *.min.js) continue ;; esac
+  MIN_SIZE_BEFORE=$(wc -c < "$JSFILE")
+  if uglifyjs --warn --compress --output "$JSFILE.tmp" -- "$JSFILE" \
+     && [ -s "$JSFILE.tmp" ]; then
+    mv -f "$JSFILE.tmp" "$JSFILE"
+    chmod 644 "$JSFILE"
+    MIN_SIZE_AFTER=$(wc -c < "$JSFILE")
+    awk -v f="${JSFILE##*/}" -v b="$MIN_SIZE_BEFORE" -v a="$MIN_SIZE_AFTER" 'BEGIN {
+      printf "%-26s %10.1f %10.1f %10.1f\n", f, b/1024, a/1024, (b - a)/1024 }'
+  else
+    echo "minify failed, keeping original: $JSFILE" >&2
+    rm -f "$JSFILE.tmp"
+    MIN_SIZE_AFTER=$MIN_SIZE_BEFORE
+    awk -v f="${JSFILE##*/}" -v b="$MIN_SIZE_BEFORE" 'BEGIN {
+      printf "%-26s %10.1f %10.1f %10s\n", f, b/1024, b/1024, "skipped" }'
+  fi
+  MIN_BEFORE_TOTAL=$(( MIN_BEFORE_TOTAL + MIN_SIZE_BEFORE ))
+  MIN_AFTER_TOTAL=$(( MIN_AFTER_TOTAL + MIN_SIZE_AFTER ))
+done
+printf -- '-----------------------------------------------------------\n'
+awk -v b="$MIN_BEFORE_TOTAL" -v a="$MIN_AFTER_TOTAL" 'BEGIN {
+  pct = (b > 0) ? (b - a) * 100 / b : 0
+  printf "%-26s %10.1f %10.1f %10.1f   (%.1f%% smaller)\n", \
+    "TOTAL", b/1024, a/1024, (b - a)/1024, pct }'
+chown -R "$WWW_NAME":"$WWW_GROUP" $WWWPATH/styles/*.css
+chown -R "$WWW_NAME":"$WWW_GROUP" $WWWPATH/*.js
 
 ## Reload Services
 systemctl daemon-reload
