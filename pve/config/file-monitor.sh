@@ -41,49 +41,46 @@ is_ignored() {
 }
 
 ## ---------------------------------------------------------------
-## log permissions
+## ownership / permissions
 ## ---------------------------------------------------------------
-LOGOWNER="tank:shared"
-LOGMODE="0666"
+## The LXC that shares this ramdisk now runs as tank:shared too, so
+## group access is sufficient for every writer and no continuous
+## enforcement is needed.
+##
+## Group ownership is handled by the mount itself: fstab mounts the
+## tmpfs uid=tank,gid=shared,mode=2775, and the setgid bit means every
+## file and directory created under it inherits gid=shared regardless
+## of who creates it.
+##
+## The OWNER is not inherited -- a new file always belongs to the uid
+## that created it, and everything here creates it as root. So both
+## the owner and the mode still have to be asserted; only the group
+## comes for free.
+OWNER="tank:shared"
+LOGMODE="0644"
 
 ## Mode lives on the inode, so truncate/append preserve it -- it only
-## resets when something RECREATES the file. This re-asserts it, and is
-## called on every dispatch so the window is milliseconds wide.
+## resets when something RECREATES the file, which now only happens
+## under root (this script, or 'clearlog').
 ensure_log() {
-    [ -e "$LOGPATH" ] || : >> "$LOGPATH"
-    chown "$LOGOWNER" "$LOGPATH" 2>/dev/null
-    chmod "$LOGMODE"  "$LOGPATH" 2>/dev/null
-}
-
-## Continuous enforcement. The ramdisk is bind-mounted into the LXC by
-## lxc-mp.sh, so processes inside the container can chmod/recreate the
-## log at any time -- not just when a command is dispatched. This watches
-## for attribute changes and repairs them immediately.
-##
-## The mode is compared BEFORE chmod: chmod always emits IN_ATTRIB even
-## when the mode is unchanged, so an unconditional repair would loop.
-enforce_log_perms() {
-    local mode owner
-    while true; do
-        mode=$(stat -c '%a'     "$LOGPATH" 2>/dev/null)
-        owner=$(stat -c '%U:%G' "$LOGPATH" 2>/dev/null)
-        if [ "$mode" != "${LOGMODE#0}" ] || [ "$owner" != "$LOGOWNER" ]; then
-            ensure_log
-        fi
-        ## blocks until someone touches the inode; returns if it vanishes
-        inotifywait -q -e attrib -e delete_self -e move_self \
-            "$LOGPATH" >/dev/null 2>&1 || sleep 2
-        [ -e "$LOGPATH" ] || ensure_log
-    done
+    : >> "$LOGPATH"                          # create if missing, else no-op
+    chown "$OWNER"   "$LOGPATH" 2>/dev/null
+    chmod "$LOGMODE" "$LOGPATH" 2>/dev/null
 }
 
 ## ---------------------------------------------------------------
 ## setup
 ## ---------------------------------------------------------------
-## 0000, not 0002: 0002 masks the other-write bit, so any process in
-## this tree that RECREATES the log gets 0664 instead of 0666.
-umask 0000
-mkdir -p "$SPOOL"
+## 0002 keeps group write on anything root creates in the tree; the
+## other-write bit is no longer needed now that the container shares
+## the tank:shared identity.
+umask 0002
+## Fallback only: the fstab entry already sets this
+## at mount time. It matters if the tmpfs ever comes up with the old
+## uid=0 options -- one syscall, and the setgid bit does the rest.
+chown "$OWNER" "$RAMPATH" 2>/dev/null
+chmod 2775     "$RAMPATH" 2>/dev/null
+mkdir -p "$SPOOL"                # inherits gid=shared + setgid from RAMPATH
 ensure_log
 
 ## clean up any triggers left over from an unclean shutdown.
@@ -98,9 +95,6 @@ shutdown() {
     exit 0
 }
 trap shutdown TERM INT
-
-## permission watchdog (killed with the process group on stop)
-enforce_log_perms &
 
 ## ---------------------------------------------------------------
 ## dispatcher

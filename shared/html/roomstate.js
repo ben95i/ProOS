@@ -41,6 +41,13 @@ export default class RoomStateManager {
     // no longer being refreshed. Same circle as the light itself, filled with
     // diagonal lines; the CSS fades it in only when the light goes idle, so
     // the last known colour still reads through it.
+    //
+    // Two lines per cell, not one. A single white line disappeared against a
+    // light indicator, and a single dark one would disappear against the black
+    // the light falls back to; the pair puts a dark line and a light line
+    // side by side, so whichever the indicator is, one of the two stands out
+    // against it. The dark line is the wider of the two, since the colours
+    // that were hard to read are the light ones.
     const hatchDefs = document.createElementNS(xmlns, "defs");
     const hatchPattern = document.createElementNS(xmlns, "pattern");
     hatchPattern.setAttribute("id", "statusHatchPattern");
@@ -49,13 +56,21 @@ export default class RoomStateManager {
     hatchPattern.setAttribute("width", "5");
     hatchPattern.setAttribute("height", "5");
     const hatchLine = document.createElementNS(xmlns, "line");
-    hatchLine.setAttribute("x1", "0");
+    hatchLine.setAttribute("x1", "1.2");
     hatchLine.setAttribute("y1", "0");
-    hatchLine.setAttribute("x2", "0");
+    hatchLine.setAttribute("x2", "1.2");
     hatchLine.setAttribute("y2", "5");
-    hatchLine.setAttribute("stroke", "#fff");
-    hatchLine.setAttribute("stroke-width", "1.6");
+    hatchLine.setAttribute("stroke", "#000");
+    hatchLine.setAttribute("stroke-width", "2.0");
+    const hatchLineLight = document.createElementNS(xmlns, "line");
+    hatchLineLight.setAttribute("x1", "3.3");
+    hatchLineLight.setAttribute("y1", "0");
+    hatchLineLight.setAttribute("x2", "3.3");
+    hatchLineLight.setAttribute("y2", "5");
+    hatchLineLight.setAttribute("stroke", "#fff");
+    hatchLineLight.setAttribute("stroke-width", "1.2");
     hatchPattern.appendChild(hatchLine);
+    hatchPattern.appendChild(hatchLineLight);
     hatchDefs.appendChild(hatchPattern);
     const hatchCircle = document.createElementNS(xmlns, "circle");
     hatchCircle.setAttribute("id", "statusHatch");

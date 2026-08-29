@@ -20,16 +20,6 @@ LimitNOFILE=32768:524288
 # system capabilities hardening
 #
 
-# (comment all out if running lighttpd as root to manage system, e.g. via LuCI)
-
-# Recommended configuration: have systemd start lighttpd as unprivileged user.
-# Note: starting lighttpd as unprivileged user requires TLS certificates to be
-#   readable by the unprivileged user and will fail for existing configurations
-#   where that is not currently the case.  For that scenario and for similar
-#   compatibility reasons, this is not yet enabled by default.
-#User=lighttpd
-#Group=lighttpd
-
 # Allow unprivileged lighttpd to bind,listen to ports < 1024 (i.e. 80 and 443).
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 

@@ -219,14 +219,16 @@
   transition: none;
 }
 
-/* The refresh icon is a child element rather than the button's own glyph, so
-   the shared rotation keyframes turn the icon and not the whole button.
-   Inline-block keeps the box tight around the glyph so it spins on centre. */
-.editFav__button-spin {
-  display: inline-block;
-  pointer-events: none; /* the press belongs to the button */
-  animation: rotation 1s linear infinite;
-  transition: none;
+/* The ring the lookup button turns while it works. Everything that makes it a
+   ring -- the border, the rotation, the centring on 50% / 50%, the pass
+   through of the press -- comes from .bookmark-spinner above and the shared
+   spinner rule in main.css; only the size is set here. 36px rings the space
+   the 24px magnifier left, the same clearance the add button uses. */
+.editFav__button--busy .bookmark-spinner {
+  width: 36px;
+  height: 36px;
+  margin-left: -18px;
+  margin-top: -18px;
 }
 
 /* banner row: title centred, favicon parked on the right-hand edge. Sized

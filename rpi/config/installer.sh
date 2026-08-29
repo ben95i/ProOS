@@ -252,12 +252,12 @@ if [ ! -e "/etc/systemd/system/proinit.service" ]; then
   rm -f /etc/rpi-conf.done
 fi
 
-## Replacement / New Services
+## System-D Services
+chmod -fR 644 $TMPDIR/systemd/*.timer
+chown -fR root:root $TMPDIR/systemd/*.timer
+chmod -fR 644 $TMPDIR/systemd/*.service
+chown -fR root:root $TMPDIR/systemd/*.service
 cp -fr $TMPDIR/systemd/* /etc/systemd/system/
-chmod -fR 644 /etc/systemd/system/*.timer
-chown -fR root:root /etc/systemd/system/*.timer
-chmod -fR 644 /etc/systemd/system/*.service
-chown -fR root:root /etc/systemd/system/*.service
 
 ## Startup Scripts
 cp -f $TMPDIR/netmode.sh /etc/
@@ -286,16 +286,11 @@ cp -f $TMPDIR/lighttpd.conf /etc/lighttpd/
 chmod 644 /etc/lighttpd/lighttpd.conf
 chown root:root /etc/lighttpd/lighttpd.conf
 
-## Node.JS API Pi Specific Overrides
+## Node.JS API Server
+mkdir -p /opt/nodeapi
 mv -f /opt/rpi/custom.js /opt/nodeapi/
 mv -f /opt/rpi/ledparser.js /opt/nodeapi/
 mv -f /opt/rpi/controller.js /opt/nodeapi/
-
-## Node.JS API Server
-mv -f /opt/nodeapi/nodeapi.service /etc/systemd/system/
-chmod 644 /etc/systemd/system/nodeapi.service
-chown root:root /etc/systemd/system/nodeapi.service
-chown -R root:root /opt/nodeapi
 cd /opt/nodeapi
 npm install
 npm audit fix

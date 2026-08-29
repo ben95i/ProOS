@@ -84,13 +84,24 @@ const DOT_HIDDEN = 0;  // nothing has been tried yet
 const DOT_SAVED = 1;   // green -- the server holds what is on screen
 const DOT_UNSAVED = 2; // yellow -- edits the server has not been given
 const DOT_ERROR = 3;   // red -- a write failed
-// stored names are printable ASCII only, with the column separator "|" and
-// the path characters "/" and "\" swapped out
+// Stored names are printable ASCII, with the column separator "|" swapped
+// out. "/" and "\" used to go with it and are now kept -- nothing downstream
+// treats a name as a path.
+//
+// An item may hold more than one line. The file is one row per item, so a
+// newline cannot be stored as itself: it goes in as "~", which is why "~" is
+// taken out of the text on the way in and never survives to the file as a
+// literal. List names stay on one line.
 const MAX_NAME_LENGTH = 64;
+const MAX_ITEM_LENGTH = 1000;
+const NEWLINE_MARK = '~';
 const COMBINING_MARKS = /[\u0300-\u036f]/g;
 const NON_ASCII = /[^\x20-\x7E]/g;
-const RESERVED_CHARS = /[\0\r\n|/\\]/g;
+const NON_ASCII_LINES = /[^\x20-\x7E\n]/g; // the same, with newlines kept
+const RESERVED_CHARS = /[\0\r\n|~]/g;
+const RESERVED_CHARS_LINES = /[\0|~]/g;    // the same, with newlines kept
 const EXTRA_SPACES = /\s{2,}/g;
+const EXTRA_BLANKS = /[^\S\n]{2,}/g;       // runs of spaces, newlines spared
 // window views
 const VIEW_LISTS = 0;
 const VIEW_ITEMS = 1;
@@ -118,6 +129,38 @@ export function cleanName(value) {
     return `${name.substring(0, MAX_NAME_LENGTH)}...`;
   }
   return name;
+}
+
+// The same treatment for an item, which may run to more than one line: line
+// breaks are kept (and normalised to "\n"), runs of spaces are closed up
+// without touching them, and the text is allowed to be much longer.
+export function cleanItemName(value) {
+  let raw = '';
+  if (value !== null && value !== undefined) {
+    raw = String(value);
+  }
+  const name = raw
+    .replace(/\r\n|\r/g, '\n')    // CRLF and lone CR both become one newline
+    .normalize("NFD")
+    .replace(COMBINING_MARKS, '')
+    .replace(NON_ASCII_LINES, '')
+    .replace(RESERVED_CHARS_LINES, '')
+    .replace(EXTRA_BLANKS, ' ')
+    .trim();
+  if (name.length >= MAX_ITEM_LENGTH) {
+    return `${name.substring(0, MAX_ITEM_LENGTH)}...`;
+  }
+  return name;
+}
+
+// item text <-> the one row it is stored on: the newlines it carries are the
+// only thing that cannot go in the file as itself
+function encodeLines(value) {
+  return String(value).split('\n').join(NEWLINE_MARK);
+}
+
+function decodeLines(value) {
+  return String(value).split(NEWLINE_MARK).join('\n');
 }
 
 function nextId(entries) {
@@ -203,7 +246,7 @@ export class ListStore {
         found.set(listId, entry);
       }
       // empty item fields mark a list that has no items yet
-      const itemName = cleanName(cols[3]);
+      const itemName = cleanItemName(decodeLines(cols[3]));
       if (!isNumeric(cols[2]) || itemName === "") {
         return;
       }
@@ -230,7 +273,8 @@ export class ListStore {
         if (item.checked === true) {
           checked = '1';
         }
-        _file += `${head}|${item.id}|${item.name}|${checked}\n`;
+        // the item keeps its line breaks in memory; the file gets them as "~"
+        _file += `${head}|${item.id}|${encodeLines(item.name)}|${checked}\n`;
       });
     });
     return _file;
@@ -926,6 +970,11 @@ export default class Lists {
     }
     const label = document.createElement('span');
     label.className = "list__label";
+    // an item that runs to more than one line wraps instead of being cut off
+    // on one; a single line row keeps the ellipsis it always had
+    if (String(entry.name).indexOf('\n') !== -1) {
+      label.className += " list__label--multi";
+    }
     label.innerText = entry.name;
     row.appendChild(label);
     // the label is the rename target, so the rest of the row is a separate
@@ -1184,14 +1233,32 @@ export default class Lists {
       return;
     }
     this.editing = true;
-    const namebox = document.createElement('input');
-    namebox.type = "text";
+    // An item can hold more than one line, so it is edited in a textarea that
+    // grows downward as lines are added. A list name is still one line, and
+    // still a plain text box.
+    const multi = this.view === VIEW_ITEMS;
+    let namebox = null;
+    if (multi) {
+      namebox = document.createElement('textarea');
+      namebox.rows = 1;
+      namebox.maxLength = MAX_ITEM_LENGTH;
+    } else {
+      namebox = document.createElement('input');
+      namebox.type = "text";
+    }
     namebox.className = "list__namebox";
+    if (multi) {
+      namebox.className += " list__namebox--multi";
+    }
     namebox.setAttribute("autocorrect", "off");
     namebox.setAttribute("autocapitalize", "none");
     namebox.value = entry.name;
     this.sizeNamebox(namebox, row, label);
     label.replaceWith(namebox);
+    if (multi) {
+      // the box opens at the height the text it already holds needs
+      this.growNamebox(namebox);
+    }
     namebox.focus();
     namebox.select();
     let closed = false;
@@ -1203,7 +1270,7 @@ export default class Lists {
       this.editing = false;
       let name = "";
       if (save === true) {
-        name = cleanName(namebox.value);
+        name = multi ? cleanItemName(namebox.value) : cleanName(namebox.value);
       }
       if (name !== "") {
         entry.name = name;
@@ -1217,12 +1284,37 @@ export default class Lists {
       this.commit();
     };
     namebox.addEventListener('blur', () => finish(true));
+    if (multi) {
+      namebox.addEventListener('input', () => this.growNamebox(namebox));
+    }
     namebox.addEventListener('keydown', (key_event) => {
-      if (key_event.key === 'Enter' || key_event.key === 'Escape') {
+      if (key_event.key === 'Escape') {
         key_event.preventDefault();
-        finish(key_event.key === 'Enter');
+        finish(false);
+        return;
       }
+      if (key_event.key !== 'Enter') {
+        return;
+      }
+      if (multi) {
+        // Enter opens the next line of the item rather than finishing it; the
+        // box and the row grow to hold it, and tapping away still commits
+        return;
+      }
+      key_event.preventDefault();
+      finish(true);
     });
+  }
+
+  // Sets the item box to the height its text actually needs, so a new line
+  // pushes the box -- and the row around it -- down by one line. Height is
+  // cleared first, or a box that has grown never measures smaller again.
+  // Everything on the page is border-box, so the border has to be added back
+  // on top of scrollHeight, which covers the text and the padding only.
+  growNamebox(namebox) {
+    namebox.style.height = 'auto';
+    const border = namebox.offsetHeight - namebox.clientHeight;
+    namebox.style.height = `${namebox.scrollHeight + border}px`;
   }
 
   // The box takes over the space the name and the filler beside it already

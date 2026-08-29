@@ -110,9 +110,11 @@
   transition: opacity 0.5s ease;
 }
 
+/* Raised from 0.45: the hatch now carries a dark line as well as a light one
+   (see buildHTML in roomstate.js), and at the old opacity neither was doing
+   much. The light underneath still reads through at this level. */
 #trafficLightIcon.status-idle ~ #statusHatch {
-  fill: #000;
-  opacity: 0.45;
+  opacity: 0.7;
 }
 
 /* nothing has been read yet, so there is no state to hold: the dot falls

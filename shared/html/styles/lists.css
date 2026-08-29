@@ -204,6 +204,15 @@
 }
 
 /* the rest of the row: opens the list / ticks the item off */
+/* An item carrying line breaks. The row is a flex line that sizes to its
+   content, so letting the text wrap is all it takes for the row to grow taller
+   -- the window keeps the width it already had. */
+.list__label--multi {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+}
+
 .list__fill {
   flex: 1 1 auto;
   min-width: 20px;
@@ -233,6 +242,17 @@
 
 .list__namebox::placeholder {
   color: #c1c1c1;
+}
+
+/* The item box. It is grown a line at a time by growNamebox(), so it carries
+   no scrollbar of its own and cannot be dragged to a size of the user's own
+   -- the height it is given is always the height its text needs. */
+.list__namebox--multi {
+  display: block;
+  resize: none;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .list__namebox:focus {

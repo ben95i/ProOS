@@ -21,10 +21,8 @@ id -u "$USER_NAME" >/dev/null 2>&1 ||
 ## Permission Mappings
 cp -f $TMPDIR/subuid /etc/
 cp -f $TMPDIR/subgid /etc/
-chmod 644 /etc/subuid
-chmod 644 /etc/subgid
-chown root:root /etc/subuid
-chown root:root /etc/subgid
+chmod 644 /etc/subuid /etc/subgid
+chown root:root /etc/subuid /etc/subgid 
 
 ## PVE No-Subscription Enterprise Sources
 cp -f $TMPDIR/pve-enterprise.sources /etc/apt/sources.list.d/
@@ -277,8 +275,5 @@ systemctl enable --now hourlyjob-sd.service
 ## Clean-up
 apt-get --yes autoremove
 apt-get --yes clean
-rm -f /usr/bin/actiontrig.sh
-rm -f /usr/bin/savebookmarks.sh
-rm -f /usr/bin/lxc-mp.sh
 rm -r $TMPDIR
 exit

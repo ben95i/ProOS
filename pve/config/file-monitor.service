@@ -7,8 +7,13 @@ RequiresMountsFor=/mnt/ramdisk
 User=root
 Type=simple
 
+# systemd defaults to 0022, which would create the log without group
+# write. The tmpfs is mounted setgid, so the GROUP comes for free --
+# the OWNER does not: root creates it, so it needs an explicit chown.
+UMask=0002
+
 # runs after the tmpfs is mounted, before the watcher starts.
-ExecStartPre=/bin/sh -c 'touch /mnt/ramdisk/sysout.txt && chmod 0666 /mnt/ramdisk/sysout.txt'
+ExecStartPre=/bin/sh -c 'touch /mnt/ramdisk/sysout.txt && chown tank:shared /mnt/ramdisk/sysout.txt'
 ExecStartPre=-/bin/sh -c '/usr/bin/apicmds.sh clearlog /mnt/ramdisk >> /mnt/ramdisk/sysout.txt 2>&1'
 ExecStart=/usr/bin/file-monitor.sh
 

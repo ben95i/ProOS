@@ -3,7 +3,14 @@
 ### AutoConfig - ProOS for Automate VM
 ### by Ben Provenzano III
 
+USER1_NAME="tank"
+USER1_HOME="/home/$USER1_NAME"
+USER1_UID=1000
+GROUP_NAME="shared"
+GROUP_GID=1000
 WWWPATH="/var/www/html"
+WWW_NAME="www-data"
+WWW_GROUP="www-data"
 TMPDIR="/tmp/config"
 cd $TMPDIR
 
@@ -19,6 +26,14 @@ apt-get install -y --no-upgrade --ignore-missing dirmngr ca-certificates bpytop 
 
 ## Remove Packages
 apt-get remove -y --purge cron anacron postfix apache2 apache2-data
+
+## Create the shared group 
+getent group "$GROUP_NAME" >/dev/null 2>&1 || 
+  groupadd -g "$GROUP_GID" "$GROUP_NAME"
+
+## Create the user with no shell
+id -u "$USER1_NAME" >/dev/null 2>&1 || 
+  useradd -u "$USER1_UID" -g "$GROUP_GID" --home "$USER1_HOME" -s /sbin/nologin "$USER1_NAME"
 
 ## CSS Minifier
 mkdir -p /usr/lib/jvm/java-8-openjdk-amd64
@@ -43,7 +58,7 @@ chmod 644 /etc/sysctl.conf
 chown root:root /etc/sysctl.conf
 
 ## Node.JS API Server
-mv -f /opt/nodeapi/nodeapi.service /etc/systemd/system/
+cp -f $TMPDIR/nodeapi.service /etc/systemd/system/
 chmod 644 /etc/systemd/system/nodeapi.service
 chown root:root /etc/systemd/system/nodeapi.service
 mkdir -p /opt/nodeapi
@@ -73,21 +88,21 @@ chown root:root /etc/lighttpd/root_ca.crt
 
 ## Base website files
 mkdir -p $WWWPATH
-chown -R www-data:www-data $TMPDIR/html
+chown -R "$WWW_NAME":"$WWW_GROUP" $TMPDIR/html
 rsync -a $TMPDIR/html/ $WWWPATH/
 chmod g+rx $WWWPATH
-chown www-data:www-data $WWWPATH
+chown "$WWW_NAME":"$WWW_GROUP" $WWWPATH
 mkdir -p /var/www/sessions
 chmod -R g+rx /var/www/sessions
-chown -R www-data:www-data /var/www/sessions
+chown -R "$WWW_NAME":"$WWW_GROUP" /var/www/sessions
 mkdir -p /var/www/uploads
 chmod -R g+rx /var/www/uploads
-chown -R www-data:www-data /var/www/uploads
+chown -R "$WWW_NAME":"$WWW_GROUP" /var/www/uploads
 
 ## Website permissions
 rm -f /etc/sudoers.d/www-perms
 sh -c "touch /etc/sudoers.d/www-perms"
-sh -c "echo \"www-data ALL=(root) NOPASSWD:/usr/bin/nmap\" >> /etc/sudoers.d/www-perms"
+sh -c "echo \"tank ALL=(root) NOPASSWD:/usr/bin/nmap\" >> /etc/sudoers.d/www-perms"
 chown root:root /etc/sudoers.d/www-perms
 chmod u=rwx,g=rx,o=rx /etc/sudoers.d/www-perms
 chmod u=r,g=r,o= /etc/sudoers.d/www-perms
@@ -102,9 +117,7 @@ mv -f $WWWPATH/main.min.js $WWWPATH/main.js
 chmod 644 $WWWPATH/styles.css
 chown 644 $WWWPATH/utils.js
 chmod 644 $WWWPATH/main.js
-chown www-data:www-data $WWWPATH/styles.css
-chown www-data:www-data $WWWPATH/utils.js
-chown www-data:www-data $WWWPATH/main.js
+chown -R "$USER1_NAME":"$GROUP_NAME" $WWWPATH
 
 ## Boot Service
 cp -f $TMPDIR/rc.local /etc/

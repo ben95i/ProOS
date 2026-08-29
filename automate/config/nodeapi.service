@@ -1,0 +1,13 @@
+[Unit]
+Description=Automate Node.js API Backend
+Conflicts=shutdown.target
+
+[Service]
+User=tank
+Group=shared
+Type=simple
+Environment="NODE_ENV=production"
+ExecStart=/usr/bin/node server.js
+WorkingDirectory=/opt/nodeapi
+Restart=always
+RestartSec=10

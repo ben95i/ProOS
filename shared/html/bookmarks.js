@@ -48,8 +48,9 @@ const ADD_LOADING_CLASS = 'bookmark__add--loading';
 // the lookup button reports on itself instead of writing into the name box
 const LOOKUP_ICON_CLASS = 'fa-search';
 const LOOKUP_BUSY_CLASS = 'editFav__button--busy';
-const LOOKUP_SPIN_CLASS = 'editFav__button-spin';
-const LOOKUP_SPIN_ICON = 'fad fa-sync';
+// the same ring the rows and the add button turn, rather than a glyph of its
+// own spinning on the spot
+const LOOKUP_SPIN_CLASS = SPINNER_CLASS;
 const LOOKUP_FAIL_ICON_CLASS = 'fa-exclamation-triangle';
 const LOOKUP_FAIL_CLASS = 'editFav__button--failed';
 // The backend can answer with its own failure text instead of a title. The
@@ -1079,9 +1080,12 @@ export default class Bookmarks {
 
   //// lookup button state ////
 
-  // Swaps the magnifier for a turning refresh icon while the lookup runs.
-  // The icon is a child element, not the button's own glyph, so the rotation
-  // turns the icon rather than the whole button.
+  // Swaps the magnifier for the site's own spinner ring while the lookup
+  // runs -- the same one the bookmark rows and the add button use, rather
+  // than a refresh glyph turning on the spot. The ring is a child element, so
+  // it turns inside a button that stays still, and it is centred on the
+  // button because the button is its positioning context (.button is
+  // relative) and LOOKUP_BUSY_CLASS carries the size.
   setLookupBusy() {
     this.clearLookupTimer();
     if (!this.lookupBtn) {
@@ -1091,8 +1095,8 @@ export default class Bookmarks {
     this.lookupBtn.classList.remove('fad', LOOKUP_ICON_CLASS,
       LOOKUP_FAIL_ICON_CLASS, LOOKUP_FAIL_CLASS);
     this.lookupBtn.classList.add(LOOKUP_BUSY_CLASS);
-    const spinner = document.createElement('i');
-    spinner.className = `${LOOKUP_SPIN_ICON} ${LOOKUP_SPIN_CLASS}`;
+    const spinner = document.createElement('span');
+    spinner.className = LOOKUP_SPIN_CLASS;
     this.lookupBtn.appendChild(spinner);
   }
 

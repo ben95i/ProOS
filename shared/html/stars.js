@@ -16,21 +16,24 @@ const SH_STAR_START_Y_OFFSET = -150;
 
 class BackgroundStar {
   constructor() {
-    this.scatter();
+    // Where the star sits inside its own cell, fixed for the life of the
+    // star. A re-layout moves the cell, never the offset within it, so the
+    // field keeps its shape across a resize instead of being reshuffled.
+    this.jitterX = Math.random();
+    this.jitterY = Math.random();
+    this.x = 0;
+    this.y = 0;
     this.size = Math.random() * BG_STAR_SIZE;
     this.alpha = Math.random(); 
   }
 
-  scatter() {
-    this.x = Math.random() * window.innerWidth;
-    this.y = Math.random() * window.innerHeight;
-  }
-
-  // after a resize, only the stars left off-screen are moved
-  keepOnScreen() {
-    if (this.x > window.innerWidth || this.y > window.innerHeight) {
-      this.scatter();
-    }
+  // Lays the star in the cell it has been given, offset by its own jitter.
+  // One star per cell is what spreads the field evenly: placing every star at
+  // a free position across the whole window instead lets them clump, which is
+  // what left dense patches beside bare ones on a large display.
+  placeInCell(column, row, cellWidth, cellHeight) {
+    this.x = (column + this.jitterX) * cellWidth;
+    this.y = (row + this.jitterY) * cellHeight;
   }
 
   draw(ctx) {
@@ -271,9 +274,15 @@ export default class AnimatedBackground {
     }
   }
 
-  // Brings the field to the size of the window. Stars already on screen are
-  // kept, so a resize -- a phone hiding its address bar, say -- does not
-  // reshuffle a field that is sitting still.
+  // Brings the field to the size of the window and lays it out again. Stars
+  // already on screen are kept, so a resize -- a phone hiding its address bar,
+  // say -- does not reshuffle a field that is sitting still.
+  //
+  // The layout is done in full every time rather than only for the stars that
+  // ended up off screen. A window that grew used to leave the stars it already
+  // had inside the old, smaller rectangle while the new ones filled the whole
+  // canvas, which left that rectangle at roughly double the density of the
+  // rest -- a seam that was hard to miss on a large display.
   initBackgroundStars() {
     const numStars = ~~((window.innerWidth * window.innerHeight) / BG_STAR_DENSITY);
     if (this.backgroundStars.length > numStars) {
@@ -282,11 +291,33 @@ export default class AnimatedBackground {
     while (this.backgroundStars.length < numStars) {
       this.backgroundStars.push(new BackgroundStar());
     }
-    for (let i = 0; i < this.backgroundStars.length; i++) {
-      this.backgroundStars[i].keepOnScreen();
-    }
+    this.layoutBackgroundStars();
     while (this.shootingStars.length < MAX_SH_STARS) {
       this.shootingStars.push(new ShootingStar(this.ctx));
+    }
+  }
+
+  // Spreads the field over a grid of one star to a cell. The grid is shaped to
+  // the window, so the cells come out roughly square whatever the aspect
+  // ratio, and there are always at least as many cells as stars: the spare
+  // ones are spread through the grid rather than left in a bare strip at the
+  // bottom.
+  layoutBackgroundStars() {
+    const total = this.backgroundStars.length;
+    if (total === 0) {
+      return;
+    }
+    const width = Math.max(1, window.innerWidth);
+    const height = Math.max(1, window.innerHeight);
+    const columns = Math.max(1, Math.round(Math.sqrt(total * width / height)));
+    const rows = Math.max(1, Math.ceil(total / columns));
+    const cells = columns * rows;
+    const cellWidth = width / columns;
+    const cellHeight = height / rows;
+    for (let i = 0; i < total; i++) {
+      const cell = ~~(i * cells / total);
+      this.backgroundStars[i].placeInCell(
+        cell % columns, ~~(cell / columns), cellWidth, cellHeight);
     }
   }
 
