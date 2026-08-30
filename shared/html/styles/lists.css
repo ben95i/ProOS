@@ -476,6 +476,25 @@
   text-shadow: var(--menu-glow);
 }
 
+/* Once the encrypted lists are unlocked their rows sit among the ordinary
+   ones, and a lock beside every one of them is a column of icons saying the
+   same thing. The badge comes off and the name carries the state instead:
+   italic, and a step back from the white the other rows are in.
+
+   Only the badge goes. The row being added carries the same element as a
+   button -- the one moment the choice can be made -- and that row is the one
+   being renamed, so its name is a .list__namebox rather than a .list__label.
+   Keying the rule on a following .list__label is what tells the two apart. */
+.list__rowlock--on:has(+ .list__label) {
+  display: none;
+}
+
+.list__rowlock--on + .list__label {
+  font-style: italic;
+  /* the faded white already used for the rename box's placeholder */
+  color: #c1c1c1;
+}
+
 /* password boxes: the rename box's look, at the width of the dialog */
 .list__pwbox {
   display: block;

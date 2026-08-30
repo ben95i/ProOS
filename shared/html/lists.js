@@ -670,6 +670,15 @@ export class ListStore {
     }
   }
 
+  // The file needs writing, but nothing in memory changed: the rekey replaced
+  // the blobs wholesale and they are already current. markChanged() above
+  // would mark every open list stale, and the seal that follows would rebuild
+  // those blobs under the key being replaced -- undoing the swap on its way
+  // to the server.
+  markBlobsChanged() {
+    this.dirty = true;
+  }
+
   // Writes the list out, if there is anything the server has not been given.
   // Only one write is ever on the wire; a second caller waits for the first
   // and then writes whatever is still outstanding, so an edit made during a
@@ -1126,14 +1135,14 @@ export default class Lists {
   </div>
   <div class="list__list scroll-bar-style" id="${LIST_ID}"></div>
   <div class="list__actions">
-    <button type="button" class="button button__sml list__btn" id="${ADD_BTN_ID}">
-      <span class="button__text"><i class="fad fa-folder-plus"></i></span>
-    </button>
     <button type="button" class="button button__sml list__btn" id="${CLOSE_BTN_ID}">
       <span class="button__text"><i class="fad fa-times-octagon"></i></span>
     </button>
     <button type="button" class="button button__sml list__btn" id="${DEL_BTN_ID}">
       <span class="button__text"><i class="fad fa-trash-alt" id="${DEL_ICON_ID}"></i></span>
+    </button>
+    <button type="button" class="button button__sml list__btn" id="${ADD_BTN_ID}">
+      <span class="button__text"><i class="fad fa-folder-plus"></i></span>
     </button>
     <div class="list__status" id="${STATUS_ID}">
       <i class="fad fa-lock"></i>Read/Only
@@ -2125,21 +2134,21 @@ export default class Lists {
 
   //// changing the password ////
   //
-  // Held down rather than tapped, and only while the lists are locked. The
-  // change re-encrypts every locked list under the new key and writes them
-  // out, so it is one thing at a time -- offering it half way through a
-  // session with lists open on screen, edits in memory and a save outstanding
-  // would be three.
+  // Held down rather than tapped. The change re-encrypts every encrypted list
+  // under the new key and writes them out, which is why it is a hold and not
+  // a button of its own -- it is not something to reach by accident.
 
-  // The press has begun on the lock. Only a locked window starts counting:
-  // holding it while the lists are open does nothing but lock them, which is
-  // what the tap does anyway.
+  // The press has begun on the lock. It counts whether the lists are open or
+  // shut: the hold spends the press either way, so a hold on an open window
+  // no longer locks them on the way through.
   holdStart(event) {
     this.holdCancel();
+    // A hold that opened the password prompt leaves its click to the overlay
+    // rather than to the button, so the flag that was meant to swallow that
+    // click can still be set. A fresh press clears it, or the next tap on the
+    // lock would be the one swallowed.
+    this.held = false;
     if (!event.target.closest(`#${LOCK_BTN_ID}`)) {
-      return;
-    }
-    if (this.store.unlocked()) {
       return;
     }
     const icon = document.getElementById(LOCK_ICON_ID);
@@ -2186,9 +2195,6 @@ export default class Lists {
       showPopup(`[${WIN_TITLE}] encryption needs an https connection.`);
       return;
     }
-    if (this.store.unlocked()) {
-      return; // it was unlocked while the hold ran
-    }
     // the re-encrypted lists have to go back to the server, so this needs the
     // edit lock as much as any other write does
     if (!this.store.canWrite()) {
@@ -2210,6 +2216,9 @@ export default class Lists {
   async passwordChange(oldPassword, newPassword, repeated) {
     const second = document.getElementById(PWD_BOX2_ID);
     const third = document.getElementById(PWD_BOX3_ID);
+    // change() unlocks with the old password to do its work, so this is the
+    // last point at which whether the user had the lists open is knowable
+    const wasOpen = this.store.unlocked();
     if (newPassword !== repeated) {
       this.showPasswordError("new passwords do not match");
       third.value = "";
@@ -2230,9 +2239,14 @@ export default class Lists {
       return;
     }
     this.closePassword();
-    // The change leaves the new key in hand; the lists were never opened and
-    // are not being opened now, so it goes straight back out again.
-    await this.store.lockUp();
+    // The change leaves the new key in hand. Lists that were already open
+    // stay open under it -- the hold is offered on an open window now, and
+    // shutting them as a side effect of a password change is not what was
+    // asked for. With nothing open the key has nothing to hold, so it goes
+    // straight back out again as it always did.
+    if (!wasOpen) {
+      await this.store.lockUp();
+    }
     this.updateDot();
     this.render();
     if (out.error) {
@@ -2249,6 +2263,17 @@ export default class Lists {
   // write that does not land puts the old blobs back, so the file and the
   // password record never disagree about which key opens what.
   async rekeyLists(nextKey) {
+    // An open list carries plaintext its blob may not have caught up with:
+    // one edited since it was sealed is stale, and one encrypted in this
+    // session has no blob at all. The swap below reads blobs, so they are
+    // brought up to date first -- under the old key, which is what change()
+    // is still holding at this point. A background seal is let finish before
+    // that, so the two are not writing the same entry at once. With nothing
+    // open, both calls find nothing to do.
+    await this.store.settleSeal();
+    if (await this.store.sealOpen() !== true) {
+      return false; // a list that would not seal, so nothing is changed
+    }
     const swapped = [];
     for (const entry of this.store.data) {
       if (entry.enc !== true) {
@@ -2269,7 +2294,7 @@ export default class Lists {
       return true; // a password with nothing encrypted under it yet
     }
     swapped.forEach(one => { one.entry.blob = one.next; });
-    this.store.markChanged();
+    this.store.markBlobsChanged();
     const sent = await this.store.save();
     if (sent !== true) {
       swapped.forEach(one => { one.entry.blob = one.held; });

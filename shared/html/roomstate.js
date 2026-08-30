@@ -1,5 +1,10 @@
 import { sendCmd, refreshInterval } from './utils.js'
 
+// the dropdown this manager draws into, and the host column every one of its
+// rows carries -- it was written out by hand in three places before the
+// automatic refresh started drawing the menu as well
+const STATUS_MENU = 'roomstatus';
+
 export default class RoomStateManager {
   constructor(containerId) {
     this.containerId = containerId;
@@ -154,6 +159,9 @@ export default class RoomStateManager {
       lightIcon.classList.remove("status-error", "status-idle");
       if (resp.roomState === null) {
         lightIcon.classList.add("status-error");
+        // an open menu says so as well, rather than sitting on the rows of
+        // the last reading that worked
+        this.refreshStatusMenu();
         this.hideRoomState();
         return;
       } else {
@@ -167,6 +175,10 @@ export default class RoomStateManager {
           lightIcon.classList.add("status-off");
         }
       }
+      // The dropdown, if it is open, is showing the reading this one just
+      // replaced. It used to hold that reading until it was closed and
+      // opened again; now every refresh redraws its rows in place.
+      this.refreshStatusMenu();
       const refreshRate = refreshInterval();
       this.container.style.setProperty('--spin-duration', `${refreshRate}s`);    
       void this.container.offsetWidth; // Trigger reflow
@@ -190,13 +202,60 @@ export default class RoomStateManager {
     }
   }
 
+  // The rows of the status dropdown, built from the reading currently held.
+  // Split out of roomStateClick() so the automatic refresh can draw the same
+  // rows without going through a click.
+  statusMenuData() {
+    let menuData = '';
+    if (this.roomState === null) {
+      menuData += `${STATUS_MENU}|noind|Error checking devices.\n`;
+    } else {
+      for (const device of this.devices) {
+        const name = device.name;
+        const status = device.status;
+        let ind = status === false ? 'blkind' : (status === true ? 'grnind' : 'redind');
+        menuData += `${STATUS_MENU}|${ind}|${name}\n`;
+      }
+    }
+    return menuData;
+  }
+
+  // is the dropdown on screen right now
+  statusMenuOpen() {
+    const _elem = document.getElementById(STATUS_MENU);
+    return !!_elem && _elem.style.display === 'block';
+  }
+
+  // Draws the rows and shows the menu. Reference the globally exposed window
+  // function.
+  drawStatusMenu() {
+    if (typeof window.drawMenu === 'function') {
+      window.drawMenu(this.statusMenuData(), STATUS_MENU);
+    }
+    // Re-fetch in case drawMenu rewrote the DOM
+    const _elem = document.getElementById(STATUS_MENU);
+    if (_elem) _elem.style.display = 'block';
+  }
+
+  // A refresh landing while the menu is open: only the rows are replaced, and
+  // drawMenu() is asked not to scroll. Its scroll step measures a menu that
+  // is position:fixed against the page offset, so re-running it on a menu
+  // already on screen walks the page down a little on every refresh.
+  refreshStatusMenu() {
+    if (!this.statusMenuOpen()) {
+      return;
+    }
+    if (typeof window.drawMenu === 'function') {
+      window.drawMenu(this.statusMenuData(), STATUS_MENU, false);
+    }
+  }
+
   async roomStateClick(e) {
     if (e) {
       e.stopPropagation();
       e.preventDefault(); 
     }
-    const menu = 'roomstatus';
-    let _elem = document.getElementById(menu);
+    let _elem = document.getElementById(STATUS_MENU);
     if (_elem && _elem.style.display === 'block') {
       _elem.style.display = 'none';
       return;
@@ -205,22 +264,7 @@ export default class RoomStateManager {
     if (typeof window.removeDropdowns === 'function') window.removeDropdowns();
     this.stopRoomStateTimer();
     await this.showRoomState();
-    let menuData = '';
-    if (this.roomState === null) {
-      menuData += `${menu}|noind|Error checking devices.\n`;
-    } else {
-      for (const device of this.devices) {
-        const name = device.name;
-        const status = device.status;
-        let ind = status === false ? 'blkind' : (status === true ? 'grnind' : 'redind');
-        menuData += `${menu}|${ind}|${name}\n`;
-      }
-    }
-    // Reference the globally exposed window function
-    if (typeof window.drawMenu === 'function') window.drawMenu(menuData, menu);
-    // Re-fetch in case drawMenu rewrote the DOM
-    _elem = document.getElementById(menu);
-    if (_elem) _elem.style.display = 'block';
+    this.drawStatusMenu();
   }
 
   // Room switch: drop the pending countdown and re-fetch straight away. The

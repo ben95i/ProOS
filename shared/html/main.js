@@ -1,7 +1,7 @@
 // Automate Website - JavaScript Frontend
 // by Ben Provenzano III
 
-import { requestThrottle, setTheme, classDisplay,
+import { requestThrottle, classDisplay,
   addClassToElem, cleanString, base64URLSafeEncode, splitMenuData,
   isNumeric, mapNumber, splitByDelimiter, sendCmd, timeoutInterval,
   html, showPopup, clearPopupTimer, loadMenu, savePOST } from './utils.js';
@@ -9,6 +9,7 @@ import ToggleSwitch, { toggleSwitchCallback } from './switch.js';
 import RoomStateManager from './roomstate.js';
 import AnimatedBackground from './stars.js';
 import ColorPrompt from './colorprompt.js';
+import Theme from './theme.js';
 import WeatherWidget from './weather.js';
 import Lists from './lists.js';
 import Bookmarks from './bookmarks.js';
@@ -48,6 +49,7 @@ window.App = {
   lists: null,
   bookmarks: null,
   colorPrompt: null,
+  theme: null,
   activeSwitches: [],
   fileData: [],
   // the <a> rows drawMenu() created, so they can be taken back out without
@@ -160,15 +162,10 @@ function loadPage() {
     window.weatherWidget = new WeatherWidget();
     window.weatherWidget.activate();
   }
-  // set theme
-  let currentTheme;
-  let _theme = localStorage.getItem("main-color")
-  if (_theme === null || _theme === undefined || _theme === "") {
-    currentTheme = "#1f2051"; // dark blue
-  } else {
-    currentTheme = localStorage.getItem("main-color");
-  }
-  setTheme(currentTheme);
+  // set theme -- the colour, its storage and the menu row that changes it
+  // all live in Theme now
+  App.theme = new Theme();
+  App.theme.load();
   // setup listeners
   setupEventListeners();
   // initialize background, with the saved animation setting applied before
@@ -418,7 +415,7 @@ function topNavTemplate(f) {
 registerListeners({
   'btn-dyn-mainmenu':    () => showDynFileMenu('mainmenu'),
   'btn-menu-pimainmenu': () => showMenu('pi-mainmenu'),
-  'btn-dyn-thememenu':   () => showDynFileMenu('thememenu'),
+  'btn-dyn-thememenu':   () => App.theme && App.theme.showMenu(),
   'btn-show-bookmarks':  () => showBookmarks(),
   'room_anchor':         () => openRoomDropdown(),
   'btn-add-bookmark':    () => App.bookmarks && App.bookmarks.addBookmark(),
@@ -2154,25 +2151,10 @@ function menuRequestCurrent(token) {
   return token === menuDrawToken;
 }
 
-// Rows the site adds to a menu itself, drawn above whatever the file holds.
-// Same host|type|name shape as a file row, so createListItem() handles them
-// with no special case of its own.
-// On a 'chk' row the third field is the icon class rather than a label.
-const MENU_LOCAL_ROWS = {
-  'thememenu': `stars|chk|fad fa-stars\n`
-};
-
-// Puts the site's own rows above the ones the file returned, as plain menu
-// data -- the same thing showPowerMenu() does when it builds its rows by
-// hand. The file's text is run through splitMenuData() first so its outer
-// quoting comes off here rather than ending up buried mid-string.
-function withLocalRows(menu, data) {
-  const localRows = MENU_LOCAL_ROWS[menu];
-  if (!localRows || !data || typeof data !== 'string') {
-    return data;
-  }
-  return localRows + splitMenuData(data).join('\n');
-}
+// MENU_LOCAL_ROWS / withLocalRows() were here. They put the site's own rows
+// above the ones a file returned, and the theme menu's stars toggle was the
+// only row that ever used them. Theme draws its own menu now and hands that
+// row to drawMenu() itself, so the table had nothing left in it.
 
 function showDynFileMenu(menu) {
   let _elem = document.getElementById(menu);
@@ -2186,7 +2168,7 @@ function showDynFileMenu(menu) {
     const token = beginMenuRequest();
     loadMenu(url).then((data) => { // wait for response
       if (!menuRequestCurrent(token)) { return; }
-      drawMenu(withLocalRows(menu, data), menu);
+      drawMenu(data, menu);
     });  
   }
 }
@@ -2203,13 +2185,17 @@ function showDynAPIMenu(menu) {
     const token = beginMenuRequest();
     loadMenu(url).then((data) => { // wait for response
       if (!menuRequestCurrent(token)) { return; }
-      drawMenu(withLocalRows(menu, data), menu);
+      drawMenu(data, menu);
     });  
   }
 }
 
-// draws each menu item
-window.drawMenu = function(data, menu) {
+// Draws each menu item. `scroll` is only ever passed false by a caller
+// redrawing a menu that is already on screen (the room status refresh): the
+// step at the bottom measures a fixed-position menu against the page offset,
+// which is right the once on opening and walks the page down if it is run
+// again every refresh.
+window.drawMenu = function(data, menu, scroll = true) {
   // remove any current dynamic menus
   removeDynMenus();
   if (data && typeof data === 'string') {
@@ -2242,6 +2228,9 @@ window.drawMenu = function(data, menu) {
     App.fileData.push(menu);
     // one append for the whole menu
     navElement.appendChild(fragment);
+    // a redraw of a menu already on screen stops here -- the rows are the
+    // only thing it wanted replaced
+    if (scroll === false) { return; }
     // scroll only if the menu runs past the bottom of the viewport
     const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
     const rect = navElement.getBoundingClientRect();
@@ -2320,15 +2309,6 @@ function createListItem(col0_in, col1, col2, menuid) {
       // URL menu
       _elm.href = col0;
       break;
-    case 'thm': {
-      // theme menu 
-      _elm.classList.add('theme-colorbox');
-      _elm.style.setProperty('background-color', col0);
-      _elm.addEventListener("click", function() {
-        setTheme(col0);
-      });
-      break;
-    }
     case 'chk': {
       // Checkbox row for a browser-side setting
       const chksettings = WWW_SETTINGS[col0];
@@ -2474,6 +2454,10 @@ function removeDynMenus() {
   }
 }
 
+// Both callers of this are LED colours, so the picker's heading says so --
+// "Select LED Color". The theme's own picker is opened by Theme, not here.
+const LED_PROMPT_NAME = 'LED';
+
 function openColorPrompt(command, argument, three_args = false) {
   // the previous prompt is destroyed rather than dropped: show() wipes the
   // anchor's markup, and an instance left behind mid-drag still holds
@@ -2500,6 +2484,8 @@ function openColorPrompt(command, argument, three_args = false) {
       .catch(err => {
         showPopup("[ColorPrompt] failed to send color: " + err);
       });
+  }, {
+    name: LED_PROMPT_NAME
   });
   colorPrompt.show();
   colorPrompt.updateStateFromHex('#000000', true, false);

@@ -1,0 +1,10 @@
+#FF0000|Red
+#FF7F00|Orange
+#FFFF00|Yellow
+#00FF00|Green
+#00FFFF|Cyan
+#0000FF|Blue
+#7F00FF|Violet
+#FF00FF|Magenta
+#FFFFFF|White
+#000000|Black

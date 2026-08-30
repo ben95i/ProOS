@@ -138,7 +138,6 @@ chmod u=rwx,g=rx,o=rx /etc/sudoers.d/www-perms
 chmod u=r,g=r,o= /etc/sudoers.d/www-perms
 
 ## Minify JS/CSS
-## Minify JS/CSS
 MIN_BEFORE_TOTAL=0
 MIN_AFTER_TOTAL=0
 echo "Compressing website components."

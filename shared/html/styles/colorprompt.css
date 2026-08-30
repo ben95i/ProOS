@@ -193,11 +193,25 @@
   border: 1px solid var(--border-color);
   padding: 8px;
   border-radius: 4px;
-  width: 110px;
+  /* Sized by the `size` attribute showColorField() sets, so the box grows
+     with a long colour name instead of cutting it off. The floor is the
+     width the hex used to be pinned to, so a short name does not shrink the
+     row below what it has always looked like. */
+  width: auto;
+  min-width: 110px;
+  max-width: 100%;
   font-family: monospace;
   font-size: 18px;
   text-transform: uppercase;
   text-align: center;
+}
+
+/* The same box while it is showing a colour's name rather than its hex.
+   Only the forced caps come off: the name keeps the font and the 18px above
+   it, so it reads at exactly the size the hex does, and the monospace is
+   what makes the `size` attribute size the box to the text exactly. */
+#hex-color.color-name-shown {
+  text-transform: none;
 }
 
 #hex-color:focus {

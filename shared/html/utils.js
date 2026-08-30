@@ -49,6 +49,34 @@ export function splitMenuData(data) {
   return data.slice(start, end).split(/\\n|\n/);
 }
 
+// A palette file: one colour per line, `hex_value|display_name`. Shared by
+// the theme menu and the colour prompt's own default palette, which are the
+// same format in two files. A line with no colour on it is dropped rather
+// than taking the palette with it, and a value written without its "#" still
+// reads. The name is left as the file gave it, including empty.
+export function parsePalette(fileText) {
+  const colors = [];
+  if (!fileText || typeof fileText !== 'string') {
+    return colors;
+  }
+  for (const line of splitMenuData(fileText)) {
+    const row = line.trim();
+    if (row === '') {
+      continue;
+    }
+    const field = row.split('|');
+    let color = field[0].trim();
+    if (color === '') {
+      continue;
+    }
+    if (!color.startsWith('#')) {
+      color = `#${color}`;
+    }
+    colors.push({ color: color, name: (field[1] || '').trim() });
+  }
+  return colors;
+}
+
 // request rate limiter
 export function requestThrottle(func, limit) {
   let lastFunc;
@@ -84,11 +112,10 @@ export function requestThrottle(func, limit) {
   return throttled;
 }
 
-export function setTheme(newTheme) {
-  let body = document.getElementsByTagName("html")[0];
-  body.style.setProperty('--main-color', newTheme);
-  localStorage.setItem("main-color", newTheme);
-}
+// setTheme() was here. It set the CSS variable and wrote localStorage in the
+// one call, which the colour picker cannot use -- it repaints on every move
+// of the map and keeps the colour only on close. The two halves are now
+// Theme.apply() / Theme.save() in theme.js, with Theme.set() doing both.
 
 export function classDisplay(_elem, _state) {
   let _itr;

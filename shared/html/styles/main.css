@@ -622,6 +622,23 @@ input.chkbox {
   margin: 8px;
 }
 
+/* The box carries the theme colour, and white on a light one is barely
+   there. Theme.colorRow() adds this once the colour crosses that line, and
+   the label and the drop go dark instead. The element selector is needed to
+   get past `.dd-content a`, which sets the white this replaces. */
+.dd-content a.theme-colorbox--invert {
+  color: #000;
+}
+
+/* the glow the menu rows carry is a white one, and it is the wrong thing to
+   put behind dark text -- the row lifts on hover without it */
+@media (hover: hover) and (pointer: fine) {
+  .dd-content a.theme-colorbox--invert:hover {
+    color: #000;
+    text-shadow: none;
+  }
+}
+
 /* Status Menu */
 
 .ind_dot {
