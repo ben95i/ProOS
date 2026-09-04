@@ -81,8 +81,8 @@ apt-get $APTARGS locales console-setup aptitude libnss-mdns libnss3-tools xxd au
  rng-tools5 gpiod net-tools python3 python3-pip python3-venv v4l-utils x264 xmltoman samba \
  build-essential autoconf make libtool binutils i2c-tools cmake yasm minicom rclone unzip \
  bluetooth pi-bluetooth bluez bluez-tools bluez-alsa-utils libbluetooth3 mpg321 arduino \
- samba-common-bin samba-libs libjson-glib-1.0-0 libupnp6 mpv  alsa-base alsa-utils \
- nodejs raspi-utils lame usbutils
+ samba-common-bin samba-libs libjson-glib-1.0-0 libupnp6 alsa-base alsa-utils uglifyjs \
+ nodejs mpv raspi-utils lame usbutils lighttpd yui-compressor 
 
 ## Development Support
 apt-get $APTARGS libgtk2.0-dev libbluetooth-dev libpng-dev libdaemon-dev libpopt-dev \
@@ -109,14 +109,6 @@ if [ ! -e "/usr/bin/arduino-cli" ]; then
   arduino-cli core install arduino:avr
   arduino-cli lib install Encoder@1.4.4
 fi
-
-## Light Web Server
-apt-get $APTARGS lighttpd
-chown www-data:www-data /var/www
-usermod -a -G www-data pi
-mkdir -p /var/www/html
-chmod -R 777 /var/www/html
-chown -R www-data:www-data /var/www/html
 
 ## Camera Motion Server
 apt-get $APTARGS motion libmicrohttpd12t64
@@ -280,60 +272,75 @@ else
   sed -i "s/RaspberryPi/$MODNAME/g" /etc/systemd/system/rpi-airplay.service
 fi
 
-## Light Web Server
+## API server
+API_PATH="/opt/nodeapi"
+mkdir -p $API_PATH
+mv -f /opt/rpi/custom.js $API_PATH/
+mv -f /opt/rpi/ledparser.js $API_PATH/
+mv -f /opt/rpi/controller.js $API_PATH/
+cd $API_PATH
+API_PKG_CHKSUM=$(cat package.json package-lock.json 2>/dev/null | sha256sum | cut -d' ' -f1)
+if [ ! -d node_modules ] || [ "$API_PKG_CHKSUM" != "$(cat "$API_PATH/.deps.hash" 2>/dev/null)" ]; then
+  echo "API dependencies changed, installing..."
+  npm install
+  echo "$API_PKG_CHKSUM" > "$API_PATH/.deps.hash"
+else
+  echo "API dependencies unchanged, skipping npm install"
+fi
+cd $TMPDIR
+
+## Light web server configuration
 rm -rf /etc/lighttpd/conf-enabled/*
 cp -f $TMPDIR/lighttpd.conf /etc/lighttpd/
 chmod 644 /etc/lighttpd/lighttpd.conf
 chown root:root /etc/lighttpd/lighttpd.conf
 
-## Node.JS API Server
-mkdir -p /opt/nodeapi
-mv -f /opt/rpi/custom.js /opt/nodeapi/
-mv -f /opt/rpi/ledparser.js /opt/nodeapi/
-mv -f /opt/rpi/controller.js /opt/nodeapi/
-cd /opt/nodeapi
-npm install
-npm audit fix
-cd $TMPDIR
+## WWW paths
+WWWPATH="/var/www/html"
+WWW_NAME="www-data"
+WWW_GROUP="www-data"
 
-## WWW files
-rm -rf /var/www/html
-mkdir -p /var/www/html
-mv -f $TMPDIR/html-base/* /var/www/html
-mv -f $TMPDIR/html/* /var/www/html
-mkdir -p /var/www/html/ram
-touch /var/www/html/ram/sysout.txt
-chmod -R +x /var/www/html
-chown -R www-data:www-data /var/www/html
+## install WWW files
+rm -rf "$WWWPATH"
+mkdir -p "$WWWPATH"
+mv -f $TMPDIR/html-base/* "$WWWPATH"
+mv -f $TMPDIR/html/* "$WWWPATH"
+mkdir -p "$WWWPATH/ram"
+touch "$WWWPATH/ram/sysout.txt"
+chmod -R +x "$WWWPATH"
+chown -R "$WWW_NAME":"$WWW_GROUP" "$WWWPATH"
 mkdir -p /var/www/sessions
 chmod -R g+rx /var/www/sessions
-chown -R www-data:www-data /var/www/sessions
+chown -R "$WWW_NAME":"$WWW_GROUP" /var/www/sessions
 mkdir -p /var/www/uploads
 chmod -R g+rx /var/www/uploads
-chown -R www-data:www-data /var/www/uploads
-
+chown -R "$WWW_NAME":"$WWW_GROUP" /var/www/uploads
 if [ ! -e "/opt/rpi/modconf/brand.txt" ]; then
   ## No module selected
-  sed -i "s/>Automate</>RaspberryPi</g" /var/www/html/index.html
+  sed -i "s/>Automate</>RaspberryPi</g" "$WWWPATH/index.html"
 else
   ## Set module name
-  sed -i "s/>Automate</>$MODNAME</g" /var/www/html/index.html
+  sed -i "s/>Automate</>$MODNAME</g" "$WWWPATH/index.html"
 fi
 
+## Minify JS/CSS
+$API_PATH/www-minify.sh
+
 ## WWW Permissions
-usermod -aG audio www-data
+usermod -aG audio "$WWW_NAME"
+usermod -aG $WWW_NAME pi
 rm -f /etc/sudoers.d/www-perms
 rm -f /etc/sudoers.d/www-nopasswd
 rm -f /etc/sudoers.d/www-mod-nopasswd
 rm -f /etc/sudoers.d/nobody-perms
 sh -c "touch /etc/sudoers.d/www-perms"
-sh -c "echo \"www-data ALL=(root) NOPASSWD:/opt/rpi/servercmds.sh\" >> /etc/sudoers.d/www-perms"
-sh -c "echo \"www-data ALL=(root) NOPASSWD:/opt/rpi/relaxrun.sh\" >> /etc/sudoers.d/www-perms"
+sh -c "echo \"$WWW_NAME ALL=(root) NOPASSWD:/opt/rpi/servercmds.sh\" >> /etc/sudoers.d/www-perms"
+sh -c "echo \"$WWW_NAME ALL=(root) NOPASSWD:/opt/rpi/relaxrun.sh\" >> /etc/sudoers.d/www-perms"
 chown root:root /etc/sudoers.d/www-perms
 chmod u=rwx,g=rx,o=rx /etc/sudoers.d/www-perms
 chmod u=r,g=r,o= /etc/sudoers.d/www-perms
 
-## Unrestricted Pi Permissions
+## Pi Permissions
 rm -f /etc/sudoers.d/010_pi-perms
 rm -f /etc/sudoers.d/010_pi-nopasswd
 sh -c "touch /etc/sudoers.d/010_pi-nopasswd"
@@ -472,208 +479,8 @@ cp -f $TMPDIR/motion.conf /etc/motion/motion.conf
 chmod 644 /etc/motion/motion.conf
 chown root:root /etc/motion/motion.conf
 
-##### Compiled from Source #####
-NC_MSG="(Source Not Changed)"
-LED_EF="/opt/rpi/effects"
-SRC_BIN="/opt/rpi"
-SRC_BKP="/opt/source-backup"
-mkdir -p $SRC_BKP
-
-## WS2812B DMA Library ################################
-if [ ! -e "/usr/local/include/ws2811/ws2811.h" ]; then
-  echo "Compiling WS28xx DMA Library..."
-  cd $LED_EF/ws281x
-  mkdir build
-  cd build
-  cmake ..
-  make
-  make install
-  ldconfig
-  cd $TMPDIR
-fi
-#######################################################
-if [ ! -f "$SRC_BKP/opcserver.cpp" ]; then
-  touch $SRC_BKP/opcserver.cpp
-fi
-if ! cmp -s $LED_EF/opcserver.cpp $SRC_BKP/opcserver.cpp; then
-    echo "Compiling OPC to WS2812B Program..."
-    rm -f $LED_EF/opcserver
-    g++ -O3 -std=c++17 $LED_EF/opcserver.cpp $LED_EF/httpapiserver.cpp -o $LED_EF/opcserver -lws2811 -lpthread
-fi
-mv -f $LED_EF/opcserver.cpp $SRC_BKP/
-#######################################################
-if [ ! -f "$SRC_BKP/fcproxy.cpp" ]; then
-  touch $SRC_BKP/fcproxy.cpp
-fi
-if ! cmp -s $LED_EF/fcproxy.cpp $SRC_BKP/fcproxy.cpp; then
-    echo "Compiling Brightness Proxy Program..."
-    rm -f $LED_EF/fcproxy
-    g++ -O3 $LED_EF/fcproxy.cpp $LED_EF/httpapiserver.cpp -o $LED_EF/fcproxy -lpthread
-fi
-mv -f $LED_EF/fcproxy.cpp $SRC_BKP/
-#######################################################
-if [ ! -f "$SRC_BKP/textscroll.cpp" ]; then
-  touch $SRC_BKP/textscroll.cpp
-fi
-if ! cmp -s $LED_EF/textscroll.cpp $SRC_BKP/textscroll.cpp; then
-    echo "Compiling LED Text Scrolling Program..."
-    rm -f $LED_EF/textscroll
-    g++ -O3 -Wall $LED_EF/textscroll.cpp $LED_EF/ledlayout.cpp $LED_EF/opcclient.cpp -o $LED_EF/textscroll
-fi
-mv -f $LED_EF/textscroll.cpp $SRC_BKP/
-#######################################################
-if [ ! -f "$SRC_BKP/maze.cpp" ]; then
-  touch $SRC_BKP/maze.cpp
-fi
-if ! cmp -s $LED_EF/maze.cpp $SRC_BKP/maze.cpp; then
-    echo "Compiling LED Maze Program..."
-    rm -f $LED_EF/maze
-    g++ -std=c++17 -O2 $LED_EF/maze.cpp $LED_EF/ledlayout.cpp $LED_EF/opcclient.cpp -o $LED_EF/maze -pthread
-fi
-mv -f $LED_EF/maze.cpp $SRC_BKP/
-#######################################################
-if [ ! -f "$SRC_BKP/mp4toleds.cpp" ]; then
-  touch $SRC_BKP/mp4toleds.cpp
-fi
-if ! cmp -s $LED_EF/mp4toleds.cpp $SRC_BKP/mp4toleds.cpp; then
-    echo "Compiling Video File to OPC Program..."
-    rm -f $LED_EF/mp4toleds
-    g++ -O3 $LED_EF/mp4toleds.cpp $LED_EF/ledlayout.cpp $LED_EF/opcclient.cpp -o $LED_EF/mp4toleds $(pkg-config --cflags --libs opencv4) -pthread
-fi
-mv -f $LED_EF/mp4toleds.cpp $SRC_BKP/
-#######################################################
-if [ ! -f "$SRC_BKP/oscope.cpp" ]; then
-  touch $SRC_BKP/oscope.cpp
-fi
-if ! cmp -s $LED_EF/oscope.cpp $SRC_BKP/oscope.cpp; then
-    echo "Compiling O-scope LED Program..."
-    rm -f $LED_EF/oscope
-    g++ -O3 $LED_EF/oscope.cpp $LED_EF/ledlayout.cpp $LED_EF/opcclient.cpp -o $LED_EF/oscope -lasound -pthread
-fi
-mv -f $LED_EF/oscope.cpp $SRC_BKP/
-#######################################################
-if [ ! -f "$SRC_BKP/spectro.cpp" ]; then
-  touch $SRC_BKP/spectro.cpp
-fi
-if ! cmp -s $LED_EF/spectro.cpp $SRC_BKP/spectro.cpp; then
-    echo "Compiling Spectrogram LED Program..."
-    rm -f $LED_EF/spectro
-    g++ -O3 $LED_EF/spectro.cpp $LED_EF/ledlayout.cpp $LED_EF/opcclient.cpp -o $LED_EF/spectro -lasound -pthread
-fi
-mv -f $LED_EF/spectro.cpp $SRC_BKP/
-#######################################################
-if [ ! -f "$SRC_BKP/noise.cpp" ]; then
-  touch $SRC_BKP/noise.cpp
-fi
-if ! cmp -s $LED_EF/noise.cpp $SRC_BKP/noise.cpp; then
-    echo "Compiling Noise LED Program..."
-    rm -f $LED_EF/noise
-    g++ -O3 $LED_EF/noise.cpp $LED_EF/ledlayout.cpp $LED_EF/opcclient.cpp -o $LED_EF/noise -lm
-fi
-mv -f $LED_EF/noise.cpp $SRC_BKP/
-#######################################################
-if [ ! -f "$SRC_BKP/orbits.cpp" ]; then
-  touch $SRC_BKP/orbits.cpp
-fi
-if ! cmp -s $LED_EF/orbits.cpp $SRC_BKP/orbits.cpp; then
-    echo "Compiling Orbits LED Program..."
-    rm -f $LED_EF/orbits
-    g++ -O3 $LED_EF/orbits.cpp $LED_EF/ledlayout.cpp $LED_EF/opcclient.cpp -o $LED_EF/orbits -lm
-fi
-mv -f $LED_EF/orbits.cpp $SRC_BKP/
-#######################################################
-if [ ! -f "$SRC_BKP/miami.cpp" ]; then
-  touch $SRC_BKP/miami.cpp
-fi
-if ! cmp -s $LED_EF/miami.cpp $SRC_BKP/miami.cpp; then
-    echo "Compiling Miami LED Program..."
-    rm -f $LED_EF/miami
-    g++ -O3 $LED_EF/miami.cpp $LED_EF/ledlayout.cpp $LED_EF/opcclient.cpp -o $LED_EF/miami -lm
-fi
-mv -f $LED_EF/miami.cpp $SRC_BKP/
-#######################################################
-if [ ! -f "$SRC_BKP/stripes.cpp" ]; then
-  touch $SRC_BKP/stripes.cpp
-fi
-if ! cmp -s $LED_EF/stripes.cpp $SRC_BKP/stripes.cpp; then
-    echo "Compiling Stripes LED Program..."
-    rm -f $LED_EF/stripes
-    g++ -O3 $LED_EF/stripes.cpp $LED_EF/ledlayout.cpp $LED_EF/opcclient.cpp -o $LED_EF/stripes -lm
-fi
-mv -f $LED_EF/stripes.cpp $SRC_BKP/
-#######################################################
-if [ ! -f "$SRC_BKP/chase.cpp" ]; then
-  touch $SRC_BKP/chase.cpp
-fi
-if ! cmp -s $LED_EF/chase.cpp $SRC_BKP/chase.cpp; then
-    echo "Compiling Chase LED Program..."
-    rm -f $LED_EF/chase
-    g++ -O3 $LED_EF/chase.cpp $LED_EF/ledlayout.cpp $LED_EF/opcclient.cpp -o $LED_EF/chase -lm
-fi
-mv -f $LED_EF/chase.cpp $SRC_BKP/
-#######################################################
-if [ ! -f "$SRC_BKP/writecolor.cpp" ]; then
-  touch $SRC_BKP/writecolor.cpp
-fi
-if ! cmp -s $LED_EF/writecolor.cpp $SRC_BKP/writecolor.cpp; then
-    echo "Compiling Color to OPC LED Program..."
-    rm -f $LED_EF/writecolor
-    g++ -O3 $LED_EF/writecolor.cpp $LED_EF/ledlayout.cpp $LED_EF/opcclient.cpp -o $LED_EF/writecolor -lm
-fi
-mv -f $LED_EF/writecolor.cpp $SRC_BKP/
-#######################################################
-if [ ! -f "$SRC_BKP/colorscan.cbl" ]; then
-  touch $SRC_BKP/colorscan.cbl
-fi
-if ! cmp -s $LED_EF/colorscan.cbl $SRC_BKP/colorscan.cbl; then
-    echo "Compiling Color Lookup COBOL Program..."
-    rm -f $LED_EF/colorscan
-    cobc -x --free $LED_EF/colorscan.cbl -o $LED_EF/colorscan
-fi
-mv -f $LED_EF/colorscan.cbl $SRC_BKP/
-#######################################################
-if [ ! -f "$SRC_BKP/gposerver.cpp" ]; then
-  touch $SRC_BKP/gposerver.cpp
-fi
-if ! cmp -s $SRC_BIN/gposerver.cpp $SRC_BKP/gposerver.cpp; then
-    echo "Compiling GPO Pin Control Program..."
-    rm -f $SRC_BIN/gposerver
-    g++ $SRC_BIN/gposerver.cpp -o $SRC_BIN/gposerver -lgpiodcxx
-fi
-mv -f $SRC_BIN/gposerver.cpp $SRC_BKP/
-#######################################################
-if [ ! -f "$SRC_BKP/pinmon.cpp" ]; then
-  touch $SRC_BKP/pinmon.cpp
-fi
-if ! cmp -s $SRC_BIN/pinmon.cpp $SRC_BKP/pinmon.cpp; then
-    echo "Compiling GPI Pin Monitor Program..."
-    rm -f $SRC_BIN/pinmon
-    g++ -Wall -O3 $SRC_BIN/pinmon.cpp -o $SRC_BIN/pinmon -lgpiodcxx
-fi
-mv -f $SRC_BIN/pinmon.cpp $SRC_BKP/
-#######################################################
-if [ ! -f "$SRC_BKP/ldrdetect.cpp" ]; then
-  touch $SRC_BKP/ldrdetect.cpp
-fi
-if ! cmp -s $SRC_BIN/ldrdetect.cpp $SRC_BKP/ldrdetect.cpp; then
-    echo "Compiling LDR Detector Program..."
-    rm -f $SRC_BIN/ldrdetect
-    g++ $SRC_BIN/ldrdetect.cpp -o $SRC_BIN/ldrdetect -lgpiodcxx
-fi
-mv -f $SRC_BIN/ldrdetect.cpp $SRC_BKP/
-#######################################################
-if [ ! -f "$SRC_BKP/ztermcom.c" ]; then
-  touch $SRC_BKP/ztermcom.c
-fi
-if ! cmp -s $SRC_BIN/ztermcom.c $SRC_BKP/ztermcom.c; then
-    echo "Compiling Z-Term RS232 Communication Program..."
-    rm -f /usr/bin/ztermcom
-    gcc $SRC_BIN/ztermcom.c -o /usr/bin/ztermcom
-fi
-mv -f $SRC_BIN/ztermcom.c $SRC_BKP/
-usermod -a -G dialout www-data
-usermod -a -G tty www-data
-#######################################################
+## Compile Programs
+$TMPDIR/compile.sh
 
 ## Services
 cp -f $TMPDIR/timesyncd.conf /etc/systemd/
@@ -703,7 +510,7 @@ if [ ! -e "/etc/rpi-conf.done" ]; then
   echo "Initial setup (phase II) complete"
   touch /etc/rpi-conf.done
 else
-  echo "Skipping services"
+  echo "Skipping services."
 fi
 
 ## Run module script if found

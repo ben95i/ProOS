@@ -16,8 +16,9 @@ dtoverlay=disable-wifi
 #-------Disable Bluetooth-------
 dtoverlay=disable-bt
 
-#-------GPU memory-------
-gpu_mem=64
+#-------GPU (disable dynamic clock scaling)-------
+gpu_mem=16
+core_freq=250
 
 #-------Disable Ram temp refresh every 500ms---------------
 disable_pvt=1

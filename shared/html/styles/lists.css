@@ -1,9 +1,9 @@
 /*
  *  Automate -- lists.css
  *
- *  Lists window: header, rows, round buttons, rename box, status dot and
- *  the unsaved-changes dialog. Also holds the shared drag handle -- see the
- *  note above it.
+ *  Lists window: header, rows, round buttons, rename box, search box, status
+ *  dot and the unsaved-changes dialog. Also holds the shared drag handle --
+ *  see the note above it.
  *
  *  Split out of the old single styles.css. Loaded from index.html after
  *  styles/main.css, which holds the globals (palette, buttons, menus) these
@@ -153,6 +153,12 @@
   box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.5);
 }
 
+/* the row is the theme colour itself, so its name follows the same rule the
+   buttons do -- see the light theme colour block in main.css */
+html.theme-light .drag-row--active {
+  color: #000;
+}
+
 .list__round {
   display: flex;
   align-items: center;
@@ -178,6 +184,13 @@
 
 .list__round--on i {
   opacity: 1;
+}
+
+/* the filled ring is the theme colour, so the tick on it turns over with the
+   rest -- but not on the red ring below, which keeps its own colour and its
+   white tick whatever the theme is */
+html.theme-light .list__round--on:not(.list__round--del) i {
+  color: #000;
 }
 
 /* the same button while delete mode is on: red, so picking a row for deletion
@@ -261,6 +274,101 @@
 
 .list__namebox:focus {
   outline: 3px solid var(--main-40-white);
+}
+
+/* Shared search box -- lists window and bookmarks menu. Built by
+   searchRowElement() in utils.js, which has no sheet of its own, so it sits
+   here beside the drag handle for the same reason that one does: these two
+   are what the two menus have in common.
+
+   Everything the box is made of is set here rather than left to the host --
+   the type size included -- so the two come out the same height without either
+   one being told what the other's font is. A host adds its own chrome around
+   the row (.list__search below, #bookmark__search in bookmarks.css) and
+   nothing else. */
+.search-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* The magnifier, and the cross it becomes once there is something to clear.
+   Held to one width, with nothing around it, so the box beside it does not
+   shift by the difference between the two glyphs as they swap and the gap to
+   the box is the row's own and no one else's. */
+.search-row__icon {
+  flex-shrink: 0;
+  width: 20px;
+  padding: 0px;
+  margin: 0px;
+  font-size: 17px;
+  line-height: 1;
+  text-align: center;
+  color: var(--main-40-white);
+  /* it is a button while it is a cross, so a long press on it should not be a
+     text selection or a callout */
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+
+/* the cross: pressable, and lit like the header icons to say so */
+.search-row__icon--clear {
+  color: #fff;
+  cursor: pointer;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .search-row__icon--clear:hover {
+    text-shadow: var(--menu-glow);
+  }
+}
+
+/* the name box's look, filling what the icon leaves of the row */
+.search-row__box {
+  flex: 1 1 auto;
+  min-width: 0px;
+  width: 100%;
+  margin: 0px;
+  padding: 4px 6px;
+  font-size: 22px;
+  color: #fff;
+  background-color: var(--main-40-black);
+  box-shadow: 0 0 15px var(--main-40-white);
+  border: 3px solid #000;
+  outline: none;
+}
+
+.search-row__box::placeholder {
+  color: #c1c1c1;
+}
+
+.search-row__box:focus {
+  outline: 3px solid var(--main-40-white);
+}
+
+/* The search row's own chrome in this window: a row of the list rather than a
+   fixture above it, so it scrolls away with the rows and the panel keeps the
+   whole of its height for them. Tighter than an item row at the sides, and
+   the shorter padding above and below leaves it the same height as one. */
+.list__search {
+  padding: 8px 8px;
+  background-color: var(--sec-black-20);
+  border-bottom: 1px solid var(--sec-50-black);
+}
+
+/* a row the search does not match. Hidden rather than dropped, so the rows
+   keep the order they are saved in and a cleared box brings them all back. */
+.list__row--hide {
+  display: none;
+}
+
+/* While a search is on, the rows on screen are not the whole list, so there
+   is no order in them to drag into. The grips go for as long as it lasts --
+   as a class on the panel rather than on each row, so every grip picks its own
+   state back up when the search is cleared. */
+.list__list--find .drag-grip {
+  visibility: hidden;
 }
 
 .list__empty {

@@ -12,8 +12,8 @@ const PINS = {
 
 const SERIAL_PORT = '/dev/ttyAMA0';
 
-const PROCESS_TIMEOUT = 3000;
-const MAX_QUEUE_SIZE = 5;
+const PROCESS_TIMEOUT = 4500;
+const MAX_QUEUE_SIZE = 8;
 
 // Fixed Memory Leak: Bounded Async FIFO Queue
 const fifoQueue = [];

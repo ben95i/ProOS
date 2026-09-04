@@ -6,12 +6,17 @@
 USER1_NAME="tank"
 USER1_HOME="/home/$USER1_NAME"
 USER1_UID=1000
+
 GROUP_NAME="shared"
 GROUP_GID=1000
+
 WWWPATH="/var/www/html"
 WWW_NAME="www-data"
 WWW_GROUP="www-data"
+API_PATH="/opt/nodeapi"
+
 TMPDIR="/tmp/config"
+
 cd $TMPDIR
 
 ## Update Sources
@@ -93,12 +98,18 @@ setcap cap_net_raw+p /usr/bin/ping
 cp -f $TMPDIR/nodeapi.service /etc/systemd/system/
 chmod 644 /etc/systemd/system/nodeapi.service
 chown root:root /etc/systemd/system/nodeapi.service
-mkdir -p /opt/nodeapi
-cp -r $TMPDIR/nodeapi/* /opt/nodeapi/
-chown -R root:root /opt/nodeapi
-cd /opt/nodeapi
-npm install
-npm audit fix
+mkdir -p $API_PATH
+cp -r $TMPDIR/nodeapi/* $API_PATH/
+chown -R root:root $API_PATH
+cd $API_PATH
+API_PKG_CHKSUM=$(cat package.json package-lock.json 2>/dev/null | sha256sum | cut -d' ' -f1)
+if [ ! -d node_modules ] || [ "$API_PKG_CHKSUM" != "$(cat "$API_PATH/.deps.hash" 2>/dev/null)" ]; then
+  echo "API dependencies changed, installing..."
+  npm install
+  echo "$API_PKG_CHKSUM" > "$API_PATH/.deps.hash"
+else
+  echo "API dependencies unchanged, skipping npm install"
+fi
 cd $TMPDIR
 
 ## Light Web Server
@@ -129,6 +140,9 @@ mkdir -p /var/www/uploads
 chmod -R g+rx /var/www/uploads
 chown -R "$WWW_NAME":"$WWW_GROUP" /var/www/uploads
 
+## Minify JS/CSS
+$API_PATH/www-minify.sh
+
 ## Website permissions
 rm -f /etc/sudoers.d/www-perms
 sh -c "touch /etc/sudoers.d/www-perms"
@@ -136,77 +150,6 @@ sh -c "echo \"tank ALL=(root) NOPASSWD:/usr/bin/nmap\" >> /etc/sudoers.d/www-per
 chown root:root /etc/sudoers.d/www-perms
 chmod u=rwx,g=rx,o=rx /etc/sudoers.d/www-perms
 chmod u=r,g=r,o= /etc/sudoers.d/www-perms
-
-## Minify JS/CSS
-MIN_BEFORE_TOTAL=0
-MIN_AFTER_TOTAL=0
-echo "Compressing website components."
-printf '%-26s %10s %10s %10s\n' 'FILE' 'BEFORE KB' 'AFTER KB' 'SAVED KB'
-printf -- '-----------------------------------------------------------\n'
-for CSSFILE in "$WWWPATH"/styles/*.css; do
-  [ -e "$CSSFILE" ] || continue
-  MIN_SIZE_BEFORE=$(wc -c < "$CSSFILE")
-  if yui-compressor "$CSSFILE" > "$CSSFILE.tmp" \
-     && [ -s "$CSSFILE.tmp" ] \
-     && [ "$(wc -c < "$CSSFILE.tmp")" -lt "$MIN_SIZE_BEFORE" ]; then
-    mv -f "$CSSFILE.tmp" "$CSSFILE"
-    chmod 644 "$CSSFILE"
-    MIN_SIZE_AFTER=$(wc -c < "$CSSFILE")
-    awk -v f="styles/${CSSFILE##*/}" -v b="$MIN_SIZE_BEFORE" -v a="$MIN_SIZE_AFTER" 'BEGIN {
-      s = (b - a) / 1024
-      if (s > -0.05 && s < 0.05) s = 0
-      printf "%-26s %10.1f %10.1f %10.1f\n", f, b/1024, a/1024, s }'
-  else
-    if [ -s "$CSSFILE.tmp" ]; then
-      MIN_NOTE='no change'
-    else
-      MIN_NOTE='failed'
-    fi
-    rm -f "$CSSFILE.tmp"
-    MIN_SIZE_AFTER=$MIN_SIZE_BEFORE
-    awk -v f="styles/${CSSFILE##*/}" -v b="$MIN_SIZE_BEFORE" -v n="$MIN_NOTE" 'BEGIN {
-      printf "%-26s %10.1f %10.1f %10s\n", f, b/1024, b/1024, n }'
-  fi
-  MIN_BEFORE_TOTAL=$(( MIN_BEFORE_TOTAL + MIN_SIZE_BEFORE ))
-  MIN_AFTER_TOTAL=$(( MIN_AFTER_TOTAL + MIN_SIZE_AFTER ))
-done
-for JSFILE in "$WWWPATH"/*.js; do
-  [ -e "$JSFILE" ] || continue
-  case "$JSFILE" in *.min.js) continue ;; esac
-  MIN_SIZE_BEFORE=$(wc -c < "$JSFILE")
-  if uglifyjs --warn --compress --output "$JSFILE.tmp" -- "$JSFILE" \
-     && [ -s "$JSFILE.tmp" ] \
-     && [ "$(wc -c < "$JSFILE.tmp")" -lt "$MIN_SIZE_BEFORE" ]; then
-    mv -f "$JSFILE.tmp" "$JSFILE"
-    chmod 644 "$JSFILE"
-    MIN_SIZE_AFTER=$(wc -c < "$JSFILE")
-    awk -v f="${JSFILE##*/}" -v b="$MIN_SIZE_BEFORE" -v a="$MIN_SIZE_AFTER" 'BEGIN {
-      s = (b - a) / 1024
-      if (s > -0.05 && s < 0.05) s = 0
-      printf "%-26s %10.1f %10.1f %10.1f\n", f, b/1024, a/1024, s }'
-  else
-    if [ -s "$JSFILE.tmp" ]; then
-      MIN_NOTE='no change'
-    else
-      MIN_NOTE='failed'
-    fi
-    rm -f "$JSFILE.tmp"
-    MIN_SIZE_AFTER=$MIN_SIZE_BEFORE
-    awk -v f="${JSFILE##*/}" -v b="$MIN_SIZE_BEFORE" -v n="$MIN_NOTE" 'BEGIN {
-      printf "%-26s %10.1f %10.1f %10s\n", f, b/1024, b/1024, n }'
-  fi
-  MIN_BEFORE_TOTAL=$(( MIN_BEFORE_TOTAL + MIN_SIZE_BEFORE ))
-  MIN_AFTER_TOTAL=$(( MIN_AFTER_TOTAL + MIN_SIZE_AFTER ))
-done
-printf -- '-----------------------------------------------------------\n'
-awk -v b="$MIN_BEFORE_TOTAL" -v a="$MIN_AFTER_TOTAL" 'BEGIN {
-  pct = (b > 0) ? (b - a) * 100 / b : 0
-  s = (b - a) / 1024
-  if (s > -0.05 && s < 0.05) s = 0
-  printf "%-26s %10.1f %10.1f %10.1f   (%.1f%% smaller)\n", \
-    "TOTAL", b/1024, a/1024, s, pct }'
-chown -R "$WWW_NAME":"$WWW_GROUP" $WWWPATH/styles/*.css
-chown -R "$WWW_NAME":"$WWW_GROUP" $WWWPATH/*.js
 
 ## Reload Services
 systemctl daemon-reload

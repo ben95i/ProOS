@@ -6,5 +6,5 @@
 #1f2051|Navy
 #233237|Slate
 #ff7b00|Orange
-#9933ff|Purple
+#322337|Dark Purple
 #cd1076|Pink

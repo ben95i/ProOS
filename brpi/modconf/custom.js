@@ -3,8 +3,8 @@ const { execFile } = require('child_process');
 const util = require('util');
 const execFileAsync = util.promisify(execFile);
 
-const PROCESS_TIMEOUT = 3000;
-const MAX_QUEUE_SIZE = 5;
+const PROCESS_TIMEOUT = 4500;
+const MAX_QUEUE_SIZE = 8;
 
 const USB_SERIAL = '/dev/ttyUSB0';
 const HW_SERIAL = '/dev/ttyAMA0';

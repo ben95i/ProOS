@@ -246,7 +246,11 @@ export default class RoomStateManager {
       return;
     }
     if (typeof window.drawMenu === 'function') {
-      window.drawMenu(this.statusMenuData(), STATUS_MENU, false);
+      const menuConfig = {
+        TwoColumns: false,
+        MenuScroll: false
+      };
+      window.drawMenu(this.statusMenuData(), STATUS_MENU, menuConfig);
     }
   }
 

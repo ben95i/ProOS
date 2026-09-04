@@ -13,7 +13,8 @@
 // is all the re-ordering that is needed.
 //
 // Rows carry a grip handle on the left, the same one the lists window uses
-// (DragSort / drag-grip in utils.js).
+// (DragSort / drag-grip in utils.js), and the search box at the top of the
+// menu is the same one it carries too (searchRowElement in utils.js).
 //
 // Editing is single-user, on the same lock the lists window uses (FileLock in
 // utils.js): the first row of the file is LOCK|STATE|OWNER_TOKEN|TIMESTAMP|0.
@@ -24,7 +25,8 @@
 
 import { html, showPopup, cleanString, splitMenuData, base64URLSafeEncode,
   base64URLSafeToStandard, sendCmd, dragGripElement, DragSort, FileLock,
-  readFile, writeFile, sendFileBeacon, LOCK_TAG } from './utils.js';
+  readFile, writeFile, sendFileBeacon, LOCK_TAG, searchRowElement, searchTerm,
+  searchMatches } from './utils.js';
 
 // the edit lock, in a small file of its own beside the bookmarks (utils.js)
 const LOCK_FILE = 'bookmarks-lock.save';
@@ -496,29 +498,30 @@ export default class Bookmarks {
     // a redraw calls this again -- never leave a second box behind
     this.removeSearch();
     this.removeLoading();
-    // draw menu container with search icon + text input box
-    const searchMenuItem = document.createElement("a");
-    searchMenuItem.id = SEARCH_ID;
-    searchMenuItem.classList.add("nohide");
-    searchMenuItem.innerHTML = html`
-      <input type="text" id="${SEARCH_BOX_ID}" class="nohide" placeholder="Search here..." autocorrect="off" autocapitalize="none">
-    `;
+    // The same row the lists window carries -- searchRowElement() in utils.js
+    // builds the icon, the box and the clearing of it. "nohide" goes on every
+    // part of it: the menu decides what closes it from what was pressed, and
+    // pressing the icon to clear a search must not shut the menu underneath.
+    const searchMenuItem = searchRowElement({
+      tag: 'a',
+      id: SEARCH_ID,
+      partClass: 'nohide',
+      boxId: SEARCH_BOX_ID,
+      onSearch: (value) => this.filterItems(value)
+    });
     // always the first row in the menu
     menu.insertBefore(searchMenuItem, menu.firstChild);
-    const searchBox = document.getElementById(SEARCH_BOX_ID);
     // focus keyboard on search text box
-    searchBox.focus();
-    // filter list as the user types
-    searchMenuItem.addEventListener("input", () => {
-      this.filterItems(searchBox.value);
-    });
+    const searchBox = document.getElementById(SEARCH_BOX_ID);
+    if (searchBox) {
+      searchBox.focus();
+    }
   }
 
   filterItems(termIn) {
-    const searchTerm = termIn.toLowerCase();
+    const term = searchTerm(termIn);
     this.items().forEach(item => {
-      const itemText = this.itemName(item).toLowerCase();
-      item.style.display = itemText.includes(searchTerm) ? "" : "none";
+      item.style.display = searchMatches(this.itemName(item), term) ? "" : "none";
     });
   }
 

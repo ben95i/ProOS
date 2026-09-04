@@ -115,7 +115,7 @@ export function requestThrottle(func, limit) {
 // setTheme() was here. It set the CSS variable and wrote localStorage in the
 // one call, which the colour picker cannot use -- it repaints on every move
 // of the map and keeps the colour only on close. The two halves are now
-// Theme.apply() / Theme.save() in theme.js, with Theme.set() doing both.
+// MainMenu.apply() / MainMenu.save() in mainmenu.js, with set() doing both.
 
 export function classDisplay(_elem, _state) {
   let _itr;
@@ -393,6 +393,144 @@ export function scrollToBottom() {
     top: document.body.scrollHeight,
     behavior: 'smooth'
   });
+}
+
+//// Shared search box ////
+//
+// The one search row, used by the bookmarks drop-down and the lists window.
+// Both had grown their own -- the same box, the same placeholder, two sets of
+// listeners -- and only one of them had a way out of a search, so they are
+// built from here now and the two are the same thing in two places.
+//
+// The row is an icon and a box: a magnifier while the box is empty, and a
+// cross that clears it once there is anything in it. Everything a host has to
+// do with what is typed goes through one onSearch callback, which is handed
+// the raw value; the host decides what a match means and what it does with the
+// rows. Clearing calls it with an empty string, so a host needs no second path
+// for it.
+//
+// The look is one block of CSS, in styles/lists.css beside the drag handle,
+// which is the other thing these two share.
+export const SEARCH_ROW_CLASS = 'search-row';
+export const SEARCH_ICON_CLASS = 'search-row__icon';
+export const SEARCH_CLEAR_CLASS = 'search-row__icon--clear';
+export const SEARCH_BOX_CLASS = 'search-row__box';
+export const SEARCH_GLASS_ICON = 'fa-search';
+export const SEARCH_CLEAR_ICON = 'fa-times';
+export const SEARCH_PLACEHOLDER = 'Search here...';
+
+// The icon's two faces. It follows what is in the box rather than what is
+// being matched on: a box holding nothing but spaces filters nothing, but
+// there is still something in it to clear.
+function setSearchIcon(icon, value) {
+  const clear = value !== "";
+  icon.classList.toggle(SEARCH_CLEAR_ICON, clear);
+  icon.classList.toggle(SEARCH_GLASS_ICON, !clear);
+  icon.classList.toggle(SEARCH_CLEAR_CLASS, clear);
+}
+
+// what was typed, ready to match against
+export function searchTerm(value) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  return String(value).trim().toLowerCase();
+}
+
+// one name against a term from searchTerm(). An empty term matches
+// everything, which is what an empty box should do.
+export function searchMatches(text, term) {
+  if (term === "") {
+    return true;
+  }
+  return String(text === null || text === undefined ? "" : text)
+    .toLowerCase().indexOf(term) !== -1;
+}
+
+// Builds the row.
+//   tag          element to build the row from ('div', or 'a' in a menu)
+//   id           id for the row, if the host needs to find it again
+//   rowClass     extra class on the row alone, for the host's own chrome
+//   partClass    class every part carries -- the bookmarks menu's "nohide"
+//   boxId        id for the box, if the host needs to find it again
+//   placeholder  what the empty box says
+//   maxLength    longest term the box will take
+//   value        what the box opens with, so a re-drawn row keeps its search
+//   onSearch     called with the box's value on every change, clearing included
+export function searchRowElement(options = {}) {
+  const row = document.createElement(options.tag || 'div');
+  if (options.id) {
+    row.id = options.id;
+  }
+  row.className = SEARCH_ROW_CLASS;
+  const icon = document.createElement('i');
+  icon.className = `fad ${SEARCH_GLASS_ICON} ${SEARCH_ICON_CLASS}`;
+  const box = document.createElement('input');
+  box.type = "text";
+  box.className = SEARCH_BOX_CLASS;
+  if (options.boxId) {
+    box.id = options.boxId;
+  }
+  if (options.rowClass) {
+    row.className += ` ${options.rowClass}`;
+  }
+  if (options.partClass) {
+    // On the row and on both of its parts. A menu that decides what closes it
+    // by looking at what was pressed has to be told about the icon as well, or
+    // clearing a search would shut the menu it was clearing.
+    row.className += ` ${options.partClass}`;
+    icon.className += ` ${options.partClass}`;
+    box.className += ` ${options.partClass}`;
+  }
+  box.placeholder = options.placeholder || SEARCH_PLACEHOLDER;
+  box.setAttribute("autocorrect", "off");
+  box.setAttribute("autocapitalize", "none");
+  box.setAttribute("spellcheck", "false");
+  if (options.maxLength) {
+    box.maxLength = options.maxLength;
+  }
+  box.value = options.value ? String(options.value) : "";
+  const report = () => {
+    setSearchIcon(icon, box.value);
+    if (typeof options.onSearch === 'function') {
+      options.onSearch(box.value);
+    }
+  };
+  const clear = () => {
+    if (box.value === "") {
+      return false; // still a magnifier, and a magnifier does nothing
+    }
+    box.value = "";
+    report();
+    return true;
+  };
+  // the press must not take the focus off the box beside it, so the keyboard
+  // does not drop away underneath a clear
+  icon.addEventListener('pointerdown', (event) => event.preventDefault());
+  icon.addEventListener('click', () => {
+    if (clear()) {
+      box.focus();
+    }
+  });
+  box.addEventListener('input', report);
+  box.addEventListener('keydown', (key_event) => {
+    if (key_event.key === 'Escape') {
+      key_event.preventDefault();
+      clear();
+      return;
+    }
+    if (key_event.key === 'Enter') {
+      // there is nothing to submit -- the rows are filtered as it is typed --
+      // so this only puts a phone keyboard away
+      key_event.preventDefault();
+      box.blur();
+    }
+  });
+  row.appendChild(icon);
+  row.appendChild(box);
+  // a row built with something already in it opens showing the cross
+  setSearchIcon(icon, box.value);
+  return row;
 }
 
 //// Drag to re-order ////

@@ -163,6 +163,10 @@ input.chkbox {
   height: 22px;
 }
 
+.norm-cursor {
+  cursor: default;
+}
+
 /*
  *  Button Styles
  */
@@ -289,6 +293,7 @@ input.chkbox {
   text-decoration: none;
   color: #fff; /* nav font color */
   text-shadow: 1px 1px 1px #000;
+  cursor: default;
   border: none;
   outline: none;
 }
@@ -296,7 +301,7 @@ input.chkbox {
 @media (hover: hover) and (pointer: fine) {
   .topnav a:hover {
     background-color: var(--main-black-30);
-    cursor: pointer;
+    cursor: default;
     border: none;
     outline: none;
   }
@@ -600,13 +605,17 @@ input.chkbox {
   }
 }
 
-/* a settings row inside a menu: the icon and its checkbox sit in a box cut
-   to the same shape and inset as the colour swatches in the rows below */
-.menu-checkbox {
+/* A settings row inside a menu: the icon and its switch sit in a box inset
+   from the menu's edges, cut to the same shape as the colour row below.
+
+   Written against `.dd-content a` rather than on its own. That rule sets the
+   padding of every menu row and outranks a lone class, so the two lines at
+   the bottom here were being thrown away -- the row kept the full 16px and
+   sat 8px further in than the rows with no margin. 8px out and 8px in comes
+   to the same 16px, so the icon starts in the same place either way. */
+.dd-content a.menu-checkbox {
   margin: 8px;
   border-radius: 5px;
-  border: 1px solid var(--border-color);
-  /* pulls the icon and the switch out towards their own ends of the row */
   padding-left: 8px;
   padding-right: 8px;
 }
@@ -615,28 +624,77 @@ input.chkbox {
   font-size: 22px;
 }
 
-/* Theme Menu */
+/* Main Menu -- the theme colour row, built by MainMenu.colorRow(). Named
+   .theme-colorbox while it lived in a palette dropdown of its own; that
+   dropdown is now the Color row of the main menu. */
 
-.theme-colorbox {
+.dd-content a.mainmenu-colorbox {
   border-radius: 5px;
-  margin: 8px;
+  margin: 5px;
+  /* the same sum as the stars row above -- 8px out, 8px in */
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+/* Every icon in the two main menus, in a box of one width and centred in it.
+   The duotone glyphs are not all the same width, so left to themselves they
+   sit a few pixels apart down the menu; this is the same thing Font Awesome's
+   own fa-fw does. The child combinator keeps it off anything the rows hold
+   besides their icon -- the stars row's switch, above all. */
+#mainmenu a > i,
+#pi-mainmenu a > i {
+  flex-shrink: 0;
+  width: 26px;
+  font-size: 22px;
+  text-align: center;
 }
 
 /* The box carries the theme colour, and white on a light one is barely
-   there. Theme.colorRow() adds this once the colour crosses that line, and
-   the label and the drop go dark instead. The element selector is needed to
-   get past `.dd-content a`, which sets the white this replaces. */
-.dd-content a.theme-colorbox--invert {
+   there. MainMenu.colorRow() adds this once the colour crosses that line,
+   and the label and the drop go dark instead. The element selector is needed
+   to get past `.dd-content a`, which sets the white this replaces. */
+.dd-content a.mainmenu-colorbox--invert {
   color: #000;
 }
 
 /* the glow the menu rows carry is a white one, and it is the wrong thing to
    put behind dark text -- the row lifts on hover without it */
 @media (hover: hover) and (pointer: fine) {
-  .dd-content a.theme-colorbox--invert:hover {
+  .dd-content a.mainmenu-colorbox--invert:hover {
     color: #000;
     text-shadow: none;
   }
+}
+
+/*
+ *  Light theme colour
+ *
+ *  MainMenu.apply() puts .theme-light on the page whenever the theme colour
+ *  is a light one. Everything below is drawn on that colour and carries
+ *  white text, which a light one leaves barely there, so all of it turns
+ *  over together on the one threshold -- MainMenu.LIGHT_LUMA, in
+ *  mainmenu.js, where the scale is written out.
+ *
+ *  The menus are deliberately not in here. They are drawn on the grey in
+ *  --nav-menus-color whatever the theme is, so their text stays as it is;
+ *  the one row of a menu that does take the theme colour is the colour box
+ *  itself, and it turns its own label around above.
+ */
+
+/* The buttons. Only the text turns black -- the shadow under it stays the
+   dark one every button carries, so the letters keep the same weight they
+   always had rather than being inverted along with the colour.
+
+   .red_btn_menu is left out: it paints its own red over the theme colour, so
+   white is still the right text on it. */
+html.theme-light .button:not(.red_btn_menu) {
+  color: #000;
+  text-shadow: 0 2px 2px rgba(0, 0, 0, 0.5);
+}
+
+/* the reading on the thermometer, in a theme-coloured bubble */
+html.theme-light .thermometer .temperature:before {
+  color: #000;
 }
 
 /* Status Menu */

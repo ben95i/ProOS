@@ -8,14 +8,16 @@ import { hexToRgb, rgbToHex, rgbToHexFromStyle,
 export default class ColorPrompt {
 
   // The default palette. It used to be a list in here; it is a file on the
-  // device now, in the same hex_value|display_name format the theme menu
-  // uses, so the swatches can be changed without a deploy.
+  // device now, one colour per line as hex_value|display_name, so the
+  // swatches can be changed without a deploy. A caller that wants a palette
+  // of its own names its file through options.presetFile.
   static PALETTE_FILE = 'colorpallet';
-  // The file, read once for the page and held. Every prompt after the first
-  // gets the swatches without a second read. A read that comes back with
-  // nothing clears this again, so a file that was missing or empty is asked
-  // for again rather than being written off for the session.
-  static paletteRequest = null;
+  // Palette file -> the read for it, done once for the page and held. Every
+  // prompt on that file after the first gets its swatches without a second
+  // read. A read that comes back with nothing is dropped from here again, so
+  // a file that was missing or empty is asked for once more rather than
+  // being written off for the session.
+  static paletteRequests = new Map();
   static THROTTLE_DELAY_MS = 50;
   // The heading. A caller that names what it is picking a colour for gets
   // that name in the middle of it; one that does not gets the plain form the
@@ -34,27 +36,39 @@ export default class ColorPrompt {
   static NAME_SHOWN_CLASS = 'color-name-shown';
 
   /**
-   * Reads the default palette file, at most once per page.
+   * Reads a palette file, at most once per page per file.
    * Returns [] when it cannot be read -- the grid is left out in that case
    * and the map, the hue slider and the hex box carry the prompt on their
    * own, which is what they did before there was a palette at all.
    */
-  static loadDefaultPalette() {
-    if (!ColorPrompt.paletteRequest) {
-      ColorPrompt.paletteRequest = readFile(ColorPrompt.PALETTE_FILE)
+  static loadPaletteFile(file) {
+    if (!ColorPrompt.paletteRequests.has(file)) {
+      const request = readFile(file)
         .then((fileText) => {
           const palette = parsePalette(fileText);
           if (palette.length === 0) {
-            ColorPrompt.paletteRequest = null; // ask again next time
+            ColorPrompt.paletteRequests.delete(file); // ask again next time
           }
           return palette;
         })
         .catch(() => {
-          ColorPrompt.paletteRequest = null;
+          ColorPrompt.paletteRequests.delete(file);
           return [];
         });
+      ColorPrompt.paletteRequests.set(file, request);
     }
-    return ColorPrompt.paletteRequest;
+    return ColorPrompt.paletteRequests.get(file);
+  }
+
+  /**
+   * Reads a palette file ahead of the prompt that will want it, so its
+   * swatches are already in hand when it opens. Nothing is drawn here -- the
+   * read is held on the class, and show() finds it done.
+   */
+  static warmPalette(file) {
+    ColorPrompt.loadPaletteFile(
+      typeof file === 'string' && file !== '' ? file : ColorPrompt.PALETTE_FILE
+    ).catch(() => {});
   }
 
   /**
@@ -95,8 +109,11 @@ export default class ColorPrompt {
    *        callers that only send a colour to a device, so the two-argument
    *        form keeps working exactly as it did.
    * @param {Array}  [options.presets] - Swatches to load into the palette in
-   *        place of the default palette file. Hex strings, or
-   *        { color, name } entries.
+   *        place of reading any file. Hex strings, or { color, name }
+   *        entries.
+   * @param {string} [options.presetFile] - A palette file to read in place
+   *        of the default one. Same format, read the same way, and ignored
+   *        when options.presets was given.
    * @param {string} [options.name] - What the colour is being picked for,
    *        put into the heading: 'LED' gives "Select LED Color". Left out,
    *        the heading stays "Select Color".
@@ -120,6 +137,10 @@ export default class ColorPrompt {
     // given one. What the box under the grid shows is looked up in here.
     this.presetNames = new Map();
     this.setPresets(settings.presets);
+    // which file show() reads when no palette came in with the options
+    this.presetFile =
+      typeof settings.presetFile === 'string' && settings.presetFile !== ''
+        ? settings.presetFile : ColorPrompt.PALETTE_FILE;
     this.promptTitle = ColorPrompt.titleFor(settings.name);
     this.onCloseCallback =
       typeof settings.onClose === 'function' ? settings.onClose : null;
@@ -214,7 +235,7 @@ export default class ColorPrompt {
     // Ensure anchor acts as popup container
     this.anchorElement.style.display = 'flex';
 
-    // no palette from the caller: read the default one off the device
+    // no palette from the caller: read one off the device
     if (this.presetColors.length === 0) {
       this.loadPresets();
     }
@@ -261,13 +282,13 @@ export default class ColorPrompt {
   }
 
   /**
-   * Fills an empty grid from the default palette file. The prompt is already
+   * Fills an empty grid from the palette file. The prompt is already
    * on screen and usable while this is in the air; the swatches appear when
    * the file lands, and on every prompt after the first it is already held
    * and they appear with the rest of it.
    */
   async loadPresets() {
-    const palette = await ColorPrompt.loadDefaultPalette();
+    const palette = await ColorPrompt.loadPaletteFile(this.presetFile);
     // closed, or torn down and replaced, while the file was being read
     if (this.isClosed === true || !this.presetGridElement
         || !this.presetGridElement.isConnected) {

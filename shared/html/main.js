@@ -9,7 +9,7 @@ import ToggleSwitch, { toggleSwitchCallback } from './switch.js';
 import RoomStateManager from './roomstate.js';
 import AnimatedBackground from './stars.js';
 import ColorPrompt from './colorprompt.js';
-import Theme from './theme.js';
+import MainMenu from './mainmenu.js';
 import WeatherWidget from './weather.js';
 import Lists from './lists.js';
 import Bookmarks from './bookmarks.js';
@@ -18,7 +18,7 @@ import { SSIDpwd } from './wifi.js';
 
 const MAIN_SITE = "Automate";
 const ROOM_CONFIGS = {
-  'lr':   { 
+  'lr': { 
     name: 'Living Room',
     icon: '',
     voltarget: 'lrxmit',     
@@ -49,11 +49,9 @@ window.App = {
   lists: null,
   bookmarks: null,
   colorPrompt: null,
-  theme: null,
+  mainMenu: null,
   activeSwitches: [],
   fileData: [],
-  // the <a> rows drawMenu() created, so they can be taken back out without
-  // guessing at their ids
   dynMenuNodes: [],
   serverCmdData: null,
   dynMenuActive: 0,
@@ -162,10 +160,10 @@ function loadPage() {
     window.weatherWidget = new WeatherWidget();
     window.weatherWidget.activate();
   }
-  // set theme -- the colour, its storage and the menu row that changes it
-  // all live in Theme now
-  App.theme = new Theme();
-  App.theme.load();
+  // The list button's menu, the theme colour and the About window all live
+  // in MainMenu now. Built before the listeners below, which reach into it.
+  App.mainMenu = new MainMenu();
+  App.mainMenu.load();
   // setup listeners
   setupEventListeners();
   // initialize background, with the saved animation setting applied before
@@ -370,24 +368,15 @@ function showMenu(_menu) {
 function topNavTemplate(f) {
   return `
 <div class="topnav nohide" data-app-injected>
-  <!-- the bar is three flex items: the left icon group, the room selector and
-       the right icon group. Both icon groups share the leftover space evenly
-       (see #topnav-left / #topnav-right), which centres the selector in the
-       bar; a group that outgrows its share pushes the selector aside by
-       exactly the overrun and no more. Any icon added to a group at runtime
-       is counted automatically, so nothing needs re-measuring. -->
   <div id="topnav-left">
     ${f.isServer ? `
-    <a id="btn-dyn-mainmenu">
+    <a id="btn-mainmenu">
       <i class="fad fa-list"></i>
     </a>` : ''}
     ${f.isPiLike ? `
-    <a id="btn-menu-pimainmenu">
+    <a id="btn-pimainmenu">
       <i class="fad fa-list"></i>
     </a>` : ''}
-    <a id="btn-dyn-thememenu">
-      <i class="fad fa-palette"></i>
-    </a>
     ${f.isServer ? `
     <a id="btn-show-bookmarks">
       <i class="fad fa-star"></i>
@@ -413,9 +402,8 @@ function topNavTemplate(f) {
 </div>`;
 }
 registerListeners({
-  'btn-dyn-mainmenu':    () => showDynFileMenu('mainmenu'),
-  'btn-menu-pimainmenu': () => showMenu('pi-mainmenu'),
-  'btn-dyn-thememenu':   () => App.theme && App.theme.showMenu(),
+  'btn-mainmenu':        () => App.mainMenu && App.mainMenu.showMenu(),
+  'btn-pimainmenu':      () => App.mainMenu && App.mainMenu.showPiMenu(),
   'btn-show-bookmarks':  () => showBookmarks(),
   'room_anchor':         () => openRoomDropdown(),
   'btn-add-bookmark':    () => App.bookmarks && App.bookmarks.addBookmark(),
@@ -424,21 +412,16 @@ registerListeners({
 
 function navDropdownsTemplate(f) {
   // mainmenu / pi-mainmenu are direct children of .nav_dd_left, exactly like
-  // thememenu / bookmarks / roomstatus always were (their old wrapper divs
-  // only existed to carry the removed marker classes)
+  // bookmarks / roomstatus always were. Both are left empty here: their rows
+  // are written out in MainMenu.MENU_HTML / PI_MENU_HTML, in the order they
+  // are drawn, so the whole of each menu can be reordered in one place. The
+  // handlers for the ids in there are still registered below.
   return `
 <div class="nav_dd_left" data-app-injected>
   ${f.isServer ? `
-  <div class="dd-content dd-menu" id="mainmenu">
-    <a id="btn-about-main"> About<i class="fad fa-info"></i></a>
-  </div>` : ''}
+  <div class="dd-content dd-menu" id="mainmenu"></div>` : ''}
   ${f.isPiLike ? `
-  <div class="dd-content dd-menu" id="pi-mainmenu">
-    <a id="btn-about-pi"> About<i class="fad fa-info"></i></a>
-    <a id="btn-log-pi"> System<i class="fad fa-wrench"></i></a>
-    <a id="btn-home-pi"> Home<i class="fad fa-home"></i></a>
-  </div>` : ''}
-  <div class="dd-content dd-menu" id="thememenu"></div>
+  <div class="dd-content dd-menu" id="pi-mainmenu"></div>` : ''}
   <div class="dd-content dd-menu" id="bookmarks"></div>
   <div class="dd-content dd-menu" id="roomstatus"></div>
   <div class="dd-content dd-menu" id="main-room-dropdown"></div>
@@ -448,8 +431,8 @@ function navDropdownsTemplate(f) {
 </div>`;
 }
 registerListeners({
-  'btn-about-main': () => aboutPrompt(),
-  'btn-about-pi':   () => aboutPrompt(),
+  'btn-about-main': () => App.mainMenu && App.mainMenu.aboutPrompt(),
+  'btn-about-pi':   () => App.mainMenu && App.mainMenu.aboutPrompt(),
   'btn-log-pi':     () => openLogWindow(),
   'btn-home-pi':    () => GoToHomePage()
 });
@@ -490,8 +473,6 @@ function mainGridTemplate(f) {
       </div>
       ${f.isServer ? roomControlsTemplate() : ''}
     </div>
-    <!-- the active room's grid is rendered into this container on demand by
-         selectRoom(); inactive rooms have no markup in the DOM at all -->
     <div class="column-right" id="room-grid-container"></div>
   </div>
 </div>`;
@@ -854,7 +835,6 @@ function svrOptMainTemplate() {
     <div class="dd-content dd-button" id="xana-menu">
       <a id="btn-svr-startxana"><i class="fad fa-play"></i> Start</a>
       <a id="btn-svr-stopxana"><i class="fad fa-stop"></i> Stop</a>
-      <a id="btn-svr-restorexana"><i class="fad fa-eraser"></i> Erase</a>
     </div>
   </div>
 </div>`;
@@ -873,7 +853,6 @@ registerListeners({
   'btn-menu-xana':        () => showMenu('xana-menu'),
   'btn-svr-startxana':    () => serverAction('startxana'),
   'btn-svr-stopxana':     () => serverAction('stopxana'),
-  'btn-svr-restorexana':  () => serverAction('restorexana'),
   'btn-menu-system':      () => showMenu('system-menu'),
   'btn-ext-system':       () => GoToExtPage('pve:8006'),
   'btn-open-backup':      () => openServerPanel(svrOptBackupTemplate),
@@ -1351,34 +1330,9 @@ function sendTextScroll(){
 }
 
 /////// About Window ///////
-
-async function aboutPrompt() {
-  const _winid = 'about__prompt';
-  if (document.getElementById(_winid)) return;
-  const curDate = new Date();
-  const curYear = curDate.getFullYear();
-  const curQtr = Math.ceil((curDate.getMonth() + 1) / 3);
-  const promptHTML = `
-  <div id="${_winid}" class="prompt_win">
-    <div class="about__title">${App.sysModel}</div>
-    <img src="img/automate.png" id="about__img" />
-    <div class="about__text">by Ben Provenzano III</div>
-    <div class="about__text">${curYear}.${curQtr} Release</div>
-    <button type="button" class="button" id="about__btn">
-      <i class="fad fa-times-octagon right-padding"></i>
-      <span class="button__text">Close</span>
-    </button>
-  </div>
-  `;
-  document.body.insertAdjacentHTML('beforeend', promptHTML);
-  const aboutprompt = document.getElementById(_winid);
-  aboutprompt.addEventListener('click', function handleButtonClicks(btn_evnt) { 
-    const clickedButton = btn_evnt.target.closest('button');
-    if (!clickedButton) return; 
-    aboutprompt.removeEventListener('click', handleButtonClicks); 
-    aboutprompt.remove();
-  });
-}
+//
+// aboutPrompt() was here. It is the main menu's first row and nothing else
+// opens it, so it moved into MainMenu with the rest of that menu.
 
 /////// Volume Controls ///////
 
@@ -2167,8 +2121,12 @@ function showDynFileMenu(menu) {
     const url = location.protocol + "//" +location.hostname + "/api/read?file=" + menu;
     const token = beginMenuRequest();
     loadMenu(url).then((data) => { // wait for response
-      if (!menuRequestCurrent(token)) { return; }
-      drawMenu(data, menu);
+      if (!menuRequestCurrent(token)) return;
+      const config = {
+        TwoColumns: true,
+        MenuScroll: true
+      };
+      drawMenu(data, menu, config);
     });  
   }
 }
@@ -2195,34 +2153,43 @@ function showDynAPIMenu(menu) {
 // step at the bottom measures a fixed-position menu against the page offset,
 // which is right the once on opening and walks the page down if it is run
 // again every refresh.
-window.drawMenu = function(data, menu, scroll = true) {
+window.drawMenu = function(data, menu, config = undefined) {
+  let scroll = true; // menu scrolls into view by default
+  let twocols = false; // 3-column data is the default
+  if (config !== undefined) {
+    scroll = config.MenuScroll;
+    twocols = config.TwoColumns;
+  }
   // remove any current dynamic menus
   removeDynMenus();
   if (data && typeof data === 'string') {
-    // the container is looked up once instead of once per row, and the rows
-    // land in one append rather than forcing a layout pass each
     const navElement = document.getElementById(menu);
-    if (!navElement) { return; }
+    if (!navElement) return;
     const fragment = document.createDocumentFragment();
     // erase global data
     while (App.fileData.length) App.fileData.pop();
     const splitdat = splitMenuData(data);
+    if (splitdat == "" || splitdat == null) return;
     for (let row = 0; row < splitdat.length; row++) {
       const line = splitdat[row];
-      if (line != "") {
-        const linearr = line.split("|");
-        if (linearr.length < 3) { continue; }
-        App.fileData.push(line); // write to array
-        // 0=Host, 1=Type, 2=Name
-        const col0 = linearr[0];
-        const col1 = linearr[1];
-        const col2 = linearr[2].trim();
-        // draw menu item
-        const item = createListItem(col0, col1, col2, row);
-        App.dynMenuNodes.push(item);
-        fragment.appendChild(item);
-        App.dynMenuActive = 1;
+      if (line == "" || line == null) continue;
+      const linearr = line.split("|");
+      App.fileData.push(line); // write to array
+      // 0=Host, 1=Type, 2=Name
+      const col0 = linearr[0];
+      let col1, col2;
+      if (twocols === true) { // 2-column data mode
+        col1 = menu;
+        col2 = linearr[1];
+      } else {
+        col1 = linearr[1];
+        col2 = linearr[2].trim();
       }
+      // draw menu item
+      const item = createListItem(col0, col1, col2, row);
+      App.dynMenuNodes.push(item);
+      fragment.appendChild(item);
+      App.dynMenuActive = 1;
     }
     // store menu name at end of array
     App.fileData.push(menu);
@@ -2230,7 +2197,7 @@ window.drawMenu = function(data, menu, scroll = true) {
     navElement.appendChild(fragment);
     // a redraw of a menu already on screen stops here -- the rows are the
     // only thing it wanted replaced
-    if (scroll === false) { return; }
+    if (scroll === false) return;
     // scroll only if the menu runs past the bottom of the viewport
     const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
     const rect = navElement.getBoundingClientRect();
@@ -2260,7 +2227,8 @@ function createListItem(col0_in, col1, col2, menuid) {
   _elm.innerText = col2;
   // configure menu item
   switch (col1) {
-    case 'ledmenu': {
+    case 'ledcolormenu':
+    case 'ledeffectmenu': {
       // LEDs menu
       const effect_cmd = col0;
       _elm.addEventListener("click", function() {
@@ -2307,6 +2275,7 @@ function createListItem(col0_in, col1, col2, menuid) {
     }
     case 'link':
       // URL menu
+      _elm.classList.add('norm-cursor');
       _elm.href = col0;
       break;
     case 'chk': {

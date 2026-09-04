@@ -33,9 +33,6 @@ function PATHMOUNTED() {
   findmnt --mountpoint "$1" >/dev/null 2>&1
 }
 
-## FIX 6: guard every code path that builds a path from $RAMDISK.
-## An empty $2 would otherwise turn "$RAMDISK/pwd.txt" into "/pwd.txt"
-## and hand root-owned shred/truncate/mount operations the filesystem root.
 function REQUIRE_RAMDISK() {
   if [ -z "$RAMDISK" ] || [ ! -d "$RAMDISK" ]; then
     echo "invalid or missing RAM disk path (argument 2)!"
@@ -74,13 +71,10 @@ function MNT_FUSEFS () {
   gocryptfs -quiet -allow_other \
     "$REGDATA/$VOLNME" \
     "$FUSEPTH" -passfile "$FUSEPWD"
-  ## FIX 7: capture the exit status before anything else clobbers $?
   local _FUSERC=$?
-  ## destroy key material on every path (shred, to match pwd.txt handling)
   shred -n 2 -z -u "$FUSEPWD" 2>/dev/null || rm -f "$FUSEPWD"
   if [ $_FUSERC -ne 0 ]; then
     echo "failed to attach $UNCAPSTR (gocryptfs exit $_FUSERC)."
-    ## don't leave a bare empty directory posing as a mounted region
     rmdir "$FUSEPTH" 2>/dev/null
     return $_FUSERC
   fi
@@ -91,8 +85,6 @@ function MOUNT_SNAP(){
   if ! PATHMOUNTED "$BINDMNTS/Snapshots"; then
     echo "attaching ZFS snapshots region..."
     mkdir -p "$BINDMNTS/Snapshots"
-    ## FIX 4: each snapshot under .zfs/snapshot is its own automounted
-    ## filesystem; a plain --bind exposes only the empty parent directory.
     mount --rbind "$TANK_SNAPS" "$BINDMNTS/Snapshots"
   else
     echo "snapshots already attached."
@@ -101,7 +93,6 @@ function MOUNT_SNAP(){
 function UMOUNT_SNAP(){
   if PATHMOUNTED "$BINDMNTS/Snapshots"; then
     echo "detaching ZFS snapshots region..."
-    ## FIX 4: -R detaches the whole bound subtree, not just the top mount
     umount -R -l "$BINDMNTS/Snapshots"
     rmdir "$BINDMNTS/Snapshots"
   else
@@ -140,7 +131,7 @@ function SAVEBKPDATES () {
 if [ "$CMD" == "clearlog" ]; then
   REQUIRE_RAMDISK
   truncate -s 0 "$RAMDISK/sysout.txt"
-  timeout 30 bash -c "fastfetch --pipe | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g' | tr -cd '\11\12\15\40-\176'"
+  timeout 30 bash -c "printf '%s\n' \"\$(fastfetch --pipe -s Title:Separator:OS:Host:Kernel:Uptime:CPU:Memory:Swap:Disk | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g' | tr -cd '\11\12\15\40-\176' | sed -E 's/[[:space:]]+$//')\""
   END_ROUTINE
 fi
 
@@ -155,17 +146,12 @@ if [[ "$CMD" == "backupstd" || "$CMD" == "backupchk" ]]; then
     CHECKSUM="--checksum"
   fi
   REQUIRE_RAMDISK
-  ## Seconds to wait for drives to settle before triggering detach
   WAIT_TIME=60
-  ### Lock file -- noclobber makes create-if-absent atomic, so two
-  ### backup triggers arriving together cannot both pass the check.
   if ! ( set -o noclobber; : > "$RAMDISK/backupsvr.lock" ) 2>/dev/null; then
     echo "already running!"
     echo "delete '$RAMDISK/backupsvr.lock' to remove lock if program failed"
     END_ROUTINE
   fi
-  ## release the lock on any exit path; convert TERM/INT into a normal
-  ## exit so the EXIT trap fires instead of swallowing the signal
   trap 'rm -f "$RAMDISK/backupsvr.lock"' EXIT
   trap 'exit 143' TERM INT
   echo "****************** starting backup **********************"
@@ -173,11 +159,8 @@ if [[ "$CMD" == "backupstd" || "$CMD" == "backupchk" ]]; then
   ## Turn on indicator LED
   curl -s -f 'http://ledwall.home/api?action=main&arg=whtledon' > /dev/null 2>&1 &
   ## Read Backup Drive Names
-  ## FIX 2: without this guard a missing drives file syncs nothing,
-  ## yet still prints "backup complete" and fires the detach trigger.
   if [ ! -e "$DRIVES_PATH" ]; then
     echo "drives file '$DRIVES_PATH' not found, aborting backup!"
-    ## EXIT trap releases the lock; clear the indicator LED first
     curl -s -f 'http://ledwall.home/api?action=main&arg=whtledoff' > /dev/null 2>&1
     END_ROUTINE
   fi
@@ -189,8 +172,6 @@ if [[ "$CMD" == "backupstd" || "$CMD" == "backupchk" ]]; then
     POOL=$(echo $_POOL | sed -e 's/\r//g')
     if [ ! "$POOL" == "" ]; then
       ## USB Flash Drives
-      ## FIX 3: unquoted, a glob character in the drives file makes this
-      ## expand against the cwd and abort the test with "too many arguments"
       if [ "${POOL::3}" == "usb" ]; then
         #################################
         if [ ! -e "$EXTBKPS/$POOL/Data" ]; then
@@ -251,11 +232,7 @@ if [[ "$CMD" == "backupstd" || "$CMD" == "backupchk" ]]; then
     fi  
   done
   ################################
-  ################################
   ## Write backup dates to file ##
-  ## FIX 1: on a fresh install (or if $EXTBKPS wasn't mounted) the file is
-  ## absent, the merge block below was skipped, and every collected date was
-  ## discarded silently -- leaving the file absent forever. Create it here.
   if [ ! -f "$STATUSFILE" ]; then
     if : > "$STATUSFILE" 2>/dev/null; then
       echo "created new status file '$STATUSFILE'."
@@ -310,9 +287,6 @@ if [[ "$CMD" == "backupstd" || "$CMD" == "backupchk" ]]; then
     done
     echo " "
   fi
-  ################################
-  ################################
-  ## Wait for drives to settle after backup complete ##
   echo "triggering drive detach in $WAIT_TIME second(s)."
   sleep $WAIT_TIME
   ## Unlock State File
@@ -424,10 +398,6 @@ if [ "$CMD" == "detach_bkps" ]; then
           echo "invalid pool specified."
         else
           echo "unmounting ZFS backup volume $POOL."
-          ## FIX 5: attach mounts the dataset ($POOL/extbkp), so unmount the
-          ## dataset too. Passing a mountpoint path only worked while the
-          ## dataset's mountpoint property happened to match $EXTBKPS/$POOL;
-          ## when it didn't, unmount failed and the export failed busy.
           if ! zfs unmount "$POOL/extbkp"; then
             echo "WARNING: could not unmount $POOL/extbkp -- skipping export."
             echo " "

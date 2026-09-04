@@ -17,6 +17,15 @@
 // (the grip stays in place, hidden, so the rows do not shift sideways). What
 // is selected lives in memory, not in the rows, so a re-draw keeps it.
 //
+// A list holding more than 30 items carries a search box as its top row.
+// Typing in it puts the rows that do not match out of view, in place: nothing
+// is re-drawn, no order changes and nothing is written, so a search is only
+// ever a view of the list and emptying the box brings every row back. The
+// magnifier beside it turns into a cross while there is anything in the box,
+// and clears it. Dragging is off while a search is on, since the rows on
+// screen are no longer the whole list and a slot dropped between two of them
+// means nothing.
+//
 // Saved file (lists), one line per item:
 //   LIST_ID|LIST_NAME|ITEM_ID|ITEM_NAME|CHECK_STATE
 // The order of the rows in the file IS the order of the lists and their items,
@@ -78,7 +87,8 @@
 import { splitMenuData, cleanString, isNumeric, removeWindow, showPopup,
   dragGripElement, DragSort, FileLock, readFile, writeFile, sendFileBeacon,
   html, FileCrypt, cryptoReady, isCryptBlob, cryptContext,
-  encryptText } from './utils.js';
+  encryptText, searchRowElement, searchTerm,
+  searchMatches } from './utils.js';
 
 const FILE_NAME = 'lists.save';
 const LOCK_FILE = 'lists-lock.save';
@@ -99,6 +109,15 @@ const RETRY_BTN_ID = 'list__btn-retry';
 const DISCARD_BTN_ID = 'list__btn-discard';
 const DEL_ICON_ID = 'list__del-icon';
 const DEL_ICON_ON_CLASS = 'list__del-icon--on';
+// the search box on a long list, and what it does to the rows below it. The
+// box, its icon and the clearing of it are shared with the bookmarks menu --
+// searchRowElement() in utils.js.
+const SEARCH_BOX_ID = 'list__search-box';
+const NO_MATCH_ID = 'list__nomatch';
+const ROW_HIDE_CLASS = 'list__row--hide';
+const LIST_FIND_CLASS = 'list__list--find';
+// how many items a list has to hold before the box is offered
+const SEARCH_MIN_ITEMS = 30;
 // lock button and the password prompt it raises
 const LOCK_BTN_ID = 'list__btn-lock';
 const LOCK_ICON_ID = 'list__lock-icon';
@@ -866,6 +885,7 @@ export default class Lists {
     this.openId = null;   // list being viewed
     this.editing = false; // inline name box is open
     this.newId = null;    // row being added, while its name box is open
+    this.query = "";      // what is in the search box, if a list is long enough
     this.pwdMode = null;  // password prompt: setup / unlock, or not up
     this.pwdDone = null;  // what to run once it has been answered
     this.holdTimer = null; // the lock is being held down
@@ -884,11 +904,12 @@ export default class Lists {
     // window level listeners, attached as a set
     this.listeners = {
       click: this.handleClick.bind(this),
-      // no re-ordering while a name box is open, or while rows are being
-      // picked out for deletion
+      // no re-ordering while a name box is open, while rows are being picked
+      // out for deletion, or while a search is holding rows back -- the gap a
+      // row would be dropped into is not the gap it would land in
       pointerdown: (event) => {
         this.holdStart(event);
-        if (!this.editing && this.mode !== MODE_SELECT) {
+        if (!this.editing && this.mode !== MODE_SELECT && !this.filtering()) {
           this.dragSort.start(event);
         }
       },
@@ -1050,6 +1071,7 @@ export default class Lists {
     this.view = VIEW_LISTS;
     this.mode = MODE_OPEN;
     this.openId = null;
+    this.query = "";
     this.selected.clear();
   }
 
@@ -1304,6 +1326,13 @@ export default class Lists {
     // that has already happened cancels to nothing, so the ordinary path
     // through commitOrder() is untouched.
     this.dragSort.cancel();
+    // A re-draw rebuilds the search box along with everything else, and one
+    // can land while it is being typed into -- the store reaching here through
+    // its onChange is the way in. Noting the focus now is what lets it be put
+    // back at the end, rather than the caret and a phone keyboard going with
+    // the old box.
+    const oldBox = document.getElementById(SEARCH_BOX_ID);
+    const searching = oldBox !== null && document.activeElement === oldBox;
     const items = this.view === VIEW_ITEMS;
     const entry = this.openList();
     // title / back button
@@ -1334,6 +1363,13 @@ export default class Lists {
       this.updateDot();
       return;
     }
+    // the search box, on a list long enough to be worth one, above the rows
+    // it filters
+    if (this.searchable()) {
+      list.appendChild(this.searchRow());
+    } else {
+      this.query = ""; // no box on screen, so nothing is being searched for
+    }
     const rows = this.visibleRows();
     if (rows.length === 0) {
       const empty = document.createElement('div');
@@ -1346,6 +1382,16 @@ export default class Lists {
       list.appendChild(empty);
     } else {
       rows.forEach(row => list.appendChild(this.createRow(row)));
+      // stands in for the rows while a search matches none of them. It is
+      // built with them and shown by applyFilter(), so a keystroke that empties
+      // the list has nothing left to build.
+      if (this.searchable()) {
+        const none = this.createCell('div', "list__empty", "");
+        none.id = NO_MATCH_ID;
+        none.innerText = "No matches";
+        none.style.display = "none";
+        list.appendChild(none);
+      }
       // total sitting at the bottom of the rows: the items in the open list,
       // or every item across all the lists in the main menu
       let count = 0;
@@ -1361,9 +1407,21 @@ export default class Lists {
       total.innerText = this.totalText(count, noun);
       list.appendChild(total);
     }
+    // the rows are new, so whatever is in the box has to be put over them again
+    this.applyFilter();
     this.clampScroll(list);
     this.renderActions();
     this.updateDot();
+    if (searching) {
+      const box = document.getElementById(SEARCH_BOX_ID);
+      if (box) {
+        box.focus();
+        // focus() on its own selects the whole value; the caret belongs where
+        // the typing left it
+        const end = box.value.length;
+        box.setSelectionRange(end, end);
+      }
+    }
   }
 
   createRow(entry) {
@@ -1377,6 +1435,10 @@ export default class Lists {
       row.className += " list__row--tall";
     }
     row.dataset.id = entry.id;
+    // What the search box matches against, folded once here rather than on
+    // every keystroke: a search is then a pass over the rows and nothing more,
+    // with no lookup back into the list behind them.
+    row.dataset.find = String(entry.name).toLowerCase();
     if (select) {
       // The round button is the whole left hand side while the mode is on. On
       // a list row it stands in for the grip; on an item row the grip is kept
@@ -1596,6 +1658,98 @@ export default class Lists {
     }
   }
 
+  //// searching ////
+
+  // Only the items view, and only once a list is long enough that finding
+  // something in it by eye is work. A shorter list is on screen already, and a
+  // box above it would be one more row between the title and the items.
+  searchable() {
+    if (this.view !== VIEW_ITEMS) {
+      return false;
+    }
+    const entry = this.openList();
+    return entry !== null && entry.items.length > SEARCH_MIN_ITEMS;
+  }
+
+  // what is being searched for, ready to match against
+  searchText() {
+    return searchTerm(this.query);
+  }
+
+  // rows are being held back, as opposed to a box merely being on screen
+  filtering() {
+    return this.searchable() && this.searchText() !== "";
+  }
+
+  // The top row of a long list -- the same box the bookmarks menu carries,
+  // built by searchRowElement() in utils.js, with the window's own chrome on
+  // the row around it. Nothing is re-drawn as it is typed: applyFilter() puts
+  // the rows away in place, the same way a row is picked out for deletion in
+  // place, so the box keeps the focus and the caret through every keystroke
+  // and the list underneath keeps its order.
+  searchRow() {
+    return searchRowElement({
+      rowClass: "list__search",
+      boxId: SEARCH_BOX_ID,
+      maxLength: MAX_NAME_LENGTH,
+      // a re-draw arrives with the search still on, so the box comes back with
+      // what was typed into it rather than empty
+      value: this.query,
+      onSearch: (value) => {
+        this.query = value;
+        this.applyFilter();
+      }
+    });
+  }
+
+  // Takes the rows that do not match out of view. They are hidden rather than
+  // removed, so they keep their slots and everything else in the window --
+  // the ids on the rows, the selection, the order the list is saved in -- is
+  // untouched by a search. Called on every keystroke, so it does no more than
+  // walk the rows it already has.
+  applyFilter() {
+    const list = this.listElem();
+    if (!list) {
+      return;
+    }
+    if (!this.searchable()) {
+      list.classList.remove(LIST_FIND_CLASS);
+      return;
+    }
+    const query = this.searchText();
+    const rows = [...list.getElementsByClassName('list__row')];
+    let shown = 0;
+    rows.forEach(row => {
+      const hit = searchMatches(row.dataset.find, query);
+      row.classList.toggle(ROW_HIDE_CLASS, !hit);
+      if (hit) {
+        shown += 1;
+      }
+    });
+    // the grips go with them: what is on screen is no longer the whole list,
+    // so there is no order in it to save
+    list.classList.toggle(LIST_FIND_CLASS, query !== "");
+    const none = document.getElementById(NO_MATCH_ID);
+    if (none) {
+      let noneDisplay = "none";
+      if (query !== "" && shown === 0) {
+        noneDisplay = "block";
+      }
+      none.style.display = noneDisplay;
+    }
+    // the count at the bottom follows what is actually on screen
+    const total = list.querySelector('.list__total');
+    if (total) {
+      if (query === "") {
+        total.innerText = this.totalText(rows.length, 'item');
+      } else {
+        total.innerText = `${shown} of ${rows.length} items`;
+      }
+    }
+    // the rows a search takes away leave the panel scrolled past its own end
+    this.clampScroll(list);
+  }
+
   //// actions ////
 
   // Changing mode always drops what was picked out, so leaving delete mode
@@ -1609,7 +1763,10 @@ export default class Lists {
     }
   }
 
+  // a search belongs to the list it was typed in, so both ways out of one
+  // start with an empty box
   showItems(id) {
+    this.query = "";
     this.openId = id;
     this.view = VIEW_ITEMS;
     this.setMode(MODE_OPEN);
@@ -1617,6 +1774,7 @@ export default class Lists {
   }
 
   showLists() {
+    this.query = "";
     this.openId = null;
     this.view = VIEW_LISTS;
     this.setMode(MODE_OPEN);
@@ -1666,6 +1824,10 @@ export default class Lists {
   }
 
   addEntry() {
+    // A new row carries a placeholder name that almost never matches what is
+    // in the search box, and it is about to have its name box opened on it, so
+    // the search is dropped first rather than the row arriving out of view.
+    this.query = "";
     this.setMode(MODE_OPEN, false);
     const entries = this.activeList();
     let entry = null;

@@ -11,8 +11,9 @@ disable_fw_kms_setup=1
 start_x=0
 disable_camera_led=0
 
-#-------GPU memory-------
-gpu_mem=64
+#-------GPU (disable dynamic clock scaling)-------
+gpu_mem=16
+core_freq=250
 
 #-------Disable Ram temp refresh every 500ms---------------
 disable_pvt=1

@@ -8,9 +8,9 @@
  *  styles/main.css, which holds the globals (palette, buttons, menus) these
  *  rules build on.
  *
- *  The grip on each row (.drag-grip / .drag-row--active) is shared with the
- *  lists window and lives in styles/lists.css -- see the note above it there
- *  for why it could not move to main.css.
+ *  The grip on each row (.drag-grip / .drag-row--active) and the search box at
+ *  the top of the menu (.search-row) are both shared with the lists window and
+ *  live in styles/lists.css -- see the notes above them there.
  */
 
 /*
@@ -154,35 +154,37 @@
   width: 5px;
 }
 
+/* The search row's own chrome in this menu. The box, its icon and everything
+   they look like are shared with the lists window and live in
+   styles/lists.css (.search-row) -- only what makes this one a menu row is
+   here. The display is kept on the id: the menu's own rule for its rows is a
+   two-part selector and would otherwise win over the shared class.
+
+   The sides are set here for the same reason. A menu row is padded on the left
+   to leave room for the icon column every other row in the drop-down carries,
+   and this row has no business in that column -- it put the magnifier a long
+   way in from the edge, where the lists window has it sitting close to it.
+   The row is given the same 8px that window uses, so the two start at the same
+   distance in. Top and bottom are left to the menu, which is what keeps this
+   row standing the same height as the rows below it. */
 #bookmark__search {
   width: 100%;
-  display: inline-flex;
-  flex-wrap: nowrap;
-  flex-direction: row;
-  justify-content: space-evenly;
-  align-items: center;
+  display: flex;
+  padding-left: 10px;
+  padding-right: 10px;
   margin: 0;
 }
 
-#bookmark__search_txt {
-  width: 100%;
-  color: #fff;
-  background-color: var(--main-40-black);
-  box-shadow: 0 0 15px var(--main-40-white);
-  border: 3px solid #000;
-}
-
-#bookmark__search_txt::placeholder {
-  color: #c1c1c1;
-}
-
-#bookmark__search_txt:focus {
-  outline: 3px solid var(--main-40-white);
-}
-
-#bookmark__search_icon {
-  text-align: center;
-  margin-right: 16px;
+/* The icon's own slot, past anything the menu says about the icons on its
+   rows -- those are sized for a column this row does not use, and an id in the
+   selector is what it takes to get out from under them. The values are the
+   shared ones from lists.css; only the weight of the selector differs. */
+#bookmark__search .search-row__icon {
+    width: 25px;
+    margin: 0;
+    padding-right: 3px;
+    font-size: 20px;
+    text-align: center;
 }
 
 /*
@@ -249,10 +251,10 @@
 .editFav__textbox {
   border-radius: 15px;
   margin-bottom: 10px;
-  padding-right: 5px;  
-  padding-left: 5px;    
-  padding-bottom: 10px;  
-  padding-top: 10px;  
+  padding-right: 5px;
+  padding-left: 5px;
+  padding-bottom: 10px;
+  padding-top: 10px;
   text-align: left;
   font-size: 22px;
   color: #000;
