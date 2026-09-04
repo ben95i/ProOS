@@ -1,10 +1,15 @@
 // Automate Website - JavaScript Frontend
 // by Ben Provenzano III
+//
+// Draws the page for this device model, wires every button through one
+// delegated click listener, and owns the dynamic menus, the popups and the
+// page teardown.
 
-import { requestThrottle, classDisplay,
-  addClassToElem, cleanString, base64URLSafeEncode, splitMenuData,
-  isNumeric, mapNumber, splitByDelimiter, sendCmd, timeoutInterval,
-  html, showPopup, clearPopupTimer, loadMenu, savePOST } from './utils.js';
+import { requestThrottle, classDisplay, addClassToElem, cleanString,
+  base64URLSafeEncode, splitMenuData, isNumeric, mapNumber, splitByDelimiter,
+  sendCmd, timeoutInterval, html, showPopup, clearPopupTimer, loadMenu,
+  savePOST, fileURL, makeElement, promptWindow, onButtons, setSpinner,
+  setDisplayById, isBlockDisplayed, menuRow, indicator } from './utils.js';
 import ToggleSwitch, { toggleSwitchCallback } from './switch.js';
 import RoomStateManager from './roomstate.js';
 import AnimatedBackground from './stars.js';
@@ -18,23 +23,22 @@ import { SSIDpwd } from './wifi.js';
 
 const MAIN_SITE = "Automate";
 const ROOM_CONFIGS = {
-  'lr': { 
+  'lr': {
     name: 'Living Room',
     icon: '',
-    voltarget: 'lrxmit',     
+    voltarget: 'lrxmit',
     volmax: 100,
     template: livingRoomGridTemplate
   },
-  'br': { 
-    name: 'Bedroom',     
-    icon: 'fad fa-bed',  
-    voltarget: 'brpi', 
+  'br': {
+    name: 'Bedroom',
+    icon: 'fad fa-bed',
+    voltarget: 'brpi',
     volmax: 192,
     template: bedroomGridTemplate
   }
 };
-const SUBWOOFER_CLASS = 
-  'red_btn_menu';
+const SUBWOOFER_CLASS = 'red_btn_menu';
 const VOLUME_ACTIONS = {
   'voldwnbtn': 'dwn',
   'volmutebtn': 'mute',
@@ -70,17 +74,15 @@ window.App = {
 // wipe the rows of the menu that is actually on screen.
 let menuDrawToken = 0;
 
-// runs on page load
 window.addEventListener("DOMContentLoaded", () => {
   loadPage();
 });
 
 // Each template below registers its own button handlers with
-// registerListeners() directly beneath its markup; the groups merge into
-// this one map, which the delegated dispatcher in
-// registerDelegatedListeners() looks up on click. Delegation means handlers
-// keep working for markup rendered later (room grids, bookmark buttons,
-// svropt panels) and never need re-attaching after a re-render.
+// registerListeners() directly beneath its markup; the groups merge into this
+// one map, which the delegated dispatcher looks up on click. Delegation means
+// handlers keep working for markup rendered later (room grids, bookmark
+// buttons, svropt panels) and never need re-attaching after a re-render.
 function registerListeners(listeners) {
   for (const [id, handler] of Object.entries(listeners)) {
     if (!(id in DELEGATED_LISTENERS)) {
@@ -90,22 +92,22 @@ function registerListeners(listeners) {
 }
 
 function setupEventListeners() {
-  if (!App.listenersReady) {
-    App.listenersReady = true;
-    // click/touch listener
-    document.addEventListener('click', handleClicks, false);
-    // button dispatcher for every group registered next to its template
-    document.addEventListener('click', (event) => {
-      let current = event.target;
-      while (current && current !== document) {
-        if (current.id && DELEGATED_LISTENERS[current.id]) {
-          DELEGATED_LISTENERS[current.id]();
-          return;
-        }
-        current = current.parentNode;
-      }
-    });
+  if (App.listenersReady) {
+    return;
   }
+  App.listenersReady = true;
+  document.addEventListener('click', handleClicks, false);
+  // button dispatcher for every group registered next to its template
+  document.addEventListener('click', (event) => {
+    let current = event.target;
+    while (current && current !== document) {
+      if (current.id && DELEGATED_LISTENERS[current.id]) {
+        DELEGATED_LISTENERS[current.id]();
+        return;
+      }
+      current = current.parentNode;
+    }
+  });
 }
 
 function buildPageHTML(model) {
@@ -131,8 +133,7 @@ function buildPageHTML(model) {
   ].filter(Boolean).join('\n');
 }
 
-// injects the markup for the given model, replacing any previous render;
-// injected sections are visible by default -- no marker-class reveal needed
+// injects the markup for the given model, replacing any previous render
 function renderPage(model) {
   removeInjectedPage();
   document.body.insertAdjacentHTML('afterbegin', buildPageHTML(model));
@@ -146,63 +147,49 @@ function removeInjectedPage() {
 }
 
 function loadPage() {
-  // read device type
-  App.sysModel = deviceType(); 
+  App.sysModel = deviceType();
   destroyPageServices();
   renderPage(App.sysModel);
   if (App.sysModel === MAIN_SITE) {
-    // load control menu saved state
-    const room = localStorage.getItem("ctls-mode")
-    selectRoom(room);
-    // room status title-bar icon
+    // control menu saved state
+    selectRoom(localStorage.getItem("ctls-mode"));
     App.roomStateManager = new RoomStateManager('status_anchor');
-    // weather title-bar icon
     window.weatherWidget = new WeatherWidget();
     window.weatherWidget.activate();
   }
-  // The list button's menu, the theme colour and the About window all live
-  // in MainMenu now. Built before the listeners below, which reach into it.
+  // the list button's menu, the theme colour and the About window; built
+  // before the listeners below, which reach into it
   App.mainMenu = new MainMenu();
   App.mainMenu.load();
-  // setup listeners
   setupEventListeners();
-  // initialize background, with the saved animation setting applied before
-  // the first frame so a switched-off field never flickers into motion
+  // the saved animation setting is applied before the first frame, so a
+  // switched-off field never flickers into motion
   App.starBackground = new AnimatedBackground('star-canvas', starsAnimationEnabled());
   App.starBackground.activate();
-  // activate timed services
   resetActivityTimer();
 }
 
-// runs on-each mouse click
+// runs on each click anywhere on the page
 function handleClicks(event) {
   resetActivityTimer();
-  // disable click events when in bookmark edit mode
+  // no click events while the bookmark edit window is up
   if (App.bookmarks && App.bookmarks.isEditMode()) {
-    // closest() rather than a className string compare: drawPrompt() adds
-    // "prompt_win" to the window after setting its class, so className has
-    // read "editFav__win prompt_win" for a while now and the equality test
-    // never matched -- every click in edit mode took the branch below,
-    // including the ones belonging to the window itself.
+    // closest() rather than a className compare: drawPrompt() adds
+    // "prompt_win" after setting the class, so an equality test never matched
     if (!event.target.closest(".editFav__win")) {
-      // the button dispatcher below is a second listener on document, and
+      // the button dispatcher is a second listener on document, and
       // stopPropagation() does not stop listeners on the same node -- so
-      // delegated buttons used to keep firing right through edit mode. The
-      // edit window's own handlers sit lower down the tree and have already
-      // run by the time this fires.
+      // delegated buttons used to keep firing right through edit mode
       event.stopImmediatePropagation();
     }
     return;
   }
   // don't hide menus when clicking these elements
-  const NO_HIDE_ELEMENTS = [
-      '.button',
-      '.bookmarked__item',
-      '.nohide',
-    ].join(', ');
+  const NO_HIDE_ELEMENTS = ['.button', '.bookmarked__item', '.nohide'].join(', ');
   if (event.target.closest(NO_HIDE_ELEMENTS)) return;
   removeDropdowns();
 }
+
 //// stars animation setting ////
 
 // anything other than an explicit "off" is on, so a browser with nothing
@@ -212,7 +199,11 @@ function starsAnimationEnabled() {
 }
 
 function setStarsAnimation(on) {
-  localStorage.setItem("stars-anim", on === true ? "on" : "off");
+  let saved = "off";
+  if (on === true) {
+    saved = "on";
+  }
+  localStorage.setItem("stars-anim", saved);
   if (App.starBackground) {
     App.starBackground.setEnabled(on === true);
   }
@@ -228,6 +219,8 @@ const WWW_SETTINGS = {
   }
 };
 
+//// activity timeout ////
+
 function resetActivityTimer() {
   activityBegin();
   clearTimeout(App.activityTimeout);
@@ -237,7 +230,7 @@ function resetActivityTimer() {
 }
 
 function activityBegin() {
-  if (typeof App.starBackground !== 'undefined' && App.starBackground) {
+  if (App.starBackground) {
     App.starBackground.resume();
   }
   if (App.sysModel === MAIN_SITE && App.roomStateManager) {
@@ -246,19 +239,21 @@ function activityBegin() {
 }
 
 function activityStop() {
-  if (typeof App.starBackground !== 'undefined' && App.starBackground) { 
+  if (App.starBackground) {
     App.starBackground.pause();
   }
   if (App.sysModel === MAIN_SITE && App.roomStateManager) {
     App.roomStateManager.hideRoomState();
-  }  
+  }
 }
 
 async function refreshRoomState() {
   if (App.sysModel === MAIN_SITE && App.roomStateManager) {
     App.roomStateManager.restartRoomState();
-  }  
+  }
 }
+
+//// dropdowns ////
 
 window.removeDropdowns = function() {
   // anything still in flight is no longer allowed to draw itself
@@ -274,6 +269,22 @@ window.removeDropdowns = function() {
   }
 }
 
+// Opens a dropdown, or shuts it when it is already open. Answers true when
+// the caller should go on and fill it.
+function openDropdown(id) {
+  const _elem = document.getElementById(id);
+  if (!_elem) {
+    return false;
+  }
+  if (_elem.style.display === 'block') {
+    _elem.style.display = 'none';
+    return false;
+  }
+  removeDropdowns();
+  _elem.style.display = 'block';
+  return true;
+}
+
 // toggle switches own pointer listeners, so they are destroyed rather than
 // just dropped whenever their markup goes away
 function destroyActiveSwitches() {
@@ -287,29 +298,21 @@ function destroyActiveSwitches() {
 
 function openRoomDropdown() {
   const menuname = 'main-room-dropdown';
-  let _elem = document.getElementById(menuname);
-  if (_elem.style.display === 'block') {
-    _elem.style.display = 'none';
-  } else {
-    removeDropdowns();
-    // draw menu
-    let menuDataString = ""; 
-    for (const [roomKey, config] of Object.entries(ROOM_CONFIGS)) {
-      if (roomKey !== App.currentRoom) {
-        menuDataString += `${roomKey}|room|${config.name}\n`;
-      }
-    }
-    drawMenu(menuDataString, menuname);
-    // show dropdown
-    _elem.style.display = 'block';
+  if (!openDropdown(menuname)) {
+    return;
   }
+  let menuDataString = "";
+  for (const [roomKey, config] of Object.entries(ROOM_CONFIGS)) {
+    if (roomKey !== App.currentRoom) {
+      menuDataString += menuRow(roomKey, 'room', config.name);
+    }
+  }
+  drawMenu(menuDataString, menuname);
 }
 
 function selectRoom(_mode) {
-  // load configuration
   if (!ROOM_CONFIGS[_mode]) {
-    // load first if not defined
-    _mode = Object.keys(ROOM_CONFIGS)[0];
+    _mode = Object.keys(ROOM_CONFIGS)[0]; // load the first if not defined
   }
   const config = ROOM_CONFIGS[_mode];
   const container = document.getElementById('room-grid-container');
@@ -318,7 +321,6 @@ function selectRoom(_mode) {
     // delegated dispatcher, so rendering the markup is all that's needed
     container.innerHTML = config.template();
   }
-  // update dropdown
   const roomLabel = document.getElementById('current-room-label');
   if (roomLabel) roomLabel.innerText = config.name;
   const roomIcon = document.getElementById('current-room-icon');
@@ -331,36 +333,28 @@ function selectRoom(_mode) {
       roomIcon.style.display = 'none';
     }
   }
-  // save state
   App.currentRoom = _mode;
   localStorage.setItem("ctls-mode", _mode);
-};
+}
 
 // open URL in new tab
 function GoToExtPage(_path) {
-  let url = "https://" + _path;   
-  window.open(url, "_blank");
+  window.open("https://" + _path, "_blank");
 }
 
-// back to home page 
+// back to home page
 function GoToHomePage() {
   if (App.sysModel === MAIN_SITE) {
     removeInjectedPage();
     loadPage();
   } else {
-    window.location = 'https://' + MAIN_SITE + '.home';   
+    window.location = 'https://' + MAIN_SITE + '.home';
   }
 }
 
-// toggle dropdown menu's
+// toggle a static dropdown menu
 function showMenu(_menu) {
-  let _elem = document.getElementById(_menu);
-  if (_elem.style.display === 'block') {
-    _elem.style.display = 'none';
-    return;
-  }
-  removeDropdowns();
-  _elem.style.display = 'block';
+  openDropdown(_menu);
 }
 
 //// page templates ////
@@ -410,12 +404,11 @@ registerListeners({
   'nav_stats_menu':      () => showStatusMenu()
 });
 
+// mainmenu / pi-mainmenu are left empty here: their rows are written out in
+// MainMenu.MENU_HTML / PI_MENU_HTML, in the order they are drawn, so each
+// menu can be reordered in one place. The handlers for those ids are still
+// registered below.
 function navDropdownsTemplate(f) {
-  // mainmenu / pi-mainmenu are direct children of .nav_dd_left, exactly like
-  // bookmarks / roomstatus always were. Both are left empty here: their rows
-  // are written out in MainMenu.MENU_HTML / PI_MENU_HTML, in the order they
-  // are drawn, so the whole of each menu can be reordered in one place. The
-  // handlers for the ids in there are still registered below.
   return `
 <div class="nav_dd_left" data-app-injected>
   ${f.isServer ? `
@@ -1151,17 +1144,16 @@ registerListeners({
 // separate throttles so up/down each get their own 250ms window
 const throttledBedUp = requestThrottle(() => {
   sendCmd('main', 'brxmit', 'bed_adj_up');
-}, 250); // in (ms)
+}, 250);
 
 const throttledBedDown = requestThrottle(() => {
   sendCmd('main', 'brxmit', 'bed_adj_dwn');
-}, 250); // in (ms)
+}, 250);
 
-async function bedPrompt() {
+function bedPrompt() {
   const _winid = 'bed__prompt';
   if (document.getElementById(_winid)) return;
-  const promptHTML = `
-  <div id="${_winid}" class="prompt_win">
+  const bedprompt = promptWindow(_winid, `
     <div class="bed__title">Bed Adjustment</div>
     <button type="button" class="button bed__btn" id="bed__btn-up">
       <i class="fad fa-arrow-up bed__icon"></i>
@@ -1173,14 +1165,9 @@ async function bedPrompt() {
       <i class="fad fa-times-octagon right-padding"></i>
       <span class="button__text">Close</span>
     </button>
-  </div>
-  `;
-  document.body.insertAdjacentHTML('beforeend', promptHTML);
-  const bedprompt = document.getElementById(_winid);
-  bedprompt.addEventListener('click', function handleButtonClicks(btn_evnt) {
-    const clickedButton = btn_evnt.target.closest('button');
-    if (!clickedButton) return;
-    switch (clickedButton.id) {
+  `);
+  onButtons(bedprompt, (button) => {
+    switch (button.id) {
       case 'bed__btn-up':
         throttledBedUp();
         break;
@@ -1188,11 +1175,10 @@ async function bedPrompt() {
         throttledBedDown();
         break;
       case 'bed__btn-close':
-        // a trailing press still inside its 250ms window would otherwise go
-        // out after the window it came from had gone
+        // a trailing press still inside its window would otherwise go out
+        // after the window it came from had gone
         throttledBedUp.cancel();
         throttledBedDown.cancel();
-        bedprompt.removeEventListener('click', handleButtonClicks);
         bedprompt.remove();
         break;
     }
@@ -1201,17 +1187,13 @@ async function bedPrompt() {
 
 /// server popup window ///
 
-async function serverSend() {
+function serverSend() {
+  const txtArea = document.getElementById("logTextBox");
   if (App.serverCmdData === null) {
-    // load log data
-    document.getElementById("logTextBox").value = "select an option.";
+    txtArea.value = "select an option.";
   } else {
-    // send command
-    sendCmd('main','server',App.serverCmdData);
-    // display command sent
-    document.getElementById("logTextBox").value += "\n" + App.serverCmdData + " command sent.";
-    // scroll to bottom of page
-    let txtArea = document.getElementById("logTextBox");
+    sendCmd('main', 'server', App.serverCmdData);
+    txtArea.value += "\n" + App.serverCmdData + " command sent.";
     txtArea.scrollTop = txtArea.scrollHeight;
   }
   sendBtnAlert("off");
@@ -1219,8 +1201,8 @@ async function serverSend() {
 }
 
 function sendBtnAlert(state) {
-  let _class = "selected_btn";
-  let _elem = "sendButton";
+  const _class = "selected_btn";
+  const _elem = "sendButton";
   if (state === 'on') {
     addClassToElem('add', _elem, _class);
   }
@@ -1243,7 +1225,7 @@ function openServerPanel(panelTemplate) {
   classDisplay("svropt__prompt", "block");
 }
 
-function closeServerOptions(){
+function closeServerOptions() {
   removeDropdowns();
   clearPendingCmd();
   classDisplay("svropt__prompt", "none");
@@ -1256,55 +1238,54 @@ function closeServerOptions(){
 
 /////// LEDScroll ///////
 
-function setTextScrollTitle(){
-  let title = document.getElementById('textScrollTitle');
-  const color = App.ledScrollData[0];
-  const font = App.ledScrollData[1];
-  const speed = App.ledScrollData[2];
+function setTextScrollTitle() {
+  const title = document.getElementById('textScrollTitle');
+  const [color, font, speed] = App.ledScrollData;
   title.style.color = '#' + color;
   title.textContent = "Textscroll " + font + ' ' + speed + 'x';
 }
 
-function clearTextScrollBox(){
-  let textbox = document.getElementById('textScrollBox');
+function clearTextScrollBox() {
+  const textbox = document.getElementById('textScrollBox');
   textbox.placeholder = "Enter message";
   textbox.value = '';
 }
 
-function openTextScroll(){
+function openTextScroll() {
   classDisplay("textscroll__prompt", "block");
   clearTextScrollBox();
   setTextScrollTitle();
 }
 
-function closeTextScroll(){
+function closeTextScroll() {
   classDisplay("textscroll__prompt", "none");
   clearTextScrollBox();
   removeDropdowns();
 }
 
-function clearLEDsMessage(){
+function clearLEDsMessage() {
   clearTextScrollBox();
   sendCmd('leds', 'stop');
 }
 
-function setTextScrollColor(color){
+function setTextScrollColor(color) {
   App.ledScrollData[0] = color;
   setTextScrollTitle();
 }
 
-function setTextScrollFont(font){
+function setTextScrollFont(font) {
   App.ledScrollData[1] = font;
   setTextScrollTitle();
 }
 
-function setTextScrollSpeed(speed){
+function setTextScrollSpeed(speed) {
   App.ledScrollData[2] = speed;
   setTextScrollTitle();
 }
 
-function sendTextScroll(){
-  let textbox = document.getElementById('textScrollBox');
+// sends the box's text to the LED grid as message|color|font|speed, base64
+function sendTextScroll() {
+  const textbox = document.getElementById('textScrollBox');
   const message = cleanString(textbox.value.replaceAll("|", "-"));
   if (message === null || message == "") {
     textbox.placeholder = "Message cannot be empty";
@@ -1312,47 +1293,40 @@ function sendTextScroll(){
   }
   textbox.placeholder = "Sending message..";
   textbox.value = '';
-  const color = App.ledScrollData[0];
-  const font = App.ledScrollData[1];
-  const speed = App.ledScrollData[2];
+  const [color, font, speed] = App.ledScrollData;
   const commands = `${message}|${color}|${font}|${speed}`;
-  const encoded = base64URLSafeEncode(commands);
-  sendCmd('leds', 'textscroll', encoded).then((data) => {
-    if (data === null || data == "" ) {
-      textbox.placeholder = "Error sending message!"; 
+  sendCmd('leds', 'textscroll', base64URLSafeEncode(commands)).then((data) => {
+    if (data === null || data == "") {
+      textbox.placeholder = "Error sending message!";
     } else {
       textbox.placeholder = "Message sent";
     }
-    setTimeout(function(){
+    setTimeout(function() {
       textbox.value = message;
-    }, 1000); // in ms
+    }, 1000);
   });
 }
-
-/////// About Window ///////
-//
-// aboutPrompt() was here. It is the main menu's first row and nothing else
-// opens it, so it moved into MainMenu with the rest of that menu.
 
 /////// Volume Controls ///////
 
 function sendVol(_cmd) {
-  const room = App.currentRoom;
-  const config = ROOM_CONFIGS[room];
-  const submode = subwooferVolumeEnabled();
-  if (submode === true) {
-    sendCmd('main', config.voltarget, 'sub' + _cmd); // living room subwoofers
+  const config = ROOM_CONFIGS[App.currentRoom];
+  if (subwooferVolumeEnabled() === true) {
+    sendCmd('main', config.voltarget, 'sub' + _cmd); // subwoofers
   } else {
-    setAmpVolume(_cmd, config.voltarget, config.volmax); // living room system
+    setAmpVolume(_cmd, config.voltarget, config.volmax);
   }
 }
 
+// the volume buttons of the room currently on screen
+function volumeButtonIds() {
+  return Object.keys(VOLUME_ACTIONS).map(key => `${App.currentRoom}-${key}`);
+}
+
 function subwooferVolumeEnabled() {
-  const volKeys = Object.keys(VOLUME_ACTIONS);
-  if (volKeys.length === 0) return false;
-  const firstKey = volKeys[0]; 
-  const elementId = `${App.currentRoom}-${firstKey}`; 
-  const element = document.getElementById(elementId);
+  const ids = volumeButtonIds();
+  if (ids.length === 0) return false;
+  const element = document.getElementById(ids[0]);
   if (element) {
     return element.classList.contains(SUBWOOFER_CLASS);
   }
@@ -1360,37 +1334,28 @@ function subwooferVolumeEnabled() {
 }
 
 function subwooferVolumeMode(enable) {
-  const volKeys = Object.keys(VOLUME_ACTIONS);
-  volKeys.forEach(key => {
-    const elementId = `${App.currentRoom}-${key}`;
-    const element = document.getElementById(elementId);
+  volumeButtonIds().forEach(id => {
+    const element = document.getElementById(id);
     if (element) {
-      if (enable === true) {
-        element.classList.add(SUBWOOFER_CLASS);
-      } else {
-        element.classList.remove(SUBWOOFER_CLASS);
-      }
+      element.classList.toggle(SUBWOOFER_CLASS, enable === true);
     }
   });
 }
 
+// Reads the amp back after the command and shows the level as a percentage.
+// An empty answer means the amp is off, which the popup shows as "---".
 function setAmpVolume(_cmd, _device, _maxvol) {
-  sendCmd('main', _device, 'vol' + _cmd).then((data) => { // GET request
-    let amp_vol = cleanString(data);
+  sendCmd('main', _device, 'vol' + _cmd).then((data) => {
+    const amp_vol = cleanString(data);
     if (isNumeric(amp_vol) === true) {
-      // re-map volume data to 0-100%, show volume pop-up
-      let display_value;
-      if (_maxvol == 100) {
-        display_value = Number(amp_vol);
-      } else {
-        display_value = Number(Math.round(mapNumber(amp_vol, 0, _maxvol, 0, 100)));
+      let display_value = Number(amp_vol);
+      if (_maxvol != 100) {
+        const scaled = mapNumber(amp_vol, 0, _maxvol, 0, 100);
+        display_value = Number(Math.round(scaled));
       }
-      showVolumePopup(display_value); 
-    } else {
-      if (amp_vol == "") {
-        // empty response = power off
-        showVolumePopup(-1);
-      }
+      showVolumePopup(display_value);
+    } else if (amp_vol == "") {
+      showVolumePopup(-1); // empty response = power off
     }
   });
 }
@@ -1398,8 +1363,7 @@ function setAmpVolume(_cmd, _device, _maxvol) {
 //// Lists Window ////
 
 // opens the lists window (clicking again closes it); the window keeps its own
-// state and talks to the same read / write file API the bookmarks use,
-// checking each write so it can report the connection status
+// state and talks to the same read / write file API the bookmarks use
 function showLists() {
   removeDropdowns();
   if (!App.lists) {
@@ -1411,8 +1375,7 @@ function showLists() {
 //// Bookmarks Menu ////
 
 // star button: the Bookmarks class owns the menu, its buttons, the add/edit
-// window and the file; it is handed removeDropdowns() so cancelling closes
-// every menu exactly as it did before
+// window and the file
 function showBookmarks() {
   if (!App.bookmarks) {
     App.bookmarks = new Bookmarks({
@@ -1424,14 +1387,17 @@ function showBookmarks() {
 
 /// Temperature & Humidity ///
 
-async function showTempHumidity() {
+// thermometer limits
+const TEMP_MIN = 25;
+const TEMP_MAX = 100;
+const HUMIDITY_MIN = 5;
+const HUMIDITY_MAX = 100;
+
+function showTempHumidity() {
   const _winid = "temp__prompt";
   if (document.getElementById(_winid)) return;
-  // create window: banner text, thermometer grid, buttons row
-  const tempprompt = document.createElement("div");
-  tempprompt.id = _winid;
-  tempprompt.classList.add("prompt_win");
-  tempprompt.innerHTML = html`
+  // banner text, thermometer grid, buttons row
+  const tempprompt = promptWindow(_winid, html`
     <div id="temp_top_text">Temperature/Humidity</div>
     <div id="temp_therm_grid">
       <div class="thermometer">
@@ -1445,38 +1411,28 @@ async function showTempHumidity() {
       <button class="button temp__btn fad fa-times-octagon" type="button"></button>
       <button class="button temp__btn fad fa-sync" type="button"></button>
     </div>
-  `;
-  // add window to DOM
-  document.body.appendChild(tempprompt);
-  // grab button references (cancel first, refresh second)
+  `);
+  // cancel first, refresh second
   const [tempcancelb, temprefreshb] = tempprompt.querySelectorAll("button");
-  // call API for data
   getTemperatureData();
-  // button actions
-  tempprompt.addEventListener("click", function handleButtonClicks(btn_evnt) {
-    if (btn_evnt.target.tagName !== "BUTTON") { return; }
-    // close button
-    if (btn_evnt.target === tempcancelb) {
-      tempprompt.removeEventListener("click", handleButtonClicks);
+  onButtons(tempprompt, (button) => {
+    if (button === tempcancelb) {
       tempprompt.remove();
     }
-    // refresh button
-    if (btn_evnt.target === temprefreshb) {
+    if (button === temprefreshb) {
       getTemperatureData();
     }
   });
 }
 
+// the API answers "72~41" -- temperature then humidity
 function getTemperatureData() {
   sendCmd("main", "brxmit", "roomth")
     .then((data) => {
-      const resp = cleanString(data);
-      // extract numerics
-      const resp_arr = resp.split("~");
+      const resp_arr = cleanString(data).split("~");
       const temp_elm = document.getElementById("thermo__1");
       const humd_elm = document.getElementById("thermo__2");
       if (resp_arr.length == 2) {
-        // valid response
         pushTempDataToThermos(resp_arr, temp_elm, humd_elm);
       } else {
         pushTempErrorThermos(temp_elm, humd_elm);
@@ -1490,37 +1446,33 @@ function getTemperatureData() {
     });
 }
 
+// how much of the tube one reading fills, as a percentage of its own range
+function thermometerFill(value, minValue, maxValue) {
+  let held = value;
+  if (held >= maxValue) { held = maxValue; }
+  if (held <= minValue) { held = minValue; }
+  const aboveFloor = held - minValue;
+  const fullRange = maxValue - minValue;
+  return (aboveFloor / fullRange) * 100;
+}
+
 function pushTempDataToThermos(resp_arr, temp_elm, humd_elm) {
-  // thermometer limits
-  const minTemp = 25;
-  const maxTemp = 100;
-  const minHumidity = 5;
-  const maxHumidity = 100;
-  // verify elements exist
   if (!(temp_elm && humd_elm)) {
     return;
   }
-  // validate response
-  if (resp_arr.length == 2) {
-    let tvalue = resp_arr[0];
-    let hvalue = resp_arr[1];
-    // set temperature
-    temp_elm.dataset.value = `${tvalue}\u00B0F`;
-    if (tvalue >= maxTemp) { tvalue = maxTemp; }
-    if (tvalue <= minTemp) { tvalue = minTemp; }
-    temp_elm.style.height = `${(tvalue - minTemp) / (maxTemp - minTemp) * 100}%`;
-    // set humidity
-    humd_elm.dataset.value = `${hvalue}%`;
-    if (hvalue >= maxHumidity) { hvalue = maxHumidity; }
-    if (hvalue <= minHumidity) { hvalue = minHumidity; }
-    humd_elm.style.height = `${(hvalue - minHumidity) / (maxHumidity - minHumidity) * 100}%`;
-  } else {
+  if (resp_arr.length != 2) {
     pushTempErrorThermos(temp_elm, humd_elm);
+    return;
   }
+  const tvalue = resp_arr[0];
+  const hvalue = resp_arr[1];
+  temp_elm.dataset.value = `${tvalue}\u00B0F`;
+  temp_elm.style.height = `${thermometerFill(tvalue, TEMP_MIN, TEMP_MAX)}%`;
+  humd_elm.dataset.value = `${hvalue}%`;
+  humd_elm.style.height = `${thermometerFill(hvalue, HUMIDITY_MIN, HUMIDITY_MAX)}%`;
 }
 
 function pushTempErrorThermos(temp_elm, humd_elm) {
-  // verify elements exist
   if (!(temp_elm && humd_elm)) {
     return;
   }
@@ -1544,29 +1496,23 @@ async function showPiWiFiPrompt() {
   }
 }
 
+// Asks for an SSID and password and resolves with them base64 encoded as
+// "ssid|$|password", or null when it was cancelled.
 function piWiFiPrompt(_winid) {
   return new Promise((resolve) => {
-    // create window: SSID label/box, password label/box, cancel + save buttons
-    const pinetprompt = document.createElement("div");
-    pinetprompt.id = _winid;
-    pinetprompt.classList.add("prompt_win");
-    pinetprompt.innerHTML = html`
+    const pinetprompt = promptWindow(_winid, html`
       <div>Network (SSID):</div>
       <input id="pinet__ssidbox">
       <div>Password:</div>
       <input id="pinet__passbox" type="password">
       <button class="button pinet__btn" type="button">Cancel</button>
       <button class="button pinet__btn" type="button">Save</button>
-    `;
-    document.body.appendChild(pinetprompt);
-    // element references
+    `);
     const pinettext1 = pinetprompt.querySelector("div"); // SSID label
     const pinetssidbox = document.getElementById("pinet__ssidbox");
     const pinetpassbox = document.getElementById("pinet__passbox");
     const [pinetcancelb, pinetokbutton] = pinetprompt.querySelectorAll("button");
-    // focus on SSID text box
     pinetssidbox.focus();
-    // control logic
     function cancelWiFi() {
       pinetssidbox.value = "";
       pinetpassbox.value = "";
@@ -1576,35 +1522,31 @@ function piWiFiPrompt(_winid) {
     function sendWiFiData() {
       if (pinetssidbox.value === "") {
         pinettext1.innerHTML = "enter SSID!";
-      } else if (pinetpassbox.value === "") {
-        pinettext1.innerHTML = "enter password!";
-      } else {
-        // concat and convert to base64
-        const _wifidata = base64URLSafeEncode(`${pinetssidbox.value}|$|${pinetpassbox.value}`);
-        resolve(_wifidata);
-        cancelWiFi();
+        return;
       }
+      if (pinetpassbox.value === "") {
+        pinettext1.innerHTML = "enter password!";
+        return;
+      }
+      resolve(base64URLSafeEncode(`${pinetssidbox.value}|$|${pinetpassbox.value}`));
+      cancelWiFi();
     }
-    // button clicks
-    pinetprompt.addEventListener("click", function handleButtonClicks(e) {
-      if (e.target.tagName !== "BUTTON") return;
-      if (e.target === pinetokbutton) {
+    onButtons(pinetprompt, (button) => {
+      if (button === pinetokbutton) {
         sendWiFiData();
       }
-      if (e.target === pinetcancelb) {
+      if (button === pinetcancelb) {
         cancelWiFi();
       }
     });
-    // key focused on SSID box
-    pinetssidbox.addEventListener("keyup", function handleSSID(ssid_evnt) {
+    pinetssidbox.addEventListener("keyup", (ssid_evnt) => {
       if (ssid_evnt.key === "Enter") {
         pinetpassbox.focus();
       } else if (ssid_evnt.key === "Escape") {
         cancelWiFi();
       }
     });
-    // key focused on password box
-    pinetpassbox.addEventListener("keyup", function handlePass(pass_evnt) {
+    pinetpassbox.addEventListener("keyup", (pass_evnt) => {
       if (pass_evnt.key === "Enter") {
         sendWiFiData();
       } else if (pass_evnt.key === "Escape") {
@@ -1614,28 +1556,22 @@ function piWiFiPrompt(_winid) {
   });
 }
 
-async function wifiPrompt() {
+// the QR code and password for guest WiFi access
+function wifiPrompt() {
   const _winid = "wifi__prompt";
   if (document.getElementById(_winid)) return;
-  // create window: banner text, QR image, password text, close button
-  const wifiprompt = document.createElement("div");
-  wifiprompt.id = _winid;
-  wifiprompt.classList.add("prompt_win");
-  wifiprompt.innerHTML = html`
+  const wifiprompt = promptWindow(_winid, html`
     <div>Scan for WiFi Access</div>
     <img src="img/wifi.png" id="wifi__img">
     <div id="wifi__pwdtxt"></div>
     <button class="button" type="button" id="wifipmt__btn">Close</button>
-  `;
-  document.body.appendChild(wifiprompt);
+  `);
   // password text set separately (value is data, not markup)
   document.getElementById("wifi__pwdtxt").innerHTML = atob(SSIDpwd());
-  wifiprompt.addEventListener("click", function handleButtonClicks(btn_evnt) {
-    if (btn_evnt.target.tagName !== "BUTTON") { return; }
-    wifiprompt.removeEventListener("click", handleButtonClicks);
-    wifiprompt.remove();
-  });
+  onButtons(wifiprompt, () => wifiprompt.remove());
 }
+
+/// password prompt ///
 
 async function getPassword(_type) {
   try {
@@ -1649,30 +1585,24 @@ async function getPassword(_type) {
   }
 }
 
+// resolves with the typed password, rejects when it was cancelled
 function passwordPrompt() {
   const _winid = "pass__prompt_win";
   if (document.getElementById(_winid)) return null;
-  const pwprompt = document.createElement("div");
-  pwprompt.id = _winid;
-  pwprompt.classList.add("prompt_win");
-  pwprompt.innerHTML = html`
+  const pwprompt = promptWindow(_winid, html`
     <div>Enter password:</div>
     <input id="pass__textbox" type="password">
     <div id="pass__prmbtnctr">
       <button class="button pass__prompt_btn" type="button">Cancel</button>
       <button class="button pass__prompt_btn" type="button">Send</button>
     </div>
-  `;
-  document.body.appendChild(pwprompt);
-  // element references
+  `);
   const pwinput = document.getElementById("pass__textbox");
   const [pwcancelb, pwokbutton] = pwprompt.querySelectorAll("button");
   pwinput.focus();
   return new Promise(function (resolve, reject) {
-    pwprompt.addEventListener("click", function handleButtonClicks(click_evnt) {
-      if (click_evnt.target.tagName !== "BUTTON") return;
-      pwprompt.removeEventListener("click", handleButtonClicks);
-      if (click_evnt.target === pwokbutton) {
+    onButtons(pwprompt, (button) => {
+      if (button === pwokbutton) {
         resolve(pwinput.value);
       } else {
         reject(new Error("User cancelled"));
@@ -1691,14 +1621,16 @@ function passwordPrompt() {
   });
 }
 
+/// volume popup ///
+
+// vol is 0-100, 0 shows "Mute" and -1 shows "---" (the amp is off)
 function showVolumePopup(vol) {
   const win_name = "vol-popup";
   const text_name = "vol-text";
   const grid_name = "vol-grid";
   const bar_name = "vol-bar";
   let volpopwin = document.getElementById(win_name);
-  if (!volpopwin) { // window does not exist
-    // draw window: volume text box + progress bar grid
+  if (!volpopwin) {
     volpopwin = document.createElement("div");
     volpopwin.classList.add("popup-alert");
     volpopwin.id = win_name;
@@ -1708,7 +1640,6 @@ function showVolumePopup(vol) {
         <div class="bar_progress" id="${bar_name}"></div>
       </div>
     `;
-    // add to page
     // Attached once, like the message popup: a volume press arriving mid-fade
     // cancels the animation, so a per-fade {once:true} listener would never
     // fire and never unregister.
@@ -1720,11 +1651,9 @@ function showVolumePopup(vol) {
     document.body.appendChild(volpopwin);
   }
   volpopwin.classList.remove("fade-out");
-  // select elements in window
   const voltext = document.getElementById(text_name);
   const volgrid = document.getElementById(grid_name);
   const volbar = document.getElementById(bar_name);
-  // set volume display
   switch (vol) {
     case -1:
       volgrid.style.display = "none";
@@ -1741,188 +1670,134 @@ function showVolumePopup(vol) {
       volbar.style.width = volstr;
     }
   }
-  // reset hide window timeout
   clearTimeout(App.volPopupTimer);
-  // hide window after delay
   App.volPopupTimer = setTimeout(() => {
     App.volPopupTimer = null;
-    // fade out window; the listener above removes it once the fade ends
+    // the listener above removes the window once the fade ends
     volpopwin.classList.add("fade-out");
-  }, 3000); // hide delay in (ms)
+  }, 3000);
+}
+
+//// device menus ////
+
+// Amp input menus: one row per input, green on the one that is selected.
+// code is what the device answers with when that input is live.
+const HIFI_INPUTS = [
+  { code: '6', cmd: 'autodac', label: 'Auto' },
+  { code: '1', cmd: 'usb', label: 'USB' },
+  { code: '3', cmd: 'phono', label: 'Phono' },
+  { code: '5', cmd: 'opt', label: 'Optical' },
+  { code: '4', cmd: 'coax', label: 'Coaxial' },
+  { code: '2', cmd: 'aux', label: 'Aux' }
+];
+
+const BEDROOM_INPUTS = [
+  { code: '2', cmd: 'opt-a', label: 'USB' },
+  { code: '3', cmd: 'coaxial', label: 'Coaxial' },
+  { code: '1', cmd: 'opt-b', label: 'Optical' },
+  { code: '4', cmd: 'aux', label: 'Aux' }
+];
+
+function inputMenuRows(target, resp, inputs) {
+  let rows = '';
+  inputs.forEach(input => {
+    rows += menuRow(`cmd~${target}~${input.cmd}`,
+      indicator(resp == input.code), input.label);
+  });
+  return rows;
+}
+
+// Opens a device menu, asks the device for its state and draws the rows the
+// answer builds. config: menu, target, cmd, textId, spinnerId, build(resp).
+function openDeviceMenu(config) {
+  if (!openDropdown(config.menu)) {
+    return;
+  }
+  setSpinner(config.textId, config.spinnerId, true);
+  const token = beginMenuRequest();
+  sendCmd('main', config.target, config.cmd).then((data) => {
+    const menudata = config.build(cleanString(data));
+    // stop the spinner whether or not the rows are still wanted
+    setSpinner(config.textId, config.spinnerId, false);
+    // another menu was opened while this was in the air -- drawing now would
+    // wipe the rows that menu just put on screen
+    if (!menuRequestCurrent(token)) { return; }
+    drawMenu(menudata, config.menu);
+  });
 }
 
 function showHiFiMoreMenu() {
   const offcode = -1;
   const target = 'lrxmit';
   const menuname = 'hfmoremenu';
-  let _elem = document.getElementById(menuname);
-  if (_elem.style.display === 'block') {
-    _elem.style.display = 'none';
-  } else {
-    removeDropdowns();
-    _elem.style.display = 'block';
-    // start spinner animation
-    let btnText = document.getElementById(menuname + '-text');
-    let btnSpinner = document.getElementById(menuname + '-spinner');
-    btnText.style.visibility = 'hidden';
-    btnSpinner.classList.add('btn-spinner');
-    const token = beginMenuRequest();
-    sendCmd('main', target, 'curhpfvollim').then((data) => { // GET request
-      const resp = cleanString(data); // remove newlines
-      let _indtype = 'noind'; // indicator type
-      let _menudata = '';
-      if (isNumeric(resp) === true || resp.includes('~')) {
-        if (resp == offcode) {
-          _menudata += menuname + '-offline|blkind|Offline\n';
-        } else if (resp == 0) { 
-          _menudata += menuname + '-muted|noind|Muted\n';
-        } else {
-          const field = resp.split("~"); // volLimitState ~ hpfState
-          const limit_state = field[0]; 
-          const hpf_state = field[1];
-          // subwoofer volume toggle
-          _menudata += 'subs|subs|Subs Gain\n';       
-          // low-cut filter toggle
-          if (hpf_state == '0') { _indtype = 'blkind'; }
-          if (hpf_state == '1') { _indtype = 'grnind'; }
-          _menudata += 'cmd~' + target + '~togglehpf|' + _indtype + '|Low Cut\n';       
-          // volume limiter toggle
-          if (limit_state == '0') { _indtype = 'blkind'; }
-          if (limit_state == '1') { _indtype = 'grnind'; }
-          _menudata += 'cmd~' + target + '~vlimit|' + _indtype + '|vLimiter\n';        
-        }
-      } else {
-        _menudata += menuname + '-error|redind|Error\n';
+  openDeviceMenu({
+    menu: menuname,
+    target: target,
+    cmd: 'curhpfvollim',
+    textId: `${menuname}-text`,
+    spinnerId: `${menuname}-spinner`,
+    build: (resp) => {
+      if (isNumeric(resp) !== true && !resp.includes('~')) {
+        return menuRow(`${menuname}-error`, 'redind', 'Error');
       }
-      // stop spinner animation (this button's own, drawn or not)
-      btnText.style.visibility = 'visible';
-      btnSpinner.classList.remove('btn-spinner');
-      // another menu was opened while this was in the air -- drawing now
-      // would wipe the rows that menu just put on screen
-      if (!menuRequestCurrent(token)) { return; }
-      // draw menu items
-      drawMenu(_menudata, menuname);
-    });
-  }
+      if (resp == offcode) {
+        return menuRow(`${menuname}-offline`, 'blkind', 'Offline');
+      }
+      if (resp == 0) {
+        return menuRow(`${menuname}-muted`, 'noind', 'Muted');
+      }
+      // volLimitState ~ hpfState
+      const [limit_state, hpf_state] = resp.split("~");
+      let rows = menuRow('subs', 'subs', 'Subs Gain');
+      rows += menuRow(`cmd~${target}~togglehpf`, indicator(hpf_state == '1'), 'Low Cut');
+      rows += menuRow(`cmd~${target}~vlimit`, indicator(limit_state == '1'), 'vLimiter');
+      return rows;
+    }
+  });
 }
 
 function showHiFiAmpInput() {
   const offcode = -1;
   const target = 'lrxmit';
   const menuname = 'hfinmenu';
-  let _elem = document.getElementById(menuname);
-  if (_elem.style.display === 'block') {
-    _elem.style.display = 'none';
-  } else {
-    removeDropdowns();
-    _elem.style.display = 'block';
-    // start spinner animation
-    let btnText = document.getElementById(menuname + '-text');
-    let btnSpinner = document.getElementById(menuname + '-spinner');
-    btnText.style.visibility = 'hidden';
-    btnSpinner.classList.add('btn-spinner');
-    const token = beginMenuRequest();
-    sendCmd('main', target, 'curinput').then((data) => { // GET request
-      const resp = cleanString(data); // remove newlines
-      // draw menu items
-      let _menudata = '';
-      if (isNumeric(resp) === true) {
-        if (resp == offcode) {
-          _menudata += menuname + '-offline|blkind|Offline\n';
-        } else { // online
-          // auto input
-          let _indtype = 'blkind'; // indicator type
-          if (resp == '6') { _indtype = 'grnind'; }
-          _menudata += 'cmd~' + target + '~autodac|' + _indtype + '|Auto\n';
-          // PC input
-          _indtype = 'blkind';
-          if (resp == '1') { _indtype = 'grnind'; }
-          _menudata += 'cmd~' + target + '~usb|' + _indtype + '|USB\n';
-          // phono input
-          _indtype = 'blkind';
-          if (resp == '3') { _indtype = 'grnind'; }      
-          _menudata += 'cmd~' + target + '~phono|' + _indtype + '|Phono\n';
-          // optical input
-          _indtype = 'blkind';
-          if (resp == '5') { _indtype = 'grnind'; } 
-          _menudata += 'cmd~' + target + '~opt|' + _indtype + '|Optical\n';
-          // coaxial input
-          _indtype = 'blkind';
-          if (resp == '4') { _indtype = 'grnind'; }
-          _menudata += 'cmd~' + target + '~coax|' + _indtype + '|Coaxial\n';
-          // aux analog input
-          _indtype = 'blkind';
-          if (resp == '2') { _indtype = 'grnind'; }
-          _menudata += 'cmd~' + target + '~aux|' + _indtype + '|Aux\n';
-        }
-      } else {
-        _menudata += menuname + '-error|redind|Error\n';
+  openDeviceMenu({
+    menu: menuname,
+    target: target,
+    cmd: 'curinput',
+    textId: `${menuname}-text`,
+    spinnerId: `${menuname}-spinner`,
+    build: (resp) => {
+      if (isNumeric(resp) !== true) {
+        return menuRow(`${menuname}-error`, 'redind', 'Error');
       }
-      // stop spinner animation (this button's own, drawn or not)
-      btnText.style.visibility = 'visible';
-      btnSpinner.classList.remove('btn-spinner');
-      // another menu was opened while this was in the air -- drawing now
-      // would wipe the rows that menu just put on screen
-      if (!menuRequestCurrent(token)) { return; }
-      // draw menu items
-      drawMenu(_menudata, menuname);
-    });
-  }
+      if (resp == offcode) {
+        return menuRow(`${menuname}-offline`, 'blkind', 'Offline');
+      }
+      return inputMenuRows(target, resp, HIFI_INPUTS);
+    }
+  });
 }
 
 function showBedroomAmpInput() {
+  const offcode = 0;
   const target = 'brpi';
   const menuname = 'brinpmenu';
-  const offcode = 0;
-  let _elem = document.getElementById(menuname);
-  if (_elem.style.display === 'block') {
-    _elem.style.display = 'none';
-  } else {
-    removeDropdowns();
-    _elem.style.display = 'block';
-    // start spinner animation
-    let btnText = document.getElementById('ampinp-text');
-    let btnSpinner = document.getElementById('ampinp-spinner');
-    btnText.style.visibility = 'hidden';
-    btnSpinner.classList.add('btn-spinner');
-    const token = beginMenuRequest();
-    sendCmd('main', target, 'inputstate').then((data) => { // GET request
-      const resp = cleanString(data); // remove newlines
-      let _menudata = '';
-      if (isNumeric(resp) === true) {
-        if (resp == offcode) {
-          _menudata += menuname + '-offline|blkind|Offline\n';
-        } else { // online
-          // apple TV input 
-          let _indtype = 'blkind';
-          if (resp == '2') { _indtype = 'grnind'; }
-          _menudata += 'cmd~' + target + '~opt-a|' + _indtype + '|USB\n';
-          // coaxial input
-          _indtype = 'blkind';
-          if (resp == '3') { _indtype = 'grnind'; }      
-          _menudata += 'cmd~' + target + '~coaxial|' + _indtype + '|Coaxial\n';
-          // aux optical input
-          _indtype = 'blkind';
-          if (resp == '1') { _indtype = 'grnind'; } 
-          _menudata += 'cmd~' + target + '~opt-b|' + _indtype + '|Optical\n';
-          // aux analog input
-          _indtype = 'blkind';
-          if (resp == '4') { _indtype = 'grnind'; }
-          _menudata += 'cmd~' + target + '~aux|' + _indtype + '|Aux\n';
-        }
-      } else {
-        _menudata += menuname + '-error|redind|Error\n';
+  openDeviceMenu({
+    menu: menuname,
+    target: target,
+    cmd: 'inputstate',
+    textId: 'ampinp-text',
+    spinnerId: 'ampinp-spinner',
+    build: (resp) => {
+      if (isNumeric(resp) !== true) {
+        return menuRow(`${menuname}-error`, 'redind', 'Error');
       }
-      // stop spinner animation (this button's own, drawn or not)
-      btnText.style.visibility = 'visible';
-      btnSpinner.classList.remove('btn-spinner');
-      // another menu was opened while this was in the air -- drawing now
-      // would wipe the rows that menu just put on screen
-      if (!menuRequestCurrent(token)) { return; }
-      // draw menu items
-      drawMenu(_menudata, menuname);
-    });
-  }
+      if (resp == offcode) {
+        return menuRow(`${menuname}-offline`, 'blkind', 'Offline');
+      }
+      return inputMenuRows(target, resp, BEDROOM_INPUTS);
+    }
+  });
 }
 
 // Menus where the slider is a level on something that is either running or
@@ -1933,102 +1808,97 @@ const LEVEL_MENUS = {
   'bed_leds': { min: 1, stopRowID: 'bed_leds-stop' }
 };
 
+// Builds the toggle and / or slider rows for one power menu from the device's
+// answer. Returns "" when there is nothing to draw.
+function powerMenuRows(menu, target, cmd1, cmd2) {
+  const isDualToggleSlider = menu.endsWith('_dual');
+  const isSingleLedSlider = menu.endsWith('_leds');
+  const isFadeCandyLeds = (menu === 'fc_leds');
+  const isDefinedMenu = (isDualToggleSlider || isSingleLedSlider || isFadeCandyLeds);
+  let rows = '';
+  if (isDefinedMenu === false || isDualToggleSlider === true) {
+    if (cmd1 == '1' || cmd1 == '0') {
+      rows += menuRow(`${cmd1}~${target}~${menu}`, 'toggle', '');
+    }
+  }
+  if (isDualToggleSlider) {
+    rows += menuRow(`${cmd2}~${target}~${menu}`, 'slider', '');
+    return rows;
+  }
+  if (isFadeCandyLeds) {
+    rows += menuRow(`${cmd1}~leds~fc`, 'slider', '');
+    return rows;
+  }
+  if (!isSingleLedSlider) {
+    return rows;
+  }
+  const level = LEVEL_MENUS[menu];
+  if (!level) {
+    rows += menuRow(`${cmd1}~${target}~${menu}`, 'slider', ''); // standard 0-255
+    return rows;
+  }
+  // custom single LED: off hides the Stop row and draws no slider
+  const leds_off = Number(cmd1) <= 0;
+  let stop_row = null;
+  if (level.stopRowID) {
+    stop_row = document.getElementById(level.stopRowID);
+  }
+  if (leds_off === true) {
+    if (stop_row) stop_row.style.display = 'none';
+    return rows;
+  }
+  if (stop_row) stop_row.style.display = '';
+  rows += menuRow(`${cmd1}~${target}~${menu}`, 'slider', '');
+  return rows;
+}
+
 function showPowerMenu(target, menu = null) {
   if (menu == '' || menu == null) menu = target;
-  let _elem = document.getElementById(menu + '-menu');
-  if (_elem.style.display === 'block') {
-    _elem.style.display = 'none';
-  } else {
-    removeDropdowns();
-    // start spinner animation
-    let btnText = document.getElementById(menu + '-text');
-    let btnSpinner = document.getElementById(menu + '-spinner');
-    btnText.style.visibility = 'hidden';
-    btnSpinner.classList.add('btn-spinner');
-    // show menu
-    _elem.style.display = 'block';
-    // custom actions
-    let action = 'main';
-    if (menu == 'fc_leds') action = 'leds';
-    // transmit request
-    const token = beginMenuRequest();
-    sendCmd(action, target, menu).then((data) => {
-      let _menudata = '';
-      const [cmd1, cmd2] = splitByDelimiter(cleanString(data), '~');
-      if (isNumeric(cmd1) === false || data == null) {
-        _menudata += `${menu}-error|redind|Error\n`;
-      } else {
-        // draw toggle and/or slider
-        const isDualToggleSlider = menu.endsWith('_dual');
-        const isSingleLedSlider = menu.endsWith('_leds');
-        const isFadeCandyLeds = (menu === 'fc_leds');
-        const isDefinedMenu = (isDualToggleSlider || isSingleLedSlider || isFadeCandyLeds);
-        if (isDefinedMenu === false || isDualToggleSlider === true) {
-          if (cmd1 == '1' || cmd1 == '0') {
-            _menudata += `${cmd1}~${target}~${menu}|toggle|\n`;
-          }
-        }
-        if (isDualToggleSlider)   _menudata += `${cmd2}~${target}~${menu}|slider|\n`;
-        else if (isFadeCandyLeds) _menudata += `${cmd1}~leds~fc|slider|\n`;
-        else if (isSingleLedSlider) {
-          const level = LEVEL_MENUS[menu];
-          if (level) { // custom single LED
-            const leds_off = Number(cmd1) <= 0;
-            const stop_row = level.stopRowID ? document.getElementById(level.stopRowID) : null;
-            if (leds_off === true) {
-              if (stop_row) stop_row.style.display = 'none';
-            } else {
-              if (stop_row) stop_row.style.display = '';
-              _menudata += `${cmd1}~${target}~${menu}|slider|\n`;
-            }
-          } else { // standard single LED 0-255
-            _menudata += `${cmd1}~${target}~${menu}|slider|\n`; 
-          }
-        }
-      }
-      // stop spinner animation (this button's own, drawn or not)
-      btnText.style.visibility = 'visible';
-      btnSpinner.classList.remove('btn-spinner');
-      if (!menuRequestCurrent(token)) { return; }
-      if (_menudata === '') {
-        // nothing to draw -- an off level leaves the menu with its static
-        // rows only. Any rows from a previous open still have to go.
-        removeDynMenus();
-        return;
-      }
-      // draw menu items
-      drawMenu(_menudata, menu + '-menu');
-    });
+  if (!openDropdown(menu + '-menu')) {
+    return;
   }
+  const textId = menu + '-text';
+  const spinnerId = menu + '-spinner';
+  setSpinner(textId, spinnerId, true);
+  let action = 'main';
+  if (menu == 'fc_leds') action = 'leds';
+  const token = beginMenuRequest();
+  sendCmd(action, target, menu).then((data) => {
+    let _menudata = '';
+    const [cmd1, cmd2] = splitByDelimiter(cleanString(data), '~');
+    if (isNumeric(cmd1) === false || data == null) {
+      _menudata += menuRow(`${menu}-error`, 'redind', 'Error');
+    } else {
+      _menudata += powerMenuRows(menu, target, cmd1, cmd2);
+    }
+    setSpinner(textId, spinnerId, false);
+    if (!menuRequestCurrent(token)) { return; }
+    if (_menudata === '') {
+      // nothing to draw -- an off level leaves the menu with its static rows
+      // only. Any rows from a previous open still have to go.
+      removeDynMenus();
+      return;
+    }
+    drawMenu(_menudata, menu + '-menu');
+  });
 }
 
 function showStatusMenu() {
   const _menu = 'statsmenu';
-  let statIcon = document.getElementById('navstats-icon');
-  let statSpinner = document.getElementById('navstats-spinner');
-  let _elem = document.getElementById(_menu);
-  if (_elem.style.display === 'block') {
-    _elem.style.display = 'none';
-    // stop spinner animation
-    statIcon.style.visibility = 'visible';
-    statSpinner.classList.remove('right-nav-spinner');
-  } else {
-    removeDropdowns();
-    // start spinner animation
-    statIcon.style.visibility = 'hidden';
-    statSpinner.classList.add('right-nav-spinner');
-    // show menu
-    _elem.style.display = 'block';
-    const token = beginMenuRequest();
-    sendCmd('main', 'status').then((data) => { // GET request
-      // stop spinner animation (this icon's own, drawn or not)
-      statIcon.style.visibility = 'visible';
-      statSpinner.classList.remove('right-nav-spinner');
-      if (!menuRequestCurrent(token)) { return; }
-      // draw menu items
-      drawMenu(data, _menu);
-    });
-  }   
+  const iconId = 'navstats-icon';
+  const spinnerId = 'navstats-spinner';
+  const spinnerClass = 'right-nav-spinner';
+  if (!openDropdown(_menu)) {
+    setSpinner(iconId, spinnerId, false, spinnerClass);
+    return;
+  }
+  setSpinner(iconId, spinnerId, true, spinnerClass);
+  const token = beginMenuRequest();
+  sendCmd('main', 'status').then((data) => {
+    setSpinner(iconId, spinnerId, false, spinnerClass);
+    if (!menuRequestCurrent(token)) { return; }
+    drawMenu(data, _menu);
+  });
 }
 
 function afterPOSTActions(action) {
@@ -2042,55 +1912,39 @@ function afterPOSTActions(action) {
     _send = true;
   }
   if (_send === true) {
-    serverSend(0);
+    serverSend();
   }
 }
 
-// load server action
+// arms a server command; the send button then transmits it
 function serverAction(cmd) {
   App.serverCmdData = cmd;
-  // change color of send button
   sendBtnAlert("on");
 }
 
 function openLogWindow() {
-  // open server log window
   closePopup();
-  // show log form window
   document.getElementById("logForm").style.display = "block";
-  // load log data
   loadLog('sysout');
 }
 
-// load entire text file
+// loads an entire text file into the log window
 function loadLog(file) {
-  // build URL / append data
-  const url = location.protocol + "//" + location.hostname + "/api/read?file=" + file;
-  // read file action
-  fetch(url, {
-    method: 'GET'
-  })
-  .then((response) => {
-    // check for HTTP errors
-    if (!response.ok) {
-      // trigger the catch block
-      throw new Error(`status ${response.status}`);
-    }
-    // proceed to the next then if successful
-    return response.json(); 
-  })
-  .then(data => {
-    // display text on page
-    const elmid = "logTextBox";
-    document.getElementById(elmid).value = data;
-    // scroll to bottom of page
-    let txtArea = document.getElementById(elmid);
-    txtArea.scrollTop = txtArea.scrollHeight;
-  })
-  .catch(error => {
-    // This catches both the thrown HTTP error and any network errors
-    showPopup("[loadLog] error fetching data.");
-  });
+  fetch(fileURL('read', file), { method: 'GET' })
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error(`status ${response.status}`);
+      }
+      return response.json();
+    })
+    .then(data => {
+      const txtArea = document.getElementById("logTextBox");
+      txtArea.value = data;
+      txtArea.scrollTop = txtArea.scrollHeight;
+    })
+    .catch(error => {
+      showPopup("[loadLog] error fetching data.");
+    });
   App.serverCmdData = null;
 }
 
@@ -2105,137 +1959,121 @@ function menuRequestCurrent(token) {
   return token === menuDrawToken;
 }
 
-// MENU_LOCAL_ROWS / withLocalRows() were here. They put the site's own rows
-// above the ones a file returned, and the theme menu's stars toggle was the
-// only row that ever used them. Theme draws its own menu now and hands that
-// row to drawMenu() itself, so the table had nothing left in it.
-
+// a menu whose rows come out of a file on the device
 function showDynFileMenu(menu) {
-  let _elem = document.getElementById(menu);
-  if (_elem.style.display === 'block') {
-    _elem.style.display = 'none';
-  } else {
-    removeDropdowns();
-     _elem.style.display = 'block';
-    // build URL / append data
-    const url = location.protocol + "//" +location.hostname + "/api/read?file=" + menu;
-    const token = beginMenuRequest();
-    loadMenu(url).then((data) => { // wait for response
-      if (!menuRequestCurrent(token)) return;
-      const config = {
-        TwoColumns: true,
-        MenuScroll: true
-      };
-      drawMenu(data, menu, config);
-    });  
+  if (!openDropdown(menu)) {
+    return;
   }
+  const token = beginMenuRequest();
+  loadMenu(fileURL('read', menu)).then((data) => {
+    if (!menuRequestCurrent(token)) return;
+    drawMenu(data, menu, { TwoColumns: true, MenuScroll: true });
+  });
 }
 
+// a menu whose rows come back from a device API call
 function showDynAPIMenu(menu) {
-  let _elem = document.getElementById(menu);
-  if (_elem.style.display === 'block') {
-    _elem.style.display = 'none';
-  } else {
-    removeDropdowns();
-     _elem.style.display = 'block';
-    // build URL / append data
-    const url = location.protocol + "//"+ location.hostname + "/api?var=&arg=" + menu + "&action=main";
-    const token = beginMenuRequest();
-    loadMenu(url).then((data) => { // wait for response
-      if (!menuRequestCurrent(token)) { return; }
-      drawMenu(data, menu);
-    });  
+  if (!openDropdown(menu)) {
+    return;
   }
+  const url = location.protocol + "//" + location.hostname +
+    "/api?var=&arg=" + menu + "&action=main";
+  const token = beginMenuRequest();
+  loadMenu(url).then((data) => {
+    if (!menuRequestCurrent(token)) { return; }
+    drawMenu(data, menu);
+  });
 }
 
-// Draws each menu item. `scroll` is only ever passed false by a caller
-// redrawing a menu that is already on screen (the room status refresh): the
-// step at the bottom measures a fixed-position menu against the page offset,
-// which is right the once on opening and walks the page down if it is run
-// again every refresh.
+// Draws each menu item from pipe-delimited rows: HOST|TYPE|NAME.
+// `scroll` is only ever passed false by a caller redrawing a menu that is
+// already on screen (the room status refresh): the step at the bottom
+// measures a fixed-position menu against the page offset, which is right the
+// once on opening and walks the page down if it is run on every refresh.
 window.drawMenu = function(data, menu, config = undefined) {
-  let scroll = true; // menu scrolls into view by default
+  let scroll = true;   // menu scrolls into view by default
   let twocols = false; // 3-column data is the default
   if (config !== undefined) {
     scroll = config.MenuScroll;
     twocols = config.TwoColumns;
   }
-  // remove any current dynamic menus
   removeDynMenus();
-  if (data && typeof data === 'string') {
-    const navElement = document.getElementById(menu);
-    if (!navElement) return;
-    const fragment = document.createDocumentFragment();
-    // erase global data
-    while (App.fileData.length) App.fileData.pop();
-    const splitdat = splitMenuData(data);
-    if (splitdat == "" || splitdat == null) return;
-    for (let row = 0; row < splitdat.length; row++) {
-      const line = splitdat[row];
-      if (line == "" || line == null) continue;
-      const linearr = line.split("|");
-      App.fileData.push(line); // write to array
-      // 0=Host, 1=Type, 2=Name
-      const col0 = linearr[0];
-      let col1, col2;
-      if (twocols === true) { // 2-column data mode
-        col1 = menu;
-        col2 = linearr[1];
-      } else {
-        col1 = linearr[1];
-        col2 = linearr[2].trim();
-      }
-      // draw menu item
-      const item = createListItem(col0, col1, col2, row);
-      App.dynMenuNodes.push(item);
-      fragment.appendChild(item);
-      App.dynMenuActive = 1;
-    }
-    // store menu name at end of array
-    App.fileData.push(menu);
-    // one append for the whole menu
-    navElement.appendChild(fragment);
-    // a redraw of a menu already on screen stops here -- the rows are the
-    // only thing it wanted replaced
-    if (scroll === false) return;
-    // scroll only if the menu runs past the bottom of the viewport
-    const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
-    const rect = navElement.getBoundingClientRect();
-    if (rect.bottom > viewportHeight) {
-      const currentTop = window.pageYOffset || document.documentElement.scrollTop;
-      const menuTop = rect.top + currentTop;
-      // only move down, and never past the top of the menu
-      if (menuTop > currentTop) {
-        window.scrollTo({ top: menuTop, behavior: 'smooth' });
-      }
-    }
-  } else {
+  if (!data || typeof data !== 'string') {
     showPopup("[drawMenu] no data to parse.");
+    return;
+  }
+  const navElement = document.getElementById(menu);
+  if (!navElement) return;
+  const fragment = document.createDocumentFragment();
+  while (App.fileData.length) App.fileData.pop();
+  const splitdat = splitMenuData(data);
+  if (splitdat == "" || splitdat == null) return;
+  for (let row = 0; row < splitdat.length; row++) {
+    const line = splitdat[row];
+    if (line == "" || line == null) continue;
+    const linearr = line.split("|");
+    App.fileData.push(line);
+    // 0=Host, 1=Type, 2=Name
+    const col0 = linearr[0];
+    let col1 = linearr[1];
+    let col2 = '';
+    if (twocols === true) { // 2-column data mode
+      col1 = menu;
+      col2 = linearr[1];
+    } else {
+      col2 = linearr[2].trim();
+    }
+    const item = createListItem(col0, col1, col2, row);
+    App.dynMenuNodes.push(item);
+    fragment.appendChild(item);
+    App.dynMenuActive = 1;
+  }
+  App.fileData.push(menu); // menu name at the end of the array
+  navElement.appendChild(fragment); // one append for the whole menu
+  // a redraw of a menu already on screen stops here
+  if (scroll === false) return;
+  scrollMenuIntoView(navElement);
+}
+
+// scrolls down to the menu only when it runs past the bottom of the viewport
+function scrollMenuIntoView(navElement) {
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+  const rect = navElement.getBoundingClientRect();
+  if (rect.bottom <= viewportHeight) {
+    return;
+  }
+  const currentTop = window.pageYOffset || document.documentElement.scrollTop;
+  const menuTop = rect.top + currentTop;
+  // only move down, and never past the top of the menu
+  if (menuTop > currentTop) {
+    window.scrollTo({ top: menuTop, behavior: 'smooth' });
   }
 }
 
+// the indicator types, and the dot class each one draws
+const INDICATOR_CLASSES = {
+  'noind': '',
+  'blkind': '',
+  'grnind': 'ind_dot_green',
+  'redind': 'ind_dot_red',
+  'ylwind': 'ind_dot_yellow'
+};
+
+// one row: col0 is HOST~CMD data, col1 the row type, col2 the label
 function createListItem(col0_in, col1, col2, menuid) {
-  let _elm = document.createElement('a');
-  let _dot = document.createElement('span');
-  let field = col0_in.split("~");
-  let col0 = field[0];
-  let host = field[1];
-  let cmd = field[2];
-  // assign menu ID
+  const _elm = document.createElement('a');
+  const [col0, host, cmd] = col0_in.split("~");
   _elm.id = "menu-" + menuid;
-  // set menu text
   _elm.innerText = col2;
-  // configure menu item
   switch (col1) {
     case 'ledcolormenu':
     case 'ledeffectmenu': {
       // LEDs menu
-      const effect_cmd = col0;
       _elm.addEventListener("click", function() {
-        if (effect_cmd == 'textscroll') {
+        if (col0 == 'textscroll') {
           openTextScroll();
         } else {
-          sendCmd('leds', effect_cmd);
+          sendCmd('leds', col0);
         }
       });
       break;
@@ -2250,27 +2088,19 @@ function createListItem(col0_in, col1, col2, menuid) {
     }
     case 'relaxmenu':
     case 'relaxactive': {
-      // relax menu
       _elm.addEventListener("click", function() {
         sendCmd('main', 'relax', col0);
       });
       if (col1 == 'relaxactive') {
-        let relaxplay = document.createElement('i');
-        relaxplay.classList.add('fad');
-        relaxplay.classList.add('fa-play');
-        _elm.appendChild(relaxplay);
+        _elm.appendChild(makeElement('i', 'fad fa-play'));
       }
       break;
     }
     case 'relaxstop': {
-      // relax menu
       _elm.addEventListener("click", function() {
         sendCmd('main', 'relaxstop');
       });
-      let relaxstop = document.createElement('i');
-      relaxstop.classList.add('fad');
-      relaxstop.classList.add('fa-stop');
-      _elm.appendChild(relaxstop);
+      _elm.appendChild(makeElement('i', 'fad fa-stop'));
       break;
     }
     case 'link':
@@ -2279,16 +2109,14 @@ function createListItem(col0_in, col1, col2, menuid) {
       _elm.href = col0;
       break;
     case 'chk': {
-      // Checkbox row for a browser-side setting
+      // checkbox row for a browser-side setting; col2 is the icon
       const chksettings = WWW_SETTINGS[col0];
       if (!chksettings) break;
       _elm.classList.add('menu-checkbox');
       _elm.classList.add('nohide');
       _elm.classList.add('no-hover');
       _elm.innerText = '';
-      const chkicon = document.createElement('i');
-      chkicon.className = col2;
-      _elm.appendChild(chkicon);
+      _elm.appendChild(makeElement('i', col2));
       const chk_cmd = `${col0}-`;
       const chk_obj = new ToggleSwitch(_elm, {
         id: `setting-${col0}`,
@@ -2305,18 +2133,20 @@ function createListItem(col0_in, col1, col2, menuid) {
       break;
     }
     case 'slider': {
-      // horizontal slider menu
+      // horizontal slider row; col0 is the current level
       const customMin = LEVEL_MENUS[cmd];
       const slider = document.createElement('input');
       slider.classList.add("slider-wide");
       slider.type = 'range';
-      slider.min = (customMin && customMin.min) ? customMin.min : 0;
+      slider.min = 0;
+      if (customMin && customMin.min) {
+        slider.min = customMin.min;
+      }
       slider.max = 255;
       slider.value = col0;
       slider.step = 1;
       slider.addEventListener('input', (event) => {
-        const value = event.target.value;
-        throttledSliderSend('main', host, `${cmd}_set_${value}`);
+        throttledSliderSend('main', host, `${cmd}_set_${event.target.value}`);
       });
       _elm.appendChild(slider);
       _elm.classList.add('slider-wide_container');
@@ -2328,24 +2158,20 @@ function createListItem(col0_in, col1, col2, menuid) {
       const submode = subwooferVolumeEnabled();
       if (submode === true) {
         _elm.classList.add(SUBWOOFER_CLASS);
-        _elm.addEventListener("click", function() {
-          subwooferVolumeMode(false);
-        });
       } else {
         _elm.classList.remove(SUBWOOFER_CLASS);
-        _elm.addEventListener("click", function() {
-          subwooferVolumeMode(true);
-        });
       }
+      _elm.addEventListener("click", function() {
+        subwooferVolumeMode(!submode);
+      });
       break;
     }
     case 'toggle': {
-      // switch-like toggle menu
+      // switch-like toggle row; col0 is '1' when it is on
       _elm.classList.add('no-hover');
-      const tgl_state = col0 === '1' ? true : false;
       const tgl_obj = new ToggleSwitch(_elm, {
         id: `${host}-${cmd}`,
-        checked: tgl_state,
+        checked: col0 === '1',
         cmdHost: host,
         command: cmd,
         onToggle: toggleSwitchCallback
@@ -2354,47 +2180,31 @@ function createListItem(col0_in, col1, col2, menuid) {
       App.activeSwitches.push(tgl_obj);
       break;
     }
-    case 'noind': 
-      // no indicator type status menu
+    default: {
+      // status row, with an indicator dot in the type's own colour
+      if (!(col1 in INDICATOR_CLASSES)) {
+        break;
+      }
       addStatusListener(_elm, col0, host, cmd);
-      break;
-    case 'blkind': 
-      // black indicator type status menu
-      _dot.classList.add('ind_dot');
+      if (col1 === 'noind') {
+        break;
+      }
+      const _dot = makeElement('span', 'ind_dot');
+      const dotColor = INDICATOR_CLASSES[col1];
+      if (dotColor !== '') {
+        _dot.classList.add(dotColor);
+      }
       _dot.id = "ind-" + col2;
-      addStatusListener(_elm, col0, host, cmd);
       _elm.appendChild(_dot);
       break;
-    case 'grnind': 
-      // green indicator type status menu
-      _dot.classList.add('ind_dot');
-      _dot.classList.add('ind_dot_green');
-      _dot.id = "ind-" + col2;
-      addStatusListener(_elm, col0, host, cmd);
-      _elm.appendChild(_dot);
-      break;
-    case 'redind': 
-      // red indicator type status menu
-      _dot.classList.add('ind_dot');
-      _dot.classList.add('ind_dot_red');
-      _dot.id = "ind-" + col2;
-      addStatusListener(_elm, col0, host, cmd);
-      _elm.appendChild(_dot);
-      break;
-    case 'ylwind': 
-      // yellow indicator type status menu
-      _dot.classList.add('ind_dot');
-      _dot.classList.add('ind_dot_yellow');
-      _dot.id = "ind-" + col2;
-      addStatusListener(_elm, col0, host, cmd);
-      _elm.appendChild(_dot);
-      break;
+    }
   }
   return _elm;
 }
 
+// a row marked 'cmd' sends its command to the device when it is pressed
 function addStatusListener(elm, col0, host, cmd) {
-  if (col0 == 'cmd') { // generic remote API call on click
+  if (col0 == 'cmd') {
     elm.addEventListener("click", function() {
       sendCmd('main', host, cmd);
     });
@@ -2403,28 +2213,27 @@ function addStatusListener(elm, col0, host, cmd) {
 
 const throttledSliderSend = requestThrottle((host, cmd, val) => {
   sendCmd(host, cmd, val);
-}, 50); // in (ms)
+}, 50);
 
 function removeDynMenus() {
-  // only if menu is on-screen 
-  if (App.dynMenuActive == 1) {
-    // the last value of a drag can still be sitting in the throttle; without
-    // this it went out up to 50ms after the slider had left the page
-    throttledSliderSend.cancel();
-    // A toggle row carries a ToggleSwitch with pointer listeners on it, so
-    // the switches go before their markup does rather than being left bound
-    // to detached nodes until the next removeDropdowns().
-    destroyActiveSwitches();
-    // the rows drawMenu() created, removed directly instead of looking up
-    // one id per line of the file
-    App.dynMenuNodes.forEach(node => node.remove());
-    App.dynMenuNodes.length = 0;
-    App.dynMenuActive = 0;
+  if (App.dynMenuActive != 1) {
+    return;
   }
+  // the last value of a drag can still be sitting in the throttle; without
+  // this it went out up to 50ms after the slider had left the page
+  throttledSliderSend.cancel();
+  // A toggle row carries a ToggleSwitch with pointer listeners on it, so the
+  // switches go before their markup does rather than being left bound to
+  // detached nodes until the next removeDropdowns().
+  destroyActiveSwitches();
+  // the rows drawMenu() created, removed directly instead of looking up one
+  // id per line of the file
+  App.dynMenuNodes.forEach(node => node.remove());
+  App.dynMenuNodes.length = 0;
+  App.dynMenuActive = 0;
 }
 
-// Both callers of this are LED colours, so the picker's heading says so --
-// "Select LED Color". The theme's own picker is opened by Theme, not here.
+// Both callers of this are LED colours, so the picker's heading says so.
 const LED_PROMPT_NAME = 'LED';
 
 function openColorPrompt(command, argument, three_args = false) {
@@ -2436,18 +2245,13 @@ function openColorPrompt(command, argument, three_args = false) {
     App.colorPrompt = null;
   }
   const colorPrompt = new ColorPrompt('color-popup', (strippedHex) => {
-    let cmd;
-    let arg1;
-    let arg2;
-    // 3-argument command type
+    let cmd = 'main';
+    let arg1 = command;
+    let arg2 = `${argument}_${strippedHex}`;
     if (three_args === true) {
       cmd = command;
       arg1 = argument;
       arg2 = strippedHex;
-    } else { // 2-argument command type 
-      cmd = 'main';
-      arg1 = command;
-      arg2 = `${argument}_${strippedHex}`;
     }
     sendCmd(cmd, arg1, arg2)
       .catch(err => {
@@ -2463,7 +2267,6 @@ function openColorPrompt(command, argument, three_args = false) {
 
 //// End Dynamic Menus ////
 
-// show camera form window
 function openCamWindow() {
   closePopup();
   document.getElementById("cam-popup").style.display = "block";
@@ -2477,24 +2280,23 @@ function goToContextRoot(_path) {
 
 // close all popup windows
 function closePopup() {
-  document.getElementById("logForm").style.display = "none";
-  document.getElementById("cam-popup").style.display = "none";
+  setDisplayById("logForm", "none");
+  setDisplayById("cam-popup", "none");
   document.getElementById("cam-display").src = "";
   clearPendingCmd();
   closeServerOptions();
 }
 
 //// runs before exit ////
+
 window.addEventListener('beforeunload', () => {
   App.destroyAll();
 });
 
 App.destroyAll = function() {
   console.log("Exiting...");
-  // timers
   if (App.activityTimeout) clearTimeout(App.activityTimeout);
-  // the message popup's timer lives in utils.js, where it is set -- the old
-  // App.messagePopupTimer was never assigned and so never cleared anything
+  // the message popup's timer lives in utils.js, where it is set
   clearPopupTimer();
   if (App.volPopupTimer) clearTimeout(App.volPopupTimer);
   // Bookmarks, before anything is torn down: an open edit and the lock row go
@@ -2503,18 +2305,15 @@ App.destroyAll = function() {
   // lists window keeps its own pagehide beacon, which fires on iOS where this
   // handler often does not.
   if (App.bookmarks) App.bookmarks.unloadBeacon();
-  // toggle switches
   destroyActiveSwitches();
   destroyPageServices();
 };
 
 function destroyPageServices() {
-  // room status display
   if (App.roomStateManager) {
     App.roomStateManager.destroy();
     App.roomStateManager = null;
   }
-  // animated background
   if (App.starBackground) {
     App.starBackground.destroy();
     App.starBackground = null;
@@ -2533,13 +2332,12 @@ function destroyPageServices() {
     App.colorPrompt = null;
   }
   // bookmarks menu -- the add/edit window is a direct child of <body>, so it
-  // outlives removeInjectedPage(); a stale BKM_EDIT_MODE would also keep
+  // outlives removeInjectedPage(); a stale edit mode would also keep
   // handleClicks() swallowing every click on the newly drawn page
   if (App.bookmarks) {
     App.bookmarks.close();
     App.bookmarks = null;
   }
-  // weather widget
   if (window.weatherWidget && typeof window.weatherWidget.remove === 'function') {
     window.weatherWidget.remove();
     window.weatherWidget = null;

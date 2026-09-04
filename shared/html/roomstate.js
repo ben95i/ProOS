@@ -1,11 +1,18 @@
-import { sendCmd, refreshInterval } from './utils.js'
+// Automate Website - room status light
+//
+// The traffic light in the title bar and the device list behind it.
+// new RoomStateManager('status_anchor') draws it; showRoomState() reads the
+// room and re-arms itself every refreshInterval() seconds, hideRoomState()
+// stops, destroy() ends the instance.
 
-// the dropdown this manager draws into, and the host column every one of its
-// rows carries -- it was written out by hand in three places before the
-// automatic refresh started drawing the menu as well
+import { sendCmd, refreshInterval, svgElement, menuRow } from './utils.js'
+
+// the dropdown this manager draws into, and the host column its rows carry
 const STATUS_MENU = 'roomstatus';
+const LIGHT_ID = 'trafficLightIcon';
 
 export default class RoomStateManager {
+
   constructor(containerId) {
     this.containerId = containerId;
     this.container = document.getElementById(containerId);
@@ -27,86 +34,51 @@ export default class RoomStateManager {
     this.buildHTML();
   }
 
-  // Dynamically constructs the SVG using the proper XML namespace
+  // Builds the SVG light: the indicator circle, the idle hatch laid over it,
+  // and the countdown ring, plus the refresh spinner beside them.
+  //
+  // The hatch is two lines per cell, not one. A single white line disappeared
+  // against a light indicator and a single dark one would disappear against
+  // black, so the pair puts one of each side by side; the dark line is the
+  // wider of the two, since the colours that were hard to read are the light
+  // ones.
   buildHTML() {
     if (!this.container) return;
-    this.container.innerHTML = ''; // Clear contents
-    const xmlns = "http://www.w3.org/2000/svg";
-    const svg = document.createElementNS(xmlns, "svg");
-    svg.setAttribute("viewBox", "0 0 50 50");
-    svg.setAttribute("class", "roomstatus-svgs");
-    svg.classList.add('nohide');
-    const trafficLightIcon = document.createElementNS(xmlns, "circle");
-    trafficLightIcon.setAttribute("id", "trafficLightIcon");
-    trafficLightIcon.setAttribute("cx", "25");
-    trafficLightIcon.setAttribute("cy", "25");
-    trafficLightIcon.setAttribute("r", "17");
-    trafficLightIcon.setAttribute("stroke", "none");
-    // Idle hatch, laid over the status light while the reading it shows is
-    // no longer being refreshed. Same circle as the light itself, filled with
-    // diagonal lines; the CSS fades it in only when the light goes idle, so
-    // the last known colour still reads through it.
-    //
-    // Two lines per cell, not one. A single white line disappeared against a
-    // light indicator, and a single dark one would disappear against the black
-    // the light falls back to; the pair puts a dark line and a light line
-    // side by side, so whichever the indicator is, one of the two stands out
-    // against it. The dark line is the wider of the two, since the colours
-    // that were hard to read are the light ones.
-    const hatchDefs = document.createElementNS(xmlns, "defs");
-    const hatchPattern = document.createElementNS(xmlns, "pattern");
-    hatchPattern.setAttribute("id", "statusHatchPattern");
-    hatchPattern.setAttribute("patternUnits", "userSpaceOnUse");
-    hatchPattern.setAttribute("patternTransform", "rotate(45)");
-    hatchPattern.setAttribute("width", "5");
-    hatchPattern.setAttribute("height", "5");
-    const hatchLine = document.createElementNS(xmlns, "line");
-    hatchLine.setAttribute("x1", "1.2");
-    hatchLine.setAttribute("y1", "0");
-    hatchLine.setAttribute("x2", "1.2");
-    hatchLine.setAttribute("y2", "5");
-    hatchLine.setAttribute("stroke", "#000");
-    hatchLine.setAttribute("stroke-width", "2.0");
-    const hatchLineLight = document.createElementNS(xmlns, "line");
-    hatchLineLight.setAttribute("x1", "3.3");
-    hatchLineLight.setAttribute("y1", "0");
-    hatchLineLight.setAttribute("x2", "3.3");
-    hatchLineLight.setAttribute("y2", "5");
-    hatchLineLight.setAttribute("stroke", "#fff");
-    hatchLineLight.setAttribute("stroke-width", "1.2");
-    hatchPattern.appendChild(hatchLine);
-    hatchPattern.appendChild(hatchLineLight);
+    this.container.innerHTML = '';
+    const svg = svgElement("svg", { viewBox: "0 0 50 50", class: "roomstatus-svgs nohide" });
+    const hatchPattern = svgElement("pattern", {
+      id: "statusHatchPattern", patternUnits: "userSpaceOnUse",
+      patternTransform: "rotate(45)", width: "5", height: "5"
+    });
+    hatchPattern.appendChild(svgElement("line", {
+      x1: "1.2", y1: "0", x2: "1.2", y2: "5", stroke: "#000", "stroke-width": "2.0"
+    }));
+    hatchPattern.appendChild(svgElement("line", {
+      x1: "3.3", y1: "0", x2: "3.3", y2: "5", stroke: "#fff", "stroke-width": "1.2"
+    }));
+    const hatchDefs = svgElement("defs");
     hatchDefs.appendChild(hatchPattern);
-    const hatchCircle = document.createElementNS(xmlns, "circle");
-    hatchCircle.setAttribute("id", "statusHatch");
-    hatchCircle.setAttribute("cx", "25");
-    hatchCircle.setAttribute("cy", "25");
-    hatchCircle.setAttribute("r", "17");
-    hatchCircle.setAttribute("stroke", "none");
-    hatchCircle.setAttribute("fill", "url(#statusHatchPattern)");
-    const spinnerCircle = document.createElementNS(xmlns, "circle");
-    spinnerCircle.setAttribute("id", "spinnerCircle");
-    spinnerCircle.setAttribute("class", "spinner-path");
-    spinnerCircle.setAttribute("fill", "none");
-    spinnerCircle.setAttribute("stroke-linecap", "round");
-    spinnerCircle.setAttribute("pathLength", "100");
-    spinnerCircle.setAttribute("cx", "25");
-    spinnerCircle.setAttribute("cy", "25");
-    spinnerCircle.setAttribute("r", "23");
     svg.appendChild(hatchDefs);
-    svg.appendChild(trafficLightIcon);
+    svg.appendChild(svgElement("circle", {
+      id: LIGHT_ID, cx: "25", cy: "25", r: "17", stroke: "none"
+    }));
     // sits after the light, which is what the CSS sibling rule keys on
-    svg.appendChild(hatchCircle);
-    svg.appendChild(spinnerCircle);
+    svg.appendChild(svgElement("circle", {
+      id: "statusHatch", cx: "25", cy: "25", r: "17", stroke: "none",
+      fill: "url(#statusHatchPattern)"
+    }));
+    svg.appendChild(svgElement("circle", {
+      id: "spinnerCircle", class: "spinner-path", fill: "none",
+      "stroke-linecap": "round", pathLength: "100", cx: "25", cy: "25", r: "23"
+    }));
     this.container.appendChild(svg);
     // Refresh spinner, riding the same circle as the countdown ring while a
-    // status request is in flight. Semi-transparent so the status light still
-    // reads through it, and click-through so it never steals the tap.
+    // request is in flight. Semi-transparent so the light still reads through
+    // it, and click-through so it never steals the tap.
     const refreshSpinner = document.createElement('span');
     refreshSpinner.id = 'roomStatusRefresh';
     refreshSpinner.className = 'roomstatus-spinner';
     this.container.appendChild(refreshSpinner);
-    // Attach self-contained click listener
     this.container.addEventListener('click', this.roomStateClick);
   }
 
@@ -122,35 +94,34 @@ export default class RoomStateManager {
     this.container.classList.toggle('status-refreshing', on === true);
   }
 
+  // this answer is no longer the current one: torn down, or overtaken by a
+  // newer request (a room switch)
+  stale(gen) {
+    return this.dead || gen !== this.requestGen;
+  }
+
   async showRoomState() {
     if (this.isRunning || this.dead) return;
     // A countdown from the previous cycle can still be armed. activityBegin()
     // calls this on every click, and the timeout below used to be assigned
     // straight over the old handle without clearing it: the orphan fired
-    // later, set isRunning false and started a second refresh chain beside
-    // this one, so a busy session ended up polling the device several times
-    // per interval.
+    // later, set isRunning false and started a second refresh chain.
     this.stopRoomStateTimer();
     this.isRunning = true;
     const gen = ++this.requestGen;
-    const lightIcon = document.getElementById("trafficLightIcon");
-    // The page was re-rendered underneath this manager. There is nothing left
-    // to paint, and going on would throw here -- and again inside the catch
-    // below, out of the handler, leaving the chain dead and the rejection
-    // unhandled.
+    const lightIcon = document.getElementById(LIGHT_ID);
+    // the page was re-rendered underneath this manager: there is nothing left
+    // to paint, and going on would throw
     if (!lightIcon || !this.container) {
       this.isRunning = false;
       return;
     }
     this.container.classList.remove('status-loading');
-    let cmd = App.currentRoom + 'status';
     this.setRefreshing(true);
     try {
-      const resp = await sendCmd('main', cmd, '');
-      // Superseded by a newer request (a room switch), or torn down while
-      // this one was in flight. Either way the answer is no longer ours:
-      // isRunning belongs to whoever replaced us, so it is left alone.
-      if (this.dead || gen !== this.requestGen) {
+      const resp = await sendCmd('main', App.currentRoom + 'status', '');
+      // isRunning belongs to whoever replaced us, so it is left alone
+      if (this.stale(gen)) {
         return;
       }
       this.setRefreshing(false);
@@ -164,36 +135,21 @@ export default class RoomStateManager {
         this.refreshStatusMenu();
         this.hideRoomState();
         return;
-      } else {
-        this.roomState = resp.roomState;
-        this.devices = resp.devices;
-        if (this.roomState === true) {
-          lightIcon.classList.remove("status-off");
-          lightIcon.classList.add("status-on");
-        } else if (this.roomState === false) { 
-          lightIcon.classList.remove("status-on");
-          lightIcon.classList.add("status-off");
-        }
       }
-      // The dropdown, if it is open, is showing the reading this one just
-      // replaced. It used to hold that reading until it was closed and
-      // opened again; now every refresh redraws its rows in place.
+      this.roomState = resp.roomState;
+      this.devices = resp.devices;
+      if (this.roomState === true) {
+        lightIcon.classList.remove("status-off");
+        lightIcon.classList.add("status-on");
+      } else if (this.roomState === false) {
+        lightIcon.classList.remove("status-on");
+        lightIcon.classList.add("status-off");
+      }
+      // the dropdown, if open, is showing the reading this one just replaced
       this.refreshStatusMenu();
-      const refreshRate = refreshInterval();
-      this.container.style.setProperty('--spin-duration', `${refreshRate}s`);    
-      void this.container.offsetWidth; // Trigger reflow
-      requestAnimationFrame(() => {
-        if (this.dead || gen !== this.requestGen) {
-          return; // torn down or superseded between frames
-        }
-        this.container.classList.add('status-loading');
-        this.timerID = setTimeout(() => {
-          this.isRunning = false;
-          this.showRoomState();
-        }, refreshRate * 1000);
-      });
+      this.armRefresh(gen);
     } catch (err) {
-      if (this.dead || gen !== this.requestGen) {
+      if (this.stale(gen)) {
         return;
       }
       this.setRefreshing(false);
@@ -202,20 +158,38 @@ export default class RoomStateManager {
     }
   }
 
-  // The rows of the status dropdown, built from the reading currently held.
-  // Split out of roomStateClick() so the automatic refresh can draw the same
-  // rows without going through a click.
-  statusMenuData() {
-    let menuData = '';
-    if (this.roomState === null) {
-      menuData += `${STATUS_MENU}|noind|Error checking devices.\n`;
-    } else {
-      for (const device of this.devices) {
-        const name = device.name;
-        const status = device.status;
-        let ind = status === false ? 'blkind' : (status === true ? 'grnind' : 'redind');
-        menuData += `${STATUS_MENU}|${ind}|${name}\n`;
+  // starts the countdown ring and books the next read
+  armRefresh(gen) {
+    const refreshRate = refreshInterval();
+    this.container.style.setProperty('--spin-duration', `${refreshRate}s`);
+    void this.container.offsetWidth; // trigger reflow
+    requestAnimationFrame(() => {
+      if (this.stale(gen)) {
+        return; // torn down or superseded between frames
       }
+      this.container.classList.add('status-loading');
+      this.timerID = setTimeout(() => {
+        this.isRunning = false;
+        this.showRoomState();
+      }, refreshRate * 1000);
+    });
+  }
+
+  // The rows of the status dropdown, built from the reading currently held:
+  // roomstatus|grnind|Desk Lamp
+  statusMenuData() {
+    if (this.roomState === null) {
+      return menuRow(STATUS_MENU, 'noind', 'Error checking devices.');
+    }
+    let menuData = '';
+    for (const device of this.devices) {
+      let ind = 'redind';
+      if (device.status === false) {
+        ind = 'blkind';
+      } else if (device.status === true) {
+        ind = 'grnind';
+      }
+      menuData += menuRow(STATUS_MENU, ind, device.name);
     }
     return menuData;
   }
@@ -226,13 +200,12 @@ export default class RoomStateManager {
     return !!_elem && _elem.style.display === 'block';
   }
 
-  // Draws the rows and shows the menu. Reference the globally exposed window
-  // function.
+  // draws the rows and shows the menu
   drawStatusMenu() {
     if (typeof window.drawMenu === 'function') {
       window.drawMenu(this.statusMenuData(), STATUS_MENU);
     }
-    // Re-fetch in case drawMenu rewrote the DOM
+    // re-fetch in case drawMenu rewrote the DOM
     const _elem = document.getElementById(STATUS_MENU);
     if (_elem) _elem.style.display = 'block';
   }
@@ -246,25 +219,21 @@ export default class RoomStateManager {
       return;
     }
     if (typeof window.drawMenu === 'function') {
-      const menuConfig = {
-        TwoColumns: false,
-        MenuScroll: false
-      };
-      window.drawMenu(this.statusMenuData(), STATUS_MENU, menuConfig);
+      window.drawMenu(this.statusMenuData(), STATUS_MENU,
+        { TwoColumns: false, MenuScroll: false });
     }
   }
 
   async roomStateClick(e) {
     if (e) {
       e.stopPropagation();
-      e.preventDefault(); 
+      e.preventDefault();
     }
-    let _elem = document.getElementById(STATUS_MENU);
+    const _elem = document.getElementById(STATUS_MENU);
     if (_elem && _elem.style.display === 'block') {
       _elem.style.display = 'none';
       return;
     }
-    // Reference the globally exposed window function
     if (typeof window.removeDropdowns === 'function') window.removeDropdowns();
     this.stopRoomStateTimer();
     await this.showRoomState();
@@ -273,8 +242,7 @@ export default class RoomStateManager {
 
   // Room switch: drop the pending countdown and re-fetch straight away. The
   // light is deliberately left alone -- it holds the last room's value until
-  // the new status lands, so switching rooms never flashes the idle dot,
-  // which is reserved for a real refresh timeout.
+  // the new status lands, so switching rooms never flashes the idle dot.
   async restartRoomState() {
     this.stopRoomStateTimer();
     await this.showRoomState();
@@ -282,24 +250,21 @@ export default class RoomStateManager {
 
   hideRoomState() {
     this.stopRoomStateTimer();
-    const lightIcon = document.getElementById("trafficLightIcon");
-    // the icon lookup below has always been guarded; the container had not
-    // been, and it goes away in the same re-render the icon does
     if (this.container) {
       this.container.classList.remove('status-loading');
     }
     this.setRefreshing(false);
-    if (lightIcon) {
-      // An error keeps its own colour and drops the state it replaced.
-      // Otherwise the light holds the last state it read and takes the idle
-      // hatch over it, marking that reading as no longer current. With
-      // nothing read yet there is no state to hold, and the CSS falls back
-      // to the idle dot on its own.
-      if (lightIcon.classList.contains("status-error")) {
-        lightIcon.classList.remove("status-off", "status-on");
-      } else {
-        lightIcon.classList.add("status-idle");
-      }
+    const lightIcon = document.getElementById(LIGHT_ID);
+    if (!lightIcon) {
+      return;
+    }
+    // An error keeps its own colour and drops the state it replaced.
+    // Otherwise the light holds the last state it read and takes the idle
+    // hatch over it, marking that reading as no longer current.
+    if (lightIcon.classList.contains("status-error")) {
+      lightIcon.classList.remove("status-off", "status-on");
+    } else {
+      lightIcon.classList.add("status-idle");
     }
   }
 
@@ -313,8 +278,7 @@ export default class RoomStateManager {
   }
 
   // End of life. Anything still in flight is dropped by the generation check
-  // in showRoomState(), so the refresh chain cannot re-arm itself on a
-  // manager the page has already replaced.
+  // in showRoomState(), so the refresh chain cannot re-arm itself.
   destroy() {
     this.dead = true;
     this.stopRoomStateTimer();

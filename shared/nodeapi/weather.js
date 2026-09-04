@@ -1,12 +1,15 @@
 const fsPromises = require('fs/promises');
 const path = require('path');
 
-const WEATHER_REFRESH = 5 * 60 * 1000; // 5 minutes
+const WEATHER_REFRESH = 5 * 60 * 1000; // cache lifetime, 5 minutes
+const SUNSET_FROM_HOUR = 17; // local hours that read as "sunset" while it is
+const SUNSET_TO_HOUR = 20;   // still daytime at that latitude
 
 let weatherConfig = null;
 let weatherCache = null;
 let lastWeatherFetch = 0;
 
+// weather.json holds WEATHER_LAT, WEATHER_LON and WEATHER_LOCATION_NAME
 async function loadWeatherConfig() {
     if (weatherConfig) return weatherConfig;
     try {
@@ -20,8 +23,8 @@ async function loadWeatherConfig() {
     }
 }
 
+// Open-Meteo WMO code -> the condition string the frontend icons key on
 function decodeWeatherCode(code) {
-    // Maps Open-Meteo WMO codes to condition strings for the frontend icon logic
     if (code === 0) return "Clear";
     if (code >= 1 && code <= 3) return "Clouds";
     if (code >= 45 && code <= 48) return "Fog";
@@ -31,56 +34,49 @@ function decodeWeatherCode(code) {
     return "Unknown";
 }
 
-// Renamed from getWeather to weatherWidget to match your require statement
+// day / night / sunset, from the location's own clock and Open-Meteo's is_day
+function decodeTimeOfDay(current) {
+    if (current.is_day === 0) {
+        return 'night'; // the API guarantees the sun has set at this lat/lon
+    }
+    const localHour = parseInt(current.time.substring(11, 13), 10);
+    if (localHour > SUNSET_FROM_HOUR && localHour < SUNSET_TO_HOUR) {
+        return 'sunset';
+    }
+    return 'day';
+}
+
+/**
+ * The current reading, cached for WEATHER_REFRESH:
+ * { location, temperature, condition, humidity, timeOfDay, lastUpdated }
+ */
 async function runWeatherWidget() {
     const now = Date.now();
-    
-    // rate limiting: return cached data if within the 5-minute TTL
     if (weatherCache && (now - lastWeatherFetch < WEATHER_REFRESH)) {
         return weatherCache;
     }
-    
     try {
         const config = await loadWeatherConfig();
-        const url = `https://api.open-meteo.com/v1/forecast?` + 
-          `latitude=${config.WEATHER_LAT}&longitude=${config.WEATHER_LON}&` + 
-          `current=temperature_2m,relative_humidity_2m,weather_code,is_day&` + 
+        const url = `https://api.open-meteo.com/v1/forecast?` +
+          `latitude=${config.WEATHER_LAT}&longitude=${config.WEATHER_LON}&` +
+          `current=temperature_2m,relative_humidity_2m,weather_code,is_day&` +
           `temperature_unit=fahrenheit&timezone=auto`;
-          
         const response = await fetch(url);
-        
         if (!response.ok) {
             throw new Error(`API returned status: ${response.status}`);
         }
-        
         const data = await response.json();
         const current = data.current;
-        
-        // determine time of day using the location's actual time and Open-Meteo's solar data
-        const localHour = parseInt(current.time.substring(11, 13), 10);
-        let timeOfDay = 'day';
-        
-        if (current.is_day === 0) {
-            // API guarantees the sun has set at this specific lat/lon
-            timeOfDay = 'night';
-        } else if (localHour > 17 && localHour < 20) {
-            // It is daytime, but it's late afternoon/early evening in that specific timezone
-            timeOfDay = 'sunset';
-        }
-        
-        // parse into JSON format
         weatherCache = {
             location: config.WEATHER_LOCATION_NAME,
             temperature: Math.round(current.temperature_2m),
             condition: decodeWeatherCode(current.weather_code),
             humidity: Math.round(current.relative_humidity_2m),
-            timeOfDay: timeOfDay,
+            timeOfDay: decodeTimeOfDay(current),
             lastUpdated: current.time
         };
-        
         lastWeatherFetch = now;
         return weatherCache;
-        
     } catch (err) {
         console.error("Failed to fetch weather data:", err.message);
         if (weatherCache) return weatherCache;

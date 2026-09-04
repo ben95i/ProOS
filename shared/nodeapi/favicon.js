@@ -1,34 +1,43 @@
 //// Automate REST API - Favicon Fetch ////
 // by Ben Provenzano III //
 //
-// Pulls a site's favicon and returns it as a URL-safe base64 PNG,
-// 24x24 pixels, quantized to 32 colours or less.
+// runFaviconLookup(pageUrl, html) -> a site's favicon as a URL-safe base64
+// PNG, 24x24 pixels and 32 colours or fewer, or "" when none could be built.
+// Never throws.
 //
 // The output is an indexed (colour type 3) PNG rather than a JPEG: at this
-// size a 32 entry palette plus deflate is roughly a third of the bytes a
-// JPEG of the same image needs, and it holds the 32 colours exactly, which
-// a JPEG cannot -- its DCT re-introduces intermediate values. The encoder
-// is a few lines against node's own zlib, so nothing is added to install.
+// size a 32 entry palette plus deflate is roughly a third of the bytes, and
+// it holds the 32 colours exactly, which a JPEG's DCT cannot.
 //
-// Decoding is pure JavaScript (no native modules): ICO (BMP or embedded
-// PNG), PNG and JPEG are supported. Anything else (SVG, GIF) is skipped
-// and the next candidate icon is tried instead.
+// Decoding is pure JavaScript, no native modules: ICO (BMP or embedded PNG),
+// PNG and JPEG. Anything else (SVG, GIF) is skipped and the next candidate
+// icon is tried instead.
 
 const zlib = require('zlib');
 const jpeg = require('jpeg-js');
 const { PNG } = require('pngjs');
 
-const ICON_SIZE = 24;      // output width / height in pixels
-const MAX_COLORS = 32;     // palette size the image is reduced to
+const ICON_SIZE = 24;       // output width / height in pixels
+const MAX_COLORS = 32;      // palette size the image is reduced to
 const FETCH_TIMEOUT = 6000; // per-request timeout in (ms)
 const MAX_ICON_BYTES = 512 * 1024;
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
     '(KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36';
+// BT.601 weights, for brightness as the eye reads it
+const LUMA_RED = 0.299;
+const LUMA_GREEN = 0.587;
+const LUMA_BLUE = 0.114;
+const PALE_ICON_LUMA = 200; // above this the icon is backed with dark instead
+const DARK_BACKING = 32;
+const LIGHT_BACKING = 255;
+const OPAQUE_ALPHA = 128;   // alpha at or above this counts as opaque
 
 //// candidate icon URLs ////
 
-// pull every <link rel="...icon..."> out of the page markup, best first,
-// then fall back to the well-known /favicon.ico location
+// Every <link rel="...icon"> in the page markup, best first, then the
+// well-known /favicon.ico. An icon at least as big as the target scales down
+// cleanly, so the smallest of those is preferred, then the largest of what is
+// left; SVG goes last because it cannot be decoded here.
 function iconCandidates(html, pageUrl) {
     const base = new URL(pageUrl);
     const found = [];
@@ -48,20 +57,23 @@ function iconCandidates(html, pageUrl) {
             });
         } catch (e) { /* malformed href, skip it */ }
     });
-    // an icon at least as big as the target scales down cleanly; prefer the
-    // smallest of those, then the largest of what is left. SVG goes last
-    // because it cannot be decoded here.
     found.sort((a, b) => {
         if (a.svg !== b.svg) return a.svg ? 1 : -1;
-        const aBig = a.size >= ICON_SIZE;
-        const bBig = b.size >= ICON_SIZE;
-        if (aBig !== bBig) return aBig ? -1 : 1;
-        return aBig ? a.size - b.size : b.size - a.size;
+        return compareBySize(a.size, b.size);
     });
     const urls = found.filter((item) => !item.svg).map((item) => item.url);
     urls.push(new URL('/favicon.ico', base).href);
-    // de-duplicate, keeping order
-    return [...new Set(urls)];
+    return [...new Set(urls)]; // de-duplicate, keeping order
+}
+
+// Sorts two icon sizes: anything at least ICON_SIZE comes first, smallest of
+// those leading; below that, largest first.
+function compareBySize(aSize, bSize) {
+    const aBig = aSize >= ICON_SIZE;
+    const bBig = bSize >= ICON_SIZE;
+    if (aBig !== bBig) return aBig ? -1 : 1;
+    if (aBig) return aSize - bSize;
+    return bSize - aSize;
 }
 
 async function fetchIconBytes(url) {
@@ -78,7 +90,7 @@ async function fetchIconBytes(url) {
 }
 
 //// decoders ////
-// every decoder returns { width, height, data } where data is RGBA bytes
+// every decoder returns { width, height, data }, where data is RGBA bytes
 
 function isPNG(buf) {
     return buf.length > 8 && buf[0] === 0x89 && buf[1] === 0x50 &&
@@ -104,8 +116,34 @@ function decodeJPEG(buf) {
     return { width: img.width, height: img.height, data: img.data };
 }
 
+// One pixel out of a BMP scanline, by its bit depth. Answers null when the
+// row runs past the end of the buffer.
+function readBitmapPixel(buf, srcRow, x, bitCount, paletteStart) {
+    if (bitCount === 32) {
+        const at = srcRow + (x * 4);
+        if (at + 3 >= buf.length) return null;
+        return { red: buf[at + 2], green: buf[at + 1], blue: buf[at], alpha: buf[at + 3] };
+    }
+    if (bitCount === 24) {
+        const at = srcRow + (x * 3);
+        if (at + 2 >= buf.length) return null;
+        return { red: buf[at + 2], green: buf[at + 1], blue: buf[at], alpha: 255 };
+    }
+    if (bitCount === 8 || bitCount === 4 || bitCount === 1) {
+        const perByte = 8 / bitCount;
+        const at = srcRow + Math.floor(x / perByte);
+        if (at >= buf.length) return null;
+        const shift = (perByte - 1 - (x % perByte)) * bitCount;
+        const index = (buf[at] >> shift) & ((1 << bitCount) - 1);
+        const pal = paletteStart + (index * 4);
+        if (pal + 2 >= buf.length) return null;
+        return { red: buf[pal + 2], green: buf[pal + 1], blue: buf[pal], alpha: 255 };
+    }
+    return null; // 16bpp and friends are not worth the trouble
+}
+
 // BITMAPINFOHEADER image as stored inside an .ico entry: bottom-up rows,
-// padded to a 4 byte boundary, with a 1bpp transparency mask after them
+// padded to a 4 byte boundary, with a 1bpp transparency mask after them.
 function decodeICOBitmap(buf) {
     const headerSize = buf.readUInt32LE(0);
     const width = buf.readInt32LE(4);
@@ -125,28 +163,9 @@ function decodeICOBitmap(buf) {
         const srcRow = pixelStart + ((height - 1 - y) * rowBytes);
         const maskRow = maskStart + ((height - 1 - y) * maskRowBytes);
         for (let x = 0; x < width; x++) {
-            let red = 0, green = 0, blue = 0, alpha = 255;
-            if (bitCount === 32) {
-                const at = srcRow + (x * 4);
-                if (at + 3 >= buf.length) return null;
-                blue = buf[at]; green = buf[at + 1]; red = buf[at + 2];
-                alpha = buf[at + 3];
-            } else if (bitCount === 24) {
-                const at = srcRow + (x * 3);
-                if (at + 2 >= buf.length) return null;
-                blue = buf[at]; green = buf[at + 1]; red = buf[at + 2];
-            } else if (bitCount === 8 || bitCount === 4 || bitCount === 1) {
-                const perByte = 8 / bitCount;
-                const at = srcRow + Math.floor(x / perByte);
-                if (at >= buf.length) return null;
-                const shift = (perByte - 1 - (x % perByte)) * bitCount;
-                const index = (buf[at] >> shift) & ((1 << bitCount) - 1);
-                const pal = paletteStart + (index * 4);
-                if (pal + 2 >= buf.length) return null;
-                blue = buf[pal]; green = buf[pal + 1]; red = buf[pal + 2];
-            } else {
-                return null; // 16bpp and friends are not worth the trouble
-            }
+            const pixel = readBitmapPixel(buf, srcRow, x, bitCount, paletteStart);
+            if (pixel === null) return null;
+            let alpha = pixel.alpha;
             // 32bpp icons carry their own alpha, everything else uses the mask
             if (bitCount !== 32) {
                 const at = maskRow + Math.floor(x / 8);
@@ -156,13 +175,16 @@ function decodeICOBitmap(buf) {
                 }
             }
             const dst = ((y * width) + x) * 4;
-            out[dst] = red; out[dst + 1] = green;
-            out[dst + 2] = blue; out[dst + 3] = alpha;
+            out[dst] = pixel.red;
+            out[dst + 1] = pixel.green;
+            out[dst + 2] = pixel.blue;
+            out[dst + 3] = alpha;
         }
     }
     return { width: width, height: height, data: out };
 }
 
+// An .ico holds several images; the same size rule as the link tags picks one.
 function decodeICO(buf) {
     const count = buf.readUInt16LE(4);
     if (count === 0) return null;
@@ -176,13 +198,7 @@ function decodeICO(buf) {
             offset: buf.readUInt32LE(at + 12)
         });
     }
-    // same rule as the link tags: smallest entry that is still >= 16px
-    entries.sort((a, b) => {
-        const aBig = a.width >= ICON_SIZE;
-        const bBig = b.width >= ICON_SIZE;
-        if (aBig !== bBig) return aBig ? -1 : 1;
-        return aBig ? a.width - b.width : b.width - a.width;
-    });
+    entries.sort((a, b) => compareBySize(a.width, b.width));
     for (const entry of entries) {
         const end = entry.offset + entry.length;
         if (entry.offset < 6 || end > buf.length) continue;
@@ -204,20 +220,24 @@ function decodeImage(buf) {
 
 //// pixel processing ////
 
-// JPEG has no alpha, so transparency is flattened onto a flat backing
-// colour. Pale icons (white glyph on nothing) would vanish on white, so
-// the backing colour follows the average brightness of the opaque pixels.
+// The output has no alpha, so transparency is flattened onto a flat backing
+// colour. A pale icon (a white glyph on nothing) would vanish on white, so
+// the backing follows the average brightness of the opaque pixels.
 function backingColor(image) {
     let total = 0;
     let opaque = 0;
     for (let i = 0; i < image.data.length; i += 4) {
-        if (image.data[i + 3] < 128) continue;
-        total += (image.data[i] * 0.299) + (image.data[i + 1] * 0.587) +
-            (image.data[i + 2] * 0.114);
+        if (image.data[i + 3] < OPAQUE_ALPHA) continue;
+        total += (image.data[i] * LUMA_RED) + (image.data[i + 1] * LUMA_GREEN) +
+            (image.data[i + 2] * LUMA_BLUE);
         opaque++;
     }
-    if (opaque === 0) return 255;
-    return (total / opaque) > 200 ? 32 : 255;
+    if (opaque === 0) return LIGHT_BACKING;
+    const averageLuma = total / opaque;
+    if (averageLuma > PALE_ICON_LUMA) {
+        return DARK_BACKING;
+    }
+    return LIGHT_BACKING;
 }
 
 // box-average down to ICON_SIZE, flattening alpha as it goes
@@ -237,9 +257,10 @@ function resizeToIcon(image) {
                 for (let sx = srcLeft; sx < srcRight; sx++) {
                     const at = ((sy * image.width) + sx) * 4;
                     const alpha = image.data[at + 3] / 255;
-                    red += (image.data[at] * alpha) + (backing * (1 - alpha));
-                    green += (image.data[at + 1] * alpha) + (backing * (1 - alpha));
-                    blue += (image.data[at + 2] * alpha) + (backing * (1 - alpha));
+                    const behind = backing * (1 - alpha);
+                    red += (image.data[at] * alpha) + behind;
+                    green += (image.data[at + 1] * alpha) + behind;
+                    blue += (image.data[at + 2] * alpha) + behind;
                     samples++;
                 }
             }
@@ -253,42 +274,49 @@ function resizeToIcon(image) {
     return out;
 }
 
-// median cut: repeatedly split the colour box with the widest channel
-// spread until MAX_COLORS boxes remain, then flatten each box to its mean.
-// Answers the palette and one palette index per pixel, ready for the PNG.
+// the box with the widest spread on any one channel, and which channel it is
+function widestBox(boxes) {
+    let widest = -1;
+    let target = -1;
+    let channel = 0;
+    boxes.forEach((box, index) => {
+        if (box.length < 2) return;
+        for (let ch = 0; ch < 3; ch++) {
+            let low = 255, high = 0;
+            box.forEach((px) => {
+                if (px[ch] < low) low = px[ch];
+                if (px[ch] > high) high = px[ch];
+            });
+            const spread = high - low;
+            if (spread > widest) {
+                widest = spread;
+                target = index;
+                channel = ch;
+            }
+        }
+    });
+    return { widest: widest, target: target, channel: channel };
+}
+
+// Median cut: repeatedly split the colour box with the widest channel spread
+// until MAX_COLORS boxes remain, then flatten each box to its mean. Answers
+// the palette and one palette index per pixel, ready for the PNG.
 function quantizeColors(rgba) {
     const pixels = [];
     for (let i = 0; i < rgba.length; i += 4) {
         pixels.push([rgba[i], rgba[i + 1], rgba[i + 2], 0]);
     }
-    // the boxes are sorted in place while splitting, so they start from a
-    // copy of the list -- the entries are still the same colour triples, so
-    // tagging a box below is seen by the pixels in their original order
+    // The boxes are sorted in place while splitting, so they start from a copy
+    // of the list -- the entries are still the same colour triples, so tagging
+    // a box below is seen by the pixels in their original order.
     let boxes = [pixels.slice()];
     while (boxes.length < MAX_COLORS) {
-        let widest = -1;
-        let target = -1;
-        let channel = 0;
-        boxes.forEach((box, index) => {
-            if (box.length < 2) return;
-            for (let ch = 0; ch < 3; ch++) {
-                let low = 255, high = 0;
-                box.forEach((px) => {
-                    if (px[ch] < low) low = px[ch];
-                    if (px[ch] > high) high = px[ch];
-                });
-                if ((high - low) > widest) {
-                    widest = high - low;
-                    target = index;
-                    channel = ch;
-                }
-            }
-        });
-        if (target < 0 || widest <= 0) break; // nothing left worth splitting
-        const box = boxes[target];
-        box.sort((a, b) => a[channel] - b[channel]);
+        const pick = widestBox(boxes);
+        if (pick.target < 0 || pick.widest <= 0) break; // nothing left to split
+        const box = boxes[pick.target];
+        box.sort((a, b) => a[pick.channel] - b[pick.channel]);
         const middle = Math.floor(box.length / 2);
-        boxes.splice(target, 1, box.slice(0, middle), box.slice(middle));
+        boxes.splice(pick.target, 1, box.slice(0, middle), box.slice(middle));
     }
     // every pixel takes the mean of the box holding it, by index
     const palette = [];
@@ -341,12 +369,11 @@ function pngChunk(type, data) {
     return out;
 }
 
-// colour type 3 PNG. Every scanline uses filter 0: the others predict from
-// neighbouring bytes, which is worthless once those bytes are palette
-// indices rather than colours -- measured, they cost 20-25% more here.
-function encodeIndexedPNG(quantized) {
-    // a palette of 16 or fewer packs two pixels to the byte
-    const bitDepth = quantized.colors <= 16 ? 4 : 8;
+// The palette indices, one scanline at a time, each with filter 0. The other
+// filters predict from neighbouring bytes, which is worthless once those
+// bytes are palette indices rather than colours -- measured, they cost 20-25%
+// more here.
+function pngScanlines(quantized, bitDepth) {
     const perByte = 8 / bitDepth;
     const rowBytes = Math.ceil(ICON_SIZE / perByte);
     const raw = Buffer.alloc((rowBytes + 1) * ICON_SIZE);
@@ -363,6 +390,14 @@ function encodeIndexedPNG(quantized) {
             }
         }
     }
+    return raw;
+}
+
+// colour type 3 (indexed) PNG
+function encodeIndexedPNG(quantized) {
+    // a palette of 16 or fewer packs two pixels to the byte
+    const bitDepth = quantized.colors <= 16 ? 4 : 8;
+    const raw = pngScanlines(quantized, bitDepth);
     const header = Buffer.alloc(13);
     header.writeUInt32BE(ICON_SIZE, 0);
     header.writeUInt32BE(ICON_SIZE, 4);
@@ -388,7 +423,8 @@ function base64URLSafe(buffer) {
 
 //// entry point ////
 
-// returns a URL-safe base64 PNG string, or "" when no icon could be built
+// Tries each candidate icon in turn and answers the first that decodes, as a
+// URL-safe base64 PNG string, or "" when none of them could be built.
 async function runFaviconLookup(pageUrl, html) {
     try {
         const candidates = iconCandidates(html || '', pageUrl);

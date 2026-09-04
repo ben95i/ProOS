@@ -1,129 +1,104 @@
-const { execFile, exec } = require('child_process');
+const { execFile } = require('child_process');
 const util = require('util');
 const execFileAsync = util.promisify(execFile);
 
+// column widths of the printed table
+const COL_IP = 15;
+const COL_HOST = 15;
+const COL_VENDOR = 21;
+const COL_MAC = 19; // a MAC is 17 characters plus two of padding
+const COL_SEPARATOR = ' ';
 
-// Helper function to pad or truncate text to a fixed width
+// pads or truncates text to a fixed width: formatCol('abc', 5) -> 'abc  '
 function formatCol(text, width) {
-    const safeText = String(text || ''); 
+    const safeText = String(text || '');
     if (safeText.length > width) {
         return safeText.substring(0, width - 3) + '...';
     }
     return safeText.padEnd(width, ' ');
 }
 
+// one table row from a device's four fields
+function deviceRow(ip, hostname, vendor, mac) {
+    return formatCol(ip, COL_IP) + COL_SEPARATOR +
+           formatCol(hostname, COL_HOST) + COL_SEPARATOR +
+           formatCol(vendor, COL_VENDOR) + COL_SEPARATOR +
+           formatCol(mac, COL_MAC);
+}
+
+// nmap output -> [{ ip, hostname, vendor, mac }]
+function parseNmapOutput(stdout) {
+    const hostBlocks = stdout.split('Nmap scan report for ').slice(1);
+    return hostBlocks.map(block => {
+        const lines = block.split('\n');
+        const firstLine = lines[0].trim();
+        let ip = firstLine;
+        let hostname = '';
+        let vendor = '---';
+        let mac = '---';
+        // "name (1.2.3.4)" carries a hostname, a bare address does not
+        if (firstLine.includes('(')) {
+            const parts = firstLine.split(' (');
+            hostname = parts[0];
+            ip = parts[1].replace(')', '');
+        }
+        const macLine = lines.find(line => line.startsWith('MAC Address:'));
+        if (macLine) {
+            const macMatch = macLine.match(/MAC Address:\s+([0-9A-Fa-f:]+)/);
+            if (macMatch) mac = macMatch[1];
+            const vendorMatch = macLine.match(/\(([^)]+)\)/);
+            if (vendorMatch) vendor = vendorMatch[1];
+        }
+        return { ip, hostname, vendor, mac };
+    });
+}
+
+// Sorts by address, octet by octet. Anything that is not four numeric octets
+// (a malformed address, or IPv6) is pushed to the bottom.
+function compareByAddress(a, b) {
+    const aParts = a.ip.split('.');
+    const bParts = b.ip.split('.');
+    if (aParts.length !== 4) return 1;
+    if (bParts.length !== 4) return -1;
+    const aOctets = aParts.map(Number);
+    const bOctets = bParts.map(Number);
+    for (let i = 0; i < 4; i++) {
+        if (aOctets[i] === bOctets[i]) {
+            continue;
+        }
+        if (isNaN(aOctets[i])) return 1;
+        if (isNaN(bOctets[i])) return -1;
+        return aOctets[i] - bOctets[i];
+    }
+    return 0; // the addresses are identical
+}
+
 /**
  * Scans a local network and returns a formatted string table.
- * @param {string} targetRange - The IP CIDR range to scan (e.g., '192.168.1.0/24')
- * @returns {Promise<string>} The formatted network table
+ * runScanNetwork('192.168.1.0/24')
+ * @param {string} targetRange - the IP CIDR range to scan
+ * @returns {Promise<string>} the formatted table, or the failure message
  */
 async function runScanNetwork(targetRange) {
     try {
-        // execFileAsync is safe from shell injection. 
-        // Max buffer defaults to 1MB, which is plenty for a /24 subnet.
-        const { stdout } = await execFileAsync('/usr/bin/sudo', ['/usr/bin/nmap', '-sn', targetRange]);
-
-        const hostBlocks = stdout.split('Nmap scan report for ').slice(1);
-        const devices = [];
-
-        // 1. Parse Nmap Output
-        for (const block of hostBlocks) {
-            const lines = block.split('\n');
-            const firstLine = lines[0].trim();
-            
-            let ip = '';
-            let hostname = '';
-            let vendor = '---';
-            let mac = '---';
-            
-            // Extract IP and Hostname
-            if (firstLine.includes('(')) {
-                const parts = firstLine.split(' (');
-                hostname = parts[0];
-                ip = parts[1].replace(')', '');
-            } else {
-                ip = firstLine;
-            }
-
-            // Extract MAC Address and Vendor
-            const macLine = lines.find(line => line.startsWith('MAC Address:'));
-            if (macLine) {
-                const macMatch = macLine.match(/MAC Address:\s+([0-9A-Fa-f:]+)/);
-                if (macMatch) mac = macMatch[1];
-
-                const vendorMatch = macLine.match(/\(([^)]+)\)/);
-                if (vendorMatch) vendor = vendorMatch[1];
-            }
-
-            devices.push({ ip, hostname, vendor, mac });
-        }
-
-        // 2. Safe Numerical Sorting by IP
-        devices.sort((a, b) => {
-            const aParts = a.ip.split('.');
-            const bParts = b.ip.split('.');
-
-            // Fallback: If an IP is malformed or IPv6, push it to the bottom
-            if (aParts.length !== 4) return 1;
-            if (bParts.length !== 4) return -1;
-
-            const aOctets = aParts.map(Number);
-            const bOctets = bParts.map(Number);
-
-            for (let i = 0; i < 4; i++) {
-                if (aOctets[i] !== bOctets[i]) {
-                    // Fallback: Handle NaN just in case the string was letters
-                    if (isNaN(aOctets[i])) return 1;
-                    if (isNaN(bOctets[i])) return -1;
-                    return aOctets[i] - bOctets[i];
-                }
-            }
-            return 0; // IPs are identical
-        });
-
-        // 3. Assemble the Visual Table
+        // execFileAsync is safe from shell injection, and the default 1MB
+        // buffer is plenty for a /24 subnet
+        const { stdout } = await execFileAsync('/usr/bin/sudo',
+            ['/usr/bin/nmap', '-sn', targetRange]);
+        const devices = parseNmapOutput(stdout);
+        devices.sort(compareByAddress);
         const activeHosts = [];
-        
-        // Define exact character widths for the text
-        const wIP = 15;
-        const wHost = 15; // Expanded slightly so hostnames clip less often
-        const wVendor = 21;
-        const wMac = 19;  // Exactly enough for a MAC address (17 chars + 2 padding)
-
-        // Explicit 1-space margin to insert between columns
-        const colSeparator = ' '; 
-
-        // Build Header
-        const headerRow = formatCol('IP ADDRESS', wIP) + colSeparator +
-                          formatCol('HOSTNAME', wHost) + colSeparator +
-                          formatCol('MANUFACTURER', wVendor) + colSeparator +
-                          formatCol('MAC ADDRESS', wMac);
-        
-        // Build a dashed line that matches the total width of columns + separators
-        const totalWidth = wIP + wHost + wMac + wVendor + (colSeparator.length * 3);
-        const dividerRow = '-'.repeat(totalWidth);
-
-        activeHosts.push(headerRow);
-        activeHosts.push(dividerRow);
-
-        // Build Rows
-        for (const device of devices) {
-            const row = formatCol(device.ip, wIP) + colSeparator +
-                        formatCol(device.hostname, wHost) + colSeparator +
-                        formatCol(device.vendor, wVendor) + colSeparator +
-                        formatCol(device.mac, wMac);
-            
-            activeHosts.push(row);
-        }
-
-        // Add Footer
+        activeHosts.push(deviceRow('IP ADDRESS', 'HOSTNAME', 'MANUFACTURER', 'MAC ADDRESS'));
+        const totalWidth = COL_IP + COL_HOST + COL_MAC + COL_VENDOR +
+            (COL_SEPARATOR.length * 3);
+        activeHosts.push('-'.repeat(totalWidth));
+        devices.forEach(device => {
+            activeHosts.push(deviceRow(device.ip, device.hostname, device.vendor, device.mac));
+        });
         activeHosts.push(`Total active hosts: ${devices.length}`);
-        
         return activeHosts.join('\n');
-        
     } catch (error) {
-        // Throw the error so the calling function knows the scan actually failed
-        return(`Nmap scan failed: ${error.message}`);
+        return (`Nmap scan failed: ${error.message}`);
     }
 }
 

@@ -1,3 +1,6 @@
+// Status updater: reads statsmenu.txt and probes every host in it, answering
+// one row per host as HOST|STATE|NAME|ACTION in the file's own order.
+
 const fsPromises = require('fs/promises');
 const { execFile } = require('child_process');
 const util = require('util');
@@ -7,20 +10,18 @@ const execFileAsync = util.promisify(execFile);
 
 const MAX_PARALLEL = 12;
 const MAX_WAIT = '1.0';
+const PING_TIMEOUT = 3000; // in (ms)
 const SSH_PORT = 22;
 const TCP_PROBE_TIMEOUT = 450; // in (ms)
 const TCP_PROBE_ATTEMPTS = 2;
 const ONLINE = 'grnind';  // green indicator
 const OFFLINE = 'blkind'; // black indicator
+const AMBIGUOUS = 'timeout';
 
-/**
- * Probe a TCP port. A completed handshake is ONLINE; a definitive negative
- * (RST/refused, unreachable, DNS failure) is OFFLINE immediately with no
- * retry. Only a silent timeout is ambiguous — that's the wifi dropped-SYN
- * case — so that alone is retried. Never rejects; only ONLINE/OFFLINE escape.
- */
-function tcpProbe(host) {
-    const attempt = () => new Promise(resolve => {
+// One TCP connection attempt: ONLINE on a completed handshake, OFFLINE on a
+// definitive negative (RST, unreachable, DNS failure), AMBIGUOUS on silence.
+function tcpAttempt(host) {
+    return new Promise(resolve => {
         const socket = new net.Socket();
         let settled = false;
         const finish = result => {
@@ -31,39 +32,31 @@ function tcpProbe(host) {
         };
         socket.setTimeout(TCP_PROBE_TIMEOUT);
         socket.once('connect', () => finish(ONLINE));
-        socket.once('timeout', () => finish('timeout')); // ambiguous may retry
-        socket.on('error', () => finish(OFFLINE));        // definitive no retry
+        socket.once('timeout', () => finish(AMBIGUOUS));
+        socket.on('error', () => finish(OFFLINE));
         socket.connect({ host, port: SSH_PORT, family: 4 });
     });
-    return (async () => {
-        for (let i = 0; i < TCP_PROBE_ATTEMPTS; i++) {
-            const result = await attempt();
-            if (result === ONLINE) return ONLINE;
-            if (result === OFFLINE) return OFFLINE; // RST/unreachable done
-            // 'timeout' silent, might be a dropped SYN loop and retry
-        }
-        return OFFLINE; // timed out on every attempt
-    })();
 }
 
-/**
- * Status Updater Module
- *
- * Reads STATS_FILE (read-only) and probes each host. Probes run in parallel
- * with a bounded concurrency of MAX_PARALLEL. Output preserves the original
- * file order and uses the format: HOST|STATE|NAME|ACTION
- */
+// Only a silent timeout is retried -- that is the wifi dropped-SYN case. A
+// definitive negative is answered straight away. Never rejects.
+async function tcpProbe(host) {
+    for (let i = 0; i < TCP_PROBE_ATTEMPTS; i++) {
+        const result = await tcpAttempt(host);
+        if (result === ONLINE) return ONLINE;
+        if (result === OFFLINE) return OFFLINE;
+    }
+    return OFFLINE; // timed out on every attempt
+}
 
-/**
- * Action handlers. Add new probe types here; anything unknown yields "".
- */
+// Probe types. Add new ones here; anything unknown yields "".
 const ACTIONS = {
     async ping(host) {
         try {
             await execFileAsync(
                 '/usr/bin/ping',
                 ['-4', '-A', '-c', '1', '-i', MAX_WAIT, '-W', MAX_WAIT, host],
-                { timeout: 3000 }
+                { timeout: PING_TIMEOUT }
             );
             return ONLINE;
         } catch (err) {
@@ -81,9 +74,8 @@ async function updateState(host, action) {
     return handler(host);
 }
 
-/**
- * Parse the stats file into ordered entry objects.
- */
+// stats file -> ordered entries. Blank lines and # comments are dropped.
+// "media.home|Media|ssh" -> { host, name, action }
 function parseEntries(data) {
     return data
         .split('\n')
@@ -96,10 +88,8 @@ function parseEntries(data) {
         .filter(e => e.host && e.name && e.action);
 }
 
-/**
- * Run tasks with a fixed-size worker pool. Results are written back into
- * `results` at the entry's original index, so ordering is preserved.
- */
+// Runs the probes through a fixed-size worker pool. Results are written back
+// at the entry's original index, so the file's ordering is preserved.
 async function runPool(entries, limit) {
     const results = new Array(entries.length);
     let cursor = 0;
@@ -122,9 +112,7 @@ async function runPool(entries, limit) {
     return results;
 }
 
-/**
- * Main entry point. Returns the full output string; never writes to disk.
- */
+// the whole menu as one string; never writes to disk
 async function runStatusUpdate(baseWWW) {
     let data;
     try {

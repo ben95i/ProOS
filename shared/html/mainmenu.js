@@ -1,24 +1,14 @@
-/**
- * MainMenu
- * The list button in the top left corner: the menu behind it, everything the
- * menu can do, and the two windows it opens.
- *
- * This was theme.js, which owned the palette button's dropdown. That
- * dropdown is gone -- its two rows have moved into the main menu, which now
- * reads Color, Stars, About, then whatever else the page has: the URLs out
- * of the mainmenu file on the server, and the System and Home rows on a Pi.
- * The theme colour, the About window and both menus are one thing to press
- * now, so they are one file.
- *
- * The stars toggle is still drawn by main.js's drawMenu(): it is a
- * browser-side setting row ('chk'), and its read and write live in
- * WWW_SETTINGS. Everything else here is built and placed by this class.
- *
- * The palette the colour picker offers is the thememenu file, one colour per
- * line as hex_value|display_name. ColorPrompt reads it -- it already reads a
- * file of exactly that shape for its own default swatches -- so the file is
- * named to it rather than loaded here.
- */
+// Automate Website - main menu
+//
+// The list button in the top left corner: the menu behind it, the theme
+// colour, and the About window. new MainMenu() then .load() to apply the
+// saved colour; showMenu() / showPiMenu() open the two menus.
+//
+// The stars toggle is drawn by main.js's drawMenu() as a browser-side
+// setting row ('chk'); everything else here is built and placed by this
+// class. The picker's palette is the thememenu file, one colour per line as
+// hex_value|display_name, read by ColorPrompt itself.
+
 import { hexToRgb, loadMenu, fileURL, splitMenuData } from './utils.js';
 import ColorPrompt from './colorprompt.js';
 
@@ -32,25 +22,18 @@ export default class MainMenu {
   static SLOT_ATTR = 'mainmenu-slot';
 
   static MENU_ID = 'mainmenu';
-  // the file behind the server's menu: its URL rows, and nothing else
-  static MENU_FILE = 'mainmenu';
+  static MENU_FILE = 'mainmenu'; // the server menu's URL rows, and nothing else
   static PI_MENU_ID = 'pi-mainmenu';
 
-  // Both menus, written out in the order they are drawn.
-  //
-  // A row this class does not build is plain markup, sitting where it goes.
-  // A row it does is a token: {{color}} is the colour box below, {{stars}}
-  // the toggle drawMenu() draws, {{links}} the URLs out of the mainmenu
-  // file. Move a line and the menu moves with it; take a token out and those
-  // rows are left off altogether.
+  // Both menus, written out in the order they are drawn. A row this class
+  // does not build is plain markup sitting where it goes; a row it does is a
+  // token -- {{color}} the colour box, {{stars}} the toggle drawMenu() draws,
+  // {{links}} the URLs out of the mainmenu file. Move a line and the menu
+  // moves with it; take a token out and those rows are left off altogether.
   //
   // The icon goes last on every row: the rows are laid out with their two
   // ends pushed apart, so an icon written after the label lands against the
-  // menu's right edge, where all of them line up.
-  //
-  // The handlers for the ids below are registered in main.js, by id, off a
-  // listener on the document -- so these can be rewritten as freely as any
-  // other markup without a listener having to be rebound.
+  // menu's right edge. The handlers for these ids are registered in main.js.
   static MENU_HTML = `
     <a id="btn-about-main">About<i class="fad fa-info"></i></a>
     {{color}}
@@ -66,60 +49,46 @@ export default class MainMenu {
     <a id="btn-home-pi">Home<i class="fad fa-home"></i></a>
   `;
 
-  // The stars animation toggle. Written in the same host|type|name shape as
-  // a file row so drawMenu() handles it with no special case of its own; on
-  // a 'chk' row the third field is the icon.
+  // The stars animation toggle, in the same host|type|name shape as a file
+  // row so drawMenu() handles it with no special case. On a 'chk' row the
+  // third field is the icon.
   static STARS_ROW = `stars|chk|fad fa-stars\n`;
 
-  // Goes on the page itself while the theme colour is a light one, so a rule
-  // per place can turn its text black. One class for all of them, so
-  // everything that turns over turns over together.
+  // goes on the page while the theme colour is a light one, so a rule per
+  // place can turn its text black
   static LIGHT_CLASS = 'theme-light';
 
   // the colour row, and the picker it opens
   static ROW_ID = 'menu-theme-color';
   static ROW_LABEL = 'Color';
-  // the paint drop, in the same duotone set the rest of the bar uses
   static ROW_ICON = 'fad fa-tint';
   static ANCHOR_ID = 'color-popup';
   static PALETTE_FILE = 'thememenu';
-  // what the picker's heading calls this colour -- "Select Theme Color"
-  static PROMPT_NAME = 'Theme';
+  static PROMPT_NAME = 'Theme'; // heading reads "Select Theme Color"
+
   // ---- where black text takes over from white ----
   //
-  // BT.601 weights, for the brightness of a colour as the eye reads it
-  // rather than as the numbers average out. Green carries most of what is
-  // seen as brightness and blue very little, which is why a saturated blue
-  // comes out so much darker than a green of the same numbers.
+  // BT.601 weights, for the brightness of a colour as the eye reads it rather
+  // than as the numbers average out. Green carries most of what is seen as
+  // brightness and blue very little, which is why a saturated blue comes out
+  // so much darker than a green of the same numbers.
   static LUMA_RED = 299;
   static LUMA_GREEN = 587;
   static LUMA_BLUE = 114;
   static LUMA_TOTAL = 1000;
 
   // The one line every element crosses together: above it the text on the
-  // theme colour goes black, below it stays white.
-  //
-  // The scale those weights produce runs from 0 to 255. Some of it, to make
-  // a number here easier to choose:
+  // theme colour goes black, below it stays white. The scale runs 0-255:
   //
   //     black        0        pure red    76        pure green  150
   //     pure blue   29        mid grey   128        cyan        179
   //     navy #1f2051 37       crimson    106        yellow      226
   //     forest      44        orange     148        white       255
   //
-  // 128 is the middle of that scale. Swept over the whole colour cube it
-  // agrees with what WCAG contrast says about the better of black and white
-  // roughly 85% of the time; the best any single value on this formula
-  // manages is 108, at about 94%, but that pulls black text onto colours
-  // that still read dark. Raise this to hold white for longer, lower it to
-  // turn over sooner.
-  //
-  // Worth knowing when moving it: the buttons are the one surface that is
-  // not this colour at full strength. Their background is --main-trans-35,
-  // the theme colour at 65% over the black page, so they read about a third
-  // darker than the value being measured and turn over a little before they
-  // look as though they should. Around 166 holds white on them until the
-  // colour is pale enough that the buttons are pale too.
+  // Raise this to hold white for longer, lower it to turn over sooner. Worth
+  // knowing when moving it: the buttons are --main-trans-35, the theme colour
+  // at 65% over black, so they read about a third darker than the value being
+  // measured and turn over a little before they look as though they should.
   static LIGHT_LUMA = 135;
 
   static ABOUT_WIN_ID = 'about__prompt';
@@ -145,20 +114,17 @@ export default class MainMenu {
     return saved;
   }
 
-  // Paints the page without keeping the colour. This is the half of the old
-  // setTheme() the picker wants: it runs on every move of the map and the
-  // hue slider, and a write to storage on each of those is neither wanted
-  // nor cheap.
+  // Paints the page without keeping the colour: the picker runs this on every
+  // move of the map and the hue slider, and a write to storage on each of
+  // those is neither wanted nor cheap.
   apply(color) {
     const root = document.getElementsByTagName('html')[0];
     if (!root) {
       return;
     }
     root.style.setProperty('--main-color', color);
-    // The page is marked light or not alongside the colour itself, so the
-    // two can never disagree -- and since the picker calls this on every
-    // move, the buttons turn over as the colour is being dragged rather than
-    // once it has been settled on.
+    // marked light or not alongside the colour itself, so the two can never
+    // disagree -- and the buttons turn over as the colour is dragged
     root.classList.toggle(MainMenu.LIGHT_CLASS, MainMenu.isLightColor(color));
   }
 
@@ -166,7 +132,7 @@ export default class MainMenu {
     localStorage.setItem(MainMenu.STORAGE_KEY, color);
   }
 
-  // paint and keep -- what the old setTheme() did
+  // paint and keep
   set(color) {
     this.apply(color);
     this.save(color);
@@ -178,14 +144,15 @@ export default class MainMenu {
   }
 
   // Is this colour light enough that white text on it is hard to read? The
-  // weighted average is the BT.601 luma the eye actually reads a colour at
-  // -- a flat mean calls a saturated blue as light as a green of the same
+  // weighted average is the BT.601 luma the eye actually reads a colour at --
+  // a flat mean calls a saturated blue as light as a green of the same
   // numbers, which it is nothing like.
   static isLightColor(color) {
     const rgb = hexToRgb(color);
-    const luma = (rgb.red * MainMenu.LUMA_RED
-      + rgb.green * MainMenu.LUMA_GREEN
-      + rgb.blue * MainMenu.LUMA_BLUE) / MainMenu.LUMA_TOTAL;
+    const redPart = rgb.red * MainMenu.LUMA_RED;
+    const greenPart = rgb.green * MainMenu.LUMA_GREEN;
+    const bluePart = rgb.blue * MainMenu.LUMA_BLUE;
+    const luma = (redPart + greenPart + bluePart) / MainMenu.LUMA_TOTAL;
     if (!Number.isFinite(luma)) {
       return false; // unreadable value -- leave the text as it was
     }
@@ -194,20 +161,28 @@ export default class MainMenu {
 
   //// the menu ////
 
+  // Opens a menu, or shuts it when it is already open. Answers false when
+  // there is nothing more to do -- no element, or it was just closed.
+  openMenuElement(menuElement) {
+    if (!menuElement) {
+      return false;
+    }
+    if (menuElement.style.display === 'block') {
+      menuElement.style.display = 'none';
+      return false;
+    }
+    if (typeof window.removeDropdowns === 'function') window.removeDropdowns();
+    menuElement.style.display = 'block';
+    return true;
+  }
+
   // The server's list button. Same shape as the file menus in main.js -- a
   // second press closes it, and opening it puts every other menu away first.
   async showMenu() {
     const menuElement = document.getElementById(MainMenu.MENU_ID);
-    if (!menuElement) {
+    if (!this.openMenuElement(menuElement)) {
       return;
     }
-    if (menuElement.style.display === 'block') {
-      menuElement.style.display = 'none';
-      return;
-    }
-    // Reference the globally exposed window function
-    if (typeof window.removeDropdowns === 'function') window.removeDropdowns();
-    menuElement.style.display = 'block';
     const token = ++this.menuToken;
     const data = await loadMenu(fileURL('read', MainMenu.MENU_FILE));
     // Opened again, or closed outright, while the file was in the air. The
@@ -216,8 +191,7 @@ export default class MainMenu {
     if (token !== this.menuToken || menuElement.style.display !== 'block') {
       return;
     }
-    // a file that could not be read still leaves a menu worth having -- the
-    // rows built here do not come from it
+    // a file that could not be read still leaves a menu worth having
     this.drawRows(menuElement, MainMenu.MENU_HTML, data);
   }
 
@@ -225,41 +199,33 @@ export default class MainMenu {
   // file to wait for and the menu is drawn where it is pressed.
   showPiMenu() {
     const menuElement = document.getElementById(MainMenu.PI_MENU_ID);
-    if (!menuElement) {
+    if (!this.openMenuElement(menuElement)) {
       return;
     }
-    if (menuElement.style.display === 'block') {
-      menuElement.style.display = 'none';
-      return;
-    }
-    // Reference the globally exposed window function
-    if (typeof window.removeDropdowns === 'function') window.removeDropdowns();
-    menuElement.style.display = 'block';
     // nothing above the token here, but a file menu opened a moment ago can
     // still be in the air and this menu is what it would draw over
     this.menuToken += 1;
     this.drawRows(menuElement, MainMenu.PI_MENU_HTML, '');
   }
 
-  // Draws the menu: its own markup from the template above, then the rows
-  // that are built rather than written -- each moved into the marker its
-  // token left behind.
+  // Draws the menu: its own markup from the template, then the rows that are
+  // built rather than written -- each moved into the marker its token left.
   drawRows(menuElement, template, fileRows) {
     // The file comes back from the API wrapped in quotes, and splitMenuData()
     // takes a quote off only the very start and end of what it is handed.
-    // Putting the stars row in front leaves the file's opening quote sitting
-    // in the middle of the string, where it survives into the first row and
-    // ends up on the front of its URL. So the file is unquoted here, before
-    // the two are joined.
-    const rows = (fileRows && typeof fileRows === 'string')
-      ? splitMenuData(fileRows).join('\n') : '';
+    // Putting the stars row in front would leave the file's opening quote in
+    // the middle of the string, where it survives into the first row and ends
+    // up on the front of its URL. So the file is unquoted here first.
+    let rows = '';
+    if (fileRows && typeof fileRows === 'string') {
+      rows = splitMenuData(fileRows).join('\n');
+    }
     // the menu's own rows, with an empty marker standing in for each set of
     // built ones. Whatever was here last time goes with it.
     menuElement.innerHTML = template.replace(/\{\{(\w+)\}\}/g,
       (whole, slot) => `<span data-${MainMenu.SLOT_ATTR}="${slot}"></span>`);
-    // Reference the globally exposed window function. It appends to the end
-    // of the container, so what it draws is picked back up below and moved
-    // into the markers rather than left where it landed.
+    // drawMenu() appends to the end of the container, so what it draws is
+    // picked back up below and moved into the markers
     if (typeof window.drawMenu === 'function') {
       window.drawMenu(MainMenu.STARS_ROW + rows, menuElement.id);
     }
@@ -270,8 +236,8 @@ export default class MainMenu {
     this.fillSlot(menuElement, 'links', drawn.slice(1));
     const colorRow = this.colorRow();
     this.fillSlot(menuElement, 'color', [colorRow]);
-    // removeDynMenus() takes the rows back out by node, so this one is
-    // handed over with the rows drawMenu() made
+    // removeDynMenus() takes the rows back out by node, so this one is handed
+    // over with the rows drawMenu() made
     if (App.dynMenuNodes) {
       App.dynMenuNodes.push(colorRow);
     }
@@ -280,12 +246,9 @@ export default class MainMenu {
     ColorPrompt.warmPalette(MainMenu.PALETTE_FILE);
   }
 
-  // Sends a row's icon to the end of it. The stars row is built by
-  // createListItem(), which puts the icon first and the switch after it --
-  // right for a menu row anywhere else, but these two menus carry their icons
-  // down the right-hand edge. Moved here rather than in main.js, since the
-  // 'chk' row type is a general one and this is only how these menus lay
-  // their rows out.
+  // Sends a row's icon to the end of it. createListItem() puts the icon first
+  // and the switch after it, which is right for a menu row anywhere else;
+  // these two menus carry their icons down the right hand edge.
   iconLast(row) {
     if (!row) {
       return row;
@@ -297,9 +260,9 @@ export default class MainMenu {
     return row;
   }
 
-  // Puts rows where their marker is and takes the marker out. A template
-  // with that token removed has nowhere to put them, so they are dropped
-  // rather than left sitting at the end of the menu.
+  // Puts rows where their marker is and takes the marker out. A template with
+  // that token removed has nowhere to put them, so they are dropped rather
+  // than left sitting at the end of the menu.
   fillSlot(menuElement, name, rows) {
     const slot = menuElement.querySelector(`[data-${MainMenu.SLOT_ATTR}="${name}"]`);
     if (!slot) {
@@ -350,7 +313,6 @@ export default class MainMenu {
       this.apply(this.pending);
     }, {
       name: MainMenu.PROMPT_NAME,
-      // the theme's own palette file, in place of the picker's default one
       presetFile: MainMenu.PALETTE_FILE,
       onClose: () => this.closePrompt()
     });
@@ -360,9 +322,8 @@ export default class MainMenu {
     App.colorPrompt = prompt;
   }
 
-  // The prompt has gone -- closed, replaced, or taken with the page. The
-  // page is already in the colour it was left on; this is where that colour
-  // is finally kept.
+  // The prompt has gone -- closed, replaced, or taken with the page. The page
+  // is already in the colour it was left on; this is where it is kept.
   closePrompt() {
     if (this.pending === null) {
       return;
@@ -378,7 +339,8 @@ export default class MainMenu {
     if (document.getElementById(winId)) return;
     const curDate = new Date();
     const curYear = curDate.getFullYear();
-    const curQtr = Math.ceil((curDate.getMonth() + 1) / 3);
+    const monthsPerQuarter = 3;
+    const curQtr = Math.ceil((curDate.getMonth() + 1) / monthsPerQuarter);
     const promptHTML = `
   <div id="${winId}" class="prompt_win">
     <div class="about__title">${App.sysModel}</div>
@@ -393,11 +355,10 @@ export default class MainMenu {
   `;
     document.body.insertAdjacentHTML('beforeend', promptHTML);
     const aboutprompt = document.getElementById(winId);
-    aboutprompt.addEventListener('click', function handleButtonClicks(btn_evnt) {
-      const clickedButton = btn_evnt.target.closest('button');
-      if (!clickedButton) return;
-      aboutprompt.removeEventListener('click', handleButtonClicks);
-      aboutprompt.remove();
+    aboutprompt.addEventListener('click', (btn_evnt) => {
+      if (btn_evnt.target.closest('button')) {
+        aboutprompt.remove();
+      }
     });
   }
 }

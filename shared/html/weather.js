@@ -1,10 +1,35 @@
+// Automate Website - weather widget
+//
+// The title bar icon and the drop-down behind it. new WeatherWidget() then
+// .activate() to draw and start polling, .remove() to take it away.
+// The API answers { location, temperature, condition, humidity, timeOfDay }.
+
+import { makeElement } from './utils.js';
+
+const REFRESH_MS = 60 * 1000; // one minute
+const ANCHOR_ID = 'weather_anchor';
+
+// condition text -> the icon that stands for it. Checked in order, so the
+// first match wins; day / night pairs pick by the reading's timeOfDay.
+const CONDITION_ICONS = [
+  {
+    match: ['sun', 'clear'],
+    icon: 'fad fa-sun',
+    byTime: { sunset: 'fad fa-sunset', night: 'fad fa-moon-stars' }
+  },
+  { match: ['cloud'], icon: 'fad fa-clouds', byTime: { night: 'fad fa-cloud-moon' } },
+  { match: ['rain', 'drizzle'], icon: 'fad fa-cloud-rain' },
+  { match: ['snow'], icon: 'fad fa-cloud-snow' },
+  { match: ['storm', 'thunder'], icon: 'fad fa-thunderstorm' }
+];
+const DEFAULT_ICON = 'fad fa-clouds';
+const ERROR_ICON = 'fad fa-exclamation-triangle';
+
 export default class WeatherWidget {
+
   constructor(apiUrl = '/api?var=&arg=weather&action=main') {
-    this.apiUrl = apiUrl; // Ensure your API endpoint returns the specified JSON
-    // 60,000ms. The old expression (10 * 60 * 100) read like ten minutes and
-    // was in fact one, which is the interval that has been running; the value
-    // is unchanged, only written so it says what it does.
-    this.refreshInterval = 60 * 1000; // 1 minute in milliseconds
+    this.apiUrl = apiUrl;
+    this.refreshInterval = REFRESH_MS;
     this.timerId = null;
     this.weatherData = null;
     this.container = null;
@@ -28,11 +53,8 @@ export default class WeatherWidget {
     if (!this.container) return;
     this.removed = false;
     this._renderDropdown();
-    this.fetchWeather(); 
-    this.timerId = setInterval(() => {
-      console.log(`[WeatherWidget] Auto-refresh triggered at ${new Date().toLocaleTimeString()}`);
-      this.fetchWeather();
-    }, this.refreshInterval);
+    this.fetchWeather();
+    this.timerId = setInterval(() => this.fetchWeather(), this.refreshInterval);
     document.addEventListener('click', this._handleOutsideClick);
   }
 
@@ -62,30 +84,39 @@ export default class WeatherWidget {
     document.removeEventListener('click', this._handleOutsideClick);
   }
 
+  // this answer is no longer the current one: torn down, or overtaken
+  _stale(gen) {
+    return this.removed || gen !== this.requestGen;
+  }
+
+  _setSpinner(on) {
+    if (!this.iconElement || !this.spinnerElement) return;
+    if (on === true) {
+      this.iconElement.style.display = 'none';
+      this.spinnerElement.style.display = 'inline-block';
+    } else {
+      this.spinnerElement.style.display = 'none';
+      this.iconElement.style.display = '';
+    }
+  }
+
   async fetchWeather() {
     if (this.removed) return;
     const gen = ++this.requestGen;
-    if (this.iconElement && this.spinnerElement) {
-      this.iconElement.style.display = 'none';
-      this.spinnerElement.style.display = 'inline-block';
-    }
+    this._setSpinner(true);
     try {
       const response = await fetch(this.apiUrl);
       if (!response.ok) throw new Error('API Network Error');
-      const data = await response.json(); 
-      // torn down while the request was in flight, or a newer request has
-      // gone out since: either way this answer is no longer the current one,
-      // and the request that replaced it owns the spinner
-      if (this.removed || gen !== this.requestGen) return;
+      const data = await response.json();
+      if (this._stale(gen)) return;
       this.weatherData = data;
       this._updateWeatherUI();
     } catch (error) {
-      if (this.removed || gen !== this.requestGen) return;
+      if (this._stale(gen)) return;
       console.error('Failed to fetch weather data:', error);
-      if (this.iconElement && this.spinnerElement) {
-        this.spinnerElement.style.display = 'none';
-        this.iconElement.style.display = '';
-        this.iconElement.className = 'fad fa-exclamation-triangle';
+      this._setSpinner(false);
+      if (this.iconElement) {
+        this.iconElement.className = ERROR_ICON;
       }
       if (this.badgeElement) {
         this.badgeElement.style.display = 'none';
@@ -94,120 +125,114 @@ export default class WeatherWidget {
     }
   }
 
+  // the icon for the reading currently held
+  _weatherIcon() {
+    const condition = (this.weatherData.condition || '').toLowerCase();
+    const time = this.weatherData.timeOfDay || 'day';
+    for (const entry of CONDITION_ICONS) {
+      const hit = entry.match.some(word => condition.includes(word));
+      if (!hit) continue;
+      if (entry.byTime && entry.byTime[time]) {
+        return entry.byTime[time];
+      }
+      return entry.icon;
+    }
+    return DEFAULT_ICON;
+  }
+
   _updateWeatherUI() {
     if (!this.weatherData) return;
-    if (this.iconElement && this.spinnerElement) {
-      this.spinnerElement.style.display = 'none';
-      this.iconElement.style.display = ''; 
-    }
-    let iconClass = 'fad fa-clouds'; 
-    const cond = (this.weatherData.condition || '').toLowerCase();
-    const time = this.weatherData.timeOfDay || 'day';
-    if (cond.includes('sun') || cond.includes('clear')) {
-      if (time === 'sunset') 
-        iconClass = 'fad fa-sunset';
-      else if (time === 'night') 
-        iconClass = 'fad fa-moon-stars'; 
-      else iconClass = 'fad fa-sun';
-    } 
-    else if (cond.includes('cloud')) {
-      iconClass = (time === 'night') ? 'fad fa-cloud-moon' : 'fad fa-clouds';
-    }
-    else if (cond.includes('rain') || cond.includes('drizzle')) 
-      iconClass = 'fad fa-cloud-rain';
-    else if (cond.includes('snow')) 
-      iconClass = 'fad fa-cloud-snow';
-    else if (cond.includes('storm') || cond.includes('thunder')) 
-      iconClass = 'fad fa-thunderstorm';
-    this.iconElement.className = iconClass;
+    this._setSpinner(false);
+    this.iconElement.className = this._weatherIcon();
     if (this.weatherData.temperature !== undefined) {
-      this.badgeElement.innerText = `${this.weatherData.temperature}°`;
+      this.badgeElement.innerText = `${this.weatherData.temperature}\u00B0`;
       this.badgeElement.style.display = 'block';
     }
     this._updateDropdownContent();
   }
 
   _renderIcon() {
-    this.container = document.getElementById('weather_anchor');
+    this.container = document.getElementById(ANCHOR_ID);
     if (!this.container) {
-      console.error("weather_anchor not found in the DOM.");
+      console.error(`${ANCHOR_ID} not found in the DOM.`);
       return;
     }
-    // Create inner elements
-    this.iconElement = document.createElement('i');
-    this.iconElement.className = 'fad fa-clouds'; 
-    this.badgeElement = document.createElement('span');
-    this.badgeElement.className = 'weather-badge';
+    this.iconElement = makeElement('i', DEFAULT_ICON);
+    this.badgeElement = makeElement('span', 'weather-badge');
     this.badgeElement.style.display = 'none';
-    // Create the new CSS spinner element
-    this.spinnerElement = document.createElement('span');
-    this.spinnerElement.className = 'right-nav-spinner';
-    this.spinnerElement.style.display = 'none'; // Hidden by default
-    // Clear existing content and append new elements
+    this.spinnerElement = makeElement('span', 'right-nav-spinner');
+    this.spinnerElement.style.display = 'none';
     this.container.innerHTML = '';
     this.container.appendChild(this.iconElement);
     this.container.appendChild(this.spinnerElement);
     this.container.appendChild(this.badgeElement);
-    // Add required styles and listeners
     this.container.classList.add('weather-icon-container');
     this.container.addEventListener('click', this.toggleMenu);
   }
 
- _renderDropdown() {
-    this.dropdown = document.createElement('div');
-    this.dropdown.className = 'dd-content dd-menu weather-dropdown';
+  _renderDropdown() {
+    this.dropdown = makeElement('div', 'dd-content dd-menu weather-dropdown',
+      '<a>Loading...</a>');
     this.dropdown.id = 'weatherMenu';
     this.dropdown.style.display = 'none';
-    this.dropdown.innerHTML = '<a>Loading...</a>';
     document.body.appendChild(this.dropdown);
+  }
+
+  // one row of the drop-down: an icon and its text
+  _menuRow(icon, text) {
+    return makeElement('a', '',
+      `<i class="${icon}" style="width: 25px; text-align: center;"></i> ${text}`);
   }
 
   _updateDropdownContent() {
     if (!this.dropdown || !this.weatherData) return;
+    const reading = this.weatherData;
     this.dropdown.innerHTML = '';
-    const createItem = (icon, text) => {
-      const a = document.createElement('a');
-      a.innerHTML = `<i class="${icon}" style="width: 25px; text-align: center;"></i> ${text}`;
-      return a;
-    };
-    this.dropdown.appendChild(createItem('fad fa-map-marker-alt', this.weatherData.location || 'Unknown'));
-    this.dropdown.appendChild(createItem('fad fa-thermometer-half', `${this.weatherData.temperature}°   ${this.weatherData.condition}`));
-    this.dropdown.appendChild(createItem('fad fa-humidity', `${this.weatherData.humidity}% Humidity`));
+    this.dropdown.appendChild(
+      this._menuRow('fad fa-map-marker-alt', reading.location || 'Unknown'));
+    this.dropdown.appendChild(this._menuRow('fad fa-thermometer-half',
+      `${reading.temperature}\u00B0   ${reading.condition}`));
+    this.dropdown.appendChild(
+      this._menuRow('fad fa-humidity', `${reading.humidity}% Humidity`));
   }
 
   _updateDropdownContentError() {
     if (!this.dropdown) return;
     this.dropdown.innerHTML = '';
-    const errorItem = document.createElement('a');
-    errorItem.innerHTML = `<i class="fad fa-exclamation-triangle" style="color: var(--red-ind);"></i> Error Loading Weather`;
-    this.dropdown.appendChild(errorItem);
+    this.dropdown.appendChild(makeElement('a', '',
+      `<i class="${ERROR_ICON}" style="color: var(--red-ind);"></i> Error Loading Weather`));
+  }
+
+  // places the drop-down under the icon and shows it
+  _placeDropdown() {
+    const rect = this.container.getBoundingClientRect();
+    const style = this.dropdown.style;
+    style.position = 'fixed';
+    style.top = `${rect.bottom + 5}px`;
+    style.left = `${rect.left + (rect.width / 2)}px`;
+    style.transform = 'translateX(-80%)';
+    style.zIndex = '9999';
+    style.display = 'block';
   }
 
   toggleMenu(event) {
     if (event) event.stopPropagation();
-    if (this.isOpen) { 
-      this.dropdown.style.display = 'none';
-      this.isOpen = false;
-    } else {
-      if (typeof window.removeDropdowns === 'function') {
-        window.removeDropdowns(); 
-      }      
-      this.fetchWeather();
-      const rect = this.container.getBoundingClientRect();
-      this.dropdown.style.position = 'fixed'; 
-      this.dropdown.style.top = `${rect.bottom + 5}px`;
-      this.dropdown.style.left = `${rect.left + (rect.width / 2)}px`;
-      this.dropdown.style.transform = 'translateX(-80%)';
-      this.dropdown.style.zIndex = '9999';
-      this.dropdown.style.display = 'block';
-      this.isOpen = true;
+    if (this.isOpen) {
+      this.closeMenu();
+      return;
     }
+    if (typeof window.removeDropdowns === 'function') {
+      window.removeDropdowns();
+    }
+    this.fetchWeather();
+    this._placeDropdown();
+    this.isOpen = true;
   }
 
   _handleOutsideClick(event) {
-    if (this.isOpen && this.container && !this.container.contains(event.target) && !this.dropdown.contains(event.target)) {
-      this.dropdown.style.display = 'none';
-      this.isOpen = false;
-    }
+    if (!this.isOpen || !this.container) return;
+    if (this.container.contains(event.target)) return;
+    if (this.dropdown.contains(event.target)) return;
+    this.closeMenu();
   }
 }
