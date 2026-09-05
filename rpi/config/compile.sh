@@ -131,7 +131,7 @@ effect "Video File to OPC Program"      mp4toleds   "-O3"                  "$(pk
 effect "O-scope LED Program"            oscope      "-O3"                  "-lasound -pthread"
 effect "Spectrogram LED Program"        spectro     "-O3"                  "-lasound -pthread"
 effect "Noise LED Program"              noise       "-O3"                  "-lm"
-effect "Orbits LED Program"             orbits      "-O3"                  "-lm"
+effect "Orbits LED Program"             orbits      "-std=c++17 -O2"       "-lm"
 effect "Miami LED Program"              miami       "-O3"                  "-lm"
 effect "Stripes LED Program"            stripes     "-O3"                  "-lm"
 effect "Chase LED Program"              chase       "-O3"                  "-lm"

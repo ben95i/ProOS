@@ -652,7 +652,6 @@ function bedroomGridTemplate() {
       <a id="bed_leds-colorcycle"> Cycle</a>
       <a id="bed_leds-sweep"> Sweep</a>
       <a id="bed_leds-rainbow"> Rainbow</a>
-      <a id="bed_leds-stop"> Stop<i class="fad fa-stop"></i></a>
     </div>
   </div>
   <div class="dropdown">
@@ -731,7 +730,6 @@ registerListeners({
   'bed_leds-rainbow':     () => sendCmd('main', 'brxmit', 'bed_leds_rb'),
   'bed_leds-colorcycle':  () => sendCmd('main', 'brxmit', 'bed_leds_cy'),
   'bed_leds-sweep':       () => sendCmd('main', 'brxmit', 'bed_leds_sw'),
-  'bed_leds-stop':        () => sendCmd('main', 'brxmit', 'bed_leds_off'),
   'btn-dyn-relaxmenu':    () => showDynAPIMenu('relaxmenu'),
   'btn-power-brlamp1':    () => showPowerMenu('brxmit', 'brlamp1'),
   'br-voldwnbtn':         () => sendVol(VOLUME_ACTIONS.voldwnbtn),
@@ -1800,12 +1798,11 @@ function showBedroomAmpInput() {
   });
 }
 
-// Menus where the slider is a level on something that is either running or
-// not: zero is not a setting, it is off. A reading of 0 draws no slider and
-// hides the Stop row (there is nothing to stop), and the slider that is drawn
-// starts at 1 so it can never be dragged back to off -- Stop does that.
-const LEVEL_MENUS = {
-  'bed_leds': { min: 1, stopRowID: 'bed_leds-stop' }
+const CUST_LED_MENU = {
+  'bed_leds': { 
+    hostDevice: 'brxmit',
+    offCommand: 'bed_leds_off'
+  }
 };
 
 // Builds the toggle and / or slider rows for one power menu from the device's
@@ -1832,23 +1829,20 @@ function powerMenuRows(menu, target, cmd1, cmd2) {
   if (!isSingleLedSlider) {
     return rows;
   }
-  const level = LEVEL_MENUS[menu];
-  if (!level) {
-    rows += menuRow(`${cmd1}~${target}~${menu}`, 'slider', ''); // standard 0-255
+  const custom = CUST_LED_MENU[menu];
+  // standard LED 0-255
+  if (!custom) {
+    rows += menuRow(`${cmd1}~${target}~${menu}`, 'slider', '');
     return rows;
   }
-  // custom single LED: off hides the Stop row and draws no slider
+  // custom LED 0=off 1-255
   const leds_off = Number(cmd1) <= 0;
-  let stop_row = null;
-  if (level.stopRowID) {
-    stop_row = document.getElementById(level.stopRowID);
-  }
-  if (leds_off === true) {
-    if (stop_row) stop_row.style.display = 'none';
-    return rows;
-  }
-  if (stop_row) stop_row.style.display = '';
-  rows += menuRow(`${cmd1}~${target}~${menu}`, 'slider', '');
+  // hide off button and slider when off
+  if (leds_off === true) return rows;
+  // append brightness slider
+  rows += menuRow(`${cmd1}~${target}~${menu}`, 'slider-min1', '');
+  // append off button
+  rows += menuRow(`main~${custom.hostDevice}~${custom.offCommand}`, 'off', 'Off');
   return rows;
 }
 
@@ -2128,19 +2122,18 @@ function createListItem(col0_in, col1, col2, menuid) {
         onToggle: (payload) => chksettings.set(payload.cmd === `${chk_cmd}on`)
       });
       chk_obj.activate();
-      // removeDynMenus() destroys these, same as any other menu switch
       App.activeSwitches.push(chk_obj);
       break;
     }
+    case 'slider-min1':
     case 'slider': {
       // horizontal slider row; col0 is the current level
-      const customMin = LEVEL_MENUS[cmd];
       const slider = document.createElement('input');
       slider.classList.add("slider-wide");
       slider.type = 'range';
       slider.min = 0;
-      if (customMin && customMin.min) {
-        slider.min = customMin.min;
+      if (col1 == 'slider-min1') {
+        slider.min = 1;
       }
       slider.max = 255;
       slider.value = col0;
@@ -2167,7 +2160,7 @@ function createListItem(col0_in, col1, col2, menuid) {
       break;
     }
     case 'toggle': {
-      // switch-like toggle row; col0 is '1' when it is on
+      // switch-like toggle row
       _elm.classList.add('no-hover');
       const tgl_obj = new ToggleSwitch(_elm, {
         id: `${host}-${cmd}`,
@@ -2179,6 +2172,20 @@ function createListItem(col0_in, col1, col2, menuid) {
       tgl_obj.activate();
       App.activeSwitches.push(tgl_obj);
       break;
+    }
+    case 'on': {
+      _elm.classList.add('norm-cursor');
+      _elm.addEventListener("click", function() {
+        sendCmd(col0, host, cmd);
+      });
+      _elm.appendChild(makeElement('i', 'fad fa-toggle-on'));
+    }
+    case 'off': {
+      _elm.classList.add('norm-cursor');
+      _elm.addEventListener("click", function() {
+        sendCmd(col0, host, cmd);
+      });
+      _elm.appendChild(makeElement('i', 'fad fa-toggle-off'));
     }
     default: {
       // status row, with an indicator dot in the type's own colour
@@ -2233,9 +2240,6 @@ function removeDynMenus() {
   App.dynMenuActive = 0;
 }
 
-// Both callers of this are LED colours, so the picker's heading says so.
-const LED_PROMPT_NAME = 'LED';
-
 function openColorPrompt(command, argument, three_args = false) {
   // the previous prompt is destroyed rather than dropped: show() wipes the
   // anchor's markup, and an instance left behind mid-drag still holds
@@ -2258,7 +2262,7 @@ function openColorPrompt(command, argument, three_args = false) {
         showPopup("[ColorPrompt] failed to send color: " + err);
       });
   }, {
-    name: LED_PROMPT_NAME
+    name: 'LED'
   });
   colorPrompt.show();
   colorPrompt.updateStateFromHex('#000000', true, false);

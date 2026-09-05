@@ -16,7 +16,7 @@ const { OPCLEDparser } = require('./ledparser');
 
 const app = express();
 
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '5mb' }));
 
 const hostname = os.hostname();
 const httpPort = 3000;
@@ -83,7 +83,7 @@ app.get('/api/read', [
     }
 });
 
-app.post('/api/write', express.text({ type: '*/*', limit: '1mb' }), [
+app.post('/api/write', express.text({ type: '*/*', limit: '5mb' }), [
     query('file').notEmpty().matches(regex)
 ], (req, res) => {
     try {

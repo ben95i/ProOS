@@ -85,29 +85,29 @@ constexpr int DITHER_FRACTION_BITS = 8;
 constexpr int32_t DITHER_ONE = 1 << DITHER_FRACTION_BITS;
 constexpr int32_t OUTPUT_CEILING = 255 * DITHER_ONE;
 
-// Maps a linear 0-255 slider position to a linear-light scale factor using the
-// CIE 1931 lightness curve, so equal slider steps look like equal perceived
-// steps instead of collapsing the whole visible range into the bottom third.
+// Slider response. responseGamma 1.0 is a straight multiply on linear light,
+// which is what the original server did and what keeps the most output levels
+// available at any given slider position. Raising it makes equal slider steps
+// look more like equal perceived steps, at the cost of real brightness: around
+// 3.0 approximates the CIE lightness curve, which is perceptually even but
+// leaves a 20% slider setting nearly 7x dimmer than a linear one.
+float sliderToScale(int sliderValue, float responseGamma);
+
+// CIE 1931 lightness curve. Equivalent to sliderToScale with responseGamma near
+// 3.0; kept for callers that have the headroom to spend on it.
 float sliderToPerceptualScale(int sliderValue);
 
-// Headroom is the largest output the current scale can reach, in LSBs. When it
-// falls to a handful of levels a steep gamma pushes almost all picture content
-// below 1 LSB and the image collapses into sparse dots, so the exponent fades
-// toward gammaFloor: contrast goes, structure stays.
+// Optional shadow compression. With gammaFloor equal to gammaFull (the default)
+// the curve is a plain fixed gamma and nothing adapts. Setting gammaFloor below
+// gammaFull fades the exponent down as the available headroom shrinks, which
+// keeps dark content above the quantiser floor when there are only a handful of
+// output levels left — at the cost of contrast and some desaturation, since
+// lifting a dark channel more than a bright one pulls colours toward grey.
 struct ToneCurve {
-    float gammaFull = 2.8f;    // range 1.0-3.2, display gamma with headroom to spare
-    float gammaFloor = 1.4f;   // range 0.7-2.0, gamma once headroom runs out
+    float gammaFull = 2.8f;    // range 1.0-3.2, display gamma
+    float gammaFloor = 2.8f;   // range 0.7-3.2, gamma once headroom runs out
     float headroomFull = 24.0f;   // range 8-64 LSB, where gammaFull applies in full
     float headroomFloor = 2.0f;   // range 1-8 LSB, where gammaFloor is reached
-
-    // Black lift. A non-black input maps to at least this many LSBs, so a solid
-    // fill stays solid instead of breaking into sparse dots once the tone curve
-    // pushes it below one output level. Input 0 always stays at 0, and the rest
-    // of the range is compressed into what is left, so gradients stay monotonic.
-    // Costs shadow separation: everything dark converges toward the lift value.
-    float blackLiftLsb = 1.0f;        // range 0.0-2.0; 0 disables the lift
-    float liftHeadroomFull = 8.0f;    // range 2-24 LSB, at/below which lift is full
-    float liftHeadroomZero = 24.0f;   // range 16-96 LSB, at/above which lift is off
 };
 
 // Builds input byte -> Q8.8 output value. Call only when the scale changes.

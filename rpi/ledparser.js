@@ -191,25 +191,29 @@ async function OPCLEDparser(baseWWW, CommandIn = "", secondaryArgument = "") {
         let binaryArgs = [currentLedHardware];
 
         // Spectrograph
-        const AGC_FLOOR = "0.015";
-        const VERT_ZOOM = "3";
+        const VERT_ZOOM   = "2"; 
         const OCTAVE_BANDS = "8";
-        const MIN_FREQ = "1500";
-        const MAX_FREQ = "4500";
-        if (effectCommand === "spectro") binaryArgs.push(VERT_ZOOM, OCTAVE_BANDS, MIN_FREQ, MAX_FREQ, AGC_FLOOR);
+        const MIN_FREQ    = "800";
+        const MAX_FREQ    = "3500";
+        const AGC_FLOOR   = "0.03";
+        const SCROLL      = "1.0";
+        const DB_RANGE    = "30";
+
+        if (effectCommand === "spectro")
+            binaryArgs.push(VERT_ZOOM, OCTAVE_BANDS, MIN_FREQ, MAX_FREQ, AGC_FLOOR, SCROLL, DB_RANGE);
 
         // Oscilloscope
         const AMP_DIV = "2";
         const FREQ_DIV = "3";
         const LINE_SMOOTH = "0.6";
         const NOISE_GATE = "10";
-        if (effectCommand === "oscope") binaryArgs.push(AMP_DIV, FREQ_DIV, LINE_SMOOTH, NOISE_GATE);
+        if (effectCommand === "oscope") 
+            binaryArgs.push(AMP_DIV, FREQ_DIV, LINE_SMOOTH, NOISE_GATE);
 
         // Scrolling Text        
         if (effectCommand === "textscroll") {
-          if (secondaryArgument == "" || secondaryArgument == null) return "TextScroll: argument cannot be empty";
-          const tsWebUnsafeBase64 = secondaryArgument.replace(/-/g, "+").replace(/_/g, "/").replace(/@/g, "=");
-          const tsDecodedCommands = Buffer.from(tsWebUnsafeBase64, 'base64').toString('utf8');
+          const tsBase64 = secondaryArgument.replace(/-/g, "+").replace(/_/g, "/").replace(/@/g, "=");
+          const tsDecodedCommands = Buffer.from(tsBase64, 'base64').toString('utf8');
           const tsCommandArray = tsDecodedCommands.split("|"); 
           const tsMessage = tsCommandArray[0];
           const tsColor = tsCommandArray[1];
@@ -224,7 +228,7 @@ async function OPCLEDparser(baseWWW, CommandIn = "", secondaryArgument = "") {
 
     if (effectCommand === "hex") {
         await executeEffectProcess(`${EFFECTS_DIRECTORY_PATH}/writecolor`, [currentLedHardware, secondaryArgument], "hex_color");
-        return `Set Color To Hex: ${secondaryArgument}`;
+        return `Set Color to #: ${secondaryArgument}`;
     }
 
     try {

@@ -106,11 +106,21 @@ constexpr double MIN_REFRESH_HZ = 50.0;
 
 // --- Dither and Brightness ---
 // Range 0-64 output LSBs. The level at and above which a pixel dithers purely
-// in time (exact per-pixel average, no grain); below it the work shifts to
-// spatial error diffusion, which holds a steady value and preserves structure.
-// 0 disables the spatial path entirely and brings the low-brightness flicker
-// back; above ~24 dark scenes gain visible static grain. 10 is the tested value.
-constexpr float TEMPORAL_CROSSOVER_LEVEL = 8.0f;
+// in time, which is what the original server did everywhere: exact per-pixel
+// average, no spatial grain. Below it the work shifts to spatial error
+// diffusion, which holds a steady value rather than toggling 0<->1. Keep this
+// low — spatial diffusion trades smoothness for stability, so it should only
+// cover levels where a temporal toggle would be near-100% modulation. 0
+// disables the spatial path entirely and restores the original behaviour.
+constexpr float TEMPORAL_CROSSOVER_LEVEL = 4.0f;
+
+// Range 1.0-3.2. How the brightness slider maps to light output. 1.0 is a
+// straight multiply, matching the original server: a 20% slider setting really
+// is 20% of full output, so 51 of the 255 levels stay available and solid
+// colours stay solid. Raising it evens out how the slider *feels* but costs
+// real output — at 3.0 (roughly the CIE lightness curve) a 20% setting is only
+// 3% of full, leaving 7 levels, which is where dim colours break into dots.
+constexpr float SLIDER_RESPONSE_GAMMA = 1.5f;
 
 // Range 0.0-0.05 as a fraction of full luminance. Floors the master scale so
 // the panel never goes completely dark at the bottom of the slider: the slider
@@ -119,7 +129,7 @@ constexpr float TEMPORAL_CROSSOVER_LEVEL = 8.0f;
 // inherited from its original code, and is roughly the dimmest setting that is
 // still clearly lit in a dark room. Above ~0.02 the bottom of the slider stops
 // feeling dim at all.
-constexpr float MIN_LUMINANCE_FLOOR = 0.003f;
+constexpr float MIN_LUMINANCE_FLOOR = 0.005f;
 
 // --- Configuration (immutable once main() has parsed the command line) ---
 int matrixWidth = 16;
@@ -151,8 +161,8 @@ opcutils::Ditherer panelDitherer;
 // Perceptual slider position, floored so the output need not reach full black,
 // then scaled by the argv[2] power limit.
 float masterScaleForSlider(int sliderValue) {
-    const float perceptual = opcutils::sliderToPerceptualScale(sliderValue);
-    const float floored = MIN_LUMINANCE_FLOOR + (perceptual * (1.0f - MIN_LUMINANCE_FLOOR));
+    const float response = opcutils::sliderToScale(sliderValue, SLIDER_RESPONSE_GAMMA);
+    const float floored = MIN_LUMINANCE_FLOOR + (response * (1.0f - MIN_LUMINANCE_FLOOR));
     return floored * powerLimitScale;
 }
 
@@ -434,13 +444,14 @@ int main(int argumentCount, char* argumentValues[]) {
     sharedFrameBuffer.assign(static_cast<size_t>(frameByteCount), 0);
     generatePhysicalLookupTable();
 
-    // Tone curve ranges (opcutils::ToneCurve defaults shown):
-    //   gammaFull      1.0-3.2   display gamma when there is headroom to spare
-    //   gammaFloor     0.7-2.0   gamma once headroom runs out; lower lifts more
-    //                            shadow detail at the cost of contrast
+    // Plain fixed 2.8 gamma by default, as the original server used. Setting
+    // panelTone.gammaFloor below gammaFull enables shadow compression at very
+    // low headroom; it lifts dark detail but desaturates, so it stays off.
+    //   gammaFull      1.0-3.2   display gamma
+    //   gammaFloor     0.7-3.2   gamma once headroom runs out (== gammaFull: off)
     //   headroomFull   8-64 LSB  headroom at which gammaFull is used in full
     //   headroomFloor  1-8 LSB   headroom at which gammaFloor is reached
-    opcutils::ToneCurve panelTone;  // 2.8 full, 1.4 floor, 24/2 headroom
+    opcutils::ToneCurve panelTone;
     int lastBrightnessLevel = apiBrightnessLevel.load();
     opcutils::buildScaleTable(masterScaleForSlider(lastBrightnessLevel), panelTone,
                               scaledOutputTable);

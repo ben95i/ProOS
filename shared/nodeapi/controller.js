@@ -409,8 +409,15 @@ async function bedroomStatus() {
         brXmit("brpc"),
         callApi(IP_ADRS.brpi, "ampstate")
     ]);
-    const names = ['Desk Lamp', 'Bed Lights', 'RetroPi TV', 'Vintage Macs',
-        'Bedroom TV', 'Bedroom PC', 'Audio System'];
+    const names = [
+        'Desk Lamp', 
+        'Bed Lights', 
+        'RetroPi TV', 
+        'Vintage Macs',
+        'Bedroom TV', 
+        'Bedroom PC', 
+        'Audio System'
+    ];
     names.forEach((name, idx) => brRoom.addDevice(name, readings[idx]));
     brRoom.updateRoomState();
     return brRoom.getData();

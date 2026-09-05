@@ -395,7 +395,7 @@ int main(int argumentCount, char* argumentValues[]) {
     }
     if (argumentCount > 3) {
         const double parsedHz = std::atof(argumentValues[3]);
-        if (parsedHz >= 10.0 && parsedHz <= 400.0) {
+        if (parsedHz >= 10.0 && parsedHz <= 200.0) {
             outputHz = parsedHz;
         } else {
             std::cerr << "Invalid output rate, using " << outputHz << " Hz\n";
@@ -409,7 +409,7 @@ int main(int argumentCount, char* argumentValues[]) {
     // leave the picture as isolated dots.
     opcutils::ToneCurve proxyTone;
     proxyTone.gammaFull = 1.0f;
-    proxyTone.gammaFloor = 0.8f;
+    proxyTone.gammaFloor = 1.0f;  // equal to gammaFull: no shadow compression
     proxyTone.headroomFull = 24.0f;
     proxyTone.headroomFloor = 2.0f;
 

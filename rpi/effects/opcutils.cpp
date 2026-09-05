@@ -241,6 +241,14 @@ bool dropProcessPrivileges(const char* userName) {
 // Brightness and tone
 // ---------------------------------------------------------------------------
 
+float sliderToScale(int sliderValue, float responseGamma) {
+    const float normalized = std::clamp(sliderValue, 0, 255) / 255.0f;
+    if (responseGamma == 1.0f) {
+        return normalized;
+    }
+    return std::pow(normalized, std::max(0.1f, responseGamma));
+}
+
 float sliderToPerceptualScale(int sliderValue) {
     const float lightness = (std::clamp(sliderValue, 0, 255) / 255.0f) * 100.0f;
     if (lightness <= 8.0f) {
@@ -256,27 +264,9 @@ void buildScaleTable(float masterScale, const ToneCurve& tone, uint32_t table[25
     const float blend = std::clamp((headroom - tone.headroomFloor) / span, 0.0f, 1.0f);
     const float effectiveGamma = tone.gammaFloor + ((tone.gammaFull - tone.gammaFloor) * blend);
 
-    // Lift fades out as headroom grows, so it only engages where a solid fill
-    // would otherwise land below one output level.
-    float blackLift = 0.0f;
-    if (tone.blackLiftLsb > 0.0f && headroom > 0.0f) {
-        const float liftSpan = std::max(1e-6f, tone.liftHeadroomZero - tone.liftHeadroomFull);
-        const float liftFade =
-            std::clamp((headroom - tone.liftHeadroomFull) / liftSpan, 0.0f, 1.0f);
-        blackLift = tone.blackLiftLsb * (1.0f - liftFade);
-        // Never spend more than half the available range on the lift, or the
-        // picture flattens into one level at the very bottom of the slider.
-        blackLift = std::min(blackLift, headroom * 0.5f);
-    }
-
     for (int iteratorIndex = 0; iteratorIndex < 256; ++iteratorIndex) {
         const float normalizedIndex = static_cast<float>(iteratorIndex) / 255.0f;
-        // Input 0 stays at true black; everything above it is remapped into
-        // [blackLift, headroom] so the dimmest lit pixel still reaches a level.
-        const float outputValue =
-            (iteratorIndex == 0)
-                ? 0.0f
-                : (blackLift + (std::pow(normalizedIndex, effectiveGamma) * (headroom - blackLift)));
+        const float outputValue = std::pow(normalizedIndex, effectiveGamma) * masterScale * 255.0f;
         const int32_t fixedPoint =
             static_cast<int32_t>(std::lround(outputValue * static_cast<float>(DITHER_ONE)));
         table[iteratorIndex] = static_cast<uint32_t>(std::clamp<int32_t>(fixedPoint, 0, OUTPUT_CEILING));
