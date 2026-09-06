@@ -272,7 +272,7 @@ DEPLOY_PI(){
   echo "Downloading base software..."
   rsync -e "ssh -o $SSH_ARGS" $RSYNC_ARGS $EXCLUDED $ROOTDIR/rpi root@$HOST:/opt/
   echo "Downloading shared software..."
-  rsync -e "ssh -o $SSH_ARGS" $RSYNC_ARGS --mkpath $ROOTDIR/shared/html/ root@$HOST:/opt/rpi/config/html-base/
+  rsync -e "ssh -o $SSH_ARGS" $RSYNC_ARGS --mkpath $ROOTDIR/shared/html/ root@$HOST:/opt/rpi/config/html/
   rsync -e "ssh -o $SSH_ARGS" $RSYNC_ARGS --mkpath $ROOTDIR/shared/nodeapi/ root@$HOST:/opt/nodeapi/
   echo "Downloading module-specific software..."
   rsync -e "ssh -o $SSH_ARGS" $RSYNC_ARGS $EXCLUDED $ROOTDIR/$MODULE/ root@$HOST:/opt/rpi/

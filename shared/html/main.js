@@ -17,11 +17,10 @@ import ColorPrompt from './colorprompt.js';
 import MainMenu from './mainmenu.js';
 import WeatherWidget from './weather.js';
 import Lists from './lists.js';
+import Uploader from './upload.js';
 import Bookmarks from './bookmarks.js';
-import { deviceType } from './device.js';
 import { SSIDpwd } from './wifi.js';
 
-const MAIN_SITE = "Automate";
 const ROOM_CONFIGS = {
   'lr': {
     name: 'Living Room',
@@ -46,10 +45,17 @@ const VOLUME_ACTIONS = {
 };
 
 const DELEGATED_LISTENERS = {};
+let serverMode = false;
+// Every menu request stamps this before it goes out and checks it when it
+// comes back. Opening another menu -- or closing the menus outright --
+// invalidates whatever is still in the air, so a slow reply can no longer
+// wipe the rows of the menu that is actually on screen.
+let menuDrawToken = 0;
 
 window.App = {
   starBackground: null,
   roomStateManager: null,
+  uploader: null,
   lists: null,
   bookmarks: null,
   colorPrompt: null,
@@ -68,33 +74,67 @@ window.App = {
   ]
 };
 
-// Every menu request stamps this before it goes out and checks it when it
-// comes back. Opening another menu -- or closing the menus outright --
-// invalidates whatever is still in the air, so a slow reply can no longer
-// wipe the rows of the menu that is actually on screen.
-let menuDrawToken = 0;
-
+// main entry point
 window.addEventListener("DOMContentLoaded", () => {
   loadPage();
+  loadFeatures();
 });
 
-// Each template below registers its own button handlers with
-// registerListeners() directly beneath its markup; the groups merge into this
-// one map, which the delegated dispatcher looks up on click. Delegation means
-// handlers keep working for markup rendered later (room grids, bookmark
-// buttons, svropt panels) and never need re-attaching after a re-render.
-function registerListeners(listeners) {
-  for (const [id, handler] of Object.entries(listeners)) {
-    if (!(id in DELEGATED_LISTENERS)) {
-      DELEGATED_LISTENERS[id] = handler;
-    }
-  }
+function loadPage() {
+  App.sysModel = document.getElementById('title').textContent;
+  destroyPageServices();
+  renderPage(App.sysModel);
+}
+
+function loadFeatures() {
+  if (serverMode) serverFeatures();
+  App.mainMenu = new MainMenu();
+  App.mainMenu.load();
+  App.starBackground = new AnimatedBackground('star-canvas', starsAnimationEnabled());
+  App.starBackground.activate();
+  setupEventListeners();
+  resetActivityTimer();
+}
+
+function serverFeatures() {
+  selectRoom(localStorage.getItem("ctls-mode"));
+  App.roomStateManager = new RoomStateManager('status_anchor');
+  window.weatherWidget = new WeatherWidget();
+  window.weatherWidget.activate();
+}
+
+// injects the markup for the given model, replacing any previous render
+function renderPage(model) {
+  removeInjectedPage();
+  document.body.insertAdjacentHTML('afterbegin', buildPageHTML(model));
+}
+
+function buildPageHTML(model) {
+  const raspPi = model.toLowerCase().includes('pi');
+  const ledPi = model.toLowerCase().includes('led');
+  serverMode = !(raspPi || ledPi);
+  const select = {
+    isServer: serverMode,
+    isLedCapable: serverMode || ledPi,
+    isPiLike: raspPi || ledPi          
+  };
+  return [
+    '<canvas id="star-canvas" data-app-injected></canvas>',
+    topNavTemplate(select),
+    navDropdownsTemplate(select),
+    '<p data-app-injected></p>',
+    mainGridTemplate(select),
+    serverOptionsTemplate(select),
+    textScrollTemplate(select),
+    logFormTemplate(),
+    '<div id="color-popup" data-app-injected></div>',
+    camPopupTemplate(),
+    '<p class="pg-bottom" data-app-injected></p>'
+  ].filter(Boolean).join('\n');
 }
 
 function setupEventListeners() {
-  if (App.listenersReady) {
-    return;
-  }
+  if (App.listenersReady) return;
   App.listenersReady = true;
   document.addEventListener('click', handleClicks, false);
   // button dispatcher for every group registered next to its template
@@ -110,63 +150,17 @@ function setupEventListeners() {
   });
 }
 
-function buildPageHTML(model) {
-  const f = {
-    isServer: model === MAIN_SITE,
-    isPi: model === 'Pi',
-    isLedPi: model === 'LEDpi'
-  };
-  f.isPiLike = f.isPi || f.isLedPi;         // Pi-style pages (Pi + LEDpi)
-  f.isLedCapable = f.isServer || f.isLedPi; // pages with LED controls
-  return [
-    '<canvas id="star-canvas" data-app-injected></canvas>',
-    topNavTemplate(f),
-    navDropdownsTemplate(f),
-    '<p data-app-injected></p>',
-    mainGridTemplate(f),
-    serverOptionsTemplate(f),
-    textScrollTemplate(f),
-    logFormTemplate(),
-    '<div id="color-popup" data-app-injected></div>',
-    camPopupTemplate(),
-    '<p class="pg-bottom" data-app-injected></p>'
-  ].filter(Boolean).join('\n');
-}
-
-// injects the markup for the given model, replacing any previous render
-function renderPage(model) {
-  removeInjectedPage();
-  document.body.insertAdjacentHTML('afterbegin', buildPageHTML(model));
-}
-
-// removes every node injected by renderPage() -- full DOM cleanup
-function removeInjectedPage() {
-  document.querySelectorAll('[data-app-injected]').forEach((node) => {
-    node.remove();
-  });
-}
-
-function loadPage() {
-  App.sysModel = deviceType();
-  destroyPageServices();
-  renderPage(App.sysModel);
-  if (App.sysModel === MAIN_SITE) {
-    // control menu saved state
-    selectRoom(localStorage.getItem("ctls-mode"));
-    App.roomStateManager = new RoomStateManager('status_anchor');
-    window.weatherWidget = new WeatherWidget();
-    window.weatherWidget.activate();
+// Each template below registers its own button handlers with
+// registerListeners() directly beneath its markup; the groups merge into this
+// one map, which the delegated dispatcher looks up on click. Delegation means
+// handlers keep working for markup rendered later (room grids, bookmark
+// buttons, svropt panels) and never need re-attaching after a re-render.
+function registerListeners(listeners) {
+  for (const [id, handler] of Object.entries(listeners)) {
+    if (!(id in DELEGATED_LISTENERS)) {
+      DELEGATED_LISTENERS[id] = handler;
+    }
   }
-  // the list button's menu, the theme colour and the About window; built
-  // before the listeners below, which reach into it
-  App.mainMenu = new MainMenu();
-  App.mainMenu.load();
-  setupEventListeners();
-  // the saved animation setting is applied before the first frame, so a
-  // switched-off field never flickers into motion
-  App.starBackground = new AnimatedBackground('star-canvas', starsAnimationEnabled());
-  App.starBackground.activate();
-  resetActivityTimer();
 }
 
 // runs on each click anywhere on the page
@@ -188,6 +182,13 @@ function handleClicks(event) {
   const NO_HIDE_ELEMENTS = ['.button', '.bookmarked__item', '.nohide'].join(', ');
   if (event.target.closest(NO_HIDE_ELEMENTS)) return;
   removeDropdowns();
+}
+
+// removes every node injected by renderPage() -- full DOM cleanup
+function removeInjectedPage() {
+  document.querySelectorAll('[data-app-injected]').forEach((node) => {
+    node.remove();
+  });
 }
 
 //// stars animation setting ////
@@ -233,7 +234,7 @@ function activityBegin() {
   if (App.starBackground) {
     App.starBackground.resume();
   }
-  if (App.sysModel === MAIN_SITE && App.roomStateManager) {
+  if (serverMode && App.roomStateManager) {
     App.roomStateManager.showRoomState();
   }
 }
@@ -242,13 +243,13 @@ function activityStop() {
   if (App.starBackground) {
     App.starBackground.pause();
   }
-  if (App.sysModel === MAIN_SITE && App.roomStateManager) {
+  if (serverMode && App.roomStateManager) {
     App.roomStateManager.hideRoomState();
   }
 }
 
 async function refreshRoomState() {
-  if (App.sysModel === MAIN_SITE && App.roomStateManager) {
+  if (serverMode && App.roomStateManager) {
     App.roomStateManager.restartRoomState();
   }
 }
@@ -256,13 +257,12 @@ async function refreshRoomState() {
 //// dropdowns ////
 
 window.removeDropdowns = function() {
-  // anything still in flight is no longer allowed to draw itself
-  beginMenuRequest();
+  beginMenuRequest(); // anything still in flight is no longer allowed to draw itself
   classDisplay("dd-content", "none");
   removeDynMenus();
-  if (App.sysModel === MAIN_SITE) {
+  destroyActiveSwitches();
+  if (serverMode) {
     if (App.bookmarks) App.bookmarks.close();
-    destroyActiveSwitches();
     if (window.weatherWidget && typeof window.weatherWidget.closeMenu === 'function') {
       window.weatherWidget.closeMenu();
     }
@@ -344,17 +344,26 @@ function GoToExtPage(_path) {
 
 // back to home page
 function GoToHomePage() {
-  if (App.sysModel === MAIN_SITE) {
+  if (serverMode) {
     removeInjectedPage();
     loadPage();
   } else {
-    window.location = 'https://' + MAIN_SITE + '.home';
+    window.location = 'https://automate.home';
   }
 }
 
 // toggle a static dropdown menu
 function showMenu(_menu) {
   openDropdown(_menu);
+}
+
+// opens the file dialog
+function showUpload() {
+  removeDropdowns();
+  if (!App.uploader) {
+    App.uploader = new Uploader();
+  }
+  App.uploader.pick();
 }
 
 //// page templates ////
@@ -513,8 +522,8 @@ function roomControlsTemplate() {
     </div>
   </div>
   <p class="grid-sep"></p>
-  <button type="button" class="button" id="btn-yt-link">
-    <span class="button__text"><i class="fab fa-youtube"></i> YouTube</span>
+  <button type="button" class="button" id="btn-upload">
+    <span class="button__text"><i class="fad fa-cloud-upload"></i> Upload</span>
   </button>
   <button type="button" class="button" id="btn-show-temphumid">
     <span class="button__text">
@@ -539,7 +548,7 @@ function roomControlsTemplate() {
 }
 registerListeners({
   'btn-media-link':     () => GoToExtPage('media.home'),
-  'btn-yt-link':        () => GoToExtPage('youtube.com'),
+  'btn-upload':         () => showUpload(),
   'btn-lists':          () => showLists(),
   'btn-menu-allmenu':   () => showMenu('allmenu'),
   'btn-menu-pwrmenu':   () => showMenu('pwrmenu'),
@@ -2086,7 +2095,7 @@ function createListItem(col0_in, col1, col2, menuid) {
         sendCmd('main', 'relax', col0);
       });
       if (col1 == 'relaxactive') {
-        _elm.appendChild(makeElement('i', 'fad fa-play'));
+        _elm.appendChild(makeElement('i', 'fad fa-play icon-green'));
       }
       break;
     }
@@ -2094,7 +2103,7 @@ function createListItem(col0_in, col1, col2, menuid) {
       _elm.addEventListener("click", function() {
         sendCmd('main', 'relaxstop');
       });
-      _elm.appendChild(makeElement('i', 'fad fa-stop'));
+      _elm.appendChild(makeElement('i', 'fad fa-stop icon-red'));
       break;
     }
     case 'link':
@@ -2322,22 +2331,18 @@ function destroyPageServices() {
     App.starBackground.destroy();
     App.starBackground = null;
   }
-  // Lists window. dispose() rather than destroy(): the page is letting the
-  // instance go, so its document / window listeners have to come off with it,
-  // or the old instance stays reachable from them and answers pagehide beside
-  // whichever instance replaced it.
   if (App.lists) {
     App.lists.dispose();
     App.lists = null;
   }
-  // colour picker -- holds window-level pointer listeners while dragging
+  if (App.uploader) {
+    App.uploader.destroy();
+    App.uploader = null;
+  }
   if (App.colorPrompt) {
     App.colorPrompt.destroy();
     App.colorPrompt = null;
   }
-  // bookmarks menu -- the add/edit window is a direct child of <body>, so it
-  // outlives removeInjectedPage(); a stale edit mode would also keep
-  // handleClicks() swallowing every click on the newly drawn page
   if (App.bookmarks) {
     App.bookmarks.close();
     App.bookmarks = null;

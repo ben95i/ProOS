@@ -1,0 +1,148 @@
+/*
+ *  Automate -- upload.css
+ *
+ *  The upload progress window (html/upload.js). One window, a scrolling row
+ *  per file, and the progress bar underneath.
+ *
+ *  Loaded after main.css, which holds .prompt_win, .progress_grid and
+ *  .bar_progress -- the bar is the one the volume popup uses, so it carries
+ *  the theme colour and the same gradient without being redefined here.
+ *
+ *  Nothing in this sheet sets a font size except the percentage line. The
+ *  site's size comes from `* { font-size: 24px }` in main.css, which lands
+ *  on every element directly rather than being inherited -- so a size set on
+ *  this window would reach the window and nothing inside it, and the rows
+ *  would keep the default while the title moved. Leaving it alone is what
+ *  keeps the whole window at one size.
+ *
+ *  The row height below is sized for that 24px text.
+ */
+
+/* The height the file panel is measured in: five of these is the height of
+   the panel, and upload.js reads the same height back off a row to work out
+   how far to scroll. Changing it here changes both. */
+#upl__win {
+  --upl-row-height: 38px;
+}
+
+/*
+ *  Window
+ */
+
+/* .prompt_win is position:absolute with no offsets of its own, so a window
+   that does not place itself lands in the page flow and ends up below the
+   fold. Fixed and translated, as the lists window is, holds it in the middle
+   of the viewport however far the page behind it is scrolled. */
+#upl__win {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  /* wide enough for a long filename, never wider than the screen */
+  width: max-content;
+  min-width: 320px;
+  max-width: 90vw;
+  padding: 12px 16px 6px 16px;
+  box-sizing: border-box;
+}
+
+.upl__title {
+  padding-bottom: 10px;
+}
+
+/*
+ *  File list
+ */
+
+/* Exactly five rows, whatever was picked: the sixth and beyond are scrolled
+   to as they are reached, so the queue slides up rather than growing the
+   window down the screen. */
+.upl__list {
+  flex: none;
+  max-height: calc(var(--upl-row-height) * 5);
+  overflow-y: auto;
+  overflow-x: hidden;
+  text-align: left;
+  margin-bottom: 4px;
+}
+
+/* a fixed height, so five rows are five rows however tall a glyph is */
+.upl__row {
+  display: flex;
+  align-items: center;
+  height: var(--upl-row-height);
+  box-sizing: border-box;
+}
+
+/* the name gives way before the icon does, and one already cut to length in
+   upload.js is still cut here rather than dragging the window wider */
+.upl__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* The state icon keeps its column whichever glyph is in it, so the names
+   below each other stay in line as rows move from waiting to done. The gap
+   is on the icon rather than the name: the column would otherwise sit flush
+   against the text. */
+.upl__row > i {
+  width: 28px;
+  margin-right: 14px;
+  text-align: center;
+  flex: none;
+}
+
+.upl__row .fa-check {
+  color: var(--green-ind);
+}
+
+.upl__row .fa-exclamation-triangle {
+  color: var(--alert-red);
+}
+
+.upl__row .fa-arrow-up {
+  color: var(--main-75-white);
+}
+
+.upl__row .fa-clock {
+  color: var(--border-color);
+}
+
+/*
+ *  Progress bar
+ *
+ *  The volume popup's bar, which is laid out for that popup: fixed at 152px
+ *  and hidden until the popup shows it. Here it spans the window and is on
+ *  from the start, since there is always an upload behind it.
+ */
+
+#upl__win .progress_grid {
+  display: block;
+  width: 100%;
+  height: 22px;
+  margin-top: 4px;
+  margin-bottom: 6px;
+  flex: none;
+}
+
+/* The one place a size is set: this line reports on the bar above it rather
+   than standing beside the filenames, so it sits a step below the rest. */
+.upl__pct {
+  font-size: 20px;
+  color: var(--main-40-white);
+  padding-bottom: 10px;
+}
+
+/*
+ *  Close button
+ */
+
+/* The window is a flex column, so a button left to itself is stretched the
+   full width of it. Centred on its own line instead. */
+#upl__win .button {
+  align-self: center;
+}

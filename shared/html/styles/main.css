@@ -649,6 +649,18 @@ input.chkbox {
   text-align: center;
 }
 
+.icon-red {
+  --fa-primary-color: var(--red-ind);
+  --fa-secondary-color: var(--red-ind);
+  --fa-secondary-opacity: 1;   /* drop this line to keep the lighter underlay */
+}
+
+.icon-green {
+  --fa-primary-color: var(--green-ind);
+  --fa-secondary-color: var(--green-ind);
+  --fa-secondary-opacity: 1;   /* drop this line to keep the lighter underlay */
+}
+
 /* The box carries the theme colour, and white on a light one is barely
    there. MainMenu.colorRow() adds this once the colour crosses that line,
    and the label and the drop go dark instead. The element selector is needed

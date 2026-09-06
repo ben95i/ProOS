@@ -24,11 +24,6 @@ mount -o remount,ro /boot/firmware
 rm -f /opt/rpi/ledtype.txt
 echo "93ringinv" > /opt/rpi/ledtype.txt
 
-## Web Interface ID
-cp -f $BIN/modconf/device.js /var/www/html/
-chmod 644 /var/www/html/device.js
-chown www-data:www-data /var/www/html/device.js
-
 ## Custom Node API
 cp -f $BIN/modconf/custom.js /opt/nodeapi/
 chmod 644 /opt/nodeapi/custom.js

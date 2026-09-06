@@ -132,7 +132,7 @@ chown root:root /etc/lighttpd/root_ca.crt
 ## Base website files
 mkdir -p $WWWPATH
 chown -R "$WWW_NAME":"$WWW_GROUP" $TMPDIR/html
-rsync -a $TMPDIR/html/ $WWWPATH/
+rsync -a -t --delete --exclude='/ram/' $TMPDIR/html/ $WWWPATH/
 mkdir -p /var/www/sessions
 chmod -R g+rx /var/www/sessions
 chown -R "$WWW_NAME":"$WWW_GROUP" /var/www/sessions

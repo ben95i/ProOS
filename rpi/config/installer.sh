@@ -301,14 +301,12 @@ WWW_NAME="www-data"
 WWW_GROUP="www-data"
 
 ## install WWW files
-rm -rf "$WWWPATH"
 mkdir -p "$WWWPATH"
-mv -f $TMPDIR/html-base/* "$WWWPATH"
-mv -f $TMPDIR/html/* "$WWWPATH"
+chown -R "$WWW_NAME":"$WWW_GROUP" $TMPDIR/html
+rsync -a -t --delete --exclude='/ram/' $TMPDIR/html/ $WWWPATH/
 mkdir -p "$WWWPATH/ram"
 touch "$WWWPATH/ram/sysout.txt"
-chmod -R +x "$WWWPATH"
-chown -R "$WWW_NAME":"$WWW_GROUP" "$WWWPATH"
+chown -R "$WWW_NAME":"$WWW_GROUP" "$WWWPATH/ram"
 mkdir -p /var/www/sessions
 chmod -R g+rx /var/www/sessions
 chown -R "$WWW_NAME":"$WWW_GROUP" /var/www/sessions

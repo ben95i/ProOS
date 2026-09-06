@@ -24,9 +24,4 @@ mount -o remount,ro /boot/firmware
 rm -f /opt/rpi/ledtype.txt
 echo "3x60strips" > /opt/rpi/ledtype.txt
 
-## Web Interface ID
-cp -f $BIN/modconf/device.js /var/www/html/
-chmod 644 /var/www/html/device.js
-chown www-data:www-data /var/www/html/device.js
-
 exit

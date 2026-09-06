@@ -1,4 +1,4 @@
-// opcserver.cpp — Open Pixel Control receiver + WS2812 renderer
+// opcserver.cpp Open Pixel Control receiver + WS2812 renderer
 //
 // Build:
 //   g++ -std=c++17 -O3 -march=native -mtune=native
@@ -92,14 +92,14 @@ constexpr double WS2812_RESET_SECONDS = 0.000300;
 // scheduler jitter. Above ~0.95 the adaptive pacer will be backing off
 // constantly; below ~0.7 you are giving away refresh rate for nothing.
 constexpr double REFRESH_HEADROOM = 0.88;
-// Range 24-250 Hz. On small panels the wire is not the limit — the LED is. A
+// Range 24-250 Hz. On small panels the wire is not the limit the LED is. A
 // WS2812B restarts its internal PWM counter (~400 Hz on classic dies) every
 // time it latches, so the last PWM cycle before each latch is truncated. The
 // resulting duty-cycle error grows with the update rate and its phase drifts,
 // which shows up as slow whole-panel brightness beating. 60 is the safe value
 // for classic dies; V5/2020 parts run ~2 kHz internally and tolerate more.
 // argv[4] overrides this at runtime.
-constexpr double DEFAULT_TARGET_HZ = 90.0;
+constexpr double DEFAULT_TARGET_HZ = 60.0;
 // Range 10 Hz to DEFAULT_TARGET_HZ. Advisory only: it prints a warning and
 // never raises the rate, because the wire ceiling cannot be exceeded.
 constexpr double MIN_REFRESH_HZ = 50.0;
@@ -109,7 +109,7 @@ constexpr double MIN_REFRESH_HZ = 50.0;
 // in time, which is what the original server did everywhere: exact per-pixel
 // average, no spatial grain. Below it the work shifts to spatial error
 // diffusion, which holds a steady value rather than toggling 0<->1. Keep this
-// low — spatial diffusion trades smoothness for stability, so it should only
+// low spatial diffusion trades smoothness for stability, so it should only
 // cover levels where a temporal toggle would be near-100% modulation. 0
 // disables the spatial path entirely and restores the original behaviour.
 constexpr float TEMPORAL_CROSSOVER_LEVEL = 4.0f;
@@ -118,7 +118,7 @@ constexpr float TEMPORAL_CROSSOVER_LEVEL = 4.0f;
 // straight multiply, matching the original server: a 20% slider setting really
 // is 20% of full output, so 51 of the 255 levels stay available and solid
 // colours stay solid. Raising it evens out how the slider *feels* but costs
-// real output — at 3.0 (roughly the CIE lightness curve) a 20% setting is only
+// real output at 3.0 (roughly the CIE lightness curve) a 20% setting is only
 // 3% of full, leaving 7 levels, which is where dim colours break into dots.
 constexpr float SLIDER_RESPONSE_GAMMA = 1.5f;
 
@@ -129,7 +129,7 @@ constexpr float SLIDER_RESPONSE_GAMMA = 1.5f;
 // inherited from its original code, and is roughly the dimmest setting that is
 // still clearly lit in a dark room. Above ~0.02 the bottom of the slider stops
 // feeling dim at all.
-constexpr float MIN_LUMINANCE_FLOOR = 0.005f;
+constexpr float MIN_LUMINANCE_FLOOR = 0.008f;
 
 // --- Configuration (immutable once main() has parsed the command line) ---
 int matrixWidth = 16;

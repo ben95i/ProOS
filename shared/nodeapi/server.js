@@ -13,6 +13,7 @@ const { readFileSync, writeFile } = require('fs');
 const { query, validationResult } = require('express-validator');
 const { executeMain } = require('./controller');
 const { OPCLEDparser } = require('./ledparser');
+const { registerUploadRoutes } = require('./upload');
 
 const app = express();
 
@@ -101,6 +102,9 @@ app.post('/api/write', express.text({ type: '*/*', limit: '5mb' }), [
         res.status(500).json(`internal server error: ${err.message}`);
     }
 });
+
+app.use(express.json({ limit: '1mb' }));
+registerUploadRoutes(app); 
 
 app.listen(httpPort, '127.0.0.1', () => {
     console.log(`${hostname} API running on port ${httpPort}`);
