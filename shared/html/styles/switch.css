@@ -36,7 +36,7 @@
   --local-height: 55px;
   --local-color-on: var(--main-75-white);
   --local-color-off: var(--main-20-black);
-  --local-color-handle: var(--slider-bg);
+  --local-color-handle: var(--alt-filler);
   --drag-progress: 0;
   --drag-x: 0px;  
   width: var(--local-width);
