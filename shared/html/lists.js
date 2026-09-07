@@ -1,49 +1,49 @@
 // Automate Website - lists window
 //
-// Two classes: ListStore holds the list data, the file and the edit lock;
-// Lists is the window itself (default export, used by main.js).
+// ListStore holds the list data, the file and the edit lock; Lists is the
+// window itself (default export, used by main.js).
 //
-// A centred window holding a set of lists; selecting one swaps the window
-// over to the items inside it. Both levels support add, rename, multi-select
-// delete and drag re-ordering. Items add a round completed button: un-checked
-// items float to the top, checked items sit below in their saved order, and
-// only checked items can be dragged. Delete mode turns that same round button
-// red rather than adding a second set of boxes. A list holding more than
+// A centred window of lists; selecting one swaps the window over to the items
+// inside it. Both levels support add, rename, multi-select delete and drag
+// re-order. Items carry a round completed button: un-checked float to the
+// top, checked sit below in their saved order, and only checked ones drag.
+// Delete mode turns that same round button red. A list of more than
 // SEARCH_MIN_ITEMS items carries a search box that hides non-matching rows in
 // place, without re-drawing or re-ordering anything.
 //
+// Add puts a placeholder row on screen rather than a row: not saved, not
+// counted, not draggable, and gone again unless it is pressed and named.
+//
 // Saved file (lists.save), one line per item:
 //   LIST_ID|LIST_NAME|ITEM_ID|ITEM_NAME|CHECK_STATE
-// Row order is the order of the lists and their items, so nothing carries a
-// position number. A list with no items keeps its line with the item fields
-// empty. An older leading LOCK| row parses as "not a list row" and is dropped
+// Row order carries the order of the lists and their items, so nothing holds
+// a position number. A list with no items keeps its line with the item fields
+// empty. A row that is not a list row (an older leading LOCK| row) is dropped
 // the first time the list is saved.
 //
-// The edit lock lives in lists-lock.save (FileLock in utils.js): whoever
-// opens the window first claims it, anyone opening it while it is held gets a
-// read only window.
+// The edit lock lives in lists-lock.save (FileLock in utils.js): the first
+// window to open claims it, one opened while it is held is read only.
 //
 // Nothing is written on a timer. The list is saved on the close button, when
 // the page is hidden, and when it is unloaded. The dot in the top right
-// corner reports where those edits stand: green once the server has taken
-// them, yellow while there are changes it has not been given, red after a
-// failed write -- and a failed write leaves the edits in memory, with the
-// close offering to retry or discard.
+// corner says where those edits stand: green taken, yellow outstanding, red
+// after a failed write -- and a failed write keeps the edits in memory, with
+// the close offering to retry or discard.
 //
 // Encrypted lists
 //
-// A list can be locked. Its name and every item are held on one row as a
-// single AES-256-GCM blob:
+// An encrypted list is one row holding its name and every item as a single
+// AES-256-GCM blob:
 //   LIST_ID|!ENC|0|E1.<iv>.<ciphertext>|0
-// so nothing about it is in the file as itself -- not the name, not the item
-// count, not whether anything is ticked off. An older parser reads that row
-// as a list with no items rather than as damage.
+// so nothing about it is in the file as itself, and an older parser reads the
+// row as a list with no items rather than as damage. The key comes from a
+// password through the utils.js helpers; only a hash of the verifier is
+// stored, in lists-pwd.save, and the key never leaves this tab. While locked
+// these lists are not drawn, not counted and not opened: they sit in memory
+// as the blobs they arrived as and are written back untouched.
 //
-// The key comes from a password through the shared helpers in utils.js, and
-// only a hash of the verifier is stored, in lists-pwd.save. While locked, the
-// encrypted lists are not drawn, not counted and not opened; they sit in
-// memory as the blobs they arrived as and are written back untouched. The key
-// never leaves this tab.
+// A list added while the encrypted lists are open is one of them; one added
+// while they are shut is plain. The lock in the corner is the switch.
 
 import { splitMenuData, cleanString, isNumeric, removeWindow, showPopup,
   dragGripElement, DragSort, FileLock, readFile, writeFile, sendFileBeacon,
@@ -72,6 +72,7 @@ const DEL_ICON_ID = 'list__del-icon';
 const DEL_ICON_ON_CLASS = 'list__del-icon--on';
 const ROW_CLASS = 'list__row';
 const LABEL_CLASS = 'list__label';
+const LABEL_NEW_CLASS = 'list__label--new';
 const ROUND_CLASS = 'list__round';
 const ROUND_ON_CLASS = 'list__round--on';
 // the search box on a long list, and what it does to the rows below it
@@ -95,7 +96,6 @@ const PWD_OK_BTN_ID = 'list__btn-pwd-ok';
 const PWD_CANCEL_BTN_ID = 'list__btn-pwd-cancel';
 const PWD_BOX_IDS = [PWD_BOX_ID, PWD_BOX2_ID, PWD_BOX3_ID];
 const ROW_LOCK_CLASS = 'list__rowlock';
-const ROW_LOCK_ON_CLASS = 'list__rowlock--on';
 const LOCK_HOLD_CLASS = 'list__lock-icon--hold';
 // how long the lock has to be held down to offer a password change
 const LOCK_HOLD_MS = 2500;
@@ -110,11 +110,9 @@ const DOT_HIDDEN = 0;  // nothing has been tried yet
 const DOT_SAVED = 1;   // green -- the server holds what is on screen
 const DOT_UNSAVED = 2; // yellow -- edits the server has not been given
 const DOT_ERROR = 3;   // red -- a write failed
-// Stored names are printable ASCII with the column separator "|" swapped out;
-// "/" and "\" are kept, since nothing downstream treats a name as a path.
-//
-// An item may hold more than one line. The file is one row per item, so a
-// newline cannot be stored as itself: it goes in as "~", which is why "~" is
+// Stored names are printable ASCII with the column separator "|" taken out;
+// "/" and "\" are kept. An item may hold more than one line, and the file is
+// one row per item, so a newline is stored as "~" -- which is why "~" is
 // taken out of the text on the way in. List names stay on one line.
 const MAX_NAME_LENGTH = 64;
 const MAX_ITEM_LENGTH = 1000;
@@ -132,14 +130,22 @@ const VIEW_ITEMS = 1;
 // list modes
 const MODE_OPEN = 0;
 const MODE_SELECT = 1;
-// What stands in the name column of an encrypted row. It cannot be mistaken
-// for a name: cleanName() takes "!" through untouched, but every real name
-// has been through it too and none of them come out as this.
+// What stands in the name column of an encrypted row. No real name comes out
+// of cleanName() looking like this.
 const ENC_MARK = '!ENC';
 // password prompt modes
 const PWD_SETUP = 0;  // no password yet -- pick one, twice
 const PWD_UNLOCK = 1; // one is set -- enter it
 const PWD_CHANGE = 2; // the old one and the new one, twice
+// what the prompt reads as in each of them, and how many boxes it puts up
+const PWD_FORMS = {
+  [PWD_SETUP]: { heading: "Set a lists password", action: "Set", boxes: 2,
+    first: "New password", second: "Repeat password", fill: "new-password" },
+  [PWD_UNLOCK]: { heading: "Enter lists password", action: "Unlock", boxes: 1,
+    first: "Password", second: "Repeat password", fill: "current-password" },
+  [PWD_CHANGE]: { heading: "Change lists password", action: "Change", boxes: 3,
+    first: "Current password", second: "New password", fill: "current-password" }
+};
 
 //// shared helpers ////
 
@@ -151,41 +157,45 @@ function boundedText(name, limit) {
   return name;
 }
 
-// A list name: printable ASCII, one line, of sane length.
+// The one cleaner both names go through. A list name is printable ASCII on a
+// single line; an item may run to several, so line breaks survive (normalised
+// to "\n"), runs of spaces are closed up, and the length allowed is greater.
 // cleanName(" Caf\u00e9 | x ") -> "Cafe x"
-export function cleanName(value) {
+function cleanText(value, multi) {
   let raw = '';
   if (value !== null && value !== undefined) {
     raw = String(value);
   }
-  const text = cleanString(raw);
-  const name = (text || '')
-    .normalize("NFD")             // split accents off their base letter
-    .replace(COMBINING_MARKS, '') // "Cafe" keeps the "e", loses the accent
-    .replace(NON_ASCII, '')
-    .replace(RESERVED_CHARS, '')
-    .replace(EXTRA_SPACES, ' ')   // close up any gaps left behind
-    .trim();
-  return boundedText(name, MAX_NAME_LENGTH);
-}
-
-// The same treatment for an item, which may run to more than one line: line
-// breaks are kept (and normalised to "\n"), runs of spaces are closed up
-// without touching them, and the text is allowed to be much longer.
-export function cleanItemName(value) {
-  let raw = '';
-  if (value !== null && value !== undefined) {
-    raw = String(value);
+  let limit = MAX_NAME_LENGTH;
+  let outside = NON_ASCII;      // characters the file cannot carry
+  let reserved = RESERVED_CHARS; // characters it uses for itself
+  let runs = EXTRA_SPACES;       // whitespace to close up
+  if (multi === true) {
+    limit = MAX_ITEM_LENGTH;
+    outside = NON_ASCII_LINES;
+    reserved = RESERVED_CHARS_LINES;
+    runs = EXTRA_BLANKS;
+    // CRLF and a lone CR both become the one newline the rest of this expects
+    raw = raw.replace(/\r\n|\r/g, '\n');
+  } else {
+    raw = cleanString(raw) || '';
   }
   const name = raw
-    .replace(/\r\n|\r/g, '\n')    // CRLF and lone CR both become one newline
-    .normalize("NFD")
-    .replace(COMBINING_MARKS, '')
-    .replace(NON_ASCII_LINES, '')
-    .replace(RESERVED_CHARS_LINES, '')
-    .replace(EXTRA_BLANKS, ' ')
+    .normalize("NFD")             // split accents off their base letter
+    .replace(COMBINING_MARKS, '') // "Cafe" keeps the "e", loses the accent
+    .replace(outside, '')
+    .replace(reserved, '')
+    .replace(runs, ' ')           // close up any gaps left behind
     .trim();
-  return boundedText(name, MAX_ITEM_LENGTH);
+  return boundedText(name, limit);
+}
+
+export function cleanName(value) {
+  return cleanText(value, false);
+}
+
+export function cleanItemName(value) {
+  return cleanText(value, true);
 }
 
 // item text <-> the one row it is stored on: the newlines it carries are the
@@ -201,6 +211,33 @@ function decodeLines(value) {
 // the next free id in a list of entries that carry one
 function nextId(entries) {
   return entries.reduce((highest, entry) => Math.max(highest, entry.id), -1) + 1;
+}
+
+// document.getElementById, at the length it is used at
+function byId(id) {
+  return document.getElementById(id);
+}
+
+// Shows or hides an element, by id or by the element itself. Hidden is always
+// display:none; shown takes whatever display mode the caller gives.
+function setShown(target, shown, mode = "") {
+  let element = target;
+  if (typeof target === 'string') {
+    element = byId(target);
+  }
+  if (!element) {
+    return;
+  }
+  let display = "none";
+  if (shown === true) {
+    display = mode;
+  }
+  element.style.display = display;
+}
+
+// every message this window raises carries its name
+function warn(text) {
+  showPopup(`[${WIN_TITLE}] ${text}`);
 }
 
 /*
@@ -251,18 +288,11 @@ export class ListStore {
     return this.online;
   }
 
-  // hands a file to the browser to send on its own (utils.js)
-  writeBeacon(file, text) {
-    return sendFileBeacon(file, text);
-  }
-
   //// file text ////
 
-  // File text -> rows of columns, blank lines dropped. Anything outside
-  // printable ASCII is taken out of a row before it is split: nothing this
-  // file holds is written with such a character, so a row carrying one has
-  // been damaged in transit, and dropping the damage is what lets the rest of
-  // the row still be read.
+  // File text -> rows of columns, blank lines dropped. Characters outside
+  // printable ASCII are damage from transit and are taken out first, so the
+  // rest of the row can still be read.
   rows(text) {
     if (typeof text !== 'string' || text === "") {
       return [];
@@ -275,11 +305,9 @@ export class ListStore {
       .map(row => row.split(COL_DELIMITER));
   }
 
-  // An encrypted list is one row and stays sealed: the name column says so,
-  // and everything the list holds is in the blob on it. It is kept whether or
-  // not it can be opened, so a locked window writes it back exactly as it
-  // arrived -- including one that arrived damaged, since a row nobody can
-  // read is worth more than a row that quietly disappears.
+  // An encrypted list is one row: the name column says so, the blob holds
+  // everything else. It is kept whether or not it can be opened, so a locked
+  // window writes it back exactly as it arrived, damaged or not.
   sealedEntry(listId, cols) {
     const blob = (cols[3] || '').trim();
     if (blob === "") {
@@ -341,21 +369,25 @@ export class ListStore {
   buildBody() {
     let _file = "";
     this.data.forEach(entry => {
+      // a row added but never named is a placeholder, and is not saved
+      if (entry.pending === true) {
+        return;
+      }
       if (entry.enc === true) {
-        // One row, and the blob is all of it. sealOpen() has already
-        // refreshed it for anything edited since. A blob that somehow went
-        // missing takes its row with it rather than writing a half list.
+        // one row, and the blob is all of it; sealOpen() has refreshed it. A
+        // blob that went missing takes its row rather than write half a list.
         if (typeof entry.blob === 'string' && entry.blob !== "") {
           _file += `${entry.id}|${ENC_MARK}|0|${entry.blob}|0\n`;
         }
         return;
       }
       const head = `${entry.id}|${entry.name}`;
-      if (entry.items.length === 0) {
+      const items = this.savedItems(entry);
+      if (items.length === 0) {
         _file += head + "|||0\n";
         return;
       }
-      entry.items.forEach(item => {
+      items.forEach(item => {
         let checked = '0';
         if (item.checked === true) {
           checked = '1';
@@ -367,12 +399,14 @@ export class ListStore {
     return _file;
   }
 
-  // What to write for the list rows. this.data is only worth writing while a
-  // list that was actually loaded is standing in it: a session that never
-  // loaded holds an empty array, and writing that out would erase the file.
-  // The last body known to be good goes back instead, which is what the
-  // server already has. A loaded list the user has genuinely emptied still
-  // writes empty.
+  // the items of a list worth writing: not the placeholder row, if it has one
+  savedItems(entry) {
+    return entry.items.filter(item => item.pending !== true);
+  }
+
+  // What to write for the list rows. this.data is only worth writing once a
+  // list has actually loaded; a session that never loaded would write an
+  // empty array over the file, so the last known good body goes back instead.
   safeBody() {
     if (this.loaded === true) {
       return this.buildBody();
@@ -382,30 +416,29 @@ export class ListStore {
 
   //// encrypted lists ////
   //
-  // An encrypted list is the same entry as any other while it is open: the
-  // window adds items to it, renames it and re-orders it without knowing.
-  // The difference is only in how it reaches the file.
+  // While it is open, an encrypted list is the same entry as any other: the
+  // window renames and re-orders it without knowing. The difference is only
+  // in how it reaches the file.
 
   unlocked() {
     return this.crypt.isUnlocked();
   }
 
-  // is there anything encrypted to unlock in the first place
-  hasSealed() {
-    return this.data.some(entry => entry.enc === true);
-  }
-
-  // an entry the window is allowed to draw: everything, less the encrypted
-  // lists that have not been opened
+  // an entry the window may draw: everything but the unopened encrypted lists
   isHidden(entry) {
     return entry.enc === true && entry.open !== true;
+  }
+
+  // the encrypted lists, in whatever state they are in
+  sealed() {
+    return this.data.filter(entry => entry.enc === true);
   }
 
   // the whole list, as the one string that goes inside the blob
   sealText(entry) {
     return JSON.stringify({
       n: entry.name,
-      i: entry.items.map(item => {
+      i: this.savedItems(entry).map(item => {
         let checked = 0;
         if (item.checked === true) {
           checked = 1;
@@ -415,8 +448,7 @@ export class ListStore {
     });
   }
 
-  // and back again; anything not the shape it went in as is refused rather
-  // than half loaded
+  // and back again; anything not the shape it went in as is refused
   readSealed(entry, text) {
     let held = null;
     try {
@@ -440,16 +472,15 @@ export class ListStore {
   }
 
   // Opens every sealed list the key fits. One that will not open is left
-  // sealed and counted: it belongs to another password, or it has been
-  // tampered with, and either way overwriting it would be worse.
+  // sealed and counted: it belongs to another password, or it is damaged.
   async unsealAll() {
     let opened = 0;
     let failed = 0;
     if (!this.unlocked()) {
       return { opened: opened, failed: failed };
     }
-    for (const entry of this.data) {
-      if (entry.enc !== true || entry.open === true) {
+    for (const entry of this.sealed()) {
+      if (entry.open === true) {
         continue;
       }
       const text = await this.crypt.decrypt(entry.blob, cryptContext(FILE_NAME, entry.id));
@@ -471,8 +502,8 @@ export class ListStore {
       return true;
     }
     let done = true;
-    for (const entry of this.data) {
-      if (entry.enc !== true || entry.open !== true || entry.stale !== true) {
+    for (const entry of this.sealed()) {
+      if (entry.open !== true || entry.stale !== true) {
         continue;
       }
       const blob = await this.crypt.encrypt(
@@ -487,9 +518,8 @@ export class ListStore {
     return done;
   }
 
-  // Kicks a seal off in the background after an edit, so the blobs are
-  // already fresh by the time anything wants to write them -- including the
-  // beacon on the way out of the page, which cannot wait for anything.
+  // Seals in the background after an edit, so the blobs are fresh by the time
+  // anything writes them -- the unload beacon cannot wait for one.
   sealSoon() {
     return trackPromise(this, 'sealing', this.sealOpen());
   }
@@ -499,15 +529,11 @@ export class ListStore {
     await awaitQuiet(this.sealing);
   }
 
-  // Shuts the encrypted lists again: the blobs are brought up to date, then
-  // the plaintext and the key are dropped together. The caller saves first --
-  // this is the point of no return for anything still in memory.
+  // Shuts the encrypted lists: the blobs are brought up to date, then the
+  // plaintext and the key go together. The caller saves first.
   async lockUp() {
     await this.sealOpen();
-    this.data.forEach(entry => {
-      if (entry.enc !== true) {
-        return;
-      }
+    this.sealed().forEach(entry => {
       entry.name = "";
       entry.items = [];
       entry.open = false;
@@ -516,59 +542,58 @@ export class ListStore {
     this.crypt.lock();
   }
 
-  // Turns a list into an encrypted one, or back into a plain one. Only ever
-  // on a list the user is adding, and only while the key is in hand.
-  setSealed(entry, sealed) {
-    if (!entry) {
+  // Turns a list being added into an encrypted one. Without the key it does
+  // nothing, which is what makes a list added on a locked window a plain one.
+  // The blob is made by the seal that follows the first edit.
+  setSealed(entry) {
+    if (!entry || !this.unlocked()) {
       return false;
     }
-    if (sealed === true) {
-      if (!this.unlocked()) {
-        return false;
-      }
-      entry.enc = true;
-      entry.open = true;
-      entry.stale = true;
-      entry.blob = null;
-    } else {
-      delete entry.enc;
-      delete entry.open;
-      delete entry.stale;
-      delete entry.blob;
-    }
+    entry.enc = true;
+    entry.open = true;
+    entry.stale = true;
+    entry.blob = null;
     return true;
   }
 
   //// session ////
 
-  // Loads the list and takes the edit lock when it is free. onData() is
-  // called as soon as the list is parsed: claiming the lock is a second round
-  // trip, and it changes only whether the rows can be edited, not what they
-  // say.
+  // The file into this.data: read, parsed, and unsealed where the key fits.
+  // A read that does not answer leaves this.data alone and marks the session
+  // unloaded, which is what stops it being written back.
+  async load() {
+    const text = await this.read();
+    if (text === null) {
+      this.loaded = false;
+      return false;
+    }
+    this.data = this.parse(text);
+    this.loaded = true;
+    // a window re-opened while the key is in hand does not ask again
+    if (this.unlocked()) {
+      await this.unsealAll();
+    }
+    return true;
+  }
+
+  // Loads the list and takes the edit lock when it is free. onData() runs as
+  // soon as the list is parsed; claiming the lock is a second round trip and
+  // changes only whether the rows can be edited.
   async open(onData) {
-    // a release from a previous session can still be settling, and it builds
-    // its body when it resumes -- let it finish first
+    // a release from a previous session builds its body when it resumes
     await awaitQuiet(this.releasing);
     this.dirty = false;
     this.sentBody = null;
     this.loaded = false; // nothing trustworthy in this.data until the read is in
     // two files, asked for together, which costs the same wait as one
-    const [text, lockText] = await Promise.all([this.read(), this.lock.read()]);
-    if (text === null) {
+    const [ok, lockText] = await Promise.all([this.load(), this.lock.read()]);
+    if (!ok) {
       // nothing loaded, so there is nothing safe to write back
       this.data = [];
       this.readOnly = true;
       return;
     }
-    this.data = this.parse(text);
-    this.loaded = true;
-    // a window re-opened while the key is still in hand shows what it showed
-    // before, rather than asking for the password a second time
-    if (this.unlocked()) {
-      await this.unsealAll();
-    }
-    // what the server holds: a save that builds this same text again has
-    // nothing to say and is dropped rather than put on the wire
+    // what the server holds: a save that rebuilds this same text is dropped
     this.sentBody = this.buildBody();
     this.lastGoodBody = this.sentBody;
     if (typeof onData === 'function') {
@@ -584,23 +609,14 @@ export class ListStore {
     }
   }
 
-  // A competing window won the lock in the moment we both claimed it. The
-  // list is re-read rather than kept: the winner is the one allowed to write.
+  // Another window won the lock as we both claimed it. The list is re-read
+  // rather than kept: the winner is the one allowed to write.
   async lockLost() {
     this.readOnly = true;
     this.dirty = false;
     this.sentBody = null;
-    const text = await this.read();
-    if (text === null) {
-      this.loaded = false;
-    } else {
-      this.data = this.parse(text);
-      this.loaded = true;
-      if (this.unlocked()) {
-        await this.unsealAll();
-      }
-    }
-    showPopup(`[${WIN_TITLE}] another user is editing, opened read only.`);
+    await this.load();
+    warn("another user is editing, opened read only.");
     this.onChange();
   }
 
@@ -608,37 +624,26 @@ export class ListStore {
     return this.lock.owned === true && this.readOnly !== true;
   }
 
-  // An edit was made. Nothing is written here: this only records that the
-  // server is now behind, which turns the dot yellow.
+  // An edit was made. Nothing is written here; this turns the dot yellow.
   markChanged() {
     this.dirty = true;
-    // The edit may have been to an encrypted list, and there is no cheap way
-    // to know which from here -- so every open one is marked and re-sealed.
-    // It keeps the blobs ready for a write that cannot wait.
-    let any = false;
-    this.data.forEach(entry => {
-      if (entry.enc === true && entry.open === true) {
-        entry.stale = true;
-        any = true;
-      }
-    });
-    if (any) {
+    // which list was edited is not knowable from here, so every open one is
+    // marked and re-sealed, keeping the blobs ready for a write that cannot wait
+    const open = this.sealed().filter(entry => entry.open === true);
+    open.forEach(entry => { entry.stale = true; });
+    if (open.length > 0) {
       this.sealSoon();
     }
   }
 
-  // The file needs writing, but nothing in memory changed: a rekey replaced
-  // the blobs wholesale and they are already current. markChanged() would
-  // mark every open list stale, and the seal that follows would rebuild those
-  // blobs under the key being replaced.
+  // Dirty without an edit in memory: a rekey replaced the blobs and they are
+  // already current. markChanged() would re-seal them under the old key.
   markBlobsChanged() {
     this.dirty = true;
   }
 
-  // Writes the list out, if there is anything the server has not been given.
-  // Only one write is ever on the wire; a second caller waits for the first
-  // and then writes whatever is still outstanding, so an edit made during a
-  // slow write is not left behind.
+  // Writes the list out if the server is behind. Only one write is ever on
+  // the wire; a second caller waits for it, then writes what is outstanding.
   save() {
     const previous = this.saving;
     return trackPromise(this, 'saving', this.runSave(previous));
@@ -662,8 +667,7 @@ export class ListStore {
       this.dirty = false;
       return true;
     }
-    // what is on the wire right now, so the beacon on the way out of the page
-    // does not send the same text a second time
+    // what is on the wire, so the unload beacon does not send it twice
     this.wireBody = body;
     const sent = await this.write(body);
     this.wireBody = null;
@@ -675,26 +679,20 @@ export class ListStore {
     return sent;
   }
 
-  // The last-chance save for a page that is going away. It cannot be awaited
-  // and it cannot be checked, so it is only worth sending when there really
-  // is something outstanding. Nothing can be encrypted here either --
-  // WebCrypto is a promise and the page is not waiting -- so it sends the
-  // blobs sealSoon() has already made.
+  // Last-chance save for a page going away: it cannot be awaited or checked,
+  // so it only goes when something is really outstanding. Nothing can be
+  // encrypted here, so it sends the blobs sealSoon() has already made.
   saveBeacon() {
-    if (!this.canWrite()) {
-      return false;
-    }
-    if (this.dirty !== true) {
+    if (!this.canWrite() || this.dirty !== true) {
       return false;
     }
     const body = this.safeBody();
-    // A save started when the page was hidden is often still on the wire when
-    // it is unloaded a moment later. Sending the same text again gains
-    // nothing and puts two writes on one file at once.
+    // the save from the hide is often still on the wire, and sending the same
+    // text again would put two writes on one file
     if (body === this.wireBody) {
       return false;
     }
-    const handed = this.writeBeacon(FILE_NAME, body);
+    const handed = sendFileBeacon(FILE_NAME, body);
     if (handed === true) {
       // taken on trust: there is no answer to wait for
       this.sentBody = body;
@@ -704,32 +702,28 @@ export class ListStore {
     return handed;
   }
 
-  // Hands the lock back as the page goes away. Without this the lock file is
-  // left holding the token of a window that no longer exists, and re-opening
-  // gets a read only list until the stamp expires.
+  // Hands the lock back as the page goes away, or the lock file keeps the
+  // token of a window that no longer exists until the stamp expires.
   releaseBeacon() {
     if (this.lock.owned !== true) {
       return false;
     }
-    const handed = this.writeBeacon(LOCK_FILE, this.lock.line(false));
+    const handed = sendFileBeacon(LOCK_FILE, this.lock.line(false));
     if (handed === true) {
       this.lock.abandon();
-      // The page is normally gone a moment later, but one put into the
-      // back/forward cache can come back instead. Saying so here keeps the
-      // window honest in that gap; reclaim() puts it back.
+      // a page in the back/forward cache comes back; reclaim() undoes this
       this.readOnly = true;
     }
     return handed;
   }
 
-  // Takes the lock again after the page was put away and brought back (the
-  // back/forward cache), since it was handed back on the way out.
+  // Takes the lock again after a back/forward cache restore.
   async reclaim() {
     if (this.lock.owned === true) {
       return true;
     }
     if (this.loaded !== true) {
-      return false;
+      return false; // nothing worth holding the lock for
     }
     const lockText = await this.lock.read();
     if (await this.lock.claim(lockText)) {
@@ -741,9 +735,8 @@ export class ListStore {
     return false;
   }
 
-  // Writes out anything unsaved and hands the lock back. Only ever one at a
-  // time: destroy() fires this without waiting, so a re-opened window can
-  // call it again while the first is still settling.
+  // Writes out anything unsaved and hands the lock back. Only one at a time:
+  // destroy() fires it without waiting, so a re-opened window can call again.
   release() {
     return singleFlight(this, 'releasing', () => this.runRelease());
   }
@@ -754,11 +747,9 @@ export class ListStore {
       this.lock.abandon();
       return false;
     }
-    // Anything unsaved has to go out on its own, and it has to go first,
-    // while the lock is still held.
+    // anything unsaved goes first, while the lock is still held
     const sent = await this.save();
-    // freeing the lock is worth trying even if that save did not land -- the
-    // edits stay in memory either way, and a stuck lock helps nobody
+    // worth freeing even if that write failed: the edits stay in memory
     const freed = await this.lock.release(true);
     if (freed !== true) {
       return false;
@@ -787,28 +778,30 @@ export default class Lists {
     this.mode = MODE_OPEN;
     this.openId = null;    // list being viewed
     this.editing = false;  // inline name box is open
-    this.newId = null;     // row being added, while its name box is open
+    this.pendingId = null; // row added but not named yet, so not saved
+    this.pendingRows = null; // the array that row was added to
     this.query = "";       // what is in the search box, if there is one
     this.pwdMode = null;   // password prompt: setup / unlock / change, or not up
-    this.pwdDone = null;   // what to run once it has been answered
     this.holdTimer = null; // the lock is being held down
     this.held = false;     // it was held long enough, so the press is spent
     this.epoch = 0;        // counts openings, so a late teardown knows its own
     this.busy = false;     // an exchange with the server is being waited on
     this.settling = false; // rows are up, the edit lock has not answered yet
-    // rows picked out for deletion, by id. Kept here rather than read back
-    // out of the rows, so a re-draw in the middle of selecting keeps them.
+    // rows picked out for deletion, by id, so a re-draw mid-select keeps them
     this.selected = new Set();
     this.dragSort = new DragSort({
       rowClass: ROW_CLASS,
       onDrop: () => this.commitOrder()
     });
     // window level listeners, attached as a set
+    const endPress = (event) => {
+      this.holdCancel();
+      this.dragSort.end(event);
+    };
     this.listeners = {
       click: this.handleClick.bind(this),
       // no re-ordering while a name box is open, while rows are being picked
-      // out for deletion, or while a search is holding rows back -- the gap a
-      // row would be dropped into is not the gap it would land in
+      // out, or while a search is holding rows back
       pointerdown: (event) => {
         this.holdStart(event);
         if (!this.editing && this.mode !== MODE_SELECT && !this.filtering()) {
@@ -820,23 +813,13 @@ export default class Lists {
         this.holdCheck(event);
         this.dragSort.move(event);
       },
-      pointerup: (event) => {
-        this.holdCancel();
-        this.dragSort.end(event);
-      },
-      pointercancel: (event) => {
-        this.holdCancel();
-        this.dragSort.end(event);
-      }
+      // a press that ends and one the browser takes away mean the same here
+      pointerup: endPress,
+      pointercancel: endPress
     };
-    // Page level listeners, attached for the life of the instance. They cost
-    // nothing while the window is shut: with no lock held there is nothing to
-    // write, and every one of them starts by checking exactly that.
-    //
-    // Held on `this` rather than passed as throwaway arrows, so dispose() can
-    // take them off again. They used to be unremovable, which kept every
-    // Lists instance -- its store, its lock token and its heartbeat --
-    // reachable from document and window for the life of the tab.
+    // Page level listeners, for the life of the instance. They cost nothing
+    // while the window is shut -- each checks the lock first -- and they are
+    // held on `this` so dispose() can take them off again.
     this.pageListeners = {
       hidden: () => this.handleHidden(),
       unload: () => this.handleUnload(),
@@ -850,35 +833,27 @@ export default class Lists {
 
   //// saving ////
 
-  // The page is going into the background -- switching tab, switching app, or
-  // on the way to being closed. This is the last moment the page is reliably
-  // still alive, so a normal write is used: it can be checked and the dot
-  // updated from the answer.
+  // The page is going into the background. It is reliably still alive here,
+  // so the write can be awaited and the dot updated from the answer.
   handleHidden() {
-    if (document.visibilityState !== 'hidden') {
-      return;
-    }
-    if (this.store.dirty !== true) {
+    if (document.visibilityState !== 'hidden' || this.store.dirty !== true) {
       return;
     }
     this.store.save().then(() => this.updateDot());
   }
 
-  // The page is being torn down. An awaited write would be cancelled part
-  // way, so this hands the list to the browser to finish on its own. It only
-  // fires if the hide above did not already get the edits away, and on iOS
-  // Safari it often does not fire at all -- the lock expiring covers that.
+  // The page is being torn down: an awaited write would be cancelled part
+  // way, so the browser is handed the list to finish on its own. On iOS
+  // Safari this often does not fire, and the lock expiring covers that.
   handleUnload() {
     // the list first, while the lock is still held
     this.store.saveBeacon();
-    // then the lock itself: leaving it held is what left a re-opened window
-    // read only until it expired
+    // then the lock: leaving it held opens the next window read only
     this.store.releaseBeacon();
   }
 
-  // The page was put away and brought back rather than loaded fresh (the
-  // back/forward cache), so the window is still on screen but the lock was
-  // handed back on the way out. Ask for it again.
+  // A back/forward cache restore: the window is still on screen, but the lock
+  // went back on the way out. Ask for it again.
   async handleRestore(event) {
     if (event.persisted !== true) {
       return; // an ordinary load, which starts from nothing anyway
@@ -893,7 +868,7 @@ export default class Lists {
   //// window lifecycle ////
 
   isOpen() {
-    return document.getElementById(WIN_ID) !== null;
+    return byId(WIN_ID) !== null;
   }
 
   // opens the window, or closes it again if it is already on-screen
@@ -903,9 +878,7 @@ export default class Lists {
       return;
     }
     this.epoch += 1;
-    this.view = VIEW_LISTS;
-    this.mode = MODE_OPEN;
-    this.openId = null;
+    this.resetView();
     this.drawWindow();
     this.settling = true;
     try {
@@ -919,21 +892,26 @@ export default class Lists {
       return;
     }
     if (this.store.online === false) {
-      showPopup(`[${WIN_TITLE}] server connection not available.`);
+      warn("server connection not available.");
     }
     this.render();
   }
 
-  // Close button. Anything unsaved goes out now; only a write the server
-  // refuses stops the window closing.
+  // Writes the list out with the ring turning by the status dot, and leaves
+  // the dot on the answer. Every path that saves on purpose comes here; the
+  // ones that save on the way out of the page cannot wait for an answer.
+  async saveOut() {
+    const sent = await this.runBusy(() => this.store.save());
+    this.updateDot();
+    return sent;
+  }
+
+  // Close button. Anything unsaved goes out now; only a refused write stops
+  // the window closing.
   async closeWindow() {
-    if (this.store.dirty === true) {
-      const sent = await this.runBusy(() => this.store.save());
-      this.updateDot();
-      if (!sent) {
-        this.showOverlay(true);
-        return;
-      }
+    if (this.store.dirty === true && !await this.saveOut()) {
+      this.showOverlay(true);
+      return;
     }
     this.destroy();
   }
@@ -944,12 +922,11 @@ export default class Lists {
     this.holdCancel();
     this.held = false;
     this.dragSort.cancel();
-    // The release writes out anything still unsaved, and that write needs the
-    // key -- so the lock comes after it rather than beside it.
+    // the release writes out anything unsaved and that write needs the key,
+    // so the key is dropped after it rather than beside it
     const releasing = this.store.release();
-    // A window closed and opened again in the moment that release takes would
-    // otherwise have the key taken back off it by the chain below, after it
-    // had been entered again. The count says which window this belongs to.
+    // a window re-opened while that release settles would otherwise have the
+    // key taken back off it by the chain below; the count says whose it is
     this.epoch += 1;
     const token = this.epoch;
     Promise.resolve(releasing)
@@ -963,7 +940,14 @@ export default class Lists {
     removeWindow(WIN_ID);
     this.closePassword();
     this.editing = false;
-    this.newId = null;
+    this.pendingId = null;
+    this.pendingRows = null;
+    this.resetView();
+  }
+
+  // The state a session starts on. Used at both ends -- opening and tearing
+  // down -- so the two cannot drift apart.
+  resetView() {
     this.view = VIEW_LISTS;
     this.mode = MODE_OPEN;
     this.openId = null;
@@ -971,9 +955,9 @@ export default class Lists {
     this.selected.clear();
   }
 
-  // End of life for the instance, as opposed to the window. The close button
-  // uses destroy() and keeps the page listeners: a shut window still has to
-  // hand the lock back if the page is hidden while a release is settling.
+  // End of the instance, as opposed to the window: destroy() keeps the page
+  // listeners, since a shut window still hands the lock back if the page is
+  // hidden while a release is settling.
   dispose() {
     document.removeEventListener('visibilitychange', this.pageListeners.hidden);
     window.removeEventListener('pagehide', this.pageListeners.unload);
@@ -982,10 +966,9 @@ export default class Lists {
     this.destroy();
   }
 
-  // Runs an exchange with the server with the ring turning by the status dot.
-  // Every path that awaits the store goes through here, and the ring stops
-  // whether the exchange worked or threw. A caller that has already stopped
-  // it itself (showRows) is not re-drawn over.
+  // Runs a server exchange with the ring turning by the status dot. The ring
+  // stops whether it worked or threw; a caller that has stopped it itself
+  // (showRows) is not re-drawn over.
   async runBusy(action) {
     this.busy = true;
     this.renderBusy();
@@ -1000,10 +983,8 @@ export default class Lists {
     }
   }
 
-  // The ring and the buttons are the only things a busy state changes, so
-  // only those are re-drawn. Going through the full render() instead pulled
-  // the rows out and put them straight back, which read as the list blinking
-  // every time it was saved.
+  // Only the ring and the buttons change with a busy state, so only those are
+  // re-drawn -- a full render() blinks the rows on every save.
   renderBusy() {
     if (!this.isOpen()) {
       return;
@@ -1012,8 +993,7 @@ export default class Lists {
     this.updateDot();
   }
 
-  // the file is in and parsed: the rows replace the label straight away, and
-  // the buttons stay off until the lock says whether they can be used
+  // the file is parsed: the rows go up, the buttons wait on the lock
   showRows() {
     this.busy = false;
     if (this.isOpen()) {
@@ -1030,9 +1010,8 @@ export default class Lists {
     if (this.isOpen()) {
       return;
     }
-    // The back button starts hidden. The window always opens on the lists
-    // view, and the first render() is a round trip away -- without this the
-    // back button is on screen beside the lock for the length of the read.
+    // the back button starts hidden: the window opens on the lists view and
+    // the first render() is a round trip away
     const markup = html`
 <div id="${WIN_ID}" class="prompt_win list__win nohide">
   <span class="list__dot" id="${DOT_ID}"></span>
@@ -1099,15 +1078,14 @@ export default class Lists {
   </div>
 </div>`;
     document.body.insertAdjacentHTML('beforeend', markup);
-    const win = document.getElementById(WIN_ID);
+    const win = byId(WIN_ID);
     Object.keys(this.listeners).forEach(name => {
       win.addEventListener(name, this.listeners[name]);
     });
-    // Enter answers the password prompt and Escape drops it, the same way the
-    // name box on a row behaves. The boxes live for the life of the window,
-    // so these are attached once here rather than every time it opens.
+    // Enter answers the prompt and Escape drops it. The boxes live for the
+    // life of the window, so this is attached once.
     PWD_BOX_IDS.forEach(id => {
-      document.getElementById(id).addEventListener('keydown', (key_event) => {
+      byId(id).addEventListener('keydown', (key_event) => {
         if (key_event.key === 'Enter') {
           key_event.preventDefault();
           this.passwordSubmit();
@@ -1155,8 +1133,7 @@ export default class Lists {
     return this.activeList().find(entry => entry.id === id) || null;
   }
 
-  // un-checked items are floated to the top; both groups keep the order they
-  // are saved in, so checking an item drops it straight back where it was
+  // un-checked items float to the top; both groups keep their saved order
   visibleRows() {
     const entries = this.activeList();
     if (this.view !== VIEW_ITEMS) {
@@ -1172,12 +1149,13 @@ export default class Lists {
     return entry.items.filter(item => item.checked !== true).length;
   }
 
-  // Only checked items can be dragged; everything in the list view can --
-  // except a locked list, which has no row on screen to drag. Saying so here
-  // is what keeps commitOrder() working while one is hidden: it pairs the
-  // rows it can see with the slots they came from, and a list with no row has
-  // to be left out of both halves or the two no longer line up.
+  // Only checked items drag; in the lists view everything with a row does.
+  // commitOrder() pairs the rows it can see with the slots they came from, so
+  // anything with no row has to be left out of both halves.
   isMovable(entry) {
+    if (entry.pending === true) {
+      return false; // a placeholder holds no place in an order yet
+    }
     if (this.view !== VIEW_ITEMS) {
       return !this.store.isHidden(entry);
     }
@@ -1185,7 +1163,7 @@ export default class Lists {
   }
 
   // Records an edit and re-draws. Nothing goes to the server here -- the dot
-  // turns yellow and the list is written on close, on hide, or on unload.
+  // turns yellow and the list is written on close, hide or unload.
   commit() {
     this.store.markChanged();
     this.render();
@@ -1194,7 +1172,7 @@ export default class Lists {
   //// drawing ////
 
   listElem() {
-    return document.getElementById(LIST_ID);
+    return byId(LIST_ID);
   }
 
   rowById(id) {
@@ -1218,24 +1196,19 @@ export default class Lists {
     if (!list) {
       return;
     }
-    // A re-draw can arrive mid-drag -- lockLost() reaches here through the
-    // store's onChange -- and it replaces the rows the drag is still holding
-    // a reference to. Dropping it first puts the row back where it started,
-    // which is the right answer when the list is about to be rebuilt anyway.
+    // a re-draw can arrive mid-drag (lockLost() reaches here through the
+    // store's onChange) and would replace the rows the drag still holds
     this.dragSort.cancel();
-    // A re-draw rebuilds the search box along with everything else, and one
-    // can land while it is being typed into. Noting the focus now is what
-    // lets it be put back at the end, rather than the caret and a phone
-    // keyboard going with the old box.
-    const oldBox = document.getElementById(SEARCH_BOX_ID);
+    // a re-draw rebuilds the search box, so where the focus is now is noted
+    // and put back at the end, rather than the caret going with the old box
+    const oldBox = byId(SEARCH_BOX_ID);
     const searching = oldBox !== null && document.activeElement === oldBox;
     const items = this.view === VIEW_ITEMS;
     this.renderHeader(items);
     list.innerHTML = "";
     if (this.busy === true && this.store.loaded !== true) {
-      // Waiting on the first read: there are no rows to show yet, and the
-      // ring turning by the status dot says so. Once the list has loaded a
-      // busy state draws as normal -- a save leaves the rows where they are.
+      // waiting on the first read: no rows to show yet, and the ring says so.
+      // Once the list has loaded, a busy state draws as normal.
       this.renderActions();
       this.updateDot();
       return;
@@ -1264,23 +1237,18 @@ export default class Lists {
     if (items && entry) {
       title = entry.name;
     }
-    document.getElementById(TITLE_ID).innerText = title;
+    byId(TITLE_ID).innerText = title;
     // The back button belongs to the items view and the lock to the lists
-    // view, and neither is ever wanted at the same time as the other. Sharing
-    // the slot rather than sitting beside it is what leaves the header -- and
-    // the title centred in it -- exactly as it was.
-    const backBtn = document.getElementById(BACK_BTN_ID);
+    // view. They share the slot, so the header and its centred title do not
+    // move between the two.
+    const backBtn = byId(BACK_BTN_ID);
     let backVisibility = "hidden";
-    let backDisplay = "none";
-    let lockDisplay = "";
     if (items) {
       backVisibility = "visible";
-      backDisplay = "";
-      lockDisplay = "none";
     }
     backBtn.style.visibility = backVisibility;
-    backBtn.style.display = backDisplay;
-    document.getElementById(LOCK_BTN_ID).style.display = lockDisplay;
+    setShown(backBtn, items === true);
+    setShown(LOCK_BTN_ID, items !== true);
     this.updateLockIcon();
   }
 
@@ -1298,23 +1266,20 @@ export default class Lists {
       return;
     }
     rows.forEach(row => list.appendChild(this.createRow(row)));
-    // Stands in for the rows while a search matches none of them. It is built
-    // with them and shown by applyFilter(), so a keystroke that empties the
-    // list has nothing left to build.
+    // stands in for the rows while a search matches none of them; built with
+    // them and shown by applyFilter()
     if (this.searchable()) {
       const none = makeElement('div', "list__empty");
       none.id = NO_MATCH_ID;
       none.innerText = "No matches";
-      none.style.display = "none";
+      setShown(none, false);
       list.appendChild(none);
     }
     // the items in the open list, or every item across all the lists
-    let count = 0;
-    let noun = 'total item';
-    if (items) {
-      count = rows.length;
-      noun = 'item';
-    } else {
+    let count = rows.length;
+    let noun = 'item';
+    if (!items) {
+      noun = 'total item';
       count = this.store.data.reduce((sum, entry) => sum + entry.items.length, 0);
     }
     const total = makeElement('div', "list__total");
@@ -1324,13 +1289,12 @@ export default class Lists {
 
   // puts the caret back in the search box after a re-draw
   refocusSearch() {
-    const box = document.getElementById(SEARCH_BOX_ID);
+    const box = byId(SEARCH_BOX_ID);
     if (!box) {
       return;
     }
     box.focus();
-    // focus() on its own selects the whole value; the caret belongs where the
-    // typing left it
+    // focus() on its own selects the whole value; the caret belongs at the end
     const end = box.value.length;
     box.setSelectionRange(end, end);
   }
@@ -1338,23 +1302,20 @@ export default class Lists {
   createRow(entry) {
     const items = this.view === VIEW_ITEMS;
     const select = this.mode === MODE_SELECT;
-    // the lists view is the shallower of the two, so its rows are given more
-    // height; the items view keeps the tighter row so more of a list fits
+    // list rows are taller; item rows stay tight so more of a list fits
     let rowClass = ROW_CLASS;
     if (!items) {
       rowClass += " list__row--tall";
     }
     const row = makeElement('div', rowClass);
     row.dataset.id = entry.id;
-    // What the search box matches against, folded once here rather than on
-    // every keystroke: a search is then a pass over the rows and nothing
-    // more, with no lookup back into the list behind them.
+    // what the search box matches against, folded once here rather than on
+    // every keystroke
     row.dataset.find = String(entry.name).toLowerCase();
     if (select) {
-      // The round button is the whole left hand side while the mode is on. On
-      // a list row it stands in for the grip; on an item row the grip is kept
-      // but hidden, so the rounds stay on the column they were already in and
-      // the rows do not jump sideways when the mode comes on.
+      // The round button is the whole left hand side in select mode. A list
+      // row has none of its own; an item row keeps its grip but hidden, so
+      // the rounds stay in their column and the rows do not shift sideways.
       if (items) {
         row.appendChild(dragGripElement(true));
       }
@@ -1366,23 +1327,25 @@ export default class Lists {
         row.appendChild(this.roundElement(entry.checked === true, false));
       }
     }
-    // The lock on a list row: a badge on one that is encrypted, and a button
-    // on the row being added, which is the one moment the choice can be made.
-    // It is not offered on an item row -- a list is encrypted whole.
-    if (!items && (entry.enc === true || this.newId === entry.id)) {
-      row.appendChild(this.rowLockElement(entry.enc === true, this.newId === entry.id));
+    // The badge on an encrypted list row. The stylesheet takes it off again
+    // once the row has a name label beside it, so what shows is the row being
+    // added. There is none on an item row: a list is encrypted whole.
+    if (!items && entry.enc === true) {
+      row.appendChild(this.rowLockElement());
     }
-    // an item that runs to more than one line wraps instead of being cut off
-    // on one; a single line row keeps the ellipsis it always had
+    // a multi-line item wraps; a single line row keeps its ellipsis
     let labelClass = LABEL_CLASS;
     if (String(entry.name).indexOf('\n') !== -1) {
       labelClass += " list__label--multi";
     }
+    // the name on a placeholder row is not a name, it is what to press
+    if (entry.pending === true) {
+      labelClass += ` ${LABEL_NEW_CLASS}`;
+    }
     const label = makeElement('span', labelClass);
     label.innerText = entry.name;
     row.appendChild(label);
-    // the label is the rename target, so the rest of the row is a separate
-    // filler that carries the open / complete tap
+    // the label is the rename target, so the filler carries the open/tick tap
     row.appendChild(makeElement('span', "list__fill"));
     if (!items) {
       // how many items in that list are still un-checked
@@ -1399,9 +1362,8 @@ export default class Lists {
     return row;
   }
 
-  // The round button in both of its jobs: the completed toggle on an item
-  // row, and the delete marker on any row while select mode is on. The delete
-  // one is the same button in red, so the two never look like the same thing.
+  // The completed toggle on an item row, and the delete marker on any row in
+  // select mode -- the same button in red, so the two never look alike.
   roundElement(on, forDelete) {
     let className = ROUND_CLASS;
     if (forDelete === true) {
@@ -1413,24 +1375,15 @@ export default class Lists {
     return makeElement('span', className, '<i class="fad fa-check"></i>');
   }
 
-  // The lock on a row. While it is a button it must not take the focus: the
-  // name box on that same row is open, and letting the press blur it would
-  // commit the name and rebuild the row out from under the press. Cancelling
-  // pointerdown leaves the focus where it is; the click still arrives.
-  rowLockElement(on, pressable) {
-    const cell = makeElement('span', ROW_LOCK_CLASS, '<i class="fad fa-lock"></i>');
-    if (on === true) {
-      cell.classList.add(ROW_LOCK_ON_CLASS);
-    }
-    if (pressable === true) {
-      cell.addEventListener('pointerdown', (event) => event.preventDefault());
-    }
-    return cell;
+  // The lock badge on an encrypted list row. It only reports: whether a list
+  // is encrypted is settled when it is added.
+  rowLockElement() {
+    return makeElement('span', ROW_LOCK_CLASS, '<i class="fad fa-lock"></i>');
   }
 
   // the header lock: shut while the encrypted lists are, open once they are
   updateLockIcon() {
-    const icon = document.getElementById(LOCK_ICON_ID);
+    const icon = byId(LOCK_ICON_ID);
     if (!icon) {
       return;
     }
@@ -1438,7 +1391,7 @@ export default class Lists {
     icon.classList.toggle("fa-lock-open", open);
     icon.classList.toggle("fa-lock", !open);
     icon.classList.toggle(LOCK_ICON_ON_CLASS, open);
-    const button = document.getElementById(LOCK_BTN_ID);
+    const button = byId(LOCK_BTN_ID);
     if (button) {
       let title = "Unlock encrypted lists";
       if (open) {
@@ -1457,44 +1410,30 @@ export default class Lists {
   }
 
   renderActions() {
-    // Read only: everything that would write the file is taken off-screen.
-    // While the server is being waited on they go too, since the list they
-    // would change is not settled yet -- but without the read only notice,
-    // which is not the reason.
+    // Read only takes everything that would write the file off screen. While
+    // the server is being waited on they go too, but without the notice.
     const settling = this.settling === true;
     const readOnly = !settling && this.store.readOnly === true;
-    // A save does not take the buttons away: the list is loaded and editable,
-    // and blanking them for the length of a write is the same blink the rows
-    // used to have. Only an unloaded or unsettled list stands them down.
+    // a save leaves the buttons alone; only an unloaded or unsettled list
+    // stands them down
     const loading = this.busy === true && this.store.loaded !== true;
     const waiting = readOnly || settling || loading;
-    let statusDisplay = "none";
-    if (readOnly) {
-      statusDisplay = "flex";
-    }
-    document.getElementById(STATUS_ID).style.display = statusDisplay;
-    let buttonDisplay = "";
-    if (waiting) {
-      buttonDisplay = "none";
-    }
-    [ADD_BTN_ID, DEL_BTN_ID].forEach(id => {
-      document.getElementById(id).style.display = buttonDisplay;
-    });
+    setShown(STATUS_ID, readOnly, "flex");
+    [ADD_BTN_ID, DEL_BTN_ID].forEach(id => setShown(id, !waiting));
     if (waiting) {
       return;
     }
-    // the delete button becomes an X once something is selected, and the icon
-    // carries the same red as the rings for as long as the mode is on
+    // the delete button becomes an X once something is picked out
     const select = this.mode === MODE_SELECT;
     const confirm = this.selected.size > 0;
-    const icon = document.getElementById(DEL_ICON_ID);
+    const icon = byId(DEL_ICON_ID);
     icon.classList.toggle("fa-times", confirm);
     icon.classList.toggle("fa-trash-alt", !confirm);
     icon.classList.toggle(DEL_ICON_ON_CLASS, select);
   }
 
-  // Where the edits stand: green once the server has taken them, yellow while
-  // there are changes it has not been given, red after a failed write.
+  // green once the server has the edits, yellow while it has not been given
+  // them, red after a failed write
   dotState() {
     if (this.store.online === null) {
       return DOT_HIDDEN; // nothing has been sent yet
@@ -1509,26 +1448,25 @@ export default class Lists {
   }
 
   updateDot() {
-    // the ring turns whenever the server is being waited on, whatever the dot
-    // underneath it happens to be saying
-    const spinner = document.getElementById(SPINNER_ID);
+    // the ring turns whenever the server is being waited on
+    const spinner = byId(SPINNER_ID);
     if (spinner) {
       spinner.classList.toggle(SPINNER_ON_CLASS, this.busy === true);
     }
-    const dot = document.getElementById(DOT_ID);
+    const dot = byId(DOT_ID);
     if (!dot) {
       return;
     }
     const state = this.dotState();
     if (state === DOT_HIDDEN) {
-      dot.style.display = "none";
+      setShown(dot, false);
       return;
     }
-    dot.style.display = "block";
+    setShown(dot, true, "block");
     dot.classList.toggle(DOT_UNSAVED_CLASS, state === DOT_UNSAVED);
     dot.classList.toggle(DOT_ERROR_CLASS, state === DOT_ERROR);
-    // pressing it writes the list out, so it only takes presses -- and only
-    // shows the hand -- while there is something waiting to be written
+    // pressing it writes the list out, so it takes presses -- and shows the
+    // hand -- only while there is something to write
     const canSave = this.store.dirty === true && this.store.canWrite();
     dot.classList.toggle(DOT_SAVE_CLASS, canSave);
     if (canSave) {
@@ -1538,35 +1476,21 @@ export default class Lists {
     }
   }
 
-  // the dot pressed: write the list out now rather than waiting for the close
-  // button, the page being hidden, or the page going away
+  // the dot pressed: write now rather than on close, hide or unload
   async saveNow() {
-    if (this.store.dirty !== true) {
+    if (this.store.dirty !== true || !this.store.canWrite()) {
       return;
     }
-    if (!this.store.canWrite()) {
-      return;
-    }
-    await this.runBusy(() => this.store.save());
-    this.updateDot();
+    await this.saveOut();
   }
 
   showOverlay(show) {
-    const overlay = document.getElementById(OVERLAY_ID);
-    if (!overlay) {
-      return;
-    }
-    let overlayDisplay = "none";
-    if (show === true) {
-      overlayDisplay = "flex";
-    }
-    overlay.style.display = overlayDisplay;
+    setShown(OVERLAY_ID, show === true, "flex");
   }
 
   //// searching ////
 
-  // Only the items view, and only once a list is long enough that finding
-  // something in it by eye is work. A shorter list is on screen already.
+  // Only the items view, and only once a list is too long to scan by eye.
   searchable() {
     if (this.view !== VIEW_ITEMS) {
       return false;
@@ -1585,16 +1509,15 @@ export default class Lists {
     return this.searchable() && this.searchText() !== "";
   }
 
-  // The top row of a long list -- the same box the bookmarks menu carries.
-  // Nothing is re-drawn as it is typed: applyFilter() puts the rows away in
-  // place, so the box keeps the focus and the caret through every keystroke.
+  // The top row of a long list, the same box the bookmarks menu carries.
+  // applyFilter() hides rows in place, so the box keeps its focus and caret
+  // through every keystroke.
   searchRow() {
     return searchRowElement({
       rowClass: "list__search",
       boxId: SEARCH_BOX_ID,
       maxLength: MAX_NAME_LENGTH,
-      // a re-draw arrives with the search still on, so the box comes back
-      // with what was typed into it rather than empty
+      // a re-draw brings the box back with what was typed into it
       value: this.query,
       onSearch: (value) => {
         this.query = value;
@@ -1603,10 +1526,9 @@ export default class Lists {
     });
   }
 
-  // Takes the rows that do not match out of view. They are hidden rather than
-  // removed, so they keep their slots and everything else -- the ids on the
-  // rows, the selection, the order the list is saved in -- is untouched by a
-  // search. Called on every keystroke, so it does no more than walk the rows.
+  // Hides the rows that do not match rather than removing them, so the ids on
+  // the rows, the selection and the saved order are untouched by a search.
+  // Runs on every keystroke, so it does no more than walk the rows.
   applyFilter() {
     const list = this.listElem();
     if (!list) {
@@ -1626,17 +1548,9 @@ export default class Lists {
         shown += 1;
       }
     });
-    // the grips go with them: what is on screen is no longer the whole list,
-    // so there is no order in it to save
+    // the grips go too: what is on screen is not the whole list to re-order
     list.classList.toggle(LIST_FIND_CLASS, query !== "");
-    const none = document.getElementById(NO_MATCH_ID);
-    if (none) {
-      let noneDisplay = "none";
-      if (query !== "" && shown === 0) {
-        noneDisplay = "block";
-      }
-      none.style.display = noneDisplay;
-    }
+    setShown(NO_MATCH_ID, query !== "" && shown === 0, "block");
     // the count at the bottom follows what is actually on screen
     const total = list.querySelector('.list__total');
     if (total) {
@@ -1652,9 +1566,8 @@ export default class Lists {
 
   //// actions ////
 
-  // Changing mode always drops what was picked out, so leaving delete mode
-  // and coming back never starts with old rows still marked. redraw is off
-  // for the callers that are about to draw anyway.
+  // Changing mode drops whatever was picked out. redraw is off for the
+  // callers that are about to draw anyway.
   setMode(mode, redraw = true) {
     this.mode = mode;
     this.selected.clear();
@@ -1663,35 +1576,23 @@ export default class Lists {
     }
   }
 
-  // a search belongs to the list it was typed in, so both ways out of one
-  // start with an empty box
-  showItems(id) {
+  // Into a list, or back out of it. Both ways start with an empty search box,
+  // nothing picked out, and the panel back at the top.
+  showView(view, id = null) {
     this.query = "";
     this.openId = id;
-    this.view = VIEW_ITEMS;
+    this.view = view;
     this.setMode(MODE_OPEN);
     this.resetScroll();
   }
 
-  showLists() {
-    this.query = "";
-    this.openId = null;
-    this.view = VIEW_LISTS;
-    this.setMode(MODE_OPEN);
-    this.resetScroll();
-  }
-
-  // A view change swaps the rows for a different, usually shorter, set. The
-  // list is a scroll container and its scrollTop outlives the rows being
-  // replaced, so coming back from a long list to a shorter one leaves it
-  // scrolled past the end of the new content. Every view starts at the top.
+  // A view change swaps the rows for a usually shorter set, and the panel's
+  // scrollTop outlives them, so every view starts at the top.
   //
-  // On iOS that needs more than writing scrollTop. The window is a fixed,
-  // transformed box, so the panel inside it scrolls on its own thread and a
-  // fling carries on there after the finger has gone: a scrollTop written
-  // into the middle of one is overridden the next time the fling updates.
-  // Taking the overflow away for a moment ends the fling and drops the
-  // scroller back to the main thread, so the reset holds.
+  // On iOS that needs more than writing scrollTop: the panel scrolls on its
+  // own thread, and a fling overrides the write on its next update. Taking
+  // the overflow away for a moment ends the fling and drops the scroller back
+  // to the main thread, so the reset holds.
   resetScroll() {
     const list = this.listElem();
     if (!list) {
@@ -1700,16 +1601,14 @@ export default class Lists {
     const overflow = list.style.overflowY;
     list.style.overflowY = "hidden";
     list.scrollTop = 0;
-    // reading a layout value applies the change now rather than at the end of
-    // the frame, which is what actually stops the fling
+    // reading a layout value applies the change now, which is what ends the fling
     void list.offsetHeight;
     list.style.overflowY = overflow;
     list.scrollTop = 0;
   }
 
   // Rows can leave without the view changing -- a delete, or items floating
-  // up as they are checked off -- and the same stale scrollTop shows an empty
-  // panel. Anything past the new end is pulled back to it.
+  // up as they are ticked -- which leaves the panel past its own end.
   clampScroll(list) {
     let furthest = list.scrollHeight - list.clientHeight;
     if (furthest < 0) {
@@ -1721,36 +1620,60 @@ export default class Lists {
     }
   }
 
+  // The add button. What it puts on screen is a placeholder, not a list: it
+  // is not written, the dot does not move, and it is gone again unless it is
+  // pressed and named.
   addEntry() {
-    // A new row carries a placeholder name that almost never matches what is
-    // in the search box, and it is about to have its name box opened on it,
-    // so the search is dropped first rather than the row arriving out of view.
+    // the placeholder name rarely matches what is in the search box, so the
+    // search goes first rather than the row arriving out of view
     this.query = "";
     this.setMode(MODE_OPEN, false);
+    this.dropPending(); // only ever one waiting to be named
     const entries = this.activeList();
-    let entry = { id: nextId(entries), name: "New List", items: [] };
+    let entry = { id: nextId(entries), name: "New List", items: [], pending: true };
     if (this.view === VIEW_ITEMS) {
-      entry = { id: nextId(entries), name: "New Item", checked: false };
+      entry = { id: nextId(entries), name: "New Item", checked: false, pending: true };
+    } else {
+      // added while the encrypted lists are open, so it is one of them; shut,
+      // there is no key and setSealed() does nothing
+      this.store.setSealed(entry);
     }
     entries.push(entry);
-    // Remembered for as long as its name box is open: it is the row the lock
-    // is offered on, and the row that is dropped again if it is left unnamed.
-    this.newId = entry.id;
-    // the new row is a change in its own right: with nothing saving on a
-    // timer, hiding the page before the name box is answered would otherwise
-    // leave it behind
-    this.commit();
-    // open the name box on the new row
+    // the row that is pressed to name it, and the array it sits in, since the
+    // view can change under it
+    this.pendingId = entry.id;
+    this.pendingRows = entries;
+    this.render();
     const row = this.rowById(entry.id);
     if (row && typeof row.scrollIntoView === 'function') {
       row.scrollIntoView({ block: 'nearest' });
     }
-    this.beginRename(entry.id, true);
   }
 
-  // First press turns on the selection check boxes, the second either deletes
-  // what is selected or leaves select mode again; either way the list ends up
-  // back in its normal state.
+  // Takes the placeholder row away. Nothing about it was saved, so this is a
+  // change to the screen and not to the list: no commit, and the caller
+  // re-draws. Spliced in place, so a list row and an item row are alike.
+  dropPending() {
+    if (this.pendingId === null) {
+      return false;
+    }
+    const id = this.pendingId;
+    const rows = this.pendingRows;
+    this.pendingId = null;
+    this.pendingRows = null;
+    if (!Array.isArray(rows)) {
+      return false;
+    }
+    const at = rows.findIndex(entry => entry.id === id);
+    if (at === -1) {
+      return false;
+    }
+    rows.splice(at, 1);
+    return true;
+  }
+
+  // First press turns the check boxes on, the second deletes what is picked
+  // out or leaves the mode again.
   deleteAction() {
     if (this.mode !== MODE_SELECT) {
       this.setMode(MODE_SELECT);
@@ -1766,9 +1689,8 @@ export default class Lists {
     this.commit();
   }
 
-  // Marks a row for deletion, or takes the mark off again. The button is
-  // turned over in place rather than through a re-draw, so a long list does
-  // not rebuild every time one row is picked.
+  // Marks a row for deletion, or unmarks it. Turned over in place, so a long
+  // list does not rebuild for every row picked.
   toggleSelected(id, row) {
     const on = !this.selected.has(id);
     if (on) {
@@ -1791,8 +1713,7 @@ export default class Lists {
     }
   }
 
-  // the box a name is edited in: a plain input for a list, a textarea for an
-  // item, which may run to more than one line
+  // the box a name is edited in: an input for a list, a textarea for an item
   makeNamebox(multi, value) {
     let namebox = null;
     let className = "list__namebox";
@@ -1812,7 +1733,7 @@ export default class Lists {
     return namebox;
   }
 
-  beginRename(id, isNew = false) {
+  beginRename(id) {
     const row = this.rowById(id);
     const entry = this.findEntry(id);
     let label = null;
@@ -1824,7 +1745,14 @@ export default class Lists {
     }
     this.editing = true;
     const multi = this.view === VIEW_ITEMS;
-    const namebox = this.makeNamebox(multi, entry.name);
+    // a placeholder opens on an empty box: the words it was showing are a
+    // prompt, not a name to edit or select over
+    const pending = entry.pending === true;
+    let value = entry.name;
+    if (pending) {
+      value = "";
+    }
+    const namebox = this.makeNamebox(multi, value);
     this.sizeNamebox(namebox, row, label);
     label.replaceWith(namebox);
     if (multi) {
@@ -1832,7 +1760,9 @@ export default class Lists {
       this.growNamebox(namebox);
     }
     namebox.focus();
-    namebox.select();
+    if (!pending) {
+      namebox.select();
+    }
     let closed = false;
     const finish = (save) => {
       if (closed) {
@@ -1840,9 +1770,6 @@ export default class Lists {
       }
       closed = true;
       this.editing = false;
-      if (this.newId === id) {
-        this.newId = null; // named, or dropped -- either way it is not new now
-      }
       let name = "";
       if (save === true) {
         if (multi) {
@@ -1853,9 +1780,18 @@ export default class Lists {
       }
       if (name !== "") {
         entry.name = name;
-      } else if (isNew === true) {
-        // a new entry left un-named is dropped again
-        this.setActiveList(this.activeList().filter(other => other.id !== id));
+        if (pending) {
+          // named at last, so this -- not the button that put it on screen --
+          // is the edit that saves it
+          delete entry.pending;
+          this.pendingId = null;
+          this.pendingRows = null;
+        }
+      } else if (pending) {
+        // left un-named, and never written: it goes with nothing to undo
+        this.dropPending();
+        this.render();
+        return;
       } else {
         this.render(); // nothing changed, no write needed
         return;
@@ -1876,8 +1812,7 @@ export default class Lists {
         return;
       }
       if (multi) {
-        // Enter opens the next line of the item rather than finishing it; the
-        // box and the row grow to hold it, and tapping away still commits
+        // Enter opens the next line of an item; tapping away still commits
         return;
       }
       key_event.preventDefault();
@@ -1885,21 +1820,19 @@ export default class Lists {
     });
   }
 
-  // Sets the item box to the height its text actually needs, so a new line
-  // pushes the box -- and the row around it -- down by one line. Height is
-  // cleared first, or a box that has grown never measures smaller again.
-  // Everything on the page is border-box, so the border has to be added back
-  // on top of scrollHeight, which covers the text and the padding only.
+  // Sets the item box to the height its text needs, so a new line pushes the
+  // row down by one. Height is cleared first, or a box that has grown never
+  // measures smaller again; border-box means the border has to be added back
+  // on top of scrollHeight.
   growNamebox(namebox) {
     namebox.style.height = 'auto';
     const border = namebox.offsetHeight - namebox.clientHeight;
     namebox.style.height = `${namebox.scrollHeight + border}px`;
   }
 
-  // The box takes over the space the name and the filler beside it already
-  // occupy, so the row keeps the width and height it had before the rename
-  // started (rows are max-content, so a box that sized itself would drag the
-  // whole window wider). The filler steps aside for the duration.
+  // The box takes the space the name and the filler already occupy, so the
+  // row keeps its size -- rows are max-content, so a box that sized itself
+  // would drag the window wider. The filler steps aside for the duration.
   sizeNamebox(namebox, row, label) {
     const fill = row.querySelector('.list__fill');
     const labelBox = label.getBoundingClientRect();
@@ -1923,8 +1856,7 @@ export default class Lists {
   //// unsaved changes dialog ////
 
   async retrySave() {
-    const sent = await this.runBusy(() => this.store.save());
-    this.updateDot();
+    const sent = await this.saveOut();
     if (sent) {
       this.showOverlay(false);
       this.destroy();
@@ -1939,55 +1871,73 @@ export default class Lists {
 
   //// encrypted lists ////
 
+  // The three checks the password paths start with. They are separate because
+  // the order differs: the lock asks whether a password exists before whether
+  // this window may write one, and a change asks the other way round.
+  cryptoOk() {
+    if (cryptoReady()) {
+      return true;
+    }
+    // WebCrypto is only handed out on a secure origin
+    warn("encryption needs an https connection.");
+    return false;
+  }
+
+  writable() {
+    if (this.store.canWrite()) {
+      return true;
+    }
+    warn("another user is editing, opened read only.");
+    return false;
+  }
+
+  // whether a password has been set, or null if the record could not be read
+  async cryptState() {
+    const state = await this.runBusy(() => this.store.crypt.status());
+    if (state === null) {
+      warn("server connection not available.");
+    }
+    return state;
+  }
+
   // The lock in the corner. Unlocked, it locks; locked, it asks for the
   // password, or for a new one when the record file says none has been set.
-  // onDone is what the row lock hands in: what to do once the way is open.
-  async lockPress(onDone) {
-    if (!cryptoReady()) {
-      // WebCrypto is only handed out on a secure origin, and there is no
-      // second-best version of this worth falling back to
-      showPopup(`[${WIN_TITLE}] encryption needs an https connection.`);
+  async lockPress() {
+    if (!this.cryptoOk()) {
       return;
     }
     if (this.store.unlocked()) {
       await this.lockLists();
       return;
     }
-    const state = await this.runBusy(() => this.store.crypt.status());
+    const state = await this.cryptState();
     if (state === null) {
-      showPopup(`[${WIN_TITLE}] server connection not available.`);
       return;
     }
     if (state.ready === true) {
-      this.showPassword(PWD_UNLOCK, onDone);
+      this.showPassword(PWD_UNLOCK);
       return;
     }
     // no password yet, and setting one writes a file
-    if (!this.store.canWrite()) {
-      showPopup(`[${WIN_TITLE}] another user is editing, opened read only.`);
+    if (!this.writable()) {
       return;
     }
-    this.showPassword(PWD_SETUP, onDone);
+    this.showPassword(PWD_SETUP);
   }
 
-  // Shuts the encrypted lists again. Anything outstanding goes to the server
-  // first: the key is about to go, and with it the only way to encrypt what
-  // is still in memory. A write that fails leaves everything open, because
-  // locking on top of it would throw the edits away.
+  // Shuts the encrypted lists. Anything outstanding goes to the server first:
+  // the key is about to go, and with it the only way to encrypt what is in
+  // memory. A write that fails leaves everything open rather than lose it.
   async lockLists() {
-    if (this.store.dirty === true) {
-      const sent = await this.runBusy(() => this.store.save());
-      this.updateDot();
-      if (!sent) {
-        showPopup(`[${WIN_TITLE}] changes not saved, still unlocked.`);
-        return false;
-      }
+    if (this.store.dirty === true && !await this.saveOut()) {
+      warn("changes not saved, still unlocked.");
+      return false;
     }
     await this.store.lockUp();
     // the list being viewed may be one that has just gone
     const entry = this.openList();
     if (this.view === VIEW_ITEMS && (!entry || this.store.isHidden(entry))) {
-      this.showLists();
+      this.showView(VIEW_LISTS);
       return true;
     }
     this.setMode(this.mode, false);
@@ -1997,91 +1947,58 @@ export default class Lists {
 
   //// password prompt ////
 
-  showPassword(mode, onDone) {
-    const overlay = document.getElementById(PWD_OVERLAY_ID);
-    if (!overlay) {
+  // the three boxes, in the order they are read down
+  pwdBoxes() {
+    return PWD_BOX_IDS.map(id => byId(id));
+  }
+
+  // The same three boxes every time; PWD_FORMS holds what they say and how
+  // many are shown. The first box is always the password the user already
+  // knows, so a change reads down them in order: old, new, new again.
+  showPassword(mode) {
+    const form = PWD_FORMS[mode];
+    if (!form || !byId(PWD_OVERLAY_ID)) {
       return;
     }
     this.pwdMode = mode;
-    this.pwdDone = null;
-    if (typeof onDone === 'function') {
-      this.pwdDone = onDone;
-    }
-    const setup = mode === PWD_SETUP;
-    const change = mode === PWD_CHANGE;
-    const first = document.getElementById(PWD_BOX_ID);
-    const second = document.getElementById(PWD_BOX2_ID);
-    const third = document.getElementById(PWD_BOX3_ID);
-    let heading = "Enter lists password";
-    let action = "Unlock";
-    if (setup) {
-      heading = "Set a lists password";
-      action = "Set";
-    } else if (change) {
-      heading = "Change lists password";
-      action = "Change";
-    }
-    document.getElementById(PWD_MSG_ID).innerText = heading;
-    document.getElementById(PWD_OK_BTN_ID)
-      .querySelector('.button__text').innerText = action;
-    first.value = "";
-    second.value = "";
-    third.value = "";
-    // The first box is whichever password the user already knows, so a change
-    // reads down the boxes in the order it happens: the old one, then the new
-    // one twice.
-    let firstHint = "Password";
-    let secondHint = "Repeat password";
-    let firstFill = "current-password";
-    if (setup) {
-      firstHint = "New password";
-      firstFill = "new-password";
-    } else if (change) {
-      firstHint = "Current password";
-      secondHint = "New password";
-    }
-    first.placeholder = firstHint;
-    second.placeholder = secondHint;
-    first.setAttribute("autocomplete", firstFill);
+    const [first, second, third] = this.pwdBoxes();
+    byId(PWD_MSG_ID).innerText = form.heading;
+    byId(PWD_OK_BTN_ID).querySelector('.button__text').innerText = form.action;
+    this.pwdBoxes().forEach(box => { box.value = ""; });
+    first.placeholder = form.first;
+    second.placeholder = form.second;
+    first.setAttribute("autocomplete", form.fill);
     second.setAttribute("autocomplete", "new-password");
     third.setAttribute("autocomplete", "new-password");
-    let secondDisplay = "none";
-    if (setup || change) {
-      secondDisplay = "";
-    }
-    let thirdDisplay = "none";
-    if (change) {
-      thirdDisplay = "";
-    }
-    second.style.display = secondDisplay;
-    third.style.display = thirdDisplay;
+    setShown(second, form.boxes > 1);
+    setShown(third, form.boxes > 2);
     this.showPasswordError("");
-    overlay.style.display = "flex";
+    setShown(PWD_OVERLAY_ID, true, "flex");
     first.focus();
   }
 
-  showPasswordError(text) {
-    const line = document.getElementById(PWD_ERR_ID);
+  // A prompt answered wrongly: the reason goes up, the boxes named are
+  // emptied, and the first of them takes the focus back.
+  showPasswordError(text, ...clear) {
+    const line = byId(PWD_ERR_ID);
     if (line) {
       line.innerText = text || "";
     }
+    clear.forEach(id => { byId(id).value = ""; });
+    if (clear.length > 0) {
+      byId(clear[0]).focus();
+    }
   }
 
-  // The boxes are emptied on the way out: a password left sitting in an input
-  // is one more place it can be read from than it needs to be.
+  // emptied on the way out: one less place a password is left sitting
   closePassword() {
-    const overlay = document.getElementById(PWD_OVERLAY_ID);
-    if (overlay) {
-      overlay.style.display = "none";
-    }
-    PWD_BOX_IDS.forEach(id => {
-      const box = document.getElementById(id);
+    setShown(PWD_OVERLAY_ID, false);
+    this.pwdBoxes().forEach(box => {
       if (box) {
         box.value = "";
       }
     });
     this.pwdMode = null;
-    this.pwdDone = null;
     this.showPasswordError("");
   }
 
@@ -2089,9 +2006,7 @@ export default class Lists {
     if (this.pwdMode === null) {
       return;
     }
-    const first = document.getElementById(PWD_BOX_ID);
-    const second = document.getElementById(PWD_BOX2_ID);
-    const third = document.getElementById(PWD_BOX3_ID);
+    const [first, second, third] = this.pwdBoxes();
     const password = first.value;
     const setup = this.pwdMode === PWD_SETUP;
     if (this.pwdMode === PWD_CHANGE) {
@@ -2099,13 +2014,10 @@ export default class Lists {
       return;
     }
     if (setup && password !== second.value) {
-      this.showPasswordError("passwords do not match");
-      second.value = "";
-      second.focus();
+      this.showPasswordError("passwords do not match", PWD_BOX2_ID);
       return;
     }
-    // The derivation is deliberately slow -- that is the whole point of it --
-    // so the ring by the status dot turns while it runs.
+    // the derivation is deliberately slow, so the ring turns while it runs
     let out = null;
     if (setup) {
       out = await this.runBusy(() => this.store.crypt.setup(password));
@@ -2116,124 +2028,38 @@ export default class Lists {
       return; // the window went while the key was being worked out
     }
     if (out.ok !== true) {
-      this.showPasswordError(out.error);
-      first.value = "";
-      second.value = "";
-      first.focus();
+      this.showPasswordError(out.error, PWD_BOX_ID, PWD_BOX2_ID);
       return;
     }
-    const done = this.pwdDone;
     this.closePassword();
     // whatever was already encrypted opens now
     const found = await this.runBusy(() => this.store.unsealAll());
     if (found.failed > 0) {
-      showPopup(`[${WIN_TITLE}] ${found.failed} encrypted list(s) would not open.`);
+      warn(`${found.failed} encrypted list(s) would not open.`);
     }
     this.render();
-    if (done) {
-      done();
-    }
-  }
-
-  //// the lock on a row ////
-
-  // Pressed on the row being added, this is what makes the list an encrypted
-  // one. The key has to be in hand first, so an unlock -- or a first password
-  // -- comes before the choice takes effect.
-  toggleRowCrypt(id) {
-    if (this.view === VIEW_ITEMS || this.rowsLocked()) {
-      return;
-    }
-    const entry = this.store.data.find(other => other.id === id);
-    if (!entry || this.newId !== id) {
-      return; // the badge on a saved row says what it is, and is not a switch
-    }
-    if (entry.enc === true) {
-      this.setRowSealed(entry, id, false);
-      return;
-    }
-    if (this.store.unlocked()) {
-      // the name box is still open on this row, so nothing is re-drawn: the
-      // badge is turned over where it stands and the name commits as usual
-      this.setRowSealed(entry, id, true);
-      return;
-    }
-    // The prompt takes the focus, which closes the name box and commits what
-    // has been typed so far. The row itself stays, so it is picked up again
-    // on the way back -- as the new row it still is, if that is what it was.
-    const wasNew = this.newId === id;
-    this.lockPress(() => {
-      const later = this.store.data.find(other => other.id === id);
-      if (!later) {
-        return; // the box was left empty and the row went with it
-      }
-      this.store.setSealed(later, true);
-      if (wasNew) {
-        this.newId = id;
-      }
-      this.commit();
-      this.reopenName(id, wasNew);
-    });
-  }
-
-  // turns the badge over in place, without re-drawing the row under the box
-  setRowSealed(entry, id, sealed) {
-    this.store.setSealed(entry, sealed);
-    this.markRowLock(id, sealed);
-    this.store.markChanged();
-    this.updateDot();
-  }
-
-  markRowLock(id, on) {
-    const row = this.rowById(id);
-    if (!row) {
-      return;
-    }
-    const cell = row.querySelector(`.${ROW_LOCK_CLASS}`);
-    if (cell) {
-      cell.classList.toggle(ROW_LOCK_ON_CLASS, on === true);
-    }
-  }
-
-  reopenName(id, isNew) {
-    const row = this.rowById(id);
-    if (!row) {
-      return;
-    }
-    if (typeof row.scrollIntoView === 'function') {
-      row.scrollIntoView({ block: 'nearest' });
-    }
-    this.beginRename(id, isNew === true);
   }
 
   //// changing the password ////
   //
-  // Held down rather than tapped. The change re-encrypts every encrypted list
-  // under the new key and writes them out, which is why it is a hold and not
-  // a button of its own -- it is not something to reach by accident.
+  // Held down rather than tapped: the change re-encrypts every list under the
+  // new key and writes them out, so it is not something to reach by accident.
 
   // The press has begun on the lock. It counts whether the lists are open or
   // shut: the hold spends the press either way.
   holdStart(event) {
     this.holdCancel();
-    // A hold that opened the password prompt leaves its click to the overlay
-    // rather than to the button, so the flag meant to swallow that click can
-    // still be set. A fresh press clears it, or the next tap on the lock
-    // would be the one swallowed.
+    // a hold that opened the prompt leaves its click to the overlay, so the
+    // flag that swallows that click is cleared by a fresh press
     this.held = false;
     if (!event.target.closest(`#${LOCK_BTN_ID}`)) {
       return;
     }
-    const icon = document.getElementById(LOCK_ICON_ID);
-    if (icon) {
-      // the icon warms up over the hold, so it is visibly doing something
-      // rather than looking like a press that missed
-      icon.classList.add(LOCK_HOLD_CLASS);
-    }
+    this.holdIcon(true);
     this.holdTimer = setTimeout(() => {
       this.holdTimer = null;
       this.held = true; // the click that follows is spent on this
-      this.clearHoldStyle();
+      this.holdIcon(false);
       this.changePress();
     }, LOCK_HOLD_MS);
   }
@@ -2252,50 +2078,40 @@ export default class Lists {
       clearTimeout(this.holdTimer);
       this.holdTimer = null;
     }
-    this.clearHoldStyle();
+    this.holdIcon(false);
   }
 
-  clearHoldStyle() {
-    const icon = document.getElementById(LOCK_ICON_ID);
+  // the icon warms up over the hold, so it is visibly counting
+  holdIcon(on) {
+    const icon = byId(LOCK_ICON_ID);
     if (icon) {
-      icon.classList.remove(LOCK_HOLD_CLASS);
+      icon.classList.toggle(LOCK_HOLD_CLASS, on === true);
     }
   }
 
   // the lock has been held for its full time
   async changePress() {
-    if (!cryptoReady()) {
-      showPopup(`[${WIN_TITLE}] encryption needs an https connection.`);
+    // the re-encrypted lists go back to the server, so this needs the lock
+    if (!this.cryptoOk() || !this.writable()) {
       return;
     }
-    // the re-encrypted lists have to go back to the server, so this needs the
-    // edit lock as much as any other write does
-    if (!this.store.canWrite()) {
-      showPopup(`[${WIN_TITLE}] another user is editing, opened read only.`);
-      return;
-    }
-    const state = await this.runBusy(() => this.store.crypt.status());
+    const state = await this.cryptState();
     if (state === null) {
-      showPopup(`[${WIN_TITLE}] server connection not available.`);
       return;
     }
     if (state.ready !== true) {
-      showPopup(`[${WIN_TITLE}] no list password has been set.`);
+      warn("no list password has been set.");
       return;
     }
     this.showPassword(PWD_CHANGE);
   }
 
   async passwordChange(oldPassword, newPassword, repeated) {
-    const second = document.getElementById(PWD_BOX2_ID);
-    const third = document.getElementById(PWD_BOX3_ID);
     // change() unlocks with the old password to do its work, so this is the
-    // last point at which whether the user had the lists open is knowable
+    // last point at which whether the lists were open is knowable
     const wasOpen = this.store.unlocked();
     if (newPassword !== repeated) {
-      this.showPasswordError("new passwords do not match");
-      third.value = "";
-      third.focus();
+      this.showPasswordError("new passwords do not match", PWD_BOX3_ID);
       return;
     }
     const out = await this.runBusy(() => this.store.crypt.change(
@@ -2304,51 +2120,38 @@ export default class Lists {
       return; // the window went while the keys were being worked out
     }
     if (out.ok !== true) {
-      this.showPasswordError(out.error);
-      const first = document.getElementById(PWD_BOX_ID);
-      first.value = "";
-      second.value = "";
-      third.value = "";
-      first.focus();
+      this.showPasswordError(out.error, PWD_BOX_ID, PWD_BOX2_ID, PWD_BOX3_ID);
       return;
     }
     this.closePassword();
-    // The change leaves the new key in hand. Lists that were already open
-    // stay open under it -- shutting them as a side effect of a password
-    // change is not what was asked for. With nothing open the key has nothing
-    // to hold, so it goes straight back out again.
+    // the change leaves the new key in hand: lists already open stay open
+    // under it, and with nothing open the key goes straight back out
     if (!wasOpen) {
       await this.store.lockUp();
     }
     this.updateDot();
     this.render();
     if (out.error) {
-      showPopup(`[${WIN_TITLE}] ${out.error}.`);
+      warn(`${out.error}.`);
     } else {
-      showPopup(`[${WIN_TITLE}] password changed.`);
+      warn("password changed.");
     }
   }
 
-  // Handed the new key by change(): every locked list is opened with the old
-  // key -- which is still the one the store is holding at this point -- and
-  // sealed again under the new one, and the whole file goes back to the
-  // server. Nothing is swapped in until all of them have come out, and a
-  // write that does not land puts the old blobs back, so the file and the
-  // password record never disagree about which key opens what.
+  // Handed the new key by change(): every encrypted list is opened with the
+  // old key, sealed under the new one, and the whole file written. Nothing is
+  // swapped in until all of them are out, and a write that does not land puts
+  // the old blobs back, so the file and the password record cannot disagree.
   async rekeyLists(nextKey) {
-    // An open list carries plaintext its blob may not have caught up with, so
-    // the blobs are brought up to date first -- under the old key, which is
-    // what change() is still holding. A background seal is let finish before
-    // that, so the two are not writing the same entry at once.
+    // an open list carries plaintext its blob may not have caught up with, so
+    // the blobs are brought up to date first, under the old key. A background
+    // seal is let finish before that, so the two do not write the same entry.
     await this.store.settleSeal();
     if (await this.store.sealOpen() !== true) {
       return false; // a list that would not seal, so nothing is changed
     }
     const swapped = [];
-    for (const entry of this.store.data) {
-      if (entry.enc !== true) {
-        continue;
-      }
+    for (const entry of this.store.sealed()) {
       const context = cryptContext(FILE_NAME, entry.id);
       const text = await this.store.crypt.decrypt(entry.blob, context);
       if (text === null) {
@@ -2379,25 +2182,39 @@ export default class Lists {
       this.saveNow();
       return;
     }
+    // The placeholder goes as soon as anything else is pressed. Which row was
+    // pressed is read before that: the re-draw replaces the element the press
+    // arrived on.
+    const pressed = event.target.closest(`.${ROW_CLASS}`);
+    let id = null;
+    if (pressed) {
+      id = Number(pressed.dataset.id);
+    }
+    if (id !== this.pendingId && this.dropPending()) {
+      this.render();
+    }
     const button = event.target.closest('button');
     if (button) {
       this.handleButton(button.id);
       return;
     }
-    const row = event.target.closest(`.${ROW_CLASS}`);
-    if (!row) {
+    if (id === null) {
       return;
     }
-    // Ahead of the editing guard on purpose: the lock is pressed while the
-    // name box on that row is open, which is the only time it is a button.
-    if (event.target.closest(`.${ROW_LOCK_CLASS}`)) {
-      this.toggleRowCrypt(Number(row.dataset.id));
+    const row = this.rowById(id);
+    if (!row) {
       return;
     }
     if (this.editing || event.target.closest('.drag-grip')) {
       return;
     }
-    const id = Number(row.dataset.id);
+    // a press anywhere on the placeholder opens it for its name
+    if (id === this.pendingId) {
+      if (!this.rowsLocked()) {
+        this.beginRename(id);
+      }
+      return;
+    }
     if (this.mode === MODE_SELECT) {
       // tapping anywhere on the row, the round button included, selects it
       this.toggleSelected(id, row);
@@ -2405,11 +2222,11 @@ export default class Lists {
     }
     // tapping the name (or the few pixels of padding around it) renames
     if (!this.rowsLocked() && event.target.closest(`.${LABEL_CLASS}`)) {
-      this.beginRename(id, false);
+      this.beginRename(id);
       return;
     }
     if (this.view !== VIEW_ITEMS) {
-      this.showItems(id);
+      this.showView(VIEW_ITEMS, id);
       return;
     }
     if (!this.rowsLocked()) {
@@ -2437,14 +2254,12 @@ export default class Lists {
         this.closeWindow();
         return;
       case BACK_BTN_ID:
-        this.showLists();
+        this.showView(VIEW_LISTS);
         return;
-      // Unlocking only reads, so it is offered on a read only window too --
-      // the setup path checks for itself before it writes anything.
+      // unlocking only reads, so it is offered on a read only window too
       case LOCK_BTN_ID:
         if (this.held === true) {
-          // the press was answered by the hold, and the click it leaves
-          // behind would otherwise ask for the password a second time
+          // the hold answered this press; the click it leaves would ask twice
           this.held = false;
           return;
         }
@@ -2464,9 +2279,8 @@ export default class Lists {
 
   //// drag to re-order ////
 
-  // Reads the new order back out of the window and saves it. The rows that
-  // cannot be dragged keep the slots they already hold, so an un-checked item
-  // stays where it is until it is checked again.
+  // Reads the new order back out of the window and saves it. Rows that cannot
+  // be dragged keep the slots they already hold.
   commitOrder() {
     const list = this.listElem();
     if (!list) {
@@ -2474,11 +2288,13 @@ export default class Lists {
     }
     const entries = this.activeList();
     const slots = [];
+    const held = new Map();
     entries.forEach((entry, idx) => {
+      held.set(entry.id, entry);
       if (this.isMovable(entry)) { slots.push(idx); }
     });
     const moved = this.rowElements()
-      .map(row => entries.find(entry => entry.id === Number(row.dataset.id)))
+      .map(row => held.get(Number(row.dataset.id)))
       .filter(entry => entry && this.isMovable(entry));
     if (moved.length !== slots.length) {
       return;
