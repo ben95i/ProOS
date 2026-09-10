@@ -1,3 +1,4 @@
+shuffle|Shuffle
 textscroll|Textscroll
 triangles|Triangles
 abstract|Abstract

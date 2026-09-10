@@ -447,31 +447,24 @@ function mainGridTemplate(f) {
 <div data-app-injected>
   <div class="grid">
     <div class="column-left">
-      <div class="dropdown">
-        <button type="button" class="button" id="btn-dyn-ledcolormenu">
-          <span class="button__text"><i class="fad fa-brush"></i> Colors</span>
-        </button>
-        <div class="dd-content dd-button" id="ledcolormenu">
-          <a id="btn-fc-color-prompt"> Picker<i class="fad fa-palette"></i></a>
-        </div>
-      </div>
+      <button type="button" class="button" id="btn-ledcolorprompt">
+        <span class="button__text"><i class="fad fa-palette"></i> Colors</span>
+      </button>
       <div class="dropdown">
         <button type="button" class="button" id="btn-power-fc_leds">
           <span class="button__text" id="fc_leds-text"><i class="fad fa-stars"></i> Pixels</span>
           <span class="button__text" id="fc_leds-spinner"></span>
         </button>
         <div class="dd-content ind-button" id="fc_leds-menu">
-          <a id="btn-cmd-leds-stop"> Stop<i class="fad fa-stop"></i></a>
+          <a id="btn-cmd-leds-off"> Off<i class="fad fa-toggle-off"></i></a>
           <a id="btn-cmd-leds-pause"> Pause<i class="fad fa-pause"></i></a>
         </div>
       </div>
       <div class="dropdown">
-        <button type="button" class="button" id="btn-dyn-ledeffectmenu">
+        <button type="button" class="button" id="btn-ledeffectmenu">
           <span class="button__text"><i class="fad fa-film"></i> Animated</span>
         </button>
-        <div class="dd-content dd-button" id="ledeffectmenu">
-          <a id="btn-cmd-leds-shuffle"> Shuffle<i class="fad fa-random"></i></a>
-        </div>
+        <div class="dd-content dd-button" id="ledeffectmenu"></div>
       </div>
       ${f.isServer ? roomControlsTemplate() : ''}
     </div>
@@ -480,12 +473,10 @@ function mainGridTemplate(f) {
 </div>`;
 }
 registerListeners({
-  'btn-dyn-ledcolormenu':  () => showDynFileMenu('ledcolormenu'),
-  'btn-fc-color-prompt':   () => openColorPrompt('leds', 'hex', true),
-  'btn-dyn-ledeffectmenu': () => showDynFileMenu('ledeffectmenu'),
+  'btn-ledeffectmenu':     () => showDynFileMenu('ledeffectmenu', true),
+  'btn-ledcolorprompt':    () => openColorPrompt('leds', 'hex', 'Pixels', true),
   'btn-power-fc_leds':     () => showPowerMenu('fc_leds'),
-  'btn-cmd-leds-shuffle':  () => sendCmd('leds', 'shuffle'),
-  'btn-cmd-leds-stop':     () => sendCmd('leds', 'stop'),
+  'btn-cmd-leds-off':      () => sendCmd('leds', 'stop'),
   'btn-cmd-leds-pause':    () => sendCmd('leds', 'pause')
 });
 
@@ -522,8 +513,8 @@ function roomControlsTemplate() {
     </div>
   </div>
   <p class="grid-sep"></p>
-  <button type="button" class="button" id="btn-upload">
-    <span class="button__text"><i class="fad fa-cloud-upload"></i> Upload</span>
+  <button type="button" class="button" id="btn-yt-link">
+    <span class="button__text"><i class="fab fa-youtube"></i> YouTube</span>
   </button>
   <button type="button" class="button" id="btn-show-temphumid">
     <span class="button__text">
@@ -548,6 +539,7 @@ function roomControlsTemplate() {
 }
 registerListeners({
   'btn-media-link':     () => GoToExtPage('media.home'),
+  'btn-yt-link':        () => GoToExtPage('youtube.com'),
   'btn-upload':         () => showUpload(),
   'btn-lists':          () => showLists(),
   'btn-menu-allmenu':   () => showMenu('allmenu'),
@@ -657,7 +649,7 @@ function bedroomGridTemplate() {
     </button>
     <div class="dd-content dd-button" id="bed_leds-menu">
       <a id="btn-bed-adjprompt"> Adjust<i class="fad fa-sort-circle-up"></i></a>
-      <a id="bed_leds-colorprompt"> Picker<i class="fad fa-palette"></i></a>
+      <a id="bed_leds-colorprompt"> Colors<i class="fad fa-palette"></i></a>
       <a id="bed_leds-colorcycle"> Cycle</a>
       <a id="bed_leds-sweep"> Sweep</a>
       <a id="bed_leds-rainbow"> Rainbow</a>
@@ -735,7 +727,7 @@ function bedroomGridTemplate() {
 registerListeners({
   'btn-menu-br-bed':      () => showPowerMenu('brxmit', 'bed_leds'),
   'btn-bed-adjprompt':    () => bedPrompt(),
-  'bed_leds-colorprompt': () => openColorPrompt('brxmit', 'bed_leds_hex_set'),
+  'bed_leds-colorprompt': () => openColorPrompt('brxmit', 'bed_leds_hex_set', 'Bed Lights'),
   'bed_leds-rainbow':     () => sendCmd('main', 'brxmit', 'bed_leds_rb'),
   'bed_leds-colorcycle':  () => sendCmd('main', 'brxmit', 'bed_leds_cy'),
   'bed_leds-sweep':       () => sendCmd('main', 'brxmit', 'bed_leds_sw'),
@@ -774,17 +766,6 @@ function svrOptMainTemplate() {
     </div>
   </div>
   <div class="dropdown">
-    <button type="button" class="button svropt_button" id="btn-menu-system">
-      <span class="button__text"><i class="fad fa-microchip"></i> System</span>
-    </button>
-    <div class="dd-content dd-button" id="system-menu">
-      <a id="btn-ext-system"><i class="fad fa-link"></i> Open</a>
-      <a id="btn-open-regions"><i class="fad fa-th"></i> Regions</a>
-      <a id="btn-open-backup"><i class="fad fa-sync"></i> Backup</a>
-      <a id="btn-svr-syslog"><i class="fad fa-tachometer"></i> Status</a>
-    </div>
-  </div>
-  <div class="dropdown">
     <button type="button" class="button svropt_button" id="btn-menu-legacy">
       <span class="button__text"><i class="fad fa-save"></i> CIFS</span>
     </button>
@@ -793,6 +774,30 @@ function svrOptMainTemplate() {
       <a id="btn-svr-stoplegacy"><i class="fad fa-stop"></i> Stop</a>
     </div>
   </div>
+  <div class="dropdown">
+    <button type="button" class="button svropt_button" id="btn-menu-xana">
+      <span class="button__text"><i class="fab fa-linux"></i> Xana</span>
+    </button>
+    <div class="dd-content dd-button" id="xana-menu">
+      <a id="btn-svr-startxana"><i class="fad fa-play"></i> Start</a>
+      <a id="btn-svr-stopxana"><i class="fad fa-stop"></i> Stop</a>
+    </div>
+  </div>
+  <button type="button" class="button svropt_button" id="btn-open-regions">
+    <span class="button__text"><i class="fad fad fa-th"></i> Regions</span>
+  </button>
+  <div class="dropdown">
+    <button type="button" class="button svropt_button" id="btn-menu-system">
+      <span class="button__text"><i class="fad fa-microchip"></i> System</span>
+    </button>
+    <div class="dd-content dd-button" id="system-menu">
+      <a id="btn-ext-system"><i class="fad fa-link"></i> Open</a>
+      <a id="btn-svr-syslog"><i class="fad fa-tachometer"></i> Status</a>
+    </div>
+  </div>
+  <button type="button" class="button svropt_button" id="btn-open-backup">
+    <span class="button__text"><i class="fad fad fa-sync"></i> Backup</span>
+  </button>
   <div class="dropdown">
     <button type="button" class="button svropt_button" id="btn-menu-router">
       <span class="button__text"><i class="fad fa-ethernet"></i> Router</span>
@@ -828,18 +833,13 @@ function svrOptMainTemplate() {
   <button type="button" class="button svropt_button" id="btn-svr-clearlog">
     <span class="button__text"><i class="fad fa-trash-alt"></i> Clear</span>
   </button>
-  <div class="dropdown">
-    <button type="button" class="button svropt_button" id="btn-menu-xana">
-      <span class="button__text"><i class="fab fa-linux"></i> Xana</span>
-    </button>
-    <div class="dd-content dd-button" id="xana-menu">
-      <a id="btn-svr-startxana"><i class="fad fa-play"></i> Start</a>
-      <a id="btn-svr-stopxana"><i class="fad fa-stop"></i> Stop</a>
-    </div>
-  </div>
+  <button type="button" class="button svropt_button" id="btn-upload">
+    <span class="button__text"><i class="fad fa-cloud-upload"></i> Upload</span>
+  </button>
 </div>`;
 }
 registerListeners({
+  'btn-upload':           () => showUpload(),
   'btn-menu-atalk':       () => showMenu('atalk-menu'),
   'btn-svr-startatalk':   () => serverAction('startatalk'),
   'btn-svr-stopatalk':    () => serverAction('stopatalk'),
@@ -1025,7 +1025,7 @@ function textScrollTemplate(f) {
     <textarea class="scroll-bar-style" id="textScrollBox" spellcheck="false"></textarea>
     <div class="dropdown">
       <button type="button" class="button button__sml" id="btn-menu-textscrollcolor">
-        <span class="button__text"> Color</span>
+        <span class="button__text"> Colors</span>
       </button>
       <div class="dd-content dd-button" id="textscrollcolor-menu">
         <a id="btn-tscolor-1"> Green</a>
@@ -1807,16 +1807,16 @@ function showBedroomAmpInput() {
   });
 }
 
-const CUST_LED_MENU = {
-  'bed_leds': { 
-    hostDevice: 'brxmit',
-    offCommand: 'bed_leds_off'
-  }
-};
-
 // Builds the toggle and / or slider rows for one power menu from the device's
 // answer. Returns "" when there is nothing to draw.
 function powerMenuRows(menu, target, cmd1, cmd2) {
+  const CUSTOM_LEDS = {
+    'bed_leds': { 
+      hostDevice: 'brxmit',
+      pauseCmd: 'bed_leds_pause',
+      offCmd: 'bed_leds_off'
+    }
+  };
   const isDualToggleSlider = menu.endsWith('_dual');
   const isSingleLedSlider = menu.endsWith('_leds');
   const isFadeCandyLeds = (menu === 'fc_leds');
@@ -1835,31 +1835,27 @@ function powerMenuRows(menu, target, cmd1, cmd2) {
     rows += menuRow(`${cmd1}~leds~fc`, 'slider', '');
     return rows;
   }
-  if (!isSingleLedSlider) {
-    return rows;
-  }
-  const custom = CUST_LED_MENU[menu];
-  // standard LED 0-255
+  if (!isSingleLedSlider) return rows;
+  const custom = CUSTOM_LEDS[menu];
+  // standard slider-only LED 0-255 
   if (!custom) {
     rows += menuRow(`${cmd1}~${target}~${menu}`, 'slider', '');
     return rows;
   }
-  // custom LED 0=off 1-255
+  // custom LED 0=OFF 1-255
   const leds_off = Number(cmd1) <= 0;
   // hide off button and slider when off
   if (leds_off === true) return rows;
-  // append brightness slider
-  rows += menuRow(`${cmd1}~${target}~${menu}`, 'slider-min1', '');
-  // append off button
-  rows += menuRow(`main~${custom.hostDevice}~${custom.offCommand}`, 'off', 'Off');
+  // append brightness slider and buttons
+  rows += menuRow(`${cmd1}~${target}~${menu}`, 'slidercust', '');
+  rows += menuRow(`main~${custom.hostDevice}~${custom.offCmd}`, 'off', 'Off');
+  rows += menuRow(`main~${custom.hostDevice}~${custom.pauseCmd}`, 'pause', 'Pause');
   return rows;
 }
 
 function showPowerMenu(target, menu = null) {
   if (menu == '' || menu == null) menu = target;
-  if (!openDropdown(menu + '-menu')) {
-    return;
-  }
+  if (!openDropdown(menu + '-menu')) return;
   const textId = menu + '-text';
   const spinnerId = menu + '-spinner';
   setSpinner(textId, spinnerId, true);
@@ -1867,22 +1863,20 @@ function showPowerMenu(target, menu = null) {
   if (menu == 'fc_leds') action = 'leds';
   const token = beginMenuRequest();
   sendCmd(action, target, menu).then((data) => {
-    let _menudata = '';
+    let menudata = '';
     const [cmd1, cmd2] = splitByDelimiter(cleanString(data), '~');
     if (isNumeric(cmd1) === false || data == null) {
-      _menudata += menuRow(`${menu}-error`, 'redind', 'Error');
+      menudata += menuRow(`${menu}-error`, 'redind', 'Error');
     } else {
-      _menudata += powerMenuRows(menu, target, cmd1, cmd2);
+      menudata += powerMenuRows(menu, target, cmd1, cmd2);
     }
     setSpinner(textId, spinnerId, false);
     if (!menuRequestCurrent(token)) { return; }
-    if (_menudata === '') {
-      // nothing to draw -- an off level leaves the menu with its static rows
-      // only. Any rows from a previous open still have to go.
+    if (menudata === '') {
       removeDynMenus();
       return;
     }
-    drawMenu(_menudata, menu + '-menu');
+    drawMenu(menudata, menu + '-menu');
   });
 }
 
@@ -1963,14 +1957,14 @@ function menuRequestCurrent(token) {
 }
 
 // a menu whose rows come out of a file on the device
-function showDynFileMenu(menu) {
+function showDynFileMenu(menu, twocols = false) {
   if (!openDropdown(menu)) {
     return;
   }
   const token = beginMenuRequest();
   loadMenu(fileURL('read', menu)).then((data) => {
     if (!menuRequestCurrent(token)) return;
-    drawMenu(data, menu, { TwoColumns: true, MenuScroll: true });
+    drawMenu(data, menu, { TwoColumns: twocols, MenuScroll: true });
   });
 }
 
@@ -2069,15 +2063,12 @@ function createListItem(col0_in, col1, col2, menuid) {
   _elm.id = "menu-" + menuid;
   _elm.innerText = col2;
   switch (col1) {
-    case 'ledcolormenu':
     case 'ledeffectmenu': {
       // LEDs menu
+      if (col0 == 'shuffle') _elm.appendChild(makeElement('i', 'fad fa-random'));
       _elm.addEventListener("click", function() {
-        if (col0 == 'textscroll') {
-          openTextScroll();
-        } else {
-          sendCmd('leds', col0);
-        }
+        if (col0 == 'textscroll') openTextScroll();
+        else sendCmd('leds', col0);
       });
       break;
     }
@@ -2091,12 +2082,12 @@ function createListItem(col0_in, col1, col2, menuid) {
     }
     case 'relaxmenu':
     case 'relaxactive': {
-      _elm.addEventListener("click", function() {
-        sendCmd('main', 'relax', col0);
-      });
       if (col1 == 'relaxactive') {
         _elm.appendChild(makeElement('i', 'fad fa-play icon-green'));
       }
+      _elm.addEventListener("click", function() {
+        sendCmd('main', 'relax', col0);
+      });
       break;
     }
     case 'relaxstop': {
@@ -2134,15 +2125,16 @@ function createListItem(col0_in, col1, col2, menuid) {
       App.activeSwitches.push(chk_obj);
       break;
     }
-    case 'slider-min1':
+    case 'slidercust':
     case 'slider': {
       // horizontal slider row; col0 is the current level
       const slider = document.createElement('input');
       slider.classList.add("slider-wide");
       slider.type = 'range';
-      slider.min = 0;
-      if (col1 == 'slider-min1') {
+      if (col1 === 'slidercust') {
         slider.min = 1;
+      } else {
+        slider.min = 0;
       }
       slider.max = 255;
       slider.value = col0;
@@ -2182,34 +2174,28 @@ function createListItem(col0_in, col1, col2, menuid) {
       App.activeSwitches.push(tgl_obj);
       break;
     }
-    case 'on': {
-      _elm.classList.add('norm-cursor');
+    case 'on':
+    case 'off':
+    case 'pause': {
+      if (col1 === 'on') {
+        _elm.appendChild(makeElement('i', 'fad fa-toggle-on'));
+      } else if (col1 === 'off') {
+        _elm.appendChild(makeElement('i', 'fad fa-toggle-off'));
+      } else if (col1 === 'pause') {
+        _elm.appendChild(makeElement('i', 'fad fa-pause'));
+      }
       _elm.addEventListener("click", function() {
         sendCmd(col0, host, cmd);
       });
-      _elm.appendChild(makeElement('i', 'fad fa-toggle-on'));
-    }
-    case 'off': {
-      _elm.classList.add('norm-cursor');
-      _elm.addEventListener("click", function() {
-        sendCmd(col0, host, cmd);
-      });
-      _elm.appendChild(makeElement('i', 'fad fa-toggle-off'));
     }
     default: {
       // status row, with an indicator dot in the type's own colour
-      if (!(col1 in INDICATOR_CLASSES)) {
-        break;
-      }
+      if (!(col1 in INDICATOR_CLASSES)) break;
       addStatusListener(_elm, col0, host, cmd);
-      if (col1 === 'noind') {
-        break;
-      }
+      if (col1 === 'noind') break;
       const _dot = makeElement('span', 'ind_dot');
       const dotColor = INDICATOR_CLASSES[col1];
-      if (dotColor !== '') {
-        _dot.classList.add(dotColor);
-      }
+      if (dotColor !== '') _dot.classList.add(dotColor);
       _dot.id = "ind-" + col2;
       _elm.appendChild(_dot);
       break;
@@ -2232,24 +2218,15 @@ const throttledSliderSend = requestThrottle((host, cmd, val) => {
 }, 50);
 
 function removeDynMenus() {
-  if (App.dynMenuActive != 1) {
-    return;
-  }
-  // the last value of a drag can still be sitting in the throttle; without
-  // this it went out up to 50ms after the slider had left the page
+  if (App.dynMenuActive != 1) return;
   throttledSliderSend.cancel();
-  // A toggle row carries a ToggleSwitch with pointer listeners on it, so the
-  // switches go before their markup does rather than being left bound to
-  // detached nodes until the next removeDropdowns().
   destroyActiveSwitches();
-  // the rows drawMenu() created, removed directly instead of looking up one
-  // id per line of the file
   App.dynMenuNodes.forEach(node => node.remove());
   App.dynMenuNodes.length = 0;
   App.dynMenuActive = 0;
 }
 
-function openColorPrompt(command, argument, three_args = false) {
+function openColorPrompt(command, argument, title, three_args = false) {
   // the previous prompt is destroyed rather than dropped: show() wipes the
   // anchor's markup, and an instance left behind mid-drag still holds
   // pointermove / pointerup listeners on window
@@ -2271,7 +2248,7 @@ function openColorPrompt(command, argument, three_args = false) {
         showPopup("[ColorPrompt] failed to send color: " + err);
       });
   }, {
-    name: 'LED'
+    name: title
   });
   colorPrompt.show();
   colorPrompt.updateStateFromHex('#000000', true, false);
@@ -2307,16 +2284,10 @@ window.addEventListener('beforeunload', () => {
 });
 
 App.destroyAll = function() {
-  console.log("Exiting...");
+  console.log("shutting down...");
   if (App.activityTimeout) clearTimeout(App.activityTimeout);
-  // the message popup's timer lives in utils.js, where it is set
   clearPopupTimer();
   if (App.volPopupTimer) clearTimeout(App.volPopupTimer);
-  // Bookmarks, before anything is torn down: an open edit and the lock row go
-  // out as beacons, which survive the teardown that cancels the ordinary
-  // write destroyPageServices() would otherwise start and never finish. The
-  // lists window keeps its own pagehide beacon, which fires on iOS where this
-  // handler often does not.
   if (App.bookmarks) App.bookmarks.unloadBeacon();
   destroyActiveSwitches();
   destroyPageServices();

@@ -370,7 +370,7 @@ export default class Uploader {
         <div class="bar_progress" id="${BAR_ID}"></div>
       </div>
       <div class="upl__pct" id="${PCT_ID}">0%</div>
-      <button type="button" class="button" id="${CLOSE_BTN_ID}">
+      <button type="button" class="button button__med" id="${CLOSE_BTN_ID}">
         <i class="fad fa-times-octagon right-padding"></i>
         <span class="button__text">Cancel</span>
       </button>

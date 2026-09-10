@@ -60,7 +60,7 @@ export default class MainMenu {
 
   // the colour row, and the picker it opens
   static ROW_ID = 'menu-theme-color';
-  static ROW_LABEL = 'Color';
+  static ROW_LABEL = 'Colors';
   static ROW_ICON = 'fad fa-tint';
   static ANCHOR_ID = 'color-popup';
   static PALETTE_FILE = 'thememenu';

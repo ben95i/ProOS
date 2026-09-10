@@ -123,9 +123,7 @@ function extractResponse(str, delim) {
     const first = outstr.indexOf(delim);
     if (first === -1) return outstr;
     const last = outstr.lastIndexOf(delim);
-    if (last > first) {
-        return outstr.substring(first + 1, last);
-    }
+    if (last > first) return outstr.substring(first + 1, last);
     return outstr.substring(first + 1);
 }
 
@@ -151,8 +149,7 @@ async function callPico(target, arg1, arg2 = '') {
 // another Automate device, which answers on port 80
 async function callApi(target, arg1, arg2 = '', delim = '|') {
     if (arg1 === "") return "callApi: argument cannot be empty";
-    return await commonAPIRequest(
-        `http://${target}:80/api?var=${arg2}&arg=${arg1}&action=main`, delim);
+    return await commonAPIRequest(`http://${target}:80/api?var=${arg2}&arg=${arg1}&action=main`, delim);
 }
 
 async function brComCall(cmd, pos = '') {
@@ -165,7 +162,7 @@ async function lrComCall(cmd, pos = '') {
 
 // A three character answer holds one digit per device, and "9" means on;
 // pos says which of them was asked about. Anything else passes through.
-function decodeXmitCmd(str, pos){
+function decodeXmitCmd(str, pos) {
     if (pos === '') return str;
     if (str && str.length === 1) return str;
     if (str && str.length === 3) {

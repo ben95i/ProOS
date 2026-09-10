@@ -1,7 +1,7 @@
 ##### Compiled from Source #####
-LED_EF="/opt/rpi/effects"
 SRC_BIN="/opt/rpi"
 SRC_BKP="/opt/source-backup"
+LED_EF="/opt/rpi/effects"
 mkdir -p "$SRC_BKP"
 
 ## Helpers ############################################
@@ -139,9 +139,6 @@ effect "Color to OPC LED Program"       writecolor  "-O3"                  "-lm"
 
 archive_deps $SHARED_DEPS
 SHARED_DEPS=""
-
-build "Color Lookup COBOL Program" "$LED_EF/colorscan.cbl" "$LED_EF/colorscan" \
-  cobc -x --free "$LED_EF/colorscan.cbl" -o "$LED_EF/colorscan"
 
 ## GPIO / Serial Tools ################################
 #    description                    name        flags        libs

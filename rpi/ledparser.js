@@ -232,11 +232,8 @@ async function OPCLEDparser(baseWWW, CommandIn = "", secondaryArgument = "") {
     }
 
     try {
-        const scanResult = await execFileAsync(`${EFFECTS_DIRECTORY_PATH}/colorscan`, [effectCommand], { cwd: EFFECTS_DIRECTORY_PATH, timeout: 3000 });
-        const hex = scanResult.stdout.trim();
-        if (!/^[0-9A-Fa-f]{6}$/.test(hex)) throw new Error("Invalid Hex");
-        await executeEffectProcess(`${EFFECTS_DIRECTORY_PATH}/writecolor`, [currentLedHardware, hex], `color_${effectCommand}`);
-        return `Set Color To: ${effectCommand}`;
+        return `invalid effect name!`;
+        
     } catch (e) {
         logInternalError("OPCLEDparser", "color failed", e.message);
         return "error";
