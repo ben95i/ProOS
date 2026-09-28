@@ -93,10 +93,11 @@ for (( I=LOOPS; I>=1; I-- )); do
         break
     fi
 done
-printf "\rOpening local shell...\e[K\n"
 if [ "$RUN_MGMT" = true ]; then
+   printf "\rConnecting to server...\e[K\n"
     mgmt
-else 
+else
+    printf "\rOpening local shell...\e[K\n"
     timeout 30 bash -c fastfetch
 fi
 EOF

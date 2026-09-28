@@ -561,7 +561,7 @@ function livingRoomGridTemplate() {
 <div>
   <div class="dropdown">
     <button type="button" class="button" id="btn-power-wl1_dual">
-      <span class="button__text" id="wl1_dual-text"><i class="fad fa-lamp-floor"></i> Window</span>
+      <span class="button__text" id="wl1_dual-text"><i class="fad fa-lamp-floor"></i> Lamp</span>
       <span class="button__text" id="wl1_dual-spinner"></span>
     </button>
     <div class="dd-content ind-button" id="wl1_dual-menu"></div>

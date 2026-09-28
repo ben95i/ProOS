@@ -59,32 +59,62 @@ export function fileURL(action, file) {
   return `${location.protocol}//${location.hostname}/api/${action}?file=${file}`;
 }
 
+// A file request lost on the way is sent again after a short pause: a
+// keep-alive connection the far end had already closed fails the request
+// without it ever reaching the API (Safari reports "Load failed"), and the
+// proxy answers 502-504 while it cannot reach the API for a moment. Only
+// those are retried -- an answer from the API itself stands. Every write
+// replaces the whole file, so a write sent twice leaves the same file.
+const FILE_RETRY_MS = [250, 750];      // pause before each further attempt
+const FILE_RETRY_STATUS = [502, 503, 504];
+
+// { ok, status, text } once the server has answered, or null when it never
+// did. The body is read inside the same try, so a connection that drops
+// part way through an answer counts as lost too.
+async function fileRequest(url, options) {
+  let attempt = 0;
+  while (true) {
+    let answer = null;
+    try {
+      const response = await fetch(url, options);
+      answer = {
+        ok: response.ok,
+        status: response.status,
+        text: await response.text()
+      };
+    } catch (error) {
+      answer = null;
+    }
+    let lost = true;
+    if (answer !== null) {
+      lost = FILE_RETRY_STATUS.includes(answer.status);
+    }
+    if (!lost || attempt >= FILE_RETRY_MS.length) {
+      return answer;
+    }
+    await sleep(FILE_RETRY_MS[attempt]);
+    attempt += 1;
+  }
+}
+
 // the file text, or null when the server cannot be reached
 export async function readFile(file) {
-  try {
-    const response = await fetch(fileURL('read', file), { method: 'GET' });
-    if (!response.ok) {
-      throw new Error(`status ${response.status}`);
-    }
-    return await response.text();
-  } catch (error) {
+  const answer = await fileRequest(fileURL('read', file), { method: 'GET' });
+  if (answer === null || answer.ok !== true) {
     return null;
   }
+  return answer.text;
 }
 
 // true only when the server confirms the write; a failed attempt leaves the
 // file on the server exactly as it was
 export async function writeFile(file, text) {
-  try {
-    const response = await fetch(fileURL('write', file), {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: text
-    });
-    return response.ok === true;
-  } catch (error) {
-    return false;
-  }
+  const answer = await fileRequest(fileURL('write', file), {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: text
+  });
+  return answer !== null && answer.ok === true;
 }
 
 // Writes a file and calls onSuccess(file) once the server takes it, reporting
@@ -842,6 +872,7 @@ export class FileLock {
     this.owned = false;
     this.beatTimer = null;
     this.confirming = null;
+    this.writing = null; // lock row on the wire, so writes cannot overtake
     // identifies this window in the lock row (ASCII, no separators)
     this.token = Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
   }
@@ -896,7 +927,16 @@ export class FileLock {
     return text;
   }
 
-  async write(text) {
+  // One write at a time, in the order they were asked for. A re-stamp still
+  // being retried when the lock is handed back would otherwise land after
+  // the free row and leave the lock held by a window that has gone.
+  write(text) {
+    const previous = this.writing;
+    return trackPromise(this, 'writing', this.runWrite(previous, text));
+  }
+
+  async runWrite(previous, text) {
+    await awaitQuiet(previous);
     const sent = await writeFile(this.file, text);
     this.onExchange(sent);
     return sent;

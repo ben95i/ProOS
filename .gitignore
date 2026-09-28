@@ -5,6 +5,7 @@ rpi/RetroPie-Setup
 mgmt/keys
 pve/vmbkps
 pve/photos
+pve/network
 *auto.creds*
 *sasl_passwd*
 *authorized_keys*
@@ -18,4 +19,5 @@ pve/photos
 *.rsa*
 *.pub*
 *.pdf*
+*._*
 .ssh

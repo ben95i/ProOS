@@ -387,8 +387,8 @@ async function livingRoomStatus() {
     ]);
     // the lamp answers both of its channels as "lamp~backlight"
     const [lampMain, lampBacklight] = splitByDelimiter(lamp, '~');
-    lrRoom.addDevice('Window Lamp', lampMain);
-    lrRoom.addDevice('Lamp Backlight', lampBacklight);
+    lrRoom.addDevice('Main Lamp', lampMain);
+    lrRoom.addDevice('Backlight', lampBacklight);
     lrRoom.addDevice('Desktop PC', desktop);
     lrRoom.addDevice('Stereo System', stereo);
     lrRoom.updateRoomState();

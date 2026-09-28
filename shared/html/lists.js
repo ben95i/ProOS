@@ -267,9 +267,13 @@ export class ListStore {
     // the password for the encrypted lists, and the key while it is entered.
     // Starts locked, every time.
     this.crypt = new FileCrypt({ file: PWD_FILE });
+    // The lock's own traffic -- the claim, the confirm and the re-stamp every
+    // LOCK_BEAT_MS -- stays out of this.online. The dot reports the list, and
+    // a re-stamp is not the list: one that failed turned the dot red at the
+    // next edit with the list untouched, and one that went through turned a
+    // failed save back to yellow.
     this.lock = new FileLock({
       file: LOCK_FILE,
-      onExchange: (ok) => { this.online = ok; },
       onLost: () => this.lockLost()
     });
   }
@@ -606,6 +610,11 @@ export class ListStore {
       this.lock.confirm();
     } else {
       this.readOnly = true;
+      // the lock was free, or could not be read, and still was not taken: the
+      // server did not answer, which the dot and the warning should say
+      if (!this.lock.busy(lockText)) {
+        this.online = false;
+      }
     }
   }
 
