@@ -78,11 +78,11 @@ apt-get $APTARGS locales console-setup aptitude libnss-mdns libnss3-tools xxd au
  automake cifs-utils fuse apt-utils sqlite3 shairport-sync socat libexpat1 fastfetch ffmpeg \
  gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-ugly \
  gstreamer1.0-plugins-bad gstreamer1.0-alsa gstreamer1.0-libav libgstreamer-plugins-base1.0-0 \
- rng-tools5 gpiod net-tools python3 python3-pip python3-venv v4l-utils x264 xmltoman samba \
- build-essential autoconf make libtool binutils i2c-tools cmake yasm minicom rclone unzip \
- bluetooth pi-bluetooth bluez bluez-tools bluez-alsa-utils libbluetooth3 mpg321 arduino \
+ gstreamer1.0-libcamera rng-tools5 gpiod net-tools python3 python3-pip python3-venv v4l-utils \
+ x264 xmltoman samba build-essential autoconf make libtool binutils i2c-tools cmake yasm minicom \
+ rclone unzip bluetooth pi-bluetooth bluez bluez-tools bluez-alsa-utils libbluetooth3 mpg321 arduino \
  samba-common-bin samba-libs libjson-glib-1.0-0 libupnp6 alsa-base alsa-utils uglifyjs \
- nodejs mpv raspi-utils lame usbutils lighttpd yui-compressor 
+ nodejs mpv raspi-utils lame usbutils lighttpd yui-compressor g++ libgstrtspserver-1.0-dev
 
 ## Development Support
 apt-get $APTARGS libgtk2.0-dev libbluetooth-dev libpng-dev libdaemon-dev libpopt-dev \
@@ -134,12 +134,12 @@ apt-get remove --purge -y cron anacron logrotate fake-hwclock ntp udhcpd usbmuxd
  iptables-persistent bridge-utils ntfs-3g lxlock xscreensaver xscreensaver-data gvfs gvfs-backends piwiz \
  tracker-extract tracker-miner-fs cloud-guest-utils cloud-init rpi-cloud-init-mods rpi-connect-lite \
  rpi-systemd-config rpi-swap systemd-zram-generator apparmor busybox-syslogd php-common php-cgi php \
- php-mysql mesa-vulkan-drivers dphys-swapfile neofetch python3-rpi.gpio python3-gpiozero
+ php-mysql mesa-vulkan-drivers dphys-swapfile neofetch python3-rpi.gpio python3-gpiozero 
 dpkg -l | grep unattended-upgrades
 dpkg -r unattended-upgrades
 rm -rf /etc/cron.*
 
-## Clean-up Packages
+## Cleanup Packages
 apt-get autoremove -y
 apt-get autoclean -y
 apt-get clean -y
@@ -468,14 +468,11 @@ chmod 644 /etc/udev/rules.d/10-udev-disks.rules
 chown root:root /etc/udev/rules.d/10-udev-disks.rules
 udevadm control --reload-rules
 
-## Motion Default
+## Motion
 cp -f $TMPDIR/motion /etc/default/motion
 chmod 644 /etc/default/motion
 chown root:root /etc/default/motion
 mkdir -p /etc/motion
-cp -f $TMPDIR/motion.conf /etc/motion/motion.conf
-chmod 644 /etc/motion/motion.conf
-chown root:root /etc/motion/motion.conf
 
 ## Compile Programs
 $TMPDIR/compile.sh

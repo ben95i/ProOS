@@ -24,7 +24,7 @@ import { SSIDpwd } from './wifi.js';
 const ROOM_CONFIGS = {
   'lr': {
     name: 'Living Room',
-    icon: '',
+    icon: 'fad fa-couch',
     voltarget: 'lrxmit',
     volmax: 100,
     template: livingRoomGridTemplate
@@ -310,6 +310,20 @@ function openRoomDropdown() {
   drawMenu(menuDataString, menuname);
 }
 
+// Puts a room's icon and name on an icon <i> and a label element, either
+// of which may be missing; a room without an icon hides the <i>.
+// textContent rather than innerText: it sets the text without making the
+// browser lay the page out first.
+function showRoomIdentity(iconId, labelId, config) {
+  const icon = document.getElementById(iconId);
+  if (icon) {
+    icon.className = config.icon || '';
+    icon.style.display = config.icon ? 'inline-block' : 'none';
+  }
+  const label = document.getElementById(labelId);
+  if (label) label.textContent = config.name;
+}
+
 function selectRoom(_mode) {
   if (!ROOM_CONFIGS[_mode]) {
     _mode = Object.keys(ROOM_CONFIGS)[0]; // load the first if not defined
@@ -317,22 +331,18 @@ function selectRoom(_mode) {
   const config = ROOM_CONFIGS[_mode];
   const container = document.getElementById('room-grid-container');
   if (container) {
+    // the outgoing room's markup is about to go: any of its menus that is
+    // open is torn down first (a toggle switch in one holds listeners on
+    // window until destroyed), and a request still in flight for one of
+    // them is stopped from drawing when it lands
+    removeDropdowns();
     // all of the grid's buttons (volume included) are handled by the
     // delegated dispatcher, so rendering the markup is all that's needed
     container.innerHTML = config.template();
   }
-  const roomLabel = document.getElementById('current-room-label');
-  if (roomLabel) roomLabel.innerText = config.name;
-  const roomIcon = document.getElementById('current-room-icon');
-  if (roomIcon) {
-    if (config.icon) {
-      roomIcon.className = config.icon;
-      roomIcon.style.display = 'inline-block';
-    } else {
-      roomIcon.className = '';
-      roomIcon.style.display = 'none';
-    }
-  }
+  // the nav and the room group's legend show the same icon and name
+  showRoomIdentity('current-room-icon', 'current-room-label', config);
+  showRoomIdentity('room-group-icon', 'room-group-label', config);
   App.currentRoom = _mode;
   localStorage.setItem("ctls-mode", _mode);
 }
@@ -447,28 +457,37 @@ function mainGridTemplate(f) {
 <div data-app-injected>
   <div class="grid">
     <div class="column-left">
-      <button type="button" class="button" id="btn-ledcolorprompt">
-        <span class="button__text"><i class="fad fa-palette"></i> Colors</span>
-      </button>
-      <div class="dropdown">
-        <button type="button" class="button" id="btn-power-fc_leds">
-          <span class="button__text" id="fc_leds-text"><i class="fad fa-stars"></i> Pixels</span>
-          <span class="button__text" id="fc_leds-spinner"></span>
+      <fieldset class="btn-group">
+        <legend><i class="fad fa-stars"></i><span>Pixels</span></legend>
+        <button type="button" class="button" id="btn-ledcolorprompt">
+          <span class="button__text"><i class="fad fa-palette"></i> Colors</span>
         </button>
-        <div class="dd-content ind-button" id="fc_leds-menu">
-          <a id="btn-cmd-leds-off"> Off<i class="fad fa-toggle-off"></i></a>
-          <a id="btn-cmd-leds-pause"> Pause<i class="fad fa-pause"></i></a>
+        <div class="dropdown">
+          <button type="button" class="button" id="btn-power-fc_leds">
+            <span class="button__text" id="fc_leds-text"><i class="fad fa-stars"></i> Control</span>
+            <span class="button__text" id="fc_leds-spinner"></span>
+          </button>
+          <div class="dd-content ind-button" id="fc_leds-menu">
+            <a id="btn-cmd-leds-off"> Off<i class="fad fa-toggle-off"></i></a>
+            <a id="btn-cmd-leds-pause"> Pause<i class="fad fa-pause"></i></a>
+          </div>
         </div>
-      </div>
-      <div class="dropdown">
-        <button type="button" class="button" id="btn-ledeffectmenu">
-          <span class="button__text"><i class="fad fa-film"></i> Animated</span>
-        </button>
-        <div class="dd-content dd-button" id="ledeffectmenu"></div>
-      </div>
+        <div class="dropdown">
+          <button type="button" class="button" id="btn-ledeffectmenu">
+            <span class="button__text"><i class="fad fa-film"></i> Animated</span>
+          </button>
+          <div class="dd-content dd-button" id="ledeffectmenu"></div>
+        </div>
+      </fieldset>
       ${f.isServer ? roomControlsTemplate() : ''}
     </div>
-    <div class="column-right" id="room-grid-container"></div>
+    <div class="column-right">
+      ${f.isServer ? `
+      <fieldset class="btn-group" id="room-group">
+        <legend><i id="room-group-icon"></i><span id="room-group-label"></span></legend>
+        <div id="room-grid-container"></div>
+      </fieldset>` : ''}
+    </div>
   </div>
 </div>`;
 }
@@ -485,6 +504,8 @@ function roomControlsTemplate() {
   return `
 <div>
   <p class="grid-sep"></p>
+  <fieldset class="btn-group">
+  <legend><i class="fad fa-home"></i><span>APT</span></legend>
   <div class="dropdown">
     <button type="button" class="button" id="btn-menu-allmenu">
       <span class="button__text"><i class="fad fa-plug"></i> Room</span>
@@ -535,6 +556,7 @@ function roomControlsTemplate() {
   <button type="button" class="button" id="btn-lists">
     <span class="button__text"><i class="fad fa-list-ol"></i> Lists</span>
   </button>
+  </fieldset>
 </div>`;
 }
 registerListeners({

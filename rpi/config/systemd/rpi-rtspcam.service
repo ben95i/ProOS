@@ -1,0 +1,22 @@
+[Unit]
+Description=IMX462 camera -> hardware H.264 -> RTSP on port 8554 (/cam) 90 degree rotated
+After=network.target
+Before=rpi-motion.service
+
+[Service]
+Type=simple
+User=root
+# Wait for the Pi's ISP driver so libcamera finds the camera at boot
+ExecStartPre=/bin/sh -c 'for i in $(seq 30); do grep -qs bcm2835-isp /sys/class/video4linux/*/name && exit 0; sleep 1; done; exit 1'
+ExecStart=/opt/rpi/rtspcam -w 1280 -h 720 -f 15 -b 1500000 -i 15 -s 1920x1080:10 -r 90
+Restart=always
+RestartSec=5
+
+# Hardening
+NoNewPrivileges=yes
+ProtectHome=yes
+PrivateTmp=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+
+[Install]
+#WantedBy=multi-user.target

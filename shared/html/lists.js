@@ -6,13 +6,15 @@
 // A centred window of lists; selecting one swaps the window over to the items
 // inside it. Both levels support add, rename, multi-select delete and drag
 // re-order. Items carry a round completed button: un-checked float to the
-// top, checked sit below in their saved order, and only checked ones drag.
-// Delete mode turns that same round button red. A list of more than
+// top, checked sit below in their saved order. Checked ones drag, and while
+// none in the list is checked every item does. Delete mode turns that same
+// round button red. A list of more than
 // SEARCH_MIN_ITEMS items carries a search box that hides non-matching rows in
 // place, without re-drawing or re-ordering anything.
 //
-// Add puts a placeholder row on screen rather than a row: not saved, not
-// counted, not draggable, and gone again unless it is pressed and named.
+// Add puts a placeholder row at the top rather than a row: not saved, not
+// counted, not draggable, and gone again unless it is pressed and named. Once
+// named it keeps that place, so new lists and items lead their view.
 //
 // Saved file (lists.save), one line per item:
 //   LIST_ID|LIST_NAME|ITEM_ID|ITEM_NAME|CHECK_STATE
@@ -809,11 +811,9 @@ export default class Lists {
     };
     this.listeners = {
       click: this.handleClick.bind(this),
-      // no re-ordering while a name box is open, while rows are being picked
-      // out, or while a search is holding rows back
       pointerdown: (event) => {
         this.holdStart(event);
-        if (!this.editing && this.mode !== MODE_SELECT && !this.filtering()) {
+        if (this.dragAllowed()) {
           this.dragSort.start(event);
         }
       },
@@ -1158,19 +1158,6 @@ export default class Lists {
     return entry.items.filter(item => item.checked !== true).length;
   }
 
-  // Only checked items drag; in the lists view everything with a row does.
-  // commitOrder() pairs the rows it can see with the slots they came from, so
-  // anything with no row has to be left out of both halves.
-  isMovable(entry) {
-    if (entry.pending === true) {
-      return false; // a placeholder holds no place in an order yet
-    }
-    if (this.view !== VIEW_ITEMS) {
-      return !this.store.isHidden(entry);
-    }
-    return entry.checked === true;
-  }
-
   // Records an edit and re-draws. Nothing goes to the server here -- the dot
   // turns yellow and the list is written on close, hide or unload.
   commit() {
@@ -1274,7 +1261,9 @@ export default class Lists {
       list.appendChild(empty);
       return;
     }
-    rows.forEach(row => list.appendChild(this.createRow(row)));
+    // which rows drag is worked out once for the view, not once per row
+    const movable = this.movableRule();
+    rows.forEach(entry => list.appendChild(this.createRow(entry, movable(entry))));
     // stands in for the rows while a search matches none of them; built with
     // them and shown by applyFilter()
     if (this.searchable()) {
@@ -1308,7 +1297,7 @@ export default class Lists {
     box.setSelectionRange(end, end);
   }
 
-  createRow(entry) {
+  createRow(entry, movable) {
     const items = this.view === VIEW_ITEMS;
     const select = this.mode === MODE_SELECT;
     // list rows are taller; item rows stay tight so more of a list fits
@@ -1331,7 +1320,7 @@ export default class Lists {
       row.appendChild(this.roundElement(this.selected.has(entry.id), true));
     } else {
       // a read only window moves nothing
-      row.appendChild(dragGripElement(this.rowsLocked() || !this.isMovable(entry)));
+      row.appendChild(dragGripElement(this.rowsLocked() || movable !== true));
       if (items) {
         row.appendChild(this.roundElement(entry.checked === true, false));
       }
@@ -1639,24 +1628,25 @@ export default class Lists {
     this.setMode(MODE_OPEN, false);
     this.dropPending(); // only ever one waiting to be named
     const entries = this.activeList();
-    let entry = { id: nextId(entries), name: "New List", items: [], pending: true };
+    let entry = { id: nextId(entries), name: "New list", items: [], pending: true };
     if (this.view === VIEW_ITEMS) {
-      entry = { id: nextId(entries), name: "New Item", checked: false, pending: true };
+      entry = { id: nextId(entries), name: "New item", checked: false, pending: true };
     } else {
       // added while the encrypted lists are open, so it is one of them; shut,
       // there is no key and setSealed() does nothing
       this.store.setSealed(entry);
     }
-    entries.push(entry);
+    // new rows lead: first in the saved order, so first on screen as well --
+    // un-checked items are drawn ahead of checked ones, and a hidden
+    // encrypted list has no row to sit above it
+    entries.unshift(entry);
     // the row that is pressed to name it, and the array it sits in, since the
     // view can change under it
     this.pendingId = entry.id;
     this.pendingRows = entries;
     this.render();
-    const row = this.rowById(entry.id);
-    if (row && typeof row.scrollIntoView === 'function') {
-      row.scrollIntoView({ block: 'nearest' });
-    }
+    // the first row, so the top of the panel is where it is
+    this.resetScroll();
   }
 
   // Takes the placeholder row away. Nothing about it was saved, so this is a
@@ -2287,28 +2277,54 @@ export default class Lists {
   }
 
   //// drag to re-order ////
+  //
+  // DragSort moves the rows on screen, stepping a row only over neighbours
+  // whose grips are on; commitOrder() reads the order back off the screen
+  // when the row is let go. Which grips are on is movableRule().
 
-  // Reads the new order back out of the window and saves it. Rows that cannot
-  // be dragged keep the slots they already hold.
+  // Whether a press may start a drag at all: not while a name box is open,
+  // while rows are being picked out, or while a search is holding rows back.
+  dragAllowed() {
+    return !this.editing && this.mode !== MODE_SELECT && !this.filtering();
+  }
+
+  // The test for which rows in the current view can be dragged, as a
+  // function, so a pass over the rows looks at the whole list only once.
+  //   - a placeholder never: it holds no place in an order yet
+  //   - lists view: every list that has a row
+  //   - items view: the checked items, or every item while none is checked
+  movableRule() {
+    if (this.view !== VIEW_ITEMS) {
+      return entry => entry.pending !== true && !this.store.isHidden(entry);
+    }
+    const noneChecked = this.activeList().every(item => item.checked !== true);
+    return entry => entry.pending !== true && (noneChecked || entry.checked === true);
+  }
+
+  // Movable rows can only have traded places among the slots movable rows
+  // already held, so each of those slots takes the movable row now drawn in
+  // its turn. Everything else keeps the slot it holds.
   commitOrder() {
-    const list = this.listElem();
-    if (!list) {
+    if (!this.listElem()) {
       return;
     }
     const entries = this.activeList();
+    const movable = this.movableRule();
     const slots = [];
-    const held = new Map();
-    entries.forEach((entry, idx) => {
-      held.set(entry.id, entry);
-      if (this.isMovable(entry)) { slots.push(idx); }
+    entries.forEach((entry, at) => {
+      if (movable(entry)) {
+        slots.push(at);
+      }
     });
-    const moved = this.rowElements()
+    const held = new Map(entries.map(entry => [entry.id, entry]));
+    const drawn = this.rowElements()
       .map(row => held.get(Number(row.dataset.id)))
-      .filter(entry => entry && this.isMovable(entry));
-    if (moved.length !== slots.length) {
+      .filter(entry => entry && movable(entry));
+    // the screen and the list no longer agree on what moves: leave both
+    if (drawn.length !== slots.length) {
       return;
     }
-    moved.forEach((entry, idx) => { entries[slots[idx]] = entry; });
+    drawn.forEach((entry, at) => { entries[slots[at]] = entry; });
     this.commit();
   }
 }

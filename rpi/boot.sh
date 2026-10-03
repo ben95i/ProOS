@@ -15,5 +15,7 @@
 #/opt/rpi/rpi.sh resetbt
 ## Disable HDMI (saves 30mA of power draw)
 #tvservice -o
+## Network Watchdog
+#systemctl start rpi-netwatchdog
 
 exit

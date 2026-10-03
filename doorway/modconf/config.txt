@@ -1,0 +1,39 @@
+## Created by Ben Provenzano III for CameraPi
+## Raspberry Pi Zero 2 W - Raspberry Pi OS Trixie (32-bit)
+## Native Arducam IMX462 camera
+
+#-------Boot-------
+# Don't auto-load overlays for DSI displays (headless)
+display_auto_detect=0
+
+# Automatically load initramfs files, if found
+auto_initramfs=1
+
+# Don't have the firmware create an initial video= setting in cmdline.txt.
+# Use the kernel's default instead.
+disable_fw_kms_setup=1
+
+# No rainbow splash screen on boot
+disable_splash=1
+
+#-------Memory-------
+# VideoCore firmware memory. Must stay well above 16: the cut-down firmware
+# used at 16 has no ISP/codec services, and the camera stops working.
+# Camera buffers come from CMA (below), not from here, so 96 is enough
+# and leaves more RAM for Linux.
+gpu_mem=96
+
+# Contiguous memory pool for camera, ISP and H.264 encoder buffers.
+# The default pool ran out (CmaFree 8 kB) and caused the lockups.
+# CMA memory is still usable by Linux when the hardware isn't using it.
+dtoverlay=cma,cma-192
+
+#-------Disable unused hardware-------
+dtoverlay=disable-bt
+dtparam=audio=off
+
+#-------Camera-------
+# Native IMX462 (imx290 driver, I2C 0x1a). Auto-detect doesn't know this
+# sensor, so it must be off for the overlay to be used.
+camera_auto_detect=0
+dtoverlay=imx462

@@ -1,12 +1,19 @@
 #!/bin/bash
 ## ProOS for RPi, Network Script by Ben Provenzano III
 #### RUN FROM '/opt/rpi/rpi.sh CMD'
-#### v5 - persistent Wi-Fi reconnection (no config files required)
+#### v6 - persistent Wi-Fi reconnection + client-mode watchdog service
+#### Read-only filesystem safe - the watchdog writes nothing to persistent
+#### storage; all state is kept in memory and starts fresh after a reboot.
 
-## Tunables for NETDETECT retry loop
-NETDETECT_RETRIES=4      ## number of recovery attempts per invocation
-NETDETECT_DELAY=5        ## seconds between attempts
-NETDETECT_FALLBACK=1     ## 1 = drop to hotspot after retries, 0 = retry forever
+## Tunables for WATCHDOG (netwatchdog.service)
+WD_INTERVAL=30           ## seconds between checks while the LAN is healthy
+WD_FAIL_INTERVAL=15      ## seconds between re-checks after a failed check
+WD_FAIL_LIMIT=2          ## failed checks in a row before recovery starts
+WD_SETTLE=45             ## seconds to wait for the LAN after each recovery step
+WD_FW_RETRIES=3          ## extra firmware/network restarts after the first one
+WD_BOOT_GRACE=120        ## seconds after boot before monitoring starts
+WD_EXTRA_TARGET="192.168.1.1" ## optional 2nd LAN IP to ping (if gateway ignores ping)
+WD_SKIP_ON_ETH=1         ## 1 = stay idle while eth0 is connected
 
 ##############################################
 
@@ -154,57 +161,222 @@ nmcli -t -f NAME,STATE con show --active 2>/dev/null \
 }
 
 ##############################################
+## CLIENT-MODE WI-FI WATCHDOG (run by netwatchdog.service)
+##
+## Operation:
+##  0. Startup  - Wait until the Pi has been up WD_BOOT_GRACE seconds so the
+##                normal 'boot' networking can finish. If the Pi has no
+##                wlan0 the watchdog exits cleanly (service stays stopped).
+##                The Wi-Fi driver module (e.g. brcmfmac) is noted here so
+##                it can be reloaded later even if wlan0 disappears.
+##  1. Monitor  - Every WD_INTERVAL seconds test local network access:
+##                  wlan0 exists -> link is up -> has an IPv4 address ->
+##                  has a default gateway -> gateway answers ping
+##                  (or WD_EXTRA_TARGET answers, if set).
+##                The watchdog only acts in Wi-Fi CLIENT mode. It idles while:
+##                  the hotspot is active or /boot/firmware/apd.enable exists,
+##                  /boot/firmware/disable.wifi exists, there is no
+##                  /boot/firmware/wpa.conf, or eth0 is connected
+##                  (WD_SKIP_ON_ETH=1). When it returns to client mode it
+##                  waits WD_SETTLE seconds before checking again.
+##  2. Confirm  - A failed check is re-tested every WD_FAIL_INTERVAL seconds.
+##                Recovery starts only after WD_FAIL_LIMIT failures in a row.
+##  3. Stage 1  - Restart the connection and rejoin: re-run CLIENT_MODE
+##                (resets firewall, rebuilds the RPiWiFi profile from
+##                wpa.conf, reconnects). Wait up to WD_SETTLE seconds.
+##  4. Stage 2  - Restart Wi-Fi firmware and network: radio off, unload the
+##                Wi-Fi driver module (and modules holding it), reload it
+##                (this re-downloads the chip firmware), restart
+##                NetworkManager, re-run CLIENT_MODE. Wait WD_SETTLE.
+##  5. Stage 3  - Repeat Stage 2 up to WD_FW_RETRIES (3) more times.
+##  6. Stage 4  - Reboot the Pi. No state is kept across reboots, so the
+##                watchdog starts fresh at step 0 after every boot (if the
+##                network is still down it will go through all stages again).
+##  - Read-only filesystem: nothing is written to persistent storage.
+##    Failure counters live in memory only.
+##  - Any recovery stage is cancelled if the mode changes (e.g. 'apd').
+##  - Whenever the LAN check passes, all failure counters reset.
+##  - Logs: journalctl -u netwatchdog -f
+##############################################
 
-NETDETECT(){
-## Keep retrying the Wi-Fi client connection until it comes back.
-################################################################
-date
+WD_LOG() {
+echo "[watchdog] $*"
+}
+
+WD_ELIGIBLE() {
+## True only when the Pi should be a Wi-Fi client
+[ -e "/boot/firmware/disable.wifi" ] && return 1
+[ -e "/boot/firmware/apd.enable" ] && return 1
+[ -e "/boot/firmware/wpa.conf" ] || return 1
+IN_APD_MODE && return 1
+if [ "$WD_SKIP_ON_ETH" = "1" ] && \
+   nmcli -t -f DEVICE,STATE device status 2>/dev/null | grep -q '^eth0:connected'; then
+  return 1
+fi
+return 0
+}
+
+WD_LAN_OK() {
+## Local network health test, sets WD_REASON on failure
+local GW
 if [ ! -e "/sys/class/net/wlan0" ]; then
-  echo "wlan0 not found, network check has been disabled."
-  echo " "
-  exit
+  WD_REASON="wlan0 missing"; return 1
 fi
-if [ -e "/boot/firmware/disable.wifi" ]; then
-  echo "Wi-Fi disabled, network check has been disabled."
-  echo " "
-  exit
+if [ "$(cat /sys/class/net/wlan0/operstate 2>/dev/null)" != "up" ]; then
+  WD_REASON="wlan0 link down"; return 1
 fi
-if IN_APD_MODE; then
-  echo "APD mode, network check has been disabled."
-  echo " "
-  exit
+if ! ip -4 addr show dev wlan0 2>/dev/null | grep -q 'inet '; then
+  WD_REASON="no IPv4 address on wlan0"; return 1
 fi
-########
-ATTEMPT=0
-while : ; do
-  SERVER=$(/sbin/ip route | awk '/^default/ { print $3; exit }')
-  if [ -n "$SERVER" ] && ping -c2 -W2 "$SERVER" > /dev/null 2>&1; then
-    echo "Gateway IP $SERVER - network up"
-    echo " "
-    exit
-  fi
-  ATTEMPT=$((ATTEMPT+1))
-  echo "Attempt $ATTEMPT: no gateway reachable, retrying Wi-Fi..."
-  ## Recreate the profile if it went missing, otherwise just nudge it
-  if ! nmcli -t -f NAME con show 2>/dev/null | grep -q '^RPiWiFi$'; then
-    echo "RPiWiFi profile missing, rebuilding..."
-    CLIENT_MODE
-  else
-    nmcli radio wifi on
-    rfkill unblock wifi
-    nmcli device set wlan0 managed yes 2>/dev/null
-    nmcli device connect wlan0 > /dev/null 2>&1
-    nmcli con up RPiWiFi > /dev/null 2>&1
-    iw dev wlan0 set power_save off 2>/dev/null
-  fi
-  if [ "$NETDETECT_FALLBACK" = "1" ] && [ "$ATTEMPT" -ge "$NETDETECT_RETRIES" ]; then
-    echo "Wi-Fi unrecoverable, switching to hotspot..."
-    APD_MODE
-    exit
-  fi
-  sleep "$NETDETECT_DELAY"
+GW=$(ip -4 route show default dev wlan0 2>/dev/null | awk '/^default/ { print $3; exit }')
+if [ -z "$GW" ]; then
+  WD_REASON="no default gateway on wlan0"; return 1
+fi
+ping -I wlan0 -c3 -W2 -q "$GW" > /dev/null 2>&1 && return 0
+if [ -n "$WD_EXTRA_TARGET" ]; then
+  ping -I wlan0 -c3 -W2 -q "$WD_EXTRA_TARGET" > /dev/null 2>&1 && return 0
+fi
+WD_REASON="gateway $GW not answering"
+return 1
+}
+
+WD_WAIT_LAN() {
+## Poll the LAN for up to WD_SETTLE seconds after a recovery step
+local T=0
+while [ "$T" -lt "$WD_SETTLE" ]; do
+  WD_LAN_OK && return 0
+  sleep 5
+  T=$((T+5))
 done
-################################################################
+WD_LAN_OK
+}
+
+WD_UNLOAD() {
+## Unload a module after first unloading any modules holding it
+## (e.g. brcmfmac_wcc holds brcmfmac on current Pi kernels)
+local MOD="$1" H
+[ -d "/sys/module/$MOD" ] || return 0
+for H in /sys/module/"$MOD"/holders/*; do
+  [ -e "$H" ] && WD_UNLOAD "$(basename "$H")"
+done
+modprobe -r "$MOD"
+}
+
+WD_FW_RESTART() {
+## Reload Wi-Fi driver/firmware, restart NetworkManager, rejoin
+local N=0
+nmcli radio wifi off 2>/dev/null
+if [ -n "$WD_MODULE" ]; then
+  WD_LOG "unloading Wi-Fi driver '$WD_MODULE'"
+  WD_UNLOAD "$WD_MODULE" || WD_LOG "warning: driver unload failed, continuing"
+  sleep 3
+  WD_LOG "reloading Wi-Fi driver '$WD_MODULE'"
+  modprobe "$WD_MODULE" || WD_LOG "warning: driver reload failed"
+else
+  WD_LOG "warning: Wi-Fi driver module unknown, skipping firmware reload"
+fi
+## Wait up to 30s for wlan0 to come back
+while [ ! -e "/sys/class/net/wlan0" ] && [ "$N" -lt 30 ]; do
+  sleep 1
+  N=$((N+1))
+done
+[ -e "/sys/class/net/wlan0" ] || WD_LOG "warning: wlan0 did not reappear"
+WD_LOG "restarting NetworkManager"
+systemctl restart NetworkManager
+nm-online -s -q -t 30 2>/dev/null
+CLIENT_MODE
+}
+
+WD_REBOOT() {
+## Final stage - reboot (nothing saved, watchdog starts fresh on next boot)
+WD_LOG "Stage 4: network not restored, rebooting now"
+sync
+systemctl reboot
+sleep 120
+}
+
+WD_RECOVER() {
+## Escalating recovery: rejoin -> firmware restart x(1+retries) -> reboot
+local N=1 TOTAL=$((WD_FW_RETRIES + 1))
+WD_LOG "Stage 1: restarting Wi-Fi connection and rejoining network"
+CLIENT_MODE
+if WD_WAIT_LAN; then
+  WD_LOG "Stage 1: network restored"
+  return
+fi
+while [ "$N" -le "$TOTAL" ]; do
+  if ! WD_ELIGIBLE; then
+    WD_LOG "no longer in Wi-Fi client mode, recovery cancelled"
+    return
+  fi
+  if [ "$N" -eq 1 ]; then
+    WD_LOG "Stage 2: restarting Wi-Fi firmware and network"
+  else
+    WD_LOG "Stage 3: firmware/network restart retry $((N-1))/$WD_FW_RETRIES"
+  fi
+  WD_FW_RESTART
+  if WD_WAIT_LAN; then
+    WD_LOG "network restored (firmware restart attempt $N/$TOTAL)"
+    return
+  fi
+  WD_LOG "still down: $WD_REASON"
+  N=$((N+1))
+done
+if ! WD_ELIGIBLE; then
+  WD_LOG "no longer in Wi-Fi client mode, reboot cancelled"
+  return
+fi
+WD_REBOOT
+}
+
+WATCHDOG() {
+local UP FAILS=0 IDLE=0
+WD_LOG "starting (ProOS netmode v6)"
+UP=$(cut -d. -f1 /proc/uptime)
+if [ "$UP" -lt "$WD_BOOT_GRACE" ]; then
+  WD_LOG "boot grace period, waiting $((WD_BOOT_GRACE - UP))s"
+  sleep $((WD_BOOT_GRACE - UP))
+fi
+if [ ! -e "/sys/class/net/wlan0" ]; then
+  WD_LOG "no wlan0 hardware found, watchdog exiting"
+  exit 0
+fi
+## Remember the driver module now, in case wlan0 vanishes later
+WD_MODULE=$(basename "$(readlink -f /sys/class/net/wlan0/device/driver/module 2>/dev/null)" 2>/dev/null)
+if [ -z "$WD_MODULE" ] && [ -d "/sys/module/brcmfmac" ]; then
+  WD_MODULE="brcmfmac"
+fi
+WD_LOG "monitoring wlan0 (driver module: ${WD_MODULE:-unknown})"
+while : ; do
+  if ! WD_ELIGIBLE; then
+    [ "$IDLE" = "0" ] && WD_LOG "not in Wi-Fi client mode, watchdog idle"
+    IDLE=1
+    FAILS=0
+    sleep "$WD_INTERVAL"
+    continue
+  fi
+  if [ "$IDLE" = "1" ]; then
+    WD_LOG "Wi-Fi client mode detected, watchdog active in ${WD_SETTLE}s"
+    IDLE=0
+    sleep "$WD_SETTLE"
+    continue
+  fi
+  if WD_LAN_OK; then
+    [ "$FAILS" -gt 0 ] && WD_LOG "LAN check passed again, no action needed"
+    FAILS=0
+    sleep "$WD_INTERVAL"
+    continue
+  fi
+  FAILS=$((FAILS+1))
+  WD_LOG "LAN check failed ($FAILS/$WD_FAIL_LIMIT): $WD_REASON"
+  if [ "$FAILS" -lt "$WD_FAIL_LIMIT" ]; then
+    sleep "$WD_FAIL_INTERVAL"
+    continue
+  fi
+  WD_RECOVER
+  FAILS=0
+  sleep "$WD_INTERVAL"
+done
 }
 
 ##############################################
@@ -250,18 +422,18 @@ APD_MODE
 exit
 ;;
 
-netdetect)
-## Retry Wi-Fi until reconnected, hotspot fallback if enabled
-NETDETECT
+watchdog)
+## Client-mode Wi-Fi watchdog loop (started by netwatchdog.service)
+WATCHDOG
 exit
 ;;
 
 *)
-echo "RPi Network Startup v5"
+echo "RPi Network Startup v6"
 echo "by Ben Provenzano III"
 echo " "
 echo "Enter Valid Arguments."
-echo "  boot | client | apd | netdetect | delwifi"
+echo "  boot | client | apd | delwifi | watchdog"
 echo " "
 exit 1
 ;;

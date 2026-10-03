@@ -21,8 +21,8 @@ cp -f $BIN/modconf/config.txt /boot/firmware/
 mount -o remount,ro /boot/firmware
 
 ## Google Drive Support
-rm -f /root/.config/rclone/rclone.conf
 if [ ! -e "/media/usb0/rclone/rclone.conf" ]; then
+  rm -f /root/.config/rclone/rclone.conf
   echo "API key not found on flash drive, running setup..."
   echo "Create new remote named 'gsync' and attach to Google Drive"
   rclone config
@@ -32,26 +32,10 @@ if [ ! -e "/media/usb0/rclone/rclone.conf" ]; then
   chmod -R 777 /media/usb0/rclone
 fi
 
-## Camera Motion Configuration 
-cp -f $BIN/modconf/motion.conf /etc/motion/
-chmod 644 /etc/motion/motion.conf
-chown root:root /etc/motion/motion.conf
-cp -fr $BIN/modconf/camera*.conf /etc/motion/
-chmod -R 644 /etc/motion/camera*.conf
-chown -R root:root /etc/motion/camera*.conf
-
-## Cameras USB Drive
-if [ ! -e "/media/usb0/cameras" ]; then
-  echo "Cameras folder on USB drive not found, creating..."
-  mkdir -p /media/usb0/cameras
-  chown -R motion:motion /media/usb0/cameras
-fi
-
-## Pi and Motion Permissions
+## Pi Permissions
 rm -f /etc/sudoers.d/010_pi-perms
 rm -f /etc/sudoers.d/010_pi-nopasswd
 sh -c "touch /etc/sudoers.d/010_pi-nopasswd"
-sh -c "echo \"motion ALL=(ALL) NOPASSWD:/opt/rpi/main*\" >> /etc/sudoers.d/010_pi-nopasswd"
 sh -c "echo \"pi ALL=(ALL) NOPASSWD: ALL\" >> /etc/sudoers.d/010_pi-nopasswd"
 chown root:root /etc/sudoers.d/010_pi-nopasswd
 chmod u=rwx,g=rx,o=rx /etc/sudoers.d/010_pi-nopasswd

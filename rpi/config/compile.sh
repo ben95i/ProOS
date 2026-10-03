@@ -146,6 +146,11 @@ tool "GPO Pin Control Program"      gposerver   ""           "-lgpiodcxx"
 tool "GPI Pin Monitor Program"      pinmon      "-Wall -O3"  "-lgpiodcxx"
 tool "LDR Detector Program"         ldrdetect   ""           "-lgpiodcxx"
 
+## Camera Tools #######################################
+#    description                    name        flags                                                           libs
+tool "IMX462 RTSP Camera Program"   rtspcam     "-O2 -Wall"                                                     "$(pkg-config --cflags --libs gstreamer-rtsp-server-1.0 gstreamer-rtsp-1.0 gstreamer-1.0)"
+tool "Minimotion Motion Recorder"   minimotion  "-std=c++17 -O2 -Wall -mcpu=cortex-a53 -mfpu=neon-fp-armv8 -s"  "$(pkg-config --cflags --libs libavformat libavcodec libavutil) -latomic"
+
 build "Z-Term RS232 Communication Program" "$SRC_BIN/ztermcom.c" "/usr/bin/ztermcom" \
   gcc "$SRC_BIN/ztermcom.c" -o /usr/bin/ztermcom
 

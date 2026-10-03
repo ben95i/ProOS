@@ -23,7 +23,7 @@ constexpr int TIMEOUT_US         = 600000;
 constexpr int THRESHOLD_DARK_US  = 300000; 
 constexpr int THRESHOLD_LIGHT_US = 100000;
 constexpr int CHANGE_DELTA_US    = 10000;
-constexpr int PRINT_INTERVAL_SEC = 10; 
+constexpr int PRINT_INTERVAL_SEC = 20; 
 enum class IrState { ON, OFF, UNKNOWN };
 
 

@@ -177,8 +177,10 @@ input.chkbox {
   margin-left: 5px;
   margin-bottom: 8px;
   margin-top: 8px;
+  /* the button groups (groups.css) size their outlines round this, so it
+     can be changed here alone */
   width: 150px;
-  height: 100px;
+  height: 105px;
   /* typography */
   user-select: none;
   -webkit-user-select: none;

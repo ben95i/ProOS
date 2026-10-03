@@ -1,0 +1,219 @@
+/*
+ *  Automate -- groups.css
+ *
+ *  The outlined button groups in the main grid (mainGridTemplate and
+ *  roomControlsTemplate in main.js), each a <fieldset class="btn-group">
+ *  whose <legend> names it:
+ *    Pixels      Colors / Pixels / Animated
+ *    APT         Room / Lights / Power, YouTube / Temp / Media,
+ *                Doorway / Server / Lists
+ *    <room>      #room-group, the room grid; selectRoom() writes the room's
+ *                icon and name into #room-group-icon / #room-group-label
+ *
+ *  A group sizes itself around its buttons: nothing in here knows how big
+ *  a button is. Change the width or height of .button in main.css and every
+ *  outline follows, with the same clear all round.
+ *
+ *  Each group is a three-column grid (the room group's grid is the room
+ *  template's own wrapper div, inside #room-grid-container). A .grid-sep in
+ *  the markup still ends a row, as it did outside the groups: inside a
+ *  group it spans the whole row and is the gap between rows. The fieldset
+ *  is max-content wide, so its border hugs the widest row.
+ *
+ *  The outline is raised like a button: the same walls, rim and shadows as
+ *  .button in main.css, falling to the lower right. The group itself is not
+ *  shifted the way a button is (a transform would trap the dropdown menus
+ *  under the next group), so it keeps 5px of margin on the right and bottom
+ *  for the walls to stand in.
+ *
+ *  The legend is taken out of the border and set inside the group, top
+ *  left: positioned absolutely, it is no longer the fieldset's "rendered
+ *  legend", so the border runs unbroken and the walls follow a plain
+ *  rectangle. It fills the band between the top border and the button
+ *  faces, --group-label-height tall, and centres the icon and the text in
+ *  it, so they sit midway between the two whatever the height. The text is
+ *  half the band's height.
+ *
+ *  The .btn-group .button rule only changes the margins and alignment;
+ *  .button and .button:active in main.css still draw the face, the walls
+ *  and the press, untouched. At rest each button's 5px wall ends exactly
+ *  on its margin box, so the clear is true on every side; pressed, the face
+ *  travels 6px and its 1px wall reaches 2px past its resting edge.
+ *
+ *  No "+" inside calc(): yui-compressor strips the spaces around a "+",
+ *  which breaks calc(). Sums are written as subtracting a negative
+ *  (a - -1 * b), which it leaves alone.
+ */
+
+:root {
+  --group-columns: 3;      /* buttons per row */
+  --group-border: 1px;     /* the outline's thickness */
+  --group-clear: 7px;      /* border to buttons: sides and bottom */
+  --group-gap: 7px;        /* between buttons, across a row and between rows */
+  --group-spacing: 7px;    /* between groups: one's walls to the next's border */
+  /* the outline's colour: the buttons' face colour, which is what their
+     edge is drawn in (lit by the same white rim the group carries below) */
+  --group-border-color: var(--main-trans-35);
+  --group-label-height: 24px;  /* top border to button faces; the legend is
+                                  centred in it, its text half this size */
+  --group-label-indent: 8px;   /* the legend, further in than the buttons */
+  /* the fill: this much of --group-fill-color, the rest see-through.
+     0% is fully transparent; try 20% to 40% for a tinted glass */
+  --group-fill-color: var(--main-black-50);
+  --group-fill-amount: 20%;
+}
+
+/* the grid the buttons sit in: the group itself, or for the room group the
+   room template's own wrapper div (see #room-group below) */
+.btn-group,
+#room-group #room-grid-container > div {
+  display: grid;
+  grid-template-columns: repeat(var(--group-columns), auto);
+  column-gap: var(--group-gap);
+}
+
+.btn-group {
+  position: relative;      /* for the legend */
+  width: max-content;      /* hug the buttons, whatever size they are */
+  min-width: 0;            /* a fieldset is min-content wide by default */
+  /* 5px on the right and bottom is room for the walls; below them, the
+     spacing to the next group. All of it is bottom margin and none is top
+     margin: two groups in one column (Pixels, APT) collapse their margins
+     together while groups in different columns (APT, the room) add them,
+     so a top margin on both ended up with uneven gaps. With the bottom
+     margin alone, either way the gap is the same. */
+  margin: 0 5px calc(5px - -1 * var(--group-spacing)) 0;
+  padding: var(--group-clear);
+  /* the legend's band above the buttons */
+  padding-top: var(--group-label-height);
+  border: var(--group-border) solid var(--group-border-color);
+  /* 10px, the button's own corner (.button in main.css), plus the clear
+     and the border, so the outline curves round the buttons evenly */
+  border-radius: calc(10px - -1 * var(--group-clear) - -1 * var(--group-border));
+  background-color: color-mix(in srgb, var(--group-fill-color) var(--group-fill-amount), transparent);
+  /* the same glass edge and walls as .button (main.css). An outer shadow
+     never draws under the box, so the fill decides what shows inside. */
+  box-shadow:
+    inset 0 0 2px rgba(255, 255, 255, 0.3),
+    inset 0 0 10px var(--main-trans-50),
+    1px 1px 0 var(--main-black-30),
+    3px 3px 0 var(--main-black-40),
+    5px 5px 0 var(--main-black-50),
+    5px 5px 0 1px rgba(255, 255, 255, 0.1),
+    6px 6px 3px rgba(0, 0, 0, 0.4),
+    10px 10px 20px rgba(0, 0, 0, 0.3);
+}
+
+/* the room group holds one thing, #room-grid-container, whose template
+   swaps with the room; the template's wrapper div is its grid instead */
+#room-group {
+  display: block;
+}
+
+/* the band from the top border down to the button faces, one clear plus
+   the indent in, with the icon and the text centred in it top to bottom */
+.btn-group legend {
+  position: absolute;
+  top: 0;
+  left: calc(var(--group-clear) - -1 * var(--group-label-indent));
+  display: flex;
+  align-items: center;
+  height: var(--group-label-height);
+  margin: 0;
+  padding: 0;
+  font-weight: bold;
+  line-height: 1;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--main-40-white);
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* the * rule in main.css puts 24px on every element, the legend's icon and
+   its text span included, so both are set here. "> *", not " *": a
+   selector ending in a bare * is tried against every element on the page
+   with a walk up through all its ancestors; with ">" the walk is one step. */
+.btn-group legend,
+.btn-group legend > * {
+  font-size: calc(var(--group-label-height) * .5);
+}
+
+/* a Font Awesome glyph fills its one-em box, so centring the box centres
+   the icon */
+.btn-group legend i {
+  margin-right: 6px;
+  line-height: 1;
+}
+
+/* JosefinSans capitals sit high in their line: centring the line leaves
+   them .12em above the middle, so the text is let down by that much */
+.btn-group legend span {
+  position: relative;
+  top: .12em;
+}
+
+/* size comes from .button itself (main.css); only the margins differ.
+   5px top and left, so with the -5px resting translate the face lands
+   exactly on the content edge, one clear in from the border. Top-aligned
+   so a button inside a .dropdown makes a line box no taller than itself. */
+.btn-group .button {
+  margin: 5px 0 0 5px;
+  vertical-align: top;
+}
+
+/* inside a group a separator ends the row and is the gap to the next one */
+.btn-group .grid-sep {
+  grid-column: 1 / -1;
+  height: var(--group-gap);
+  margin: 0;
+}
+
+/* the dropdown menus open 5px under the button's wall, clear of it, as
+   they did when the buttons were loose */
+.btn-group .dd-content {
+  margin-top: 5px;
+}
+
+/* landscape, where the room group stands beside the left column rather than
+   under it (main.css's same query turns .grid into a row there).
+
+   The two columns end level: the room group is stretched to the height of
+   the left column, and the extra height goes into its top band, between
+   the legend and the buttons -- the legend stays where it always is and
+   the buttons sit at the bottom. A flex row can't do this (a one-line flex
+   container stretches its items to its own full height, which for .grid is
+   the whole page), so .grid is laid out as a one-row grid here instead: the
+   row is as tall as the taller column and both columns stretch to it,
+   while the row keeps to the top and the columns stay centred across, as
+   the flex row had them.
+
+   Across, the same gap as down (main.css puts 7px after .column-left); the
+   walls' 5px margin keeps the columns apart as well. */
+@media screen and (max-height: 700px) {
+  .grid {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: max-content;
+    justify-content: center;
+    align-content: start;
+    align-items: stretch;
+  }
+
+  .column-left {
+    margin-right: var(--group-spacing);
+  }
+
+  .column-right {
+    display: flex;
+    flex-direction: column;
+  }
+
+  #room-group {
+    flex: 1 0 auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+  }
+}

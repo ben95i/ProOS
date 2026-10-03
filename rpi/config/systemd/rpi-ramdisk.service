@@ -1,0 +1,32 @@
+# /etc/systemd/system/rpi-ramdisk.service
+# Mounts a size-limited RAM disk (tmpfs) for minimotion's recordings, so they
+# never touch the SD card or the overlay root, and a full disk can only stop
+# recording - it cannot exhaust the Pi's memory.
+#
+# Enable:  sudo systemctl enable --now rpi-ramdisk
+# Resize:  edit RAMDISK_SIZE, then  sudo systemctl daemon-reload
+#          && sudo mount -o remount,size=<new> /mnt/ramdisk  (no reboot, no data loss)
+
+[Unit]
+Description=RAM disk for minimotion recordings
+DefaultDependencies=no
+After=local-fs.target
+Before=rpi-minimotion.service
+Conflicts=umount.target
+Before=umount.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Mount point and maximum size (about 30 MB per 2-minute movie at 2 Mbit/s).
+Environment=RAMDISK_PATH=/mnt/ramdisk
+Environment=RAMDISK_SIZE=96M
+# The mount point is created on every boot (the overlay root forgets it).
+ExecStart=/bin/mkdir -p ${RAMDISK_PATH}
+# Mount only if nothing is mounted there yet, so restarting is harmless.
+ExecStart=/bin/sh -c "mountpoint -q ${RAMDISK_PATH} || mount -t tmpfs -o size=${RAMDISK_SIZE},mode=0755,noatime,nosuid,nodev,noexec tmpfs ${RAMDISK_PATH}"
+# Deliberately no ExecStop: stopping this unit must not throw away recordings
+# that are still waiting to be copied.
+
+[Install]
+WantedBy=multi-user.target
