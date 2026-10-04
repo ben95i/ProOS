@@ -19,6 +19,7 @@ import WeatherWidget from './weather.js';
 import Lists from './lists.js';
 import Uploader from './upload.js';
 import Bookmarks from './bookmarks.js';
+import CameraView from './camera.js';
 import { SSIDpwd } from './wifi.js';
 
 const ROOM_CONFIGS = {
@@ -58,6 +59,7 @@ window.App = {
   uploader: null,
   lists: null,
   bookmarks: null,
+  cameraView: null,
   colorPrompt: null,
   mainMenu: null,
   activeSwitches: [],
@@ -1147,25 +1149,13 @@ registerListeners({
   'sendButton':       () => serverSend()
 });
 
+// the camera window's markup lives with the class that plays it (camera.js)
 function camPopupTemplate() {
-  return `
-<div class="popup-win" id="cam-popup" data-app-injected>
-  <div class="popup-ctn">
-    <img id="cam-display">
-    <div class="popup-actions">
-      <button type="button" class="button button_left_txtwin" id="btn-cam-close">
-        <i class="fad fa-times-octagon"></i>
-      </button>
-      <button type="button" class="button button_right_txtwin" id="btn-cam-fullscreen">
-        <span> Fullscreen</span>
-      </button>
-    </div>
-  </div>
-</div>`;
+  return CameraView.POPUP_HTML;
 }
 registerListeners({
   'btn-cam-close':      () => closePopup(),
-  'btn-cam-fullscreen': () => goToContextRoot('cam1')
+  'btn-cam-fullscreen': () => toggleCamFullscreen()
 });
 
 /////// Bed Adjustment Window ///////
@@ -2279,22 +2269,29 @@ function openColorPrompt(command, argument, title, three_args = false) {
 
 //// End Dynamic Menus ////
 
+// Doorway button: the camera's live stream, relayed by the API
+// (api/camstream.js) and played by CameraView
 function openCamWindow() {
   closePopup();
-  document.getElementById("cam-popup").style.display = "block";
-  document.getElementById("cam-display").src = "/cam1";
+  if (!App.cameraView) {
+    App.cameraView = new CameraView('doorway');
+  }
+  App.cameraView.open();
 }
 
-function goToContextRoot(_path) {
-  closePopup();
-  window.location = location.protocol + "//" + location.hostname + "/" + _path;
+function toggleCamFullscreen() {
+  if (App.cameraView) {
+    App.cameraView.toggleFullscreen();
+  }
 }
 
 // close all popup windows
 function closePopup() {
   setDisplayById("logForm", "none");
   setDisplayById("cam-popup", "none");
-  document.getElementById("cam-display").src = "";
+  if (App.cameraView) {
+    App.cameraView.close();
+  }
   clearPendingCmd();
   closeServerOptions();
 }
@@ -2339,6 +2336,10 @@ function destroyPageServices() {
   if (App.bookmarks) {
     App.bookmarks.close();
     App.bookmarks = null;
+  }
+  if (App.cameraView) {
+    App.cameraView.destroy();
+    App.cameraView = null;
   }
   if (window.weatherWidget && typeof window.weatherWidget.remove === 'function') {
     window.weatherWidget.remove();

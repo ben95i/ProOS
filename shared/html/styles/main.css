@@ -453,21 +453,6 @@ input.chkbox {
   }
 }
 
-#cam-popup {
-  width: 90vw;
-  height: auto;
-}
-
-#cam-display {
-  width: 100%;
-  height: auto;
-  max-height: 80vh;
-  aspect-ratio: 16 / 9;
-  margin-bottom: 3px;
-  border-radius: 7px;
-  overflow: clip;
-}
-
 .popup-win {
   display: none;
   position: fixed;

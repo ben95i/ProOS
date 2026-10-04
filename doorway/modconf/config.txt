@@ -16,6 +16,10 @@ disable_fw_kms_setup=1
 # No rainbow splash screen on boot
 disable_splash=1
 
+#-------CPU Underclock-------
+# Wi-Fi can become unstable with the camera connected and full CPU speed
+arm_freq=850
+
 #-------Memory-------
 # VideoCore firmware memory. Must stay well above 16: the cut-down firmware
 # used at 16 has no ISP/codec services, and the camera stops working.
@@ -31,6 +35,7 @@ dtoverlay=cma,cma-192
 #-------Disable unused hardware-------
 dtoverlay=disable-bt
 dtparam=audio=off
+enable_tvout=0
 
 #-------Camera-------
 # Native IMX462 (imx290 driver, I2C 0x1a). Auto-detect doesn't know this

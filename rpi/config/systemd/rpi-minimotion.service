@@ -15,6 +15,3 @@ RestartSec=5
 Nice=5
 # On SIGTERM each camera finalises its movie, then copies get up to 20 s.
 TimeoutStopSec=30
-
-[Install]
-WantedBy=multi-user.target

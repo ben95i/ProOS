@@ -5,7 +5,7 @@ appletalk.home|AFP|ssh
 brpi.home|BrPi|ssh
 xana.home|Xana|ssh
 unifi.home|UniFi|ssh
-aptcam.home|Aptcam|ssh
+doorway.home|Doorway|ssh
 ledstrip.home|LEDstrip|ssh
 ledgrid.home|LEDgrid|ssh
 ledwall.home|LEDwall|ssh

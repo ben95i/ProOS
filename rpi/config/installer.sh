@@ -188,6 +188,7 @@ systemctl set-default multi-user.target
 
 ## WiFi
 raspi-config nonint do_wifi_country US
+echo "options brcmfmac roamoff=1" | tee /etc/modprobe.d/brcmfmac.conf > /dev/null
 
 ## Copy SSH
 cp $TMPDIR/sshd_config /etc/ssh
@@ -491,16 +492,15 @@ if [ ! -e "/etc/rpi-conf.done" ]; then
   systemctl unmask NetworkManager-wait-online NetworkManager-dispatcher \
     NetworkManager ModemManager systemd-journald hostapd motion
   systemctl enable ssh avahi-daemon proinit rpi-cleanup.timer \
-    systemd-timesyncd systemd-time-wait-sync NetworkManager ModemManager \
+    systemd-timesyncd systemd-time-wait-sync NetworkManager \
     NetworkManager-wait-online NetworkManager-dispatcher
   ## Disabled on startup
   systemctl stop triggerhappy.socket
   systemctl disable apt-daily-upgrade.timer apt-daily.timer e2scrub_all.timer \
-    sysstat-summary.timer triggerhappy.socket man-db.timer
-  systemctl disable apt-daily-upgrade.service apt-daily.service autofs \
-    e2scrub_all.service e2scrub_reap.service hostapd keyboard-setup sysstat \
-    lighttpd motion serial-getty@ttyS0.service man-db.service nfs-blkmap \
-    serial-getty@ttyAMA0.service winbind hciuart bluetooth bthelper@hci0 \
+    sysstat-summary.timer triggerhappy.socket man-db.timer apt-daily-upgrade.service \
+    apt-daily.service autofs e2scrub_all.service e2scrub_reap.service hostapd ModemManager \
+    keyboard-setup sysstat lighttpd motion serial-getty@ttyS0.service man-db.service \
+    nfs-blkmap serial-getty@ttyAMA0.service winbind hciuart bluetooth bthelper@hci0 \
     bluealsa-aplay nmbd smbd samba-ad-dc triggerhappy sshswitch
   echo "Initial setup (phase II) complete"
   touch /etc/rpi-conf.done
@@ -554,10 +554,6 @@ chown -R pi:pi /var/log/Xorg.0.log /var/log/Xorg.0.log.old /home/pi/.xsession-er
 ## Set Permissions
 chmod -R +x /opt/rpi
 chown -R root:root /opt/rpi
-
-## Clean systemd logs
-journalctl --flush --rotate
-journalctl -m --vacuum-time=300s
 
 ## Aliases
 ln -sf /opt/rpi/rpi.sh /usr/bin/rpi

@@ -1,5 +1,5 @@
 [Unit]
-Description=12hr Clean-up Script
+Description=Daily Clean-up Script
 
 [Service]
 Type=oneshot

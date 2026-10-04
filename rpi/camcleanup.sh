@@ -4,7 +4,7 @@
 ### run as root user only!
 
 FLASH_PATH="/media/usb0"
-GDRIVE_PATH="/mnt/ramdisk/gsync"
+GDRIVE_PATH="/mnt/gsync"
 
 ## Log file path
 if [ ! -e $FLASH_PATH/cameras ]; then

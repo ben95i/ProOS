@@ -13,6 +13,3 @@ ExecStart=/usr/bin/rclone --config /media/usb0/rclone/rclone.conf \
 ExecStop=/bin/fusermount -uz /mnt/gsync
 Restart=on-failure
 RestartSec=5
-
-[Install]
-#WantedBy=multi-user.target

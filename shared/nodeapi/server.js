@@ -1,10 +1,11 @@
 //// Automate REST API ////
 // by Ben Provenzano III //
 //
-// Three routes:
+// Main routes:
 //   GET  /api?action=&arg=&var=   device commands, answered as JSON
 //   GET  /api/read?file=          a menu or saved file, as JSON text
 //   POST /api/write?file=         writes a saved file (text/plain body)
+//   GET  /api/camera/<name>       live camera stream (camstream.js)
 
 const os = require('os');
 const path = require('path');
@@ -14,6 +15,7 @@ const { query, validationResult } = require('express-validator');
 const { executeMain } = require('./controller');
 const { OPCLEDparser } = require('./ledparser');
 const { registerUploadRoutes } = require('./upload');
+const { registerCameraRoutes } = require('./camstream');
 
 const app = express();
 
@@ -104,7 +106,8 @@ app.post('/api/write', express.text({ type: '*/*', limit: '5mb' }), [
 });
 
 app.use(express.json({ limit: '1mb' }));
-registerUploadRoutes(app); 
+registerUploadRoutes(app);
+registerCameraRoutes(app);
 
 app.listen(httpPort, '127.0.0.1', () => {
     console.log(`${hostname} API running on port ${httpPort}`);

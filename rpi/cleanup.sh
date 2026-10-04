@@ -1,6 +1,6 @@
 #!/bin/bash
 ####### RPi Cleanup by Ben Provenzano III #######
-## This script runs 5hr after boot and every 12 hrs
+## This script runs 5hr after boot and every day
 
 ## Cleanup logs
 truncate -s 0 /var/log/wtmp
@@ -20,9 +20,5 @@ truncate -s 128k /tmp/netstat.txt
 #rm -rf /home/pi/.config/chromium/OnDeviceHeadSuggestModel/*
 rm -rf /home/pi/.config/chromium/*
 rm -rf /var/www/sessions/*
-
-## Clean systemd logs
-journalctl --flush --rotate
-journalctl -m --vacuum-time=1hr
 
 exit

@@ -9,6 +9,3 @@ ExecStart=/bin/bash -c 'export DISPLAY=":0"; startx &'
 WorkingDirectory=/home/pi
 Restart=on-failure
 RestartSec=5
-
-[Install]
-#WantedBy=multi-user.target

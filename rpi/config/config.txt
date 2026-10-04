@@ -29,10 +29,6 @@ hdmi_mode=6
 #display_rotate=0
 #lcd_rotate=0
 
-#-------RPi Camera (disabled)-------
-start_x=0
-disable_camera_led=0
-
 #-------Max USB Current -------
 max_usb_current=1
 

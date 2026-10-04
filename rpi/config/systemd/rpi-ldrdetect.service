@@ -1,12 +1,16 @@
 [Unit]
 Description=Light Dependent Resistor (LDR) Sensor Detection Server
 Conflicts=shutdown.target
+StartLimitIntervalSec=30
+StartLimitBurst=20
 
 [Service]
 Type=simple
 Restart=always
 RestartSec=5
-StartLimitInterval=30
-StartLimitBurst=20
 User=root
-ExecStart=/bin/bash -c "/opt/rpi/ldrdetect ${rpi_ldrpin}"
+# rpi_ldrpin, rpi_ldrnight and rpi_ldrday come from: systemctl set-environment ...
+# (ldrdetect reads rpi_ldrnight / rpi_ldrday itself; unset or empty means defaults)
+ExecStart=/opt/rpi/ldrdetect ${rpi_ldrpin}
+# Status logging is console-only; fatal errors still reach the journal via stderr
+StandardOutput=null

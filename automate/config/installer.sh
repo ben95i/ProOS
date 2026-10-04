@@ -27,7 +27,7 @@ apt-get install -y --no-upgrade --ignore-missing dirmngr ca-certificates bpytop 
  ethtool libdbus-glib-1-dev locales aptitude sudo gnupg scrub binutils nmap pip \
  apt-transport-https wget unzip gnupg rsync curl screen parallel libdbus-1-dev htop \
  autotools-dev autoconf automake build-essential libncursesw5-dev fastfetch \
- avahi-daemon ffmpeg python3-ament-xmllint etherwake wakeonlan npm nodejs 
+ avahi-daemon ffmpeg python3-ament-xmllint etherwake wakeonlan npm nodejs
 
 ## Remove Packages
 apt-get remove -y --purge cron anacron postfix apache2 apache2-data

@@ -28,5 +28,3 @@ ExecStart=/bin/sh -c "mountpoint -q ${RAMDISK_PATH} || mount -t tmpfs -o size=${
 # Deliberately no ExecStop: stopping this unit must not throw away recordings
 # that are still waiting to be copied.
 
-[Install]
-WantedBy=multi-user.target

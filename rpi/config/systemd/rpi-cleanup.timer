@@ -1,9 +1,8 @@
 [Unit]
-Description=Runs '/opt/rpi/cleanup' script every 12 hours
+Description=Runs '/opt/rpi/cleanup.sh' script every day
 
 [Timer]
-OnBootSec=2h
-OnActiveSec=12h
+OnActiveSec=24h
 
 [Install]
 WantedBy=timers.target
