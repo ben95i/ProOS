@@ -1,7 +1,7 @@
 ## Created by Ben Provenzano III for Bluetooth Pi
 
 #-------GPU memory-------
-gpu_mem=32
+gpu_mem=16
 
 #-------Disable Ram temp refresh every 500ms---------
 disable_pvt=1
@@ -18,10 +18,6 @@ dtparam=audio=off
 dtparam=i2s=on
 dtoverlay=hifiberry-digi
 
-#---------Disable ACT LED---------
-#dtparam=act_led_trigger=none
-#dtparam=act_led_activelow=on
-
 #-------I2C-------------
 dtparam=i2c_arm=off
 dtparam=i2c1=off
@@ -30,10 +26,6 @@ i2c_arm_baudrate=100000
 #-------SPI-------------
 dtparam=spi=off
 
-#-------RPi Camera (disabled)-------
-start_x=0
-disable_camera_led=0
-
 #------Reboot when exceeds-----
-temp_limit=75
+temp_limit=85
 

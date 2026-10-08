@@ -13,7 +13,12 @@ disable_fw_kms_setup=1
 #-------KMS Video Driver-------
 #dtoverlay=vc4-kms-v3d
 #max_framebuffers=2
+
+#-------GPU Memory-------
 gpu_mem=32
+
+#-------GPU (disable dynamic clock scaling)-------
+#core_freq=250
 
 #-------Force HDMI to 480i---------
 hdmi_ignore_edid=0xa5000080

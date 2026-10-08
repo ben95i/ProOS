@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Tear down the tunnel. The kill switch stays in place, so traffic stays blocked.
+IF=pia
+/usr/local/sbin/pia-wg-dns down
+if ip link show "$IF" &>/dev/null; then
+  wg-quick down "$IF" 2>/dev/null || ip link del "$IF"
+fi
+rm -f /run/pia-wg/status
+exit 0

@@ -1,4 +1,4 @@
-const { spawn, execFile, exec } = require('child_process');
+const { spawn, exec } = require('child_process');
 const fsPromises = require('fs/promises');
 const util = require('util');
 
@@ -10,8 +10,6 @@ const EFFECTS_DIRECTORY_PATH = `${BINARY_ROOT_PATH}/effects`;
 const LED_TYPE_CONFIG_FILE = `${BINARY_ROOT_PATH}/ledtype.txt`;
 const DEFAULT_LED_HARDWARE_TYPE = "8x8grid";
 const TERM_SIGNAL = "SIGKILL";
-
-const execFileAsync = util.promisify(execFile);
 const execAsync = util.promisify(exec);
 
 let inMemoryState = {

@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# pia-wg-dns up <pia-dns-ip>   tunnel up:   all DNS -> PIA, router DNS + DoT blocked
+# pia-wg-dns down              tunnel down: only user piawg may ask the router (bootstrap)
+source /etc/pia-wg/pia-wg.conf
+IF=pia
+
+iptables -t nat -F PIA_DNS      2>/dev/null
+iptables -t nat -F PIA_DNS_POST 2>/dev/null
+iptables -F PIA_DNSGUARD        2>/dev/null || exit 0   # firewall not loaded yet
+
+case ${1:-} in
+  up)
+    dns=${2:?pia dns ip}
+    # Rewrite every query, whatever resolv.conf / an app says, to PIA's resolver.
+    iptables -t nat -A PIA_DNS -d 127.0.0.0/8 -j RETURN
+    iptables -t nat -A PIA_DNS -p udp --dport 53 -j DNAT --to-destination "$dns"
+    iptables -t nat -A PIA_DNS -p tcp --dport 53 -j DNAT --to-destination "$dns"
+    iptables -t nat -A PIA_DNS_POST -o "$IF" -m conntrack --ctstate DNAT -j MASQUERADE
+    # The filter OUTPUT chain still sees the pre-DNAT interface (the LAN NIC), so
+    # "-o pia" doesn't match these; accept the redirected queries explicitly.
+    iptables -A PIA_DNSGUARD -d "$dns" -p udp --dport 53 -m conntrack --ctstate DNAT -j ACCEPT
+    iptables -A PIA_DNSGUARD -d "$dns" -p tcp --dport 53 -m conntrack --ctstate DNAT -j ACCEPT
+    # Belt and braces: nothing may talk DNS to the router, and no DNS-over-TLS anywhere.
+    # (icmp-admin-prohibited fails fast; a tcp-reset to ourselves is dropped as INVALID
+    #  and leaves the app retrying until it times out)
+    iptables -A PIA_DNSGUARD -d "$LAN_DNS" -p udp --dport 53 -j REJECT --reject-with icmp-admin-prohibited
+    iptables -A PIA_DNSGUARD -d "$LAN_DNS" -p tcp --dport 53 -j REJECT --reject-with icmp-admin-prohibited
+    iptables -A PIA_DNSGUARD -p tcp --dport 853 -j REJECT --reject-with icmp-admin-prohibited
+    iptables -A PIA_DNSGUARD -p udp --dport 853 -j REJECT --reject-with icmp-admin-prohibited
+    ;;
+  down)
+    iptables -A PIA_DNSGUARD -d "$LAN_DNS" -m owner --uid-owner piawg -p udp --dport 53 -j ACCEPT
+    iptables -A PIA_DNSGUARD -d "$LAN_DNS" -m owner --uid-owner piawg -p tcp --dport 53 -j ACCEPT
+    ;;
+  *) echo "usage: $0 up <dns-ip> | down" >&2; exit 2 ;;
+esac

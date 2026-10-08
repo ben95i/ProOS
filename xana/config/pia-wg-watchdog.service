@@ -1,0 +1,7 @@
+[Unit]
+Description=PIA WireGuard watchdog
+After=pia-wg.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/pia-wg-watchdog

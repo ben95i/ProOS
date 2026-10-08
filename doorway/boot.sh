@@ -4,11 +4,6 @@
 ##########################################
 
 ## GPIO Services
-LDR_SENSOR_PIN="27"
-systemctl set-environment rpi_ldrpin=$LDR_SENSOR_PIN
-systemctl set-environment rpi_ldrnight=300000
-systemctl set-environment rpi_ldrday=100000
-systemctl start rpi-ldrdetect
 systemctl start rpi-gposerver
 
 ## RAM Disk
@@ -37,9 +32,24 @@ else
 fi
 
 ## Camera RTSP Server
+systemctl set-environment rpi_imxout_w=1280
+systemctl set-environment rpi_imxout_h=720
+systemctl set-environment rpi_imxfps=15
+systemctl set-environment rpi_imxbps=1200000
+systemctl set-environment rpi_imxsm=1920x1080:10
+systemctl set-environment rpi_imxrotate=90
 systemctl start rpi-rtspcam
 
-sleep 10
+sleep 5
+
+## LDR Light Sensor
+LDR_SENSOR_PIN="27"
+systemctl set-environment rpi_ldrpin=$LDR_SENSOR_PIN
+systemctl set-environment rpi_ldrnight=200000
+systemctl set-environment rpi_ldrday=100000
+systemctl start rpi-ldrdetect
+
+sleep 5
 
 ## Motion Detection Server
 systemctl start rpi-minimotion

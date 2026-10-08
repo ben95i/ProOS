@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# List PIA region ids usable as PIA_REGION in /etc/pia-wg/pia-wg.conf.
+runuser -u piawg -- curl -fsS https://serverlist.piaservers.net/vpninfo/servers/v6 | sed -n 1p |
+  jq -r '.regions[] | [.id, .name, (if .geo then "virtual" else "" end),
+         (if .port_forward then "port-forward" else "" end)] | @tsv' | sort

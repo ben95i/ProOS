@@ -17,7 +17,7 @@ dtoverlay=disable-wifi
 dtoverlay=disable-bt
 
 #-------GPU (disable dynamic clock scaling)-------
-gpu_mem=16
+gpu_mem=32
 core_freq=250
 
 #-------Disable Ram temp refresh every 500ms---------------
@@ -38,9 +38,6 @@ enable_uart=1
 #------Disable the PWR LED-------
 dtparam=pwr_led_trigger=none
 dtparam=pwr_led_activelow=on
-
-#------Camera (disabled)------
-start_x=0
 
 #------Reboot when exceeds-----
 temp_limit=75

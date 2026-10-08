@@ -1,0 +1,633 @@
+#!/usr/bin/env python3
+"""pia-wg-leaktest - test the PIA WireGuard kill switch for network leaks.
+
+Run as root on the server:
+
+  pia-wg-leaktest              safe checks + leak probes (nothing leaves outside the tunnel)
+  pia-wg-leaktest --failover   also stop the tunnel briefly and prove everything is blocked
+  pia-wg-leaktest --real-ip    also learn the real WAN IP (via the bootstrap user) to compare
+                               against the VPN exit IP and DNS resolver; this one request and
+                               the fwmark-bypass probe deliberately go out un-tunnelled
+  pia-wg-leaktest --no-color   plain output (default when not on a terminal)
+
+Exit code is 1 if any check FAILs.
+"""
+import argparse
+import datetime
+import errno
+import ipaddress
+import json
+import os
+import random
+import re
+import shlex
+import socket
+import struct
+import subprocess
+import sys
+import time
+import urllib.request
+
+CONF = "/etc/pia-wg/pia-wg.conf"
+STATUS = "/run/pia-wg/status"
+IF = "pia"
+WG_MARK = 51820
+SO_MARK = 36
+SO_BINDTODEVICE = 25
+BLOCKED_ERRNOS = {errno.EPERM, errno.EACCES, errno.EHOSTUNREACH, errno.ENETUNREACH,
+                  errno.EAFNOSUPPORT, errno.EADDRNOTAVAIL}
+WHOAMI = "whoami.akamai.net"  # answers with the IP of the resolver that asked
+
+
+# ------------------------------------------------------------------ report ---
+class Report:
+    COLORS = {"PASS": "32", "FAIL": "1;31", "WARN": "33", "INFO": "36"}
+
+    def __init__(self, color):
+        self.color = color
+        self.counts = {k: 0 for k in self.COLORS}
+        self.failures = []
+
+    def c(self, text, code):
+        return f"\033[{code}m{text}\033[0m" if self.color else text
+
+    def title(self, text):
+        print(self.c("═" * 78, "1"))
+        print(self.c(f"  {text}", "1"))
+        print(self.c("═" * 78, "1"))
+
+    def kv(self, key, value):
+        print(f"  {key:<14} {value}")
+
+    def section(self, text):
+        print()
+        print(self.c(text, "1"))
+        print(self.c("─" * len(text), "2"))
+
+    def item(self, status, desc, detail=""):
+        self.counts[status] += 1
+        if status == "FAIL":
+            self.failures.append(desc)
+        tag = self.c(f"{'[' + status + ']':<6}", self.COLORS[status])
+        line = f"  {tag} {desc:<48}"
+        if detail:
+            line += " " + self.c(detail, "2")
+        print(line.rstrip())
+
+    def summary(self):
+        self.section("Summary")
+        parts = [self.c(f"{n} {k}", self.COLORS[k]) for k, n in self.counts.items()]
+        print("  " + "   ".join(parts))
+        if self.failures:
+            print()
+            print(self.c("  LEAKS / PROBLEMS FOUND:", "1;31"))
+            for f in self.failures:
+                print(f"   - {f}")
+        else:
+            print()
+            print(self.c("  No leaks detected.", "1;32"))
+        print()
+
+
+# ----------------------------------------------------------------- helpers ---
+def run(cmd, timeout=15):
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        return p.returncode, p.stdout.strip(), p.stderr.strip()
+    except Exception as e:  # noqa: BLE001
+        return 1, "", str(e)
+
+
+def load_conf():
+    cfg = {}
+    with open(CONF) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            try:
+                v = " ".join(shlex.split(v))
+            except ValueError:
+                pass
+            cfg[k.strip()] = v
+    return cfg
+
+
+def load_status():
+    st = {}
+    try:
+        with open(STATUS) as f:
+            for line in f:
+                if "=" in line:
+                    k, v = line.strip().split("=", 1)
+                    st[k] = v
+    except OSError:
+        pass
+    return st
+
+
+def lan_iface():
+    _, out, _ = run(["ip", "-4", "route", "show", "table", "main", "default"])
+    m = re.search(r"\bdev (\S+)", out)
+    return m.group(1) if m else None
+
+
+def handshake_age():
+    rc, out, _ = run(["wg", "show", IF, "latest-handshakes"])
+    if rc or not out.split():
+        return None
+    ts = int(out.split()[-1])
+    return None if ts == 0 else int(time.time()) - ts
+
+
+def ename(err):
+    return errno.errorcode.get(err, str(err)) if err else "?"
+
+
+def tcp_probe(host, port, dev=None, mark=None, timeout=4, family=socket.AF_INET):
+    try:
+        s = socket.socket(family, socket.SOCK_STREAM)
+    except OSError as e:  # e.g. IPv6 disabled in the kernel
+        return "error", e.errno
+    s.settimeout(timeout)
+    try:
+        if dev:
+            s.setsockopt(socket.SOL_SOCKET, SO_BINDTODEVICE, dev.encode() + b"\0")
+        if mark is not None:
+            s.setsockopt(socket.SOL_SOCKET, SO_MARK, mark)
+        s.connect((host, port))
+        return "connected", None
+    except socket.timeout:
+        return "timeout", None
+    except OSError as e:
+        return "error", e.errno
+    finally:
+        s.close()
+
+
+def udp_probe(host, port, dev=None, payload=b"\x00" * 48):
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        if dev:
+            s.setsockopt(socket.SOL_SOCKET, SO_BINDTODEVICE, dev.encode() + b"\0")
+        s.sendto(payload, (host, port))
+        return "sent", None
+    except OSError as e:
+        return "error", e.errno
+    finally:
+        s.close()
+
+
+def judge_blocked(res, err, extra_ok=()):
+    """(status, detail) for a probe that SHOULD be blocked."""
+    if res == "error" and (err in BLOCKED_ERRNOS or err in extra_ok):
+        return "PASS", f"blocked ({ename(err)})"
+    if res == "connected":
+        return "FAIL", "CONNECTED - traffic left the host"
+    if res == "sent":
+        return "FAIL", "packet accepted by the firewall"
+    if res == "timeout":
+        return "WARN", "no reply; packet may have left (expected an instant reject)"
+    return "WARN", f"unexpected result ({ename(err)})"
+
+
+# --------------------------------------------------------------------- dns ---
+def _build_query(name, qtype=1):
+    qid = random.randint(0, 0xFFFF)
+    hdr = struct.pack(">HHHHHH", qid, 0x0100, 1, 0, 0, 0)
+    q = b"".join(bytes([len(p)]) + p.encode() for p in name.split(".")) + b"\0"
+    return qid, hdr + q + struct.pack(">HH", qtype, 1)
+
+
+def _skip_name(buf, off):
+    while True:
+        n = buf[off]
+        if n == 0:
+            return off + 1
+        if n & 0xC0 == 0xC0:
+            return off + 2
+        off += 1 + n
+
+
+def _parse_a(buf, qid):
+    rid, flags, qd, an, _, _ = struct.unpack(">HHHHHH", buf[:12])
+    if rid != qid:
+        raise ValueError("DNS id mismatch")
+    off = 12
+    for _ in range(qd):
+        off = _skip_name(buf, off) + 4
+    ips = []
+    for _ in range(an):
+        off = _skip_name(buf, off)
+        rtype, _, _, rdlen = struct.unpack(">HHIH", buf[off:off + 10])
+        off += 10
+        if rtype == 1 and rdlen == 4:
+            ips.append(socket.inet_ntoa(buf[off:off + 4]))
+        off += rdlen
+    return flags & 0xF, ips
+
+
+def _recv_exact(s, n):
+    data = b""
+    while len(data) < n:
+        chunk = s.recv(n - len(data))
+        if not chunk:
+            raise OSError(errno.ECONNRESET, "short read")
+        data += chunk
+    return data
+
+
+def dns_query(server, name, tcp=False, dev=None, timeout=4):
+    """Return (rcode, [A records]); raises OSError / socket.timeout on failure."""
+    qid, pkt = _build_query(name)
+    if tcp:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    else:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.settimeout(timeout)
+    try:
+        if dev:
+            s.setsockopt(socket.SOL_SOCKET, SO_BINDTODEVICE, dev.encode() + b"\0")
+        if tcp:
+            s.connect((server, 53))
+            s.sendall(struct.pack(">H", len(pkt)) + pkt)
+            length = struct.unpack(">H", _recv_exact(s, 2))[0]
+            buf = _recv_exact(s, length)
+        else:
+            s.sendto(pkt, (server, 53))
+            buf, _ = s.recvfrom(4096)
+    finally:
+        s.close()
+    return _parse_a(buf, qid)
+
+
+def whoami(server, tcp=False, dev=None):
+    """Egress IP of whichever resolver actually handled our query, or an error string."""
+    try:
+        _, ips = dns_query(server, WHOAMI, tcp=tcp, dev=dev)
+        return (ips[0], None) if ips else (None, "empty answer")
+    except socket.timeout:
+        return None, "timeout"
+    except OSError as e:
+        return None, ename(e.errno)
+    except Exception as e:  # noqa: BLE001
+        return None, str(e)
+
+
+def ipinfo(ip=""):
+    url = f"https://ipinfo.io/{ip + '/' if ip else ''}json"
+    req = urllib.request.Request(url, headers={"User-Agent": "curl/8"})
+    with urllib.request.urlopen(req, timeout=8) as r:
+        return json.loads(r.read())
+
+
+def org_of(ip, cache={}):  # noqa: B006 - deliberate memo
+    if ip not in cache:
+        try:
+            cache[ip] = ipinfo(ip).get("org", "?")
+        except Exception:  # noqa: BLE001
+            cache[ip] = "?"
+    return cache[ip]
+
+
+# ------------------------------------------------------------------ checks ---
+def check_services(rep, cfg):
+    rep.section("Services & tunnel")
+    for unit in ("pia-wg-firewall.service", "pia-wg.service", "pia-wg-watchdog.timer"):
+        _, state, _ = run(["systemctl", "is-active", unit])
+        rep.item("PASS" if state == "active" else "FAIL", f"{unit} running", state)
+
+    if not os.path.exists(f"/sys/class/net/{IF}"):
+        rep.item("FAIL", f"Interface '{IF}' exists", "missing")
+        return False
+    rep.item("PASS", f"Interface '{IF}' exists")
+
+    age = handshake_age()
+    limit = int(cfg.get("MAX_HANDSHAKE_AGE", "300"))
+    if age is None:
+        rep.item("FAIL", "WireGuard handshake", "never completed")
+    else:
+        rep.item("PASS" if age <= limit else "FAIL", "WireGuard handshake recent", f"{age}s ago (limit {limit}s)")
+
+    _, out, _ = run(["ip", "-4", "route", "get", "1.1.1.1"])
+    dev = re.search(r"\bdev (\S+)", out)
+    dev = dev.group(1) if dev else "?"
+    rep.item("PASS" if dev == IF else "FAIL", "Default route for internet traffic", f"1.1.1.1 -> dev {dev}")
+
+    rc, _, _ = run(["ping", "-c", "2", "-W", "3", "1.1.1.1"])
+    rep.item("PASS" if rc == 0 else "FAIL", "Internet reachable through tunnel", "ping 1.1.1.1 ok" if rc == 0 else "ping failed")
+    return True
+
+
+def check_firewall(rep):
+    rep.section("Firewall configuration")
+    for tool, label in (("iptables", "IPv4"), ("ip6tables", "IPv6")):
+        _, out, _ = run([tool, "-S"])
+        pol = dict(re.findall(r"^-P (\w+) (\w+)", out, re.M))
+        for chain in ("INPUT", "OUTPUT", "FORWARD"):
+            p = pol.get(chain, "?")
+            rep.item("PASS" if p == "DROP" else "FAIL", f"{label} {chain} default policy", p)
+
+    _, nat, _ = run(["iptables", "-t", "nat", "-S", "PIA_DNS"])
+    rep.item("PASS" if "DNAT" in nat else "FAIL", "DNS redirect to PIA active", "nat PIA_DNS has DNAT rules" if "DNAT" in nat else "chain empty")
+
+    _, mg, _ = run(["iptables", "-t", "mangle", "-S", "PIA_POST"])
+    rep.item("PASS" if "DROP" in mg else "FAIL", "Redirected DNS can't leave via LAN NIC", "mangle PIA_POST guard" if "DROP" in mg else "guard missing (old pia-wg-firewall?)")
+
+    rc, _, _ = run(["systemctl", "is-enabled", "--quiet", "nftables.service"])
+    rep.item("PASS" if rc else "FAIL", "nftables.service disabled", "would flush the kill switch at boot" if rc == 0 else "")
+
+    fwd = open("/proc/sys/net/ipv4/ip_forward").read().strip()
+    rep.item("PASS" if fwd == "0" else "WARN", "IP forwarding off", f"net.ipv4.ip_forward={fwd}")
+
+    _, v6, _ = run(["ip", "-6", "addr", "show", "scope", "global"])
+    rep.item("PASS" if not v6 else "INFO", "No global IPv6 addresses", "" if not v6 else "present (egress still blocked by ip6tables)")
+
+    rep.item("INFO", "Bootstrap exception", "user piawg may use TCP 443/1337 outside the tunnel")
+
+
+def check_identity(rep, cfg, lanif, real_ip):
+    rep.section("Public identity (what the internet sees)")
+    exit_ip = None
+    try:
+        info = ipinfo()
+        exit_ip = info.get("ip")
+        rep.item("INFO", "VPN exit IP", f"{exit_ip}  {info.get('org', '')}  {info.get('city', '')}, {info.get('country', '')}")
+    except Exception as e:  # noqa: BLE001
+        rep.item("FAIL", "VPN exit IP lookup", f"failed: {e}")
+
+    real = None
+    if real_ip:
+        rc, out, err = run(["runuser", "-u", "piawg", "--", "curl", "-s", "--max-time", "8",
+                            "--interface", lanif, "https://api.ipify.org"])
+        try:
+            real = str(ipaddress.ip_address(out)) if rc == 0 else None
+        except ValueError:
+            real = None
+        if real:
+            rep.item("INFO", "Real WAN IP (deliberate un-tunnelled request)", f"{real}  {org_of(real)}")
+            if exit_ip:
+                rep.item("PASS" if exit_ip != real else "FAIL", "Exit IP differs from real IP", f"{exit_ip} vs {real}")
+        else:
+            rep.item("WARN", "Real WAN IP lookup", f"failed ({err or out or rc})")
+    return exit_ip, real
+
+
+def check_dns(rep, cfg, st, lanif, real):
+    rep.section("DNS")
+    pia_dns = st.get("dns", "10.0.0.243")
+    lan_dns = cfg.get("LAN_DNS", "192.168.1.1")
+
+    ns = re.findall(r"^nameserver\s+(\S+)", open("/etc/resolv.conf").read(), re.M)
+    rep.item("INFO", "resolv.conf nameservers", ", ".join(ns) or "none")
+
+    try:
+        socket.getaddrinfo("debian.org", 443)
+        rep.item("PASS", "System resolver works", "debian.org resolved")
+    except socket.gaierror as e:
+        rep.item("FAIL", "System resolver works", str(e))
+
+    ref, err = whoami(pia_dns)
+    if not ref:
+        rep.item("FAIL", f"PIA resolver {pia_dns} answers", err)
+        return
+    ref_org = org_of(ref)
+    rep.item("PASS", f"PIA resolver {pia_dns} answers", f"egress {ref}  {ref_org}")
+
+    def same_resolver(ip):
+        return ip == ref or (ref_org != "?" and org_of(ip) == ref_org)
+
+    tests = [
+        ("Query to router (UDP) handled by PIA", lan_dns, False),
+        ("Query to router (TCP) handled by PIA", lan_dns, True),
+        ("Query to 8.8.8.8 handled by PIA", "8.8.8.8", False),
+        ("Query to 1.1.1.1 handled by PIA", "1.1.1.1", False),
+    ]
+    for desc, server, tcp in tests:
+        ip, err = whoami(server, tcp=tcp)
+        if not ip:
+            rep.item("WARN", desc, f"no answer ({err})")
+        elif same_resolver(ip):
+            rep.item("PASS", desc, f"answered via {ip}")
+        else:
+            rep.item("FAIL", desc, f"answered by {ip} ({org_of(ip)}), not PIA")
+
+    try:
+        sys_ip = socket.getaddrinfo(WHOAMI, 0, socket.AF_INET)[0][4][0]
+        ok = same_resolver(sys_ip)
+        rep.item("PASS" if ok else "FAIL", "System resolver goes to PIA", f"egress {sys_ip}")
+    except socket.gaierror as e:
+        rep.item("WARN", "System resolver goes to PIA", str(e))
+
+    if real:
+        rep.item("PASS" if ref != real and ref_org != org_of(real) else "FAIL",
+                 "DNS resolver is not your ISP", f"{ref} ({ref_org}) vs real {real} ({org_of(real)})")
+
+    res, err = tcp_probe("1.1.1.1", 853)
+    status, detail = judge_blocked(res, err, extra_ok=(errno.ECONNREFUSED,))
+    rep.item(status, "DNS-over-TLS (853) blocked", detail)
+
+    try:
+        dns_query(lan_dns, WHOAMI, dev=lanif)
+        rep.item("FAIL", f"DNS from socket bound to {lanif} blocked", "got an answer outside the tunnel")
+    except socket.timeout:
+        rep.item("WARN", f"DNS from socket bound to {lanif} blocked", "timeout (expected instant EPERM)")
+    except OSError as e:
+        ok = e.errno in BLOCKED_ERRNOS
+        rep.item("PASS" if ok else "WARN", f"DNS from socket bound to {lanif} blocked", f"blocked ({ename(e.errno)})")
+
+    s6 = None
+    try:
+        s6 = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+        s6.sendto(b"\0" * 32, ("2001:4860:4860::8888", 53))
+        rep.item("FAIL", "IPv6 DNS blocked", "packet accepted")
+    except OSError as e:
+        rep.item("PASS", "IPv6 DNS blocked", f"blocked ({ename(e.errno)})")
+    finally:
+        if s6:
+            s6.close()
+
+
+def pick_lan_host(cfg):
+    net = ipaddress.ip_network(cfg.get("LAN_SUBNET", "192.168.1.0/24"), strict=False)
+    skip = {cfg.get("LAN_DNS", "")} | set(cfg.get("LAN_ALLOW_HOSTS", "").replace(",", " ").split())
+    _, out, _ = run(["ip", "-4", "-o", "addr", "show"])
+    skip |= set(re.findall(r"inet (\d+\.\d+\.\d+\.\d+)", out))
+    for h in net.hosts():
+        if str(h) not in skip:
+            return str(h)
+    return None
+
+
+def check_probes(rep, cfg, lanif, real_ip):
+    rep.section("Leak probes (all should be blocked)")
+    lan_dns = cfg.get("LAN_DNS", "192.168.1.1")
+
+    probes = [
+        (f"TCP 443 to internet bound to {lanif}", lambda: tcp_probe("1.1.1.1", 443, dev=lanif)),
+        (f"UDP 123 (NTP) to internet bound to {lanif}", lambda: udp_probe("162.159.200.1", 123, dev=lanif)),
+        (f"TCP 80 to router {lan_dns}", lambda: tcp_probe(lan_dns, 80)),
+    ]
+    other = pick_lan_host(cfg)
+    if other:
+        probes.append((f"TCP 22 to other LAN host {other}", lambda: tcp_probe(other, 22)))
+    for net in cfg.get("SERVICE_SUBNETS", "").replace(",", " ").split():
+        if not ipaddress.ip_network(net, strict=False).overlaps(
+                ipaddress.ip_network(cfg.get("LAN_SUBNET", "192.168.1.0/24"), strict=False)):
+            host = str(next(ipaddress.ip_network(net, strict=False).hosts()))
+            probes.append((f"TCP 80 to {host} (inbound-only subnet)", lambda h=host: tcp_probe(h, 80)))
+    probes.append(("IPv6 TCP 443 to internet",
+                   lambda: tcp_probe("2606:4700:4700::1111", 443, family=socket.AF_INET6)))
+
+    for desc, fn in probes:
+        status, detail = judge_blocked(*fn())
+        rep.item(status, desc, detail)
+
+    rc, _, _ = run(["ping", "-c", "1", "-W", "2", "-I", lanif, "1.1.1.1"])
+    rep.item("PASS" if rc else "FAIL", f"ICMP to internet bound to {lanif}", "blocked" if rc else "REPLY RECEIVED")
+
+    # curl's time_connect stays 0 unless the TCP handshake completed
+    rc, out, _ = run(["runuser", "-u", "nobody", "--", "curl", "-sk", "-o", "/dev/null",
+                      "-w", "%{time_connect}", "--max-time", "5", "--interface", lanif,
+                      "https://1.1.1.1"])
+    try:
+        connected = float(out or 0) > 0
+    except ValueError:
+        connected = False
+    rep.item("FAIL" if connected else "PASS", f"Unprivileged user bound to {lanif}",
+             "CONNECTED" if connected else f"blocked (curl exit {rc})")
+
+    for host in cfg.get("LAN_ALLOW_HOSTS", "").replace(",", " ").split():
+        rc, _, _ = run(["ping", "-c", "1", "-W", "2", host])
+        rep.item("INFO", f"Allowed LAN host {host}", "reachable" if rc == 0 else "allowed, but no ping reply")
+
+    if real_ip:
+        status, detail = judge_blocked(*tcp_probe("1.1.1.1", 443, mark=WG_MARK))
+        if status == "PASS":
+            rep.item("PASS", f"Root bypass with fwmark {WG_MARK}", detail)
+        else:
+            rep.item("WARN", f"Root bypass with fwmark {WG_MARK}",
+                     "possible (root/CAP_NET_ADMIN only, inherent to WireGuard kill switches)")
+
+
+def check_listeners(rep, cfg):
+    rep.section("Listening services (inbound exposure)")
+    ports = set(cfg.get("SERVICE_TCP_PORTS", "").split(","))
+    subnets = cfg.get("SERVICE_SUBNETS", "").replace(",", ", ")
+    _, out, _ = run(["ss", "-Hlntu"])
+    seen = set()
+    for line in out.splitlines():
+        cols = line.split()
+        if len(cols) < 5:
+            continue
+        proto, local = cols[0], cols[4]
+        addr, _, port = local.rpartition(":")
+        addr = addr.strip("[]").split("%")[0]
+        if addr.startswith("127.") or addr == "::1":
+            continue
+        key = (proto, port)
+        if key in seen:
+            continue
+        seen.add(key)
+        if proto == "tcp" and port in ports:
+            rep.item("INFO", f"tcp/{port}", f"allowed from {subnets}")
+        elif proto == "udp" and port == "5353":
+            rep.item("INFO", "udp/5353 (mDNS)", f"allowed from {cfg.get('LAN_SUBNET')}"
+                     if cfg.get("ALLOW_MDNS", "yes") == "yes" else "blocked by firewall")
+        elif proto == "udp" and port == "68":
+            rep.item("INFO", "udp/68 (DHCP client)", "allowed")
+        else:
+            rep.item("INFO", f"{proto}/{port}", "listening, blocked by firewall")
+
+
+def check_failover(rep, cfg):
+    rep.section("Kill switch failover (tunnel stopped on purpose)")
+    lan_dns = cfg.get("LAN_DNS", "192.168.1.1")
+    run(["systemctl", "stop", "pia-wg-watchdog.timer"])
+    run(["systemctl", "stop", "pia-wg.service"], timeout=60)
+    try:
+        time.sleep(2)
+        gone = not os.path.exists(f"/sys/class/net/{IF}")
+        rep.item("PASS" if gone else "WARN", "Tunnel down for test", "" if gone else "interface still present")
+
+        for desc, fn in (
+            ("TCP 443 to internet", lambda: tcp_probe("1.1.1.1", 443)),
+            ("UDP 123 to internet", lambda: udp_probe("162.159.200.1", 123)),
+            ("TCP 80 to internet", lambda: tcp_probe("93.184.215.14", 80)),
+        ):
+            status, detail = judge_blocked(*fn())
+            rep.item(status, desc, detail)
+
+        rc, _, _ = run(["ping", "-c", "1", "-W", "2", "1.1.1.1"])
+        rep.item("PASS" if rc else "FAIL", "ICMP to internet", "blocked" if rc else "REPLY RECEIVED")
+
+        for desc, server in ((f"DNS to router {lan_dns}", lan_dns), ("DNS to 8.8.8.8", "8.8.8.8")):
+            ip, err = whoami(server)
+            rep.item("FAIL" if ip else "PASS", desc, f"ANSWERED ({ip})" if ip else f"blocked ({err})")
+
+        name = f"leaktest-{random.randint(10**6, 10**7)}.debian.org"
+        try:
+            socket.getaddrinfo(name, 0)
+            rep.item("FAIL", "System resolver while tunnel down", "a resolver answered")
+        except socket.gaierror as e:
+            if e.errno == socket.EAI_NONAME:
+                rep.item("FAIL", "System resolver while tunnel down", "got NXDOMAIN, so a resolver was reached")
+            else:
+                rep.item("PASS", "System resolver while tunnel down", f"no resolver reachable ({e.strerror})")
+    finally:
+        t0 = time.time()
+        run(["systemctl", "start", "pia-wg.service"], timeout=200)
+        run(["systemctl", "start", "pia-wg-watchdog.timer"])
+        age = None
+        for _ in range(30):
+            age = handshake_age()
+            if age is not None:
+                break
+            time.sleep(1)
+        rep.item("PASS" if age is not None else "FAIL", "Tunnel restored after test",
+                 f"reconnected in {time.time() - t0:.0f}s" if age is not None else "NOT reconnected - check journalctl -u pia-wg")
+
+
+# -------------------------------------------------------------------- main ---
+def main():
+    ap = argparse.ArgumentParser(description="Test the PIA WireGuard kill switch for leaks.")
+    ap.add_argument("-f", "--failover", action="store_true", help="stop the tunnel briefly and verify everything is blocked")
+    ap.add_argument("-r", "--real-ip", action="store_true", help="learn the real WAN IP and probe the fwmark bypass (un-tunnelled)")
+    ap.add_argument("--no-color", action="store_true", help="disable colours")
+    args = ap.parse_args()
+
+    if os.geteuid() != 0:
+        sys.exit("Run as root.")
+
+    cfg = load_conf()
+    st = load_status()
+    lanif = lan_iface() or "eth0"
+    rep = Report(color=sys.stdout.isatty() and not args.no_color)
+
+    rep.title("PIA WireGuard leak test")
+    rep.kv("Host", socket.gethostname())
+    rep.kv("Date", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    rep.kv("LAN interface", lanif)
+    rep.kv("Region", st.get("region", "?"))
+    rep.kv("Server", st.get("server", "?"))
+    rep.kv("Tunnel IP", st.get("tunnel_ip", "?"))
+    rep.kv("Connected", st.get("since", "?"))
+
+    tunnel_ok = check_services(rep, cfg)
+    check_firewall(rep)
+    real = None
+    if tunnel_ok:
+        _, real = check_identity(rep, cfg, lanif, args.real_ip)
+        check_dns(rep, cfg, st, lanif, real)
+    check_probes(rep, cfg, lanif, args.real_ip)
+    check_listeners(rep, cfg)
+    if args.failover:
+        check_failover(rep, cfg)
+
+    rep.summary()
+    sys.exit(1 if rep.counts["FAIL"] else 0)
+
+
+if __name__ == "__main__":
+    main()

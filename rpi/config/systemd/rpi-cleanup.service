@@ -1,8 +1,0 @@
-[Unit]
-Description=Daily Clean-up Script
-
-[Service]
-Type=oneshot
-RemainAfterExit=no
-ExecStart=-/opt/rpi/cleanup.sh
-IOSchedulingClass=idle

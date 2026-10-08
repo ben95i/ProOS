@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+# Kill switch + routing for inbound services. Idempotent; runs before networking.
+set -euo pipefail
+source /etc/pia-wg/pia-wg.conf
+
+id piawg >/dev/null 2>&1 || { echo "pia-wg-firewall: user 'piawg' missing (re-run installer.sh)" >&2; exit 1; }
+
+IF=pia
+WG_MARK=51820   # FwMark carried by WireGuard's own encrypted UDP packets (set in pia.conf)
+SVC_MARK=0x1    # connections that arrived from outside on the service ports
+PORTS=$SERVICE_TCP_PORTS
+SUBNETS=${SERVICE_SUBNETS//,/ }
+
+# Loose reverse-path filtering: with the tunnel up the "best" route back to an
+# outside SSH/VNC client is the tunnel, so strict mode would drop their packets.
+sysctl -qw net.ipv4.conf.all.rp_filter=2 net.ipv4.conf.default.rp_filter=2
+
+# --- inbound service routing (set up first so open SSH sessions survive) ----
+# Tag connections that arrive (not via the tunnel) on the service ports...
+iptables -t mangle -N PIA_SVC_IN 2>/dev/null || iptables -t mangle -F PIA_SVC_IN
+for net in $SUBNETS; do
+  iptables -t mangle -A PIA_SVC_IN -s "$net" -p tcp -m multiport --dports "$PORTS" \
+           -j CONNMARK --set-mark "$SVC_MARK"
+done
+iptables -t mangle -C PREROUTING ! -i "$IF" -j PIA_SVC_IN 2>/dev/null ||
+  iptables -t mangle -I PREROUTING ! -i "$IF" -j PIA_SVC_IN
+
+# ...copy the tag onto their reply packets...
+iptables -t mangle -N PIA_SVC_OUT 2>/dev/null || iptables -t mangle -F PIA_SVC_OUT
+iptables -t mangle -A PIA_SVC_OUT -m connmark --mark "$SVC_MARK" -j MARK --set-mark "$SVC_MARK"
+iptables -t mangle -C OUTPUT -j PIA_SVC_OUT 2>/dev/null ||
+  iptables -t mangle -I OUTPUT -j PIA_SVC_OUT
+
+# ...and route tagged replies with the main table (router), ahead of wg-quick's rules.
+while ip rule del priority 100 2>/dev/null; do :; done
+ip rule add priority 100 fwmark "$SVC_MARK" lookup main
+
+# --- DNS redirect chains (filled by pia-wg-connect while the tunnel is up) ---
+iptables -t nat -N PIA_DNS 2>/dev/null || true
+iptables -t nat -C OUTPUT -j PIA_DNS 2>/dev/null || iptables -t nat -I OUTPUT -j PIA_DNS
+iptables -t nat -N PIA_DNS_POST 2>/dev/null || true
+iptables -t nat -C POSTROUTING -j PIA_DNS_POST 2>/dev/null ||
+  iptables -t nat -I POSTROUTING -j PIA_DNS_POST
+
+# --- redirected DNS must leave through the tunnel ----------------------------
+# filter OUTPUT sees the pre-DNAT interface, so it can't tell where a redirected
+# query really goes. A socket bound to the LAN NIC would send it out there.
+# mangle POSTROUTING sees the final interface, so enforce it here.
+iptables -t mangle -N PIA_POST 2>/dev/null || iptables -t mangle -F PIA_POST
+iptables -t mangle -A PIA_POST ! -o "$IF" -m conntrack --ctstate DNAT -j DROP
+iptables -t mangle -C POSTROUTING -j PIA_POST 2>/dev/null ||
+  iptables -t mangle -I POSTROUTING -j PIA_POST
+
+# --- IPv4 filter (atomic replace of the filter table only) -------------------
+lan_rules=""
+for h in ${LAN_ALLOW_HOSTS//,/ }; do lan_rules+="-A OUTPUT -d $h -j ACCEPT"$'\n'; done
+
+in4=""; out4=""; in6=""; out6=""
+for net in $SUBNETS; do
+  in4+="-A INPUT ! -i $IF -s $net -p tcp -m multiport --dports $PORTS -j ACCEPT"$'\n'
+done
+if [[ ${ALLOW_MDNS:-yes} == yes ]]; then
+  in4+="-A INPUT ! -i $IF -s $LAN_SUBNET -p udp --dport 5353 -j ACCEPT"$'\n'
+  out4+="-A OUTPUT -d 224.0.0.251 -p udp --dport 5353 -j ACCEPT"$'\n'
+  out4+="-A OUTPUT -d $LAN_SUBNET -p udp --sport 5353 -j ACCEPT"$'\n'
+  out4+="-A OUTPUT -d 224.0.0.0/4 -p igmp -j ACCEPT"$'\n'
+  in6+="-A INPUT -s fe80::/10 -p udp --dport 5353 -j ACCEPT"$'\n'
+  out6+="-A OUTPUT -d ff02::fb -p udp --dport 5353 -j ACCEPT"$'\n'
+  out6+="-A OUTPUT -d fe80::/10 -p udp --sport 5353 -j ACCEPT"$'\n'
+  out6+="-A OUTPUT -p ipv6-icmp -m icmp6 --icmpv6-type 143 -j ACCEPT"$'\n'
+fi
+
+iptables-restore <<EOF
+*filter
+:INPUT DROP [0:0]
+:FORWARD DROP [0:0]
+:OUTPUT DROP [0:0]
+:PIA_DNSGUARD - [0:0]
+-A INPUT -i lo -j ACCEPT
+-A INPUT -m conntrack --ctstate INVALID -j DROP
+-A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+${in4}-A INPUT -p udp --sport 67 --dport 68 -j ACCEPT
+-A OUTPUT -o lo -j ACCEPT
+-A OUTPUT -j PIA_DNSGUARD
+-A OUTPUT -m connmark --mark $SVC_MARK -j ACCEPT
+-A OUTPUT -o $IF -d 192.168.0.0/16 -j REJECT --reject-with icmp-admin-prohibited
+-A OUTPUT -o $IF -d 172.16.0.0/12 -j REJECT --reject-with icmp-admin-prohibited
+-A OUTPUT -o $IF -j ACCEPT
+-A OUTPUT -m mark --mark $WG_MARK -j ACCEPT
+-A OUTPUT -p udp --sport 68 --dport 67 -j ACCEPT
+${lan_rules}${out4}-A OUTPUT -m owner --uid-owner piawg -p tcp -m multiport --dports 443,1337 -j ACCEPT
+-A OUTPUT -j REJECT --reject-with icmp-admin-prohibited
+COMMIT
+EOF
+
+# --- IPv6: PIA tunnel is IPv4-only, so block v6 egress (keep services + ND) -
+ip6tables-restore <<EOF
+*filter
+:INPUT DROP [0:0]
+:FORWARD DROP [0:0]
+:OUTPUT DROP [0:0]
+-A INPUT -i lo -j ACCEPT
+-A INPUT -m conntrack --ctstate INVALID -j DROP
+-A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+-A INPUT -p ipv6-icmp -m icmp6 --icmpv6-type router-advertisement -j ACCEPT
+-A INPUT -p ipv6-icmp -m icmp6 --icmpv6-type neighbour-solicitation -j ACCEPT
+-A INPUT -p ipv6-icmp -m icmp6 --icmpv6-type neighbour-advertisement -j ACCEPT
+${in6}-A OUTPUT -o lo -j ACCEPT
+${out6}-A OUTPUT -p ipv6-icmp -m icmp6 --icmpv6-type router-solicitation -j ACCEPT
+-A OUTPUT -p ipv6-icmp -m icmp6 --icmpv6-type neighbour-solicitation -j ACCEPT
+-A OUTPUT -p ipv6-icmp -m icmp6 --icmpv6-type neighbour-advertisement -j ACCEPT
+-A OUTPUT -j REJECT --reject-with icmp6-adm-prohibited
+COMMIT
+EOF
+
+# Start in "tunnel down" DNS state; pia-wg-connect switches it once the tunnel is up.
+/usr/local/sbin/pia-wg-dns down
+
+echo "pia-wg-firewall: kill switch active (tcp $PORTS from $SUBNETS; LAN hosts $LAN_ALLOW_HOSTS; mDNS ${ALLOW_MDNS:-yes})"

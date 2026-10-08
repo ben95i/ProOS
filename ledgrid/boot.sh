@@ -11,10 +11,10 @@ systemctl set-environment rpi_ledmaxbright=40 ## 0 thru 255
 systemctl restart rpi-opcserver
 systemctl restart rpi-mp4toleds
 
-## Auto Wi-Fi Hotspot
-systemctl restart rpi-netdetect
-
 ## Turn-Off Activity LED (Pi Zero)
 echo none > /sys/class/leds/ACT/trigger
+
+## Network Watchdog
+systemctl restart rpi-netwatchdog
 
 exit

@@ -10,6 +10,7 @@ pve/network
 *sasl_passwd*
 *authorized_keys*
 *openapd.mac*
+*pia-wg.conf*
 *Thumbs.db*
 *.tar.xz*
 *.deb*

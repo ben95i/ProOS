@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Run by pia-wg-watchdog.timer: (re)start the tunnel if it's down or the
+# WireGuard handshake is stale (server gone, key expired, network change).
+source /etc/pia-wg/pia-wg.conf
+IF=pia
+MAX_AGE=${MAX_HANDSHAKE_AGE:-300}
+
+state=$(systemctl is-active pia-wg.service)
+case $state in
+  active) ;;
+  activating|deactivating|reloading) exit 0 ;;   # connect in progress / auto-restart pending
+  *) echo "pia-wg is $state, starting"; systemctl start --no-block pia-wg.service; exit 0 ;;
+esac
+
+hs=$(wg show "$IF" latest-handshakes 2>/dev/null | awk '{print $2}')
+age=$(( $(date +%s) - ${hs:-0} ))
+if [[ -z $hs || $hs -eq 0 || $age -gt $MAX_AGE ]]; then
+  echo "handshake stale (${age}s), reconnecting"
+  systemctl restart --no-block pia-wg.service
+fi

@@ -1,7 +1,52 @@
 [Unit]
-Description=Camera Cleanup
+Description=Camera Cleanup (keeps gsync and USB flash camera folders under their size limits)
 
 [Service]
 Type=oneshot
 RemainAfterExit=no
+
+## ---------------------------------------------------------------------------
+## camcleanup.sh settings
+## After editing run:  sudo systemctl daemon-reload
+## ---------------------------------------------------------------------------
+
+## Mount points. A location is only cleaned when its mount point is mounted
+## and its camera folder exists.
+Environment=FLASH_PATH=/media/usb0
+Environment=GDRIVE_PATH=/mnt/gsync
+
+## Managed folders (no trailing slash). Only files inside these are deleted.
+Environment=FLASH_CAMERA_FOLDER=/media/usb0/cameras
+Environment=GDRIVE_CAMERA_FOLDER=/mnt/gsync/Cameras
+
+## Maximum size of each managed folder, in GB (decimals allowed, e.g. 14.5)
+Environment=FLASH_LIMIT_GB=52
+Environment=GDRIVE_LIMIT_GB=14.5
+
+## GB left free below each limit (and on each disk) after a cleanup
+## (decimals allowed, e.g. 1.5)
+Environment=FREE_SPACE_RESERVE_GB=2.5
+
+## Files modified within this many minutes are never deleted
+Environment=MIN_FILE_AGE_MINUTES=10
+
+## Seconds to wait for a mount check before treating the mount as hung
+Environment=MOUNT_CHECK_TIMEOUT_SECONDS=60
+
+## Seconds allowed for scanning a folder / reading free space
+Environment=COMMAND_TIMEOUT_SECONDS=450
+
+## rclone service restarted when the Google Drive mount hangs
+Environment=RCLONE_SERVICE_NAME=rpi-rclone
+
+## Log files and their maximum sizes (the fallback is used when the flash
+## drive is not available)
+Environment=FLASH_LOG_FILE=/media/usb0/cameras/camcleanup.log
+Environment=FLASH_LOG_MAX_SIZE=5MB
+Environment=FALLBACK_LOG_FILE=/tmp/camcleanup.log
+Environment=FALLBACK_LOG_MAX_SIZE=128KB
+
+## Lock file that stops two cleanups from running at the same time
+Environment=LOCK_FILE=/run/camcleanup.lock
+
 ExecStart=-/opt/rpi/camcleanup.sh

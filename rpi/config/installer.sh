@@ -1,5 +1,5 @@
 #!/bin/bash
-## Raspberry Pi ProOS Server Setup Script v17
+## Raspberry Pi ProOS Server Setup
 ## run this 1st, then module installer
 
 # Installer Files Path
@@ -489,11 +489,9 @@ rm -f /lib/systemd/system/shairport-sync.service
 systemctl daemon-reload
 if [ ! -e "/etc/rpi-conf.done" ]; then
   ## Active on startup
-  systemctl unmask NetworkManager-wait-online NetworkManager-dispatcher \
-    NetworkManager ModemManager systemd-journald hostapd motion
-  systemctl enable ssh avahi-daemon proinit rpi-cleanup.timer \
-    systemd-timesyncd systemd-time-wait-sync NetworkManager \
-    NetworkManager-wait-online NetworkManager-dispatcher
+  systemctl unmask NetworkManager-wait-online NetworkManager-dispatcher NetworkManager systemd-journald
+  systemctl enable ssh avahi-daemon proinit systemd-timesyncd systemd-time-wait-sync \
+    NetworkManager NetworkManager-wait-online NetworkManager-dispatcher
   ## Disabled on startup
   systemctl stop triggerhappy.socket
   systemctl disable apt-daily-upgrade.timer apt-daily.timer e2scrub_all.timer \
@@ -524,32 +522,6 @@ systemctl start man-db.service
 ## Restart Web Server
 systemctl restart lighttpd
 systemctl restart nodeapi
-
-## Reset Null Device
-rm -f /dev/null
-mknod /dev/null c 1 3
-chmod 666 /dev/null
-
-## Reset Log Files
-rm -f /var/log/lastlog
-touch /var/log/lastlog
-rm -f /var/log/faillog
-touch /var/log/faillog
-rm -f /var/log/btmp
-touch /var/log/btmp
-rm -f /var/log/wtmp
-touch /var/log/wtmp
-chmod -R 644 /var/log/wtmp /var/log/btmp /var/log/lastlog /var/log/faillog
-chown -R root:utmp /var/log/wtmp /var/log/btmp /var/log/lastlog /var/log/faillog
-rm -f /home/pi/.xsession-errors
-touch /home/pi/.xsession-errors
-rm -f /var/log/Xorg.0.log.old
-touch /var/log/Xorg.0.log.old
-rm -f /var/log/Xorg.0.log
-touch /var/log/Xorg.0.log
-chmod -R 777 /var/log/Xorg.0.log /var/log/Xorg.0.log.old
-chmod -R 644 /home/pi/.xsession-errors
-chown -R pi:pi /var/log/Xorg.0.log /var/log/Xorg.0.log.old /home/pi/.xsession-errors
 
 ## Set Permissions
 chmod -R +x /opt/rpi

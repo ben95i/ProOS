@@ -1,0 +1,14 @@
+[Unit]
+Description=PIA WireGuard kill switch
+DefaultDependencies=no
+After=local-fs.target systemd-sysctl.service
+Before=network-pre.target
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/pia-wg-firewall
+
+[Install]
+WantedBy=multi-user.target
