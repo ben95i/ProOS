@@ -1,0 +1,14 @@
+[Unit]
+Description=PIA port forwarding (keeps the port bound, sets Transmission's peer port)
+After=pia-wg.service
+BindsTo=pia-wg.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/pia-wg-portforward
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=pia-wg.service

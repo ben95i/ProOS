@@ -1,0 +1,180 @@
+#!/usr/bin/env bash
+# PIA port forwarding for the WireGuard tunnel, with Transmission integration.
+#
+#   pia-wg-portforward                      main loop (run by pia-wg-pf.service):
+#                                           get/reuse the PF signature, bind the port every
+#                                           10 min, open it on the tunnel, keep Transmission's
+#                                           peer port in sync
+#   pia-wg-portforward --sync-transmission  set Transmission's peer port once and exit
+#                                           (run after Transmission (re)starts)
+set -uo pipefail
+source /etc/pia-wg/pia-wg.conf
+
+RUN=/run/pia-wg
+CA=/etc/pia-wg/ca.rsa.4096.crt
+PORT_FILE=$RUN/port
+SIG_FILE=$RUN/pf-signature.json
+FAIL_FILE=$RUN/pf-failures       # consecutive API failures on this server
+BAD_FILE=$RUN/pf-bad-servers     # "<server> <epoch>": skipped by pia-wg-connect for 6 h
+MAX_FAILS=3                      # then reconnect to a different server
+TR_URL=${TRANSMISSION_RPC_URL:-http://127.0.0.1:9091/transmission/rpc}
+TR_AUTH=${TRANSMISSION_RPC_AUTH:-}
+TR_SID=""
+BIND_EVERY=600      # PIA releases the port if not re-bound within 15 min
+SYNC_EVERY=60       # how often Transmission's peer port is checked
+
+log() { echo "$*" >&2; }
+
+# ------------------------------------------------------------ transmission --
+# JSON-RPC call; handles the X-Transmission-Session-Id (HTTP 409) handshake.
+trpc() {
+  local body=$1 out code auth=()
+  [[ -n $TR_AUTH ]] && auth=(-u "$TR_AUTH")
+  for _ in 1 2 3; do
+    out=$(curl -s -m 10 "${auth[@]}" -D "$RUN/.trpc-hdr" -w '\n%{http_code}' \
+            -H "X-Transmission-Session-Id: $TR_SID" -H 'Content-Type: application/json' \
+            -d "$body" "$TR_URL") || return 1
+    code=${out##*$'\n'}
+    case $code in
+      200) printf '%s' "${out%$'\n'*}"; return 0 ;;
+      409) TR_SID=$(awk 'tolower($1)=="x-transmission-session-id:" {print $2}' "$RUN/.trpc-hdr" | tr -d '\r') ;;
+      *)   log "Transmission RPC HTTP $code"; return 1 ;;
+    esac
+  done
+  return 1
+}
+
+# Make Transmission's peer port match $1. Returns non-zero if RPC is unreachable.
+sync_transmission() {
+  local port=$1 cur res open
+  cur=$(trpc '{"method":"session-get","arguments":{"fields":["peer-port"]}}' |
+        jq -r '.arguments["peer-port"] // empty' 2>/dev/null) || return 1
+  [[ -n $cur ]] || return 1
+  [[ $cur == "$port" ]] && return 0
+  res=$(trpc "$(jq -nc --argjson p "$port" '{method:"session-set", arguments:{
+          "peer-port": $p, "peer-port-random-on-start": false,
+          "port-forwarding-enabled": false}}')" | jq -r '.result // empty')
+  [[ $res == success ]] || { log "Transmission session-set failed: ${res:-no reply}"; return 1; }
+  log "Transmission peer port $cur -> $port"
+  open=$(trpc '{"method":"port-test"}' | jq -r '.arguments["port-is-open"] // "unknown"')
+  log "Transmission port test: open=$open"
+  return 0
+}
+
+if [[ ${1:-} == --sync-transmission ]]; then
+  [[ ${PIA_PF:-no} == yes && -s $PORT_FILE ]] || exit 0
+  port=$(<"$PORT_FILE")
+  for _ in $(seq 30); do          # RPC takes a moment after the daemon starts
+    sync_transmission "$port" && exit 0
+    sleep 1
+  done
+  log "Transmission RPC not reachable; pia-wg-pf.service will retry"
+  exit 0
+fi
+
+# ------------------------------------------------------------------- PIA PF --
+[[ ${PIA_PF:-no} == yes ]] || { log "PIA_PF is not 'yes'; port forwarding disabled"; exit 0; }
+[[ -r $RUN/pf.env ]] || { log "no $RUN/pf.env (tunnel not connected?)"; exit 1; }
+PF_VIP=""
+source "$RUN/pf.env"     # PF_TOKEN PF_HOST PF_GATEWAY PF_VIP, written by pia-wg-connect
+API_IP_FILE=$RUN/pf-api-ip
+
+# PF API calls go through the tunnel. Most servers answer on their public IP,
+# some only on their in-tunnel address (server_vip); whichever worked is remembered.
+pf_api() {   # $1 = endpoint, $2 = IP to connect to; curl config (secrets) on stdin
+  curl -fsS -m 10 -G -K - --connect-to "$PF_HOST::$2:" --cacert "$CA" \
+       "https://$PF_HOST:19999/$1"
+}
+
+get_signature() {
+  local resp ip cfg
+  cfg=$(printf 'data-urlencode = "token=%s"\n' "$PF_TOKEN")
+  for ip in "$PF_GATEWAY" $PF_VIP; do
+    if resp=$(pf_api getSignature "$ip" <<<"$cfg"); then
+      [[ $(jq -r .status <<<"$resp") == OK ]] || { log "getSignature refused by $ip: $resp"; return 1; }
+      (umask 077; printf '%s' "$resp" > "$SIG_FILE"; echo "$ip" > "$API_IP_FILE")
+      return 0
+    fi
+    log "PF API not reachable on $ip"
+  done
+  return 1
+}
+
+# Count consecutive failures on this server; after MAX_FAILS, blacklist it for a
+# while and reconnect the tunnel (a new server gets picked).
+fail() {
+  local n=0
+  log "$1"
+  [[ -r $FAIL_FILE ]] && n=$(<"$FAIL_FILE")
+  n=$((n + 1))
+  echo "$n" > "$FAIL_FILE"
+  if (( n >= MAX_FAILS )); then
+    log "Port forwarding failed $n times on $PF_HOST; reconnecting to another server"
+    echo "$PF_HOST $(date +%s)" >> "$BAD_FILE"
+    rm -f "$FAIL_FILE"
+    systemctl restart --no-block pia-wg.service
+  fi
+  exit 1
+}
+
+bind_port() {
+  local resp
+  resp=$(printf 'data-urlencode = "payload=%s"\ndata-urlencode = "signature=%s"\n' \
+           "$payload" "$signature" | pf_api bindPort "$(<"$API_IP_FILE")") || return 1
+  [[ $(jq -r .status <<<"$resp") == OK ]] || { log "bindPort refused: $resp"; return 1; }
+}
+
+open_port() {
+  iptables -F PIA_PF
+  iptables -A PIA_PF -p tcp --dport "$1" -j ACCEPT
+  iptables -A PIA_PF -p udp --dport "$1" -j ACCEPT
+}
+
+cleanup() {
+  iptables -F PIA_PF 2>/dev/null
+  rm -f "$PORT_FILE" "$RUN/.trpc-hdr"
+}
+trap cleanup EXIT
+
+# Reuse the signature for this connection if we have one (keeps the same port
+# across service restarts); otherwise ask for a new one.
+if [[ ! -s $SIG_FILE || ! -s $API_IP_FILE ]]; then
+  log "Requesting port forwarding signature from $PF_HOST"
+  get_signature || fail "getSignature failed"
+fi
+signature=$(jq -r .signature "$SIG_FILE")
+payload=$(jq -r .payload "$SIG_FILE")
+decoded=$(base64 -d <<<"$payload")
+port=$(jq -r .port <<<"$decoded")
+expires=$(jq -r .expires_at <<<"$decoded")
+expires_epoch=$(date -d "$expires" +%s 2>/dev/null || echo 0)
+[[ $port =~ ^[0-9]+$ ]] || { log "bad payload"; rm -f "$SIG_FILE"; exit 1; }
+if (( expires_epoch - $(date +%s) < 86400 )); then
+  log "Signature expires soon ($expires); requesting a new one"
+  rm -f "$SIG_FILE"; exit 1
+fi
+
+bind_port || { rm -f "$SIG_FILE"; fail "bindPort failed; will request a new signature"; }
+rm -f "$FAIL_FILE"
+open_port "$port"
+echo "$port" > "$PORT_FILE"; chmod 644 "$PORT_FILE"
+log "Forwarded port $port bound on $PF_HOST (signature expires $expires)"
+sync_transmission "$port" || log "Transmission RPC not reachable yet; will retry"
+
+last_bind=$(date +%s)
+last_sync=$last_bind
+while sleep 20; do
+  now=$(date +%s)
+  if (( now - last_bind >= BIND_EVERY )); then
+    bind_port || { log "bindPort failed; restarting"; exit 1; }
+    last_bind=$now
+  fi
+  if (( expires_epoch - now < 86400 )); then
+    log "Signature expires soon; requesting a new one"
+    rm -f "$SIG_FILE"; exit 1
+  fi
+  if (( now - last_sync >= SYNC_EVERY )); then
+    sync_transmission "$port" || true
+    last_sync=$now
+  fi
+done

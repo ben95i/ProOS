@@ -12,6 +12,13 @@ case $state in
   *) echo "pia-wg is $state, starting"; systemctl start --no-block pia-wg.service; exit 0 ;;
 esac
 
+if [[ ${PIA_PF:-no} == yes ]] && ! systemctl is-active --quiet pia-wg-pf.service; then
+  case $(systemctl is-active pia-wg-pf.service) in
+    activating|deactivating) ;;
+    *) echo "pia-wg-pf not running, starting"; systemctl start --no-block pia-wg-pf.service ;;
+  esac
+fi
+
 hs=$(wg show "$IF" latest-handshakes 2>/dev/null | awk '{print $2}')
 age=$(( $(date +%s) - ${hs:-0} ))
 if [[ -z $hs || $hs -eq 0 || $age -gt $MAX_AGE ]]; then

@@ -76,9 +76,11 @@ iptables-restore <<EOF
 :FORWARD DROP [0:0]
 :OUTPUT DROP [0:0]
 :PIA_DNSGUARD - [0:0]
+:PIA_PF - [0:0]
 -A INPUT -i lo -j ACCEPT
 -A INPUT -m conntrack --ctstate INVALID -j DROP
 -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+-A INPUT -i $IF -j PIA_PF
 ${in4}-A INPUT -p udp --sport 67 --dport 68 -j ACCEPT
 -A OUTPUT -o lo -j ACCEPT
 -A OUTPUT -j PIA_DNSGUARD

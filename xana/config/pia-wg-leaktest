@@ -13,6 +13,7 @@ Run as root on the server:
 Exit code is 1 if any check FAILs.
 """
 import argparse
+import base64
 import datetime
 import errno
 import ipaddress
@@ -26,10 +27,12 @@ import struct
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 
 CONF = "/etc/pia-wg/pia-wg.conf"
 STATUS = "/run/pia-wg/status"
+PF_PORT_FILE = "/run/pia-wg/port"
 IF = "pia"
 WG_MARK = 51820
 SO_MARK = 36
@@ -511,7 +514,59 @@ def check_probes(rep, cfg, lanif, real_ip):
                      "possible (root/CAP_NET_ADMIN only, inherent to WireGuard kill switches)")
 
 
-def check_listeners(rep, cfg):
+def transmission_rpc(cfg, method, arguments=None, timeout=30):
+    url = cfg.get("TRANSMISSION_RPC_URL") or "http://127.0.0.1:9091/transmission/rpc"
+    auth = cfg.get("TRANSMISSION_RPC_AUTH", "")
+    body = json.dumps({"method": method, "arguments": arguments or {}}).encode()
+    sid = ""
+    for _ in range(3):
+        req = urllib.request.Request(url, data=body, headers={
+            "Content-Type": "application/json", "X-Transmission-Session-Id": sid})
+        if auth:
+            req.add_header("Authorization", "Basic " + base64.b64encode(auth.encode()).decode())
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            if e.code == 409:
+                sid = e.headers.get("X-Transmission-Session-Id", "")
+                continue
+            raise
+    raise RuntimeError("RPC session handshake failed")
+
+
+def check_pf(rep, cfg):
+    rep.section("Port forwarding (Transmission)")
+    if cfg.get("PIA_PF", "no") != "yes":
+        rep.item("INFO", "Port forwarding", "disabled (PIA_PF is not 'yes')")
+        return None
+    _, state, _ = run(["systemctl", "is-active", "pia-wg-pf.service"])
+    rep.item("PASS" if state == "active" else "FAIL", "pia-wg-pf.service running", state)
+    try:
+        port = int(open(PF_PORT_FILE).read().strip())
+    except (OSError, ValueError):
+        rep.item("FAIL", "Forwarded port assigned", "no /run/pia-wg/port")
+        return None
+    rep.item("PASS", "Forwarded port assigned", str(port))
+
+    _, chain, _ = run(["iptables", "-S", "PIA_PF"])
+    opened = f"--dport {port}" in chain
+    rep.item("PASS" if opened else "FAIL", "Port open on tunnel only", f"tcp+udp {port} via {IF}" if opened else "PIA_PF chain empty")
+
+    try:
+        cur = transmission_rpc(cfg, "session-get", {"fields": ["peer-port"]})["arguments"]["peer-port"]
+        rep.item("PASS" if cur == port else "FAIL", "Transmission peer port matches", f"{cur}" + ("" if cur == port else f" (expected {port})"))
+        test = transmission_rpc(cfg, "port-test", timeout=45).get("arguments", {}).get("port-is-open")
+        if test is True:
+            rep.item("PASS", "Port reachable from the internet", "Transmission port test: open")
+        else:
+            rep.item("WARN", "Port reachable from the internet", f"Transmission port test: {test}")
+    except Exception as e:  # noqa: BLE001
+        rep.item("WARN", "Transmission RPC", f"unreachable ({e})")
+    return port
+
+
+def check_listeners(rep, cfg, pf_port=None):
     rep.section("Listening services (inbound exposure)")
     ports = set(cfg.get("SERVICE_TCP_PORTS", "").split(","))
     subnets = cfg.get("SERVICE_SUBNETS", "").replace(",", ", ")
@@ -530,7 +585,9 @@ def check_listeners(rep, cfg):
         if key in seen:
             continue
         seen.add(key)
-        if proto == "tcp" and port in ports:
+        if pf_port and port == str(pf_port):
+            rep.item("INFO", f"{proto}/{port} (Transmission)", "open via tunnel only (PIA port forward)")
+        elif proto == "tcp" and port in ports:
             rep.item("INFO", f"tcp/{port}", f"allowed from {subnets}")
         elif proto == "udp" and port == "5353":
             rep.item("INFO", "udp/5353 (mDNS)", f"allowed from {cfg.get('LAN_SUBNET')}"
@@ -617,11 +674,13 @@ def main():
     tunnel_ok = check_services(rep, cfg)
     check_firewall(rep)
     real = None
+    pf_port = None
     if tunnel_ok:
         _, real = check_identity(rep, cfg, lanif, args.real_ip)
         check_dns(rep, cfg, st, lanif, real)
+        pf_port = check_pf(rep, cfg)
     check_probes(rep, cfg, lanif, args.real_ip)
-    check_listeners(rep, cfg)
+    check_listeners(rep, cfg, pf_port)
     if args.failover:
         check_failover(rep, cfg)
 

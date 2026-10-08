@@ -246,6 +246,9 @@ chown root:root /usr/local/sbin/pia-wg-regions
 cp -f /tmp/config/pia-wg-leaktest /usr/local/sbin/
 chmod 755 /usr/local/sbin/pia-wg-leaktest
 chown root:root /usr/local/sbin/pia-wg-leaktest
+cp -f /tmp/config/pia-wg-portforward /usr/local/sbin/
+chmod 755 /usr/local/sbin/pia-wg-portforward
+chown root:root /usr/local/sbin/pia-wg-portforward
 # systemd units
 cp -f /tmp/config/pia-wg-firewall.service /etc/systemd/system/
 chmod 644 /etc/systemd/system/pia-wg-firewall.service
@@ -259,6 +262,9 @@ chown root:root /etc/systemd/system/pia-wg-watchdog.service
 cp -f /tmp/config/pia-wg-watchdog.timer /etc/systemd/system/
 chmod 644 /etc/systemd/system/pia-wg-watchdog.timer
 chown root:root /etc/systemd/system/pia-wg-watchdog.timer
+cp -f /tmp/config/pia-wg-pf.service /etc/systemd/system/
+chmod 644 /etc/systemd/system/pia-wg-pf.service
+chown root:root /etc/systemd/system/pia-wg-pf.service
 # Loose rp_filter (replies to SSH/VNC/Transmission UI leave via the router, not the tunnel)
 cp -f /tmp/config/90-pia-wg.conf /etc/sysctl.d/
 chmod 644 /etc/sysctl.d/90-pia-wg.conf
@@ -280,7 +286,7 @@ if grep -q "^PIA_PASS='changeme'" /etc/pia-wg/pia-wg.conf; then
   # Don't arm a kill switch that can never connect (it would also block apt)
   echo "ERROR: PIA_USER/PIA_PASS still placeholders in config/pia-wg.conf; PIA VPN NOT started."
 elif command -v wg >/dev/null && command -v jq >/dev/null && id piawg >/dev/null 2>&1; then
-  systemctl enable pia-wg-firewall.service pia-wg.service pia-wg-watchdog.timer
+  systemctl enable pia-wg-firewall.service pia-wg.service pia-wg-pf.service pia-wg-watchdog.timer
   systemctl restart pia-wg-firewall.service pia-wg.service || \
     echo "PIA connect failed; it retries every 30s (journalctl -u pia-wg)"
   systemctl restart pia-wg-watchdog.timer
@@ -291,6 +297,20 @@ else
 fi
 # Transmission was stopped above; start it again now the tunnel is up
 systemctl restart transmission-daemon
+# settings.json ships a dummy peer port: push the PIA forwarded port over RPC
+# (the transmission drop-in also does this on every Transmission restart)
+if systemctl is-active --quiet pia-wg-pf.service; then
+  for _ in $(seq 60); do
+    [ -s /run/pia-wg/port ] && break
+    sleep 1
+  done
+  /usr/local/sbin/pia-wg-portforward --sync-transmission
+  if [ -s /run/pia-wg/port ]; then
+    echo "PIA forwarded port / Transmission peer port: $(cat /run/pia-wg/port)"
+  else
+    echo "WARNING: no forwarded port yet (journalctl -u pia-wg-pf)"
+  fi
+fi
 
 ## Graphic Target / Console Boot
 systemctl set-default graphical.target
