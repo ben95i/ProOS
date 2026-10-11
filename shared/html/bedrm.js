@@ -7,7 +7,7 @@
 
 import { registerListeners, dropdownButtonTemplate, volumeButtonsTemplate,
   volumeButtonListeners, sendCmd, requestThrottle, promptWindow,
-  onButtons } from './utils.js';
+  onButtons, gridButtonTemplate } from './utils.js';
 import { showPowerMenu, powerButtonTemplate, showDynAPIMenu,
   showInputMenu } from './menus.js';
 import { openColorPrompt } from './colorprompt.js';
@@ -146,16 +146,21 @@ function bedPrompt() {
   }
   const bedWindow = promptWindow(BED_PROMPT_ID, `
     <div class="bed__title">Bed Adjustment</div>
-    <button type="button" class="button bed__btn" id="bed__btn-up">
-      <i class="fad fa-arrow-up bed__icon"></i>
-    </button>
-    <button type="button" class="button bed__btn" id="bed__btn-down">
-      <i class="fad fa-arrow-down bed__icon"></i>
-    </button>
-    <button type="button" class="button" id="bed__btn-close">
-      <i class="fad fa-times-octagon right-padding"></i>
-      <span class="button__text">Close</span>
-    </button>
+    ${gridButtonTemplate({
+      buttonId: 'bed__btn-up',
+      icon: 'fad fa-arrow-up bed__icon',
+      buttonClass: 'bed__btn'
+    })}
+    ${gridButtonTemplate({
+      buttonId: 'bed__btn-down',
+      icon: 'fad fa-arrow-down bed__icon',
+      buttonClass: 'bed__btn'
+    })}
+    ${gridButtonTemplate({
+      buttonId: 'bed__btn-close',
+      icon: 'fad fa-times-octagon right-padding',
+      label: 'Close'
+    })}
   `);
   onButtons(bedWindow, (button) => {
     switch (button.id) {

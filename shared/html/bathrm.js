@@ -120,7 +120,7 @@ function bthrRequest(command) {
 const BATHROOM_MODES = [
   { code: '2', cmd: `${BTHR_DEVICE}_mode_set_2`, label: 'Stay On' },
   { code: '1', cmd: `${BTHR_DEVICE}_mode_set_1`, label: 'Automatic' },
-  { code: '0', cmd: `${BTHR_DEVICE}_mode_set_0`, label: 'Always Off' }
+  { code: '0', cmd: `${BTHR_DEVICE}_mode_set_0`, label: 'Keep Off' }
 ];
 
 // The one row a bathroom menu shows when the light did not give a usable
@@ -192,7 +192,7 @@ const BTHR_SETTINGS = [
     min: 0, max: 1000, partner: 'rangemax' },
   { key: 'rangemax', field: 1, kind: 'range', label: 'Farthest detection',
     min: 0, max: 1000, partner: 'rangemin' },
-  { key: 'presence', field: 2, kind: 'switch', label: 'Presence keeps light on' },
+  { key: 'presence', field: 2, kind: 'switch', label: 'Presence hold' },
   // the light takes up to 9999 s; the slider stops at an hour
   { key: 'timeout', field: 3, kind: 'delay', label: 'Off delay',
     min: 6, max: 3600 }
@@ -214,8 +214,12 @@ const BTHR_DISABLED_CLASS = 'is-disabled';
 // long, and then the heading comes back.
 const BTHR_MESSAGE_MS = 5000;
 const BTHR_TITLE_ERROR_CLASS = 'bthr__title--error';
+// on the heading while a message stands in its place: smaller and grey
+const BTHR_TITLE_MESSAGE_CLASS = 'bthr__title--message';
 const BTHR_WIDE_CLASS = 'bthr__prompt--wide';
 const BTHR_PROMPT_ID = 'bthr__prompt';
+// the size of the window's six icon buttons
+const BTHR_BUTTON_CLASS = 'button_left_txtwin';
 // the size the presence switch is drawn at
 const BTHR_SWITCH_WIDTH = '64px';
 const BTHR_SWITCH_HEIGHT = '30px';
@@ -236,26 +240,41 @@ function bathroomSettingsPrompt() {
     <div id="bthr__settings">
       ${settingsMarkup}
       <div class="popup-actions bthr__actions">
-        <button type="button" class="button button_left_txtwin" id="bthr__btn-close">
-          <i class="fad fa-times-octagon"></i>
-        </button>
-        <button type="button" class="button button_left_txtwin" id="bthr__btn-log">
-          <i class="fad fa-terminal"></i>
-        </button>
-        <button type="button" class="button button_left_txtwin" id="bthr__btn-sensor">
-          <i class="fad fa-broadcast-tower"></i>
-        </button>
+        ${gridButtonTemplate({
+          buttonId: 'bthr__btn-close',
+          icon: 'fad fa-times-octagon',
+          buttonClass: BTHR_BUTTON_CLASS
+        })}
+        ${gridButtonTemplate({
+          buttonId: 'bthr__btn-log',
+          icon: 'fad fa-terminal',
+          buttonClass: BTHR_BUTTON_CLASS
+        })}
+        ${gridButtonTemplate({
+          buttonId: 'bthr__btn-sensor',
+          icon: 'fad fa-broadcast-tower',
+          buttonClass: BTHR_BUTTON_CLASS
+        })}
       </div>
     </div>
     <div class="popup-ctn bthr__log" id="bthr__log">
       <textarea readonly class="scroll-bar-style" id="bthr__logbox" spellcheck="false"></textarea>
       <div class="popup-actions bthr__actions">
-        <button type="button" class="button button_left_txtwin" id="bthr__btn-back">
-          <i class="fad fa-arrow-left"></i>
-        </button>
-        <button type="button" class="button button_left_txtwin" id="bthr__btn-logclose">
-          <i class="fad fa-times-octagon"></i>
-        </button>
+        ${gridButtonTemplate({
+          buttonId: 'bthr__btn-back',
+          icon: 'fad fa-arrow-left',
+          buttonClass: BTHR_BUTTON_CLASS
+        })}
+        ${gridButtonTemplate({
+          buttonId: 'bthr__btn-refresh',
+          icon: 'fad fa-sync-alt',
+          buttonClass: BTHR_BUTTON_CLASS
+        })}
+        ${gridButtonTemplate({
+          buttonId: 'bthr__btn-logclose',
+          icon: 'fad fa-times-octagon',
+          buttonClass: BTHR_BUTTON_CLASS
+        })}
       </div>
     </div>
   `);
@@ -276,6 +295,8 @@ function bathroomSettingsPrompt() {
     saveSeq: {},
     // bumped per log read, so Back -- or a second read -- drops one in the air
     logSeq: 0,
+    // the read-out the log box is showing, which Refresh reads again
+    logView: null,
     // set on close; a reply landing afterwards is dropped
     closed: false
   };
@@ -292,6 +313,9 @@ function bathroomSettingsPrompt() {
         break;
       case 'bthr__btn-sensor':
         bthrShowLog(settingsWindow, `${BTHR_DEVICE}_sensor`, BTHR_TITLE_SENSOR, false);
+        break;
+      case 'bthr__btn-refresh':
+        bthrRefreshLog(settingsWindow);
         break;
       case 'bthr__btn-back':
         settingsWindow.logSeq += 1; // a read still in the air is no longer wanted
@@ -419,6 +443,7 @@ function bthrShowPanel(settingsWindow, name, title) {
 // first, so it opens at the bottom on the newest line; the sensor status
 // opens at the top, where its first lines are.
 async function bthrShowLog(settingsWindow, command, title, scrollToEnd) {
+  settingsWindow.logView = { command, title, scrollToEnd };
   bthrShowPanel(settingsWindow, 'log', title);
   settingsWindow.logBox.value = 'Loading...';
   settingsWindow.logBox.scrollTop = 0;
@@ -439,12 +464,23 @@ async function bthrShowLog(settingsWindow, command, title, scrollToEnd) {
   }
 }
 
+// Reads the read-out on show again, for its latest lines. The read before it,
+// if it is still in the air, is dropped by bthrShowLog()'s sequence count.
+function bthrRefreshLog(settingsWindow) {
+  const logView = settingsWindow.logView;
+  if (!logView) {
+    return;
+  }
+  bthrShowLog(settingsWindow, logView.command, logView.title, logView.scrollToEnd);
+}
+
 // puts the heading back, dropping any message showing in its place
 function bthrRestoreTitle(settingsWindow) {
   clearTimeout(settingsWindow.messageTimer);
   settingsWindow.messageTimer = null;
   settingsWindow.title.textContent = settingsWindow.titleText;
   settingsWindow.title.classList.remove(BTHR_TITLE_ERROR_CLASS);
+  settingsWindow.title.classList.remove(BTHR_TITLE_MESSAGE_CLASS);
 }
 
 // Shows a message in place of the settings heading -- 'Off delay: 6 min 8 s'
@@ -462,6 +498,7 @@ function bthrShowMessage(settingsWindow, text, isError = false, held = false) {
   clearTimeout(settingsWindow.messageTimer);
   settingsWindow.messageTimer = null;
   settingsWindow.title.textContent = text;
+  settingsWindow.title.classList.add(BTHR_TITLE_MESSAGE_CLASS);
   settingsWindow.title.classList.toggle(BTHR_TITLE_ERROR_CLASS, isError === true);
   if (held === true) {
     return;
@@ -526,7 +563,16 @@ function bthrFormatValue(setting, value) {
     }
     return 'off';
   }
-  return `${value} cm`;
+  return bthrFormatDistance(value);
+}
+
+// The light counts its detection distances in centimetres, and so do the
+// sliders; only the read-out is in feet. 100 -> "3.3 ft"
+const BTHR_CM_PER_FOOT = 30.48;
+
+function bthrFormatDistance(centimetres) {
+  const feet = centimetres / BTHR_CM_PER_FOOT;
+  return `${feet.toFixed(1)} ft`;
 }
 
 // 45 -> "45 s", 330 -> "5 min 30 s", 7260 -> "2 h 1 min"

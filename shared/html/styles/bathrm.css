@@ -8,7 +8,7 @@
  *  Bathroom Settings Window
  *
  *  bathroomSettingsPrompt() in bathrm.js. Drawn like the colour prompt (a
- *  300px column on black) and built from what the site already has: the
+ *  narrow column on black) and built from what the site already has: the
  *  sliders are .slider-wide (menus.css), the log box is the server log's
  *  .popup-ctn and .popup-actions, and the icon buttons are
  *  .button_left_txtwin (main.css). The rules below that resize one of those
@@ -21,7 +21,12 @@
   left: 50%;
   margin-right: -50%;
   transform: translate(-50%, -50%);
-  width: 340px;
+  /* As wide as its row of three buttons, so the setting boxes end level with
+     the buttons at both sides. The row is 260px from the first face to the
+     last wall: three 75px buttons, their 5px left margins and two 10px gaps,
+     and the 5px the first face is lifted to the left. The 20px padding and
+     1px border each side make it 302px. */
+  width: 302px;
   height: auto;
   padding: 10px 20px;
   color: #fff;
@@ -39,10 +44,20 @@
    than wrapping, so the boxes below never move. */
 .bthr__title {
   font-size: 22px;
+  /* a set line height, so the smaller message text stands as tall as the
+     heading it takes the place of */
+  line-height: 28px;
   margin-bottom: 8px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* a change just made ("Off delay: 1 min 26 s"): the size of the setting
+   labels, in light grey. An error keeps the size and turns red, below. */
+.bthr__title--message {
+  font-size: 18px;
+  color: #c1c1c1;
 }
 
 .bthr__title--error {
@@ -131,6 +146,10 @@
 .bthr__actions {
   justify-content: center;
   padding-top: 15px;
+  /* no side padding: the row of buttons spans the window from box edge to
+     box edge (see #bthr__prompt) */
+  padding-left: 0;
+  padding-right: 0;
 }
 
 /* the server log window (.popup-ctn), cut down to fit inside the prompt.

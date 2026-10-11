@@ -32,6 +32,8 @@
 // .destroy() on page teardown. CameraView.POPUP_HTML is the popup's markup,
 // placed by main.js with the rest of the page.
 
+import { gridButtonTemplate } from './utils.js';
+
 export default class CameraView {
 
   static STREAM_PATH = 'api/camera';
@@ -88,12 +90,16 @@ export default class CameraView {
       <div id="cam-status"></div>
     </div>
     <div class="popup-actions">
-      <button type="button" class="button button_left_txtwin" id="btn-cam-close">
-        <i class="fad fa-times-octagon"></i>
-      </button>
-      <button type="button" class="button button_right_txtwin" id="btn-cam-fullscreen">
-        <span> Fullscreen</span>
-      </button>
+      ${gridButtonTemplate({
+        buttonId: 'btn-cam-close',
+        icon: 'fad fa-times-octagon',
+        buttonClass: 'button_left_txtwin'
+      })}
+      ${gridButtonTemplate({
+        buttonId: 'btn-cam-fullscreen',
+        label: 'Fullscreen',
+        buttonClass: 'button_right_txtwin'
+      })}
     </div>
   </div>
 </div>`;

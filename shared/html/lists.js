@@ -51,7 +51,7 @@ import { splitMenuData, cleanString, isNumeric, removeWindow, showPopup,
   dragGripElement, DragSort, FileLock, readFile, writeFile, sendFileBeacon,
   html, FileCrypt, cryptoReady, isCryptBlob, cryptContext, encryptText,
   searchRowElement, searchTerm, searchMatches, makeElement, singleFlight,
-  trackPromise, awaitQuiet } from './utils.js';
+  trackPromise, awaitQuiet, gridButtonTemplate } from './utils.js';
 
 const FILE_NAME = 'lists.save';
 const LOCK_FILE = 'lists-lock.save';
@@ -1037,15 +1037,22 @@ export default class Lists {
   </div>
   <div class="list__list scroll-bar-style" id="${LIST_ID}"></div>
   <div class="list__actions">
-    <button type="button" class="button button__sml list__btn" id="${CLOSE_BTN_ID}">
-      <span class="button__text"><i class="fad fa-times-octagon"></i></span>
-    </button>
-    <button type="button" class="button button__sml list__btn" id="${DEL_BTN_ID}">
-      <span class="button__text"><i class="fad fa-trash-alt" id="${DEL_ICON_ID}"></i></span>
-    </button>
-    <button type="button" class="button button__sml list__btn" id="${ADD_BTN_ID}">
-      <span class="button__text"><i class="fad fa-folder-plus"></i></span>
-    </button>
+    ${gridButtonTemplate({
+      buttonId: CLOSE_BTN_ID,
+      icon: 'fad fa-times-octagon',
+      buttonClass: 'button__sml list__btn'
+    })}
+    ${gridButtonTemplate({
+      buttonId: DEL_BTN_ID,
+      icon: 'fad fa-trash-alt',
+      iconId: DEL_ICON_ID,
+      buttonClass: 'button__sml list__btn'
+    })}
+    ${gridButtonTemplate({
+      buttonId: ADD_BTN_ID,
+      icon: 'fad fa-folder-plus',
+      buttonClass: 'button__sml list__btn'
+    })}
     <div class="list__status" id="${STATUS_ID}">
       <i class="fad fa-lock"></i>Read/Only
     </div>
@@ -1054,12 +1061,16 @@ export default class Lists {
     <div class="list__dialog">
       <div class="list__dialog-msg">Server connection not available</div>
       <div class="list__dialog-btns">
-        <button type="button" class="button list__dlg-btn" id="${DISCARD_BTN_ID}">
-          <span class="button__text">Discard</span>
-        </button>
-        <button type="button" class="button list__dlg-btn" id="${RETRY_BTN_ID}">
-          <span class="button__text">Retry</span>
-        </button>
+        ${gridButtonTemplate({
+          buttonId: DISCARD_BTN_ID,
+          label: 'Discard',
+          buttonClass: 'list__dlg-btn'
+        })}
+        ${gridButtonTemplate({
+          buttonId: RETRY_BTN_ID,
+          label: 'Retry',
+          buttonClass: 'list__dlg-btn'
+        })}
       </div>
     </div>
   </div>
@@ -1076,12 +1087,16 @@ export default class Lists {
         placeholder="Repeat new password">
       <div class="list__pwerr" id="${PWD_ERR_ID}"></div>
       <div class="list__dialog-btns">
-        <button type="button" class="button list__dlg-btn" id="${PWD_CANCEL_BTN_ID}">
-          <span class="button__text">Cancel</span>
-        </button>
-        <button type="button" class="button list__dlg-btn" id="${PWD_OK_BTN_ID}">
-          <span class="button__text">Unlock</span>
-        </button>
+        ${gridButtonTemplate({
+          buttonId: PWD_CANCEL_BTN_ID,
+          label: 'Cancel',
+          buttonClass: 'list__dlg-btn'
+        })}
+        ${gridButtonTemplate({
+          buttonId: PWD_OK_BTN_ID,
+          label: 'Unlock',
+          buttonClass: 'list__dlg-btn'
+        })}
       </div>
     </div>
   </div>

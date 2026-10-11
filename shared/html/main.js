@@ -12,7 +12,8 @@
 import { classDisplay, cleanString, base64URLSafeEncode, sendCmd,
   timeoutInterval, html, clearPopupTimer, clearVolumePopupTimer,
   promptWindow, onButtons, setSpinner, setDisplayById, menuRow,
-  registerListeners, dispatchRegisteredListener } from './utils.js';
+  registerListeners, dispatchRegisteredListener, gridButtonTemplate,
+  dropdownButtonTemplate } from './utils.js';
 import { configureMenus, removeDropdowns, openDropdown, drawMenu,
   destroyActiveSwitches, beginMenuRequest, menuRequestCurrent,
   showDynFileMenu, showPowerMenu } from './menus.js';
@@ -401,25 +402,29 @@ function mainGridTemplate(f) {
   <div class="grid">
     <fieldset class="btn-group">
       <legend><i class="fad fa-stars"></i><span>Pixels</span></legend>
-      <button type="button" class="button" id="btn-ledcolorprompt">
-        <span class="button__text"><i class="fad fa-palette"></i> Colors</span>
-      </button>
-      <div class="dropdown">
-        <button type="button" class="button" id="btn-power-fc_leds">
-          <span class="button__text" id="fc_leds-text"><i class="fad fa-stars"></i> Control</span>
-          <span class="button__text" id="fc_leds-spinner"></span>
-        </button>
-        <div class="dd-content ind-button" id="fc_leds-menu">
+      ${gridButtonTemplate({
+        buttonId: 'btn-ledcolorprompt',
+        icon: 'fad fa-palette',
+        label: 'Colors'
+      })}
+      ${dropdownButtonTemplate({
+        buttonId: 'btn-power-fc_leds',
+        icon: 'fad fa-stars',
+        label: 'Control',
+        textId: 'fc_leds-text',
+        spinnerId: 'fc_leds-spinner',
+        menuId: 'fc_leds-menu',
+        menuContent: `
           <a id="btn-cmd-leds-off"> Off<i class="fad fa-toggle-off"></i></a>
-          <a id="btn-cmd-leds-pause"> Pause<i class="fad fa-pause"></i></a>
-        </div>
-      </div>
-      <div class="dropdown">
-        <button type="button" class="button" id="btn-ledeffectmenu">
-          <span class="button__text"><i class="fad fa-film"></i> Animated</span>
-        </button>
-        <div class="dd-content dd-button" id="ledeffectmenu"></div>
-      </div>
+          <a id="btn-cmd-leds-pause"> Pause<i class="fad fa-pause"></i></a>`
+      })}
+      ${dropdownButtonTemplate({
+        buttonId: 'btn-ledeffectmenu',
+        icon: 'fad fa-film',
+        label: 'Animated',
+        menuId: 'ledeffectmenu',
+        menuClass: 'dd-button'
+      })}
     </fieldset>
     ${f.isServer ? roomControlsTemplate() : ''}
     ${f.isServer ? `
@@ -438,6 +443,25 @@ registerListeners({
   'btn-cmd-leds-pause':    () => sendCmd('leds', 'pause')
 });
 
+// the On and Off rows the three APT menus hold from the start
+function onOffRowsTemplate(onRowId, offRowId) {
+  return `
+    <a id="${onRowId}"> On<i class="fad fa-toggle-on"></i></a>
+    <a id="${offRowId}"> Off<i class="fad fa-toggle-off"></i></a>`;
+}
+
+// The temperature / humidity button is written out here: it is the one
+// button with two icons and no label, which gridButtonTemplate() does not draw.
+function temperatureButtonTemplate() {
+  return `
+  <button type="button" class="button" id="btn-show-temphumid">
+    <span class="button__text">
+      <i class="fad fa-temperature-hot large__icon"></i>
+      <i class="fad fa-humidity large__icon"></i>
+    </span>
+  </button>`;
+}
+
 // server-only APT group, between Pixels and the room group in the main grid
 function roomControlsTemplate() {
   return `
@@ -445,56 +469,58 @@ function roomControlsTemplate() {
   <p class="grid-sep"></p>
   <fieldset class="btn-group">
   <legend><i class="fad fa-home"></i><span>APT</span></legend>
-  <div class="dropdown">
-    <button type="button" class="button" id="btn-menu-allmenu">
-      <span class="button__text"><i class="fad fa-plug"></i> Room</span>
-    </button>
-    <div class="dd-content dd-button" id="allmenu">
-      <a id="btn-room-on"> On<i class="fad fa-toggle-on"></i></a>
-      <a id="btn-room-off"> Off<i class="fad fa-toggle-off"></i></a>
-    </div>
-  </div>
-  <div class="dropdown">
-    <button type="button" class="button" id="btn-menu-lightmenu">
-      <span class="button__text"><i class="fad fa-lightbulb-on"></i> Lights</span>
-    </button>
-    <div class="dd-content dd-button" id="lightmenu">
-      <a id="btn-cmd-lightson"> On<i class="fad fa-toggle-on"></i></a>
-      <a id="btn-cmd-lightsoff"> Off<i class="fad fa-toggle-off"></i></a>
-    </div>
-  </div>
-  <div class="dropdown">
-    <button type="button" class="button" id="btn-menu-pwrmenu">
-      <span class="button__text"><i class="fad fa-home"></i> Power</span>
-    </button>
-    <div class="dd-content dd-button" id="pwrmenu">
-      <a id="btn-power-on"> On<i class="fad fa-toggle-on"></i></a>
-      <a id="btn-power-off"> Off<i class="fad fa-toggle-off"></i></a>
-    </div>
-  </div>
+  ${dropdownButtonTemplate({
+    buttonId: 'btn-menu-allmenu',
+    icon: 'fad fa-plug',
+    label: 'Room',
+    menuId: 'allmenu',
+    menuClass: 'dd-button',
+    menuContent: onOffRowsTemplate('btn-room-on', 'btn-room-off')
+  })}
+  ${dropdownButtonTemplate({
+    buttonId: 'btn-menu-lightmenu',
+    icon: 'fad fa-lightbulb-on',
+    label: 'Lights',
+    menuId: 'lightmenu',
+    menuClass: 'dd-button',
+    menuContent: onOffRowsTemplate('btn-cmd-lightson', 'btn-cmd-lightsoff')
+  })}
+  ${dropdownButtonTemplate({
+    buttonId: 'btn-menu-pwrmenu',
+    icon: 'fad fa-home',
+    label: 'Power',
+    menuId: 'pwrmenu',
+    menuClass: 'dd-button',
+    menuContent: onOffRowsTemplate('btn-power-on', 'btn-power-off')
+  })}
   <p class="grid-sep"></p>
-  <button type="button" class="button" id="btn-yt-link">
-    <span class="button__text"><i class="fab fa-youtube"></i> YouTube</span>
-  </button>
-  <button type="button" class="button" id="btn-show-temphumid">
-    <span class="button__text">
-      <i class="fad fa-temperature-hot large__icon"></i>
-      <i class="fad fa-humidity large__icon"></i>
-    </span>
-  </button>
-  <button type="button" class="button" id="btn-media-link">
-    <span class="button__text"><i class="fad fa-mp3-player"></i> Media</span>
-  </button>
+  ${gridButtonTemplate({
+    buttonId: 'btn-yt-link',
+    icon: 'fab fa-youtube',
+    label: 'YouTube'
+  })}
+  ${temperatureButtonTemplate()}
+  ${gridButtonTemplate({
+    buttonId: 'btn-media-link',
+    icon: 'fad fa-mp3-player',
+    label: 'Media'
+  })}
   <p class="grid-sep"></p>
-  <button type="button" class="button" id="btn-open-cam">
-    <span class="button__text"><i class="fad fa-door-open"></i> Doorway</span>
-  </button>
-  <button type="button" class="button" id="btn-open-log-svr">
-    <span class="button__text"><i class="fad fa-terminal"></i> Server</span>
-  </button>
-  <button type="button" class="button" id="btn-lists">
-    <span class="button__text"><i class="fad fa-list-ol"></i> Lists</span>
-  </button>
+  ${gridButtonTemplate({
+    buttonId: 'btn-open-cam',
+    icon: 'fad fa-door-open',
+    label: 'Doorway'
+  })}
+  ${gridButtonTemplate({
+    buttonId: 'btn-open-log-svr',
+    icon: 'fad fa-terminal',
+    label: 'Server'
+  })}
+  ${gridButtonTemplate({
+    buttonId: 'btn-lists',
+    icon: 'fad fa-list-ol',
+    label: 'Lists'
+  })}
   </fieldset>
 </div>`;
 }
@@ -516,6 +542,9 @@ registerListeners({
   'btn-open-log-svr':   () => openLogWindow()
 });
 
+// the text scroller's six buttons are the small size
+const TEXT_SCROLL_BUTTON_CLASS = 'button__sml';
+
 // LED text scroller prompt (server + LEDpi)
 function textScrollTemplate(f) {
   if (!f.isLedCapable) return '';
@@ -524,51 +553,60 @@ function textScrollTemplate(f) {
   <div class="textscroll__prompt prompt_win">
     <div id="textScrollTitle">TextScroll</div>
     <textarea class="scroll-bar-style" id="textScrollBox" spellcheck="false"></textarea>
-    <div class="dropdown">
-      <button type="button" class="button button__sml" id="btn-menu-textscrollcolor">
-        <span class="button__text"> Colors</span>
-      </button>
-      <div class="dd-content dd-button" id="textscrollcolor-menu">
+    ${dropdownButtonTemplate({
+      buttonId: 'btn-menu-textscrollcolor',
+      label: 'Colors',
+      buttonClass: TEXT_SCROLL_BUTTON_CLASS,
+      menuId: 'textscrollcolor-menu',
+      menuClass: 'dd-button',
+      menuContent: `
         <a id="btn-tscolor-1"> Green</a>
         <a id="btn-tscolor-2"> Red</a>
         <a id="btn-tscolor-3"> Blue</a>
         <a id="btn-tscolor-4"> Orange</a>
         <a id="btn-tscolor-5"> Purple</a>
         <a id="btn-tscolor-6"> Yellow</a>
-        <a id="btn-tscolor-7"> White</a>
-      </div>
-    </div>
-    <div class="dropdown">
-      <button type="button" class="button button__sml" id="btn-menu-textscrollfont">
-        <span class="button__text"> Font</span>
-      </button>
-      <div class="dd-content dd-button" id="textscrollfont-menu">
+        <a id="btn-tscolor-7"> White</a>`
+    })}
+    ${dropdownButtonTemplate({
+      buttonId: 'btn-menu-textscrollfont',
+      label: 'Font',
+      buttonClass: TEXT_SCROLL_BUTTON_CLASS,
+      menuId: 'textscrollfont-menu',
+      menuClass: 'dd-button',
+      menuContent: `
         <a id="btn-tsfont-8x8"> Large</a>
         <a id="btn-tsfont-5x7"> Small</a>
-        <a id="btn-tsfont-3x5"> Narrow</a>
-      </div>
-    </div>
-    <div class="dropdown">
-      <button type="button" class="button button__sml" id="btn-menu-textscrollspeed">
-        <span class="button__text"> Speed</span>
-      </button>
-      <div class="dd-content dd-button" id="textscrollspeed-menu">
+        <a id="btn-tsfont-3x5"> Narrow</a>`
+    })}
+    ${dropdownButtonTemplate({
+      buttonId: 'btn-menu-textscrollspeed',
+      label: 'Speed',
+      buttonClass: TEXT_SCROLL_BUTTON_CLASS,
+      menuId: 'textscrollspeed-menu',
+      menuClass: 'dd-button',
+      menuContent: `
         <a id="btn-tsspeed-slowest"> Slowest</a>
         <a id="btn-tsspeed-slow"> Slow</a>
         <a id="btn-tsspeed-normal"> Normal</a>
         <a id="btn-tsspeed-fast"> Fast</a>
-        <a id="btn-tsspeed-fastest"> Fastest</a>
-      </div>
-    </div>
-    <button type="button" class="button button__sml" id="btn-ts-close">
-      <span class="button__text"><i class="fad fa-times-octagon"></i></span>
-    </button>
-    <button type="button" class="button button__sml" id="btn-ts-clear">
-      <span class="button__text"><i class="fad fa-trash-alt"></i></span>
-    </button>
-    <button type="button" class="button button__sml" id="btn-ts-send">
-      <span class="button__text"><i class="fad fa-upload"></i></span>
-    </button>
+        <a id="btn-tsspeed-fastest"> Fastest</a>`
+    })}
+    ${gridButtonTemplate({
+      buttonId: 'btn-ts-close',
+      icon: 'fad fa-times-octagon',
+      buttonClass: TEXT_SCROLL_BUTTON_CLASS
+    })}
+    ${gridButtonTemplate({
+      buttonId: 'btn-ts-clear',
+      icon: 'fad fa-trash-alt',
+      buttonClass: TEXT_SCROLL_BUTTON_CLASS
+    })}
+    ${gridButtonTemplate({
+      buttonId: 'btn-ts-send',
+      icon: 'fad fa-upload',
+      buttonClass: TEXT_SCROLL_BUTTON_CLASS
+    })}
   </div>
 </div>`;
 }
@@ -715,6 +753,10 @@ const TEMP_MAX = 100;
 const HUMIDITY_MIN = 5;
 const HUMIDITY_MAX = 100;
 
+// the temperature window's two buttons
+const TEMP_CLOSE_BUTTON_ID = 'temp__btn-close';
+const TEMP_REFRESH_BUTTON_ID = 'temp__btn-refresh';
+
 function showTempHumidity() {
   const _winid = "temp__prompt";
   if (document.getElementById(_winid)) return;
@@ -730,18 +772,18 @@ function showTempHumidity() {
       </div>
     </div>
     <div>
-      <button class="button temp__btn fad fa-times-octagon" type="button"></button>
-      <button class="button temp__btn fad fa-sync" type="button"></button>
+      <button class="button temp__btn fad fa-times-octagon" type="button"
+        id="${TEMP_CLOSE_BUTTON_ID}"></button>
+      <button class="button temp__btn fad fa-sync" type="button"
+        id="${TEMP_REFRESH_BUTTON_ID}"></button>
     </div>
   `);
-  // cancel first, refresh second
-  const [tempcancelb, temprefreshb] = tempprompt.querySelectorAll("button");
   getTemperatureData();
   onButtons(tempprompt, (button) => {
-    if (button === tempcancelb) {
+    if (button.id === TEMP_CLOSE_BUTTON_ID) {
       tempprompt.remove();
     }
-    if (button === temprefreshb) {
+    if (button.id === TEMP_REFRESH_BUTTON_ID) {
       getTemperatureData();
     }
   });

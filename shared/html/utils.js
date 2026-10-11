@@ -357,32 +357,60 @@ export function setSpinner(textId, spinnerId, on, spinnerClass = 'btn-spinner') 
 
 //// button templates ////
 //
-// The markup the room grids repeat. A grid is built from these two rather
-// than writing the same button out once per device, so a change to how a
-// button is drawn is made in one place.
+// The markup every button repeats: the room grids, the Pixels and APT
+// groups, the text scroller, the Server window's option panels and the
+// windows' own buttons. They are built from these two rather than writing the same button out once per
+// device, so a change to how a button is drawn is made in one place.
 
-// The inside of a button: its icon, then its label when it has one.
+// The inside of a button: its icon when it has one, then its label when it
+// has one. The icon carries an id when something changes it later.
 // buttonLabelMarkup('fad fa-lamp-floor', 'Lamp')
-function buttonLabelMarkup(iconClass, labelText) {
-  let labelMarkup = `<i class="${iconClass}"></i>`;
+function buttonLabelMarkup(iconClass, labelText, iconId) {
+  let labelMarkup = '';
+  if (iconClass) {
+    let iconIdAttribute = '';
+    if (iconId) {
+      iconIdAttribute = ` id="${iconId}"`;
+    }
+    labelMarkup = `<i class="${iconClass}"${iconIdAttribute}></i>`;
+  }
   if (labelText) {
-    labelMarkup += ` ${labelText}`;
+    if (labelMarkup !== '') {
+      labelMarkup += ' ';
+    }
+    labelMarkup += labelText;
   }
   return labelMarkup;
 }
 
-// One plain button of a button grid, which opens no menu of its own.
-// config: buttonId, icon, label (optional, an icon-only button has none).
+// The classes a button carries: "button", then any of its own.
+// buttonClassNames('svropt_button') -> "button svropt_button"
+function buttonClassNames(extraClass) {
+  if (extraClass) {
+    return `button ${extraClass}`;
+  }
+  return 'button';
+}
+
+// One plain button, which opens no menu of its own: a button of a button
+// grid, or one of a window's own buttons.
+// config: buttonId, and optionally
+//   icon         the icon's classes (a text-only button has none)
+//   iconId       an id for the icon, when something changes it later
+//   label        the text after the icon (an icon-only button has none)
+//   buttonClass  the classes the button carries besides "button"
 export function gridButtonTemplate(config) {
-  const labelMarkup = buttonLabelMarkup(config.icon, config.label);
+  const labelMarkup = buttonLabelMarkup(config.icon, config.label, config.iconId);
+  const buttonClass = buttonClassNames(config.buttonClass);
   return `
-  <button type="button" class="button" id="${config.buttonId}">
+  <button type="button" class="${buttonClass}" id="${config.buttonId}">
     <span class="button__text">${labelMarkup}</span>
   </button>`;
 }
 
 // One button of a button grid together with the dropdown that opens under it.
-// config: buttonId, icon, label, menuId, and optionally
+// config: buttonId, menuId, and optionally
+//   icon, label         as gridButtonTemplate() takes them
 //   textId + spinnerId  the label and the spinner that takes its place while
 //                       the device is being asked for its state
 //   buttonClass         a class the button carries besides "button"
@@ -390,10 +418,7 @@ export function gridButtonTemplate(config) {
 //   menuContent         rows the menu holds from the start
 export function dropdownButtonTemplate(config) {
   const labelMarkup = buttonLabelMarkup(config.icon, config.label);
-  let buttonClass = 'button';
-  if (config.buttonClass) {
-    buttonClass = `button ${config.buttonClass}`;
-  }
+  const buttonClass = buttonClassNames(config.buttonClass);
   let menuClass = 'ind-button';
   if (config.menuClass) {
     menuClass = config.menuClass;

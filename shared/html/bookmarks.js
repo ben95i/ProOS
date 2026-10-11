@@ -59,6 +59,15 @@ const LOOKUP_NO_CLIPBOARD = 'no URL entered, and the clipboard could not be read
 const LOOKUP_NO_ANSWER = 'no answer from the server';
 const LOOKUP_NO_TITLE = 'the site returned no title';
 const PREVIEW_ID = 'editFav__iconpreview';
+// the six buttons of the add / edit window
+const EDIT_BTN_IDS = {
+  up: 'editFav__btn-up',
+  lookup: 'editFav__btn-lookup',
+  down: 'editFav__btn-down',
+  save: 'editFav__btn-save',
+  cancel: 'editFav__btn-cancel',
+  remove: 'editFav__btn-delete'
+};
 const PREVIEW_EMPTY_CLASS = 'editFav__iconpreview--empty';
 const SELECTED_CLASS = 'dd-selected';
 const MAX_NAME_LENGTH = 42;
@@ -858,20 +867,29 @@ export default class Bookmarks {
              autocorrect="off" autocapitalize="none">
       <input type="text" id="editFav__urlbox" class="editFav__textbox"
              autocorrect="off" autocapitalize="none">
-      <button class="editFav__button button fad fa-arrow-up" type="button"></button>
-      <button class="editFav__button button fad fa-search" type="button"></button>
-      <button class="editFav__button button fad fa-arrow-down" type="button"></button>
-      <button class="editFav__button button fad fa-save" type="button"></button>
-      <button class="editFav__button button fad fa-times-octagon" type="button"></button>
-      <button class="editFav__button button fad fa-trash-alt" type="button"></button>
+      <button class="editFav__button button fad fa-arrow-up" type="button"
+              id="${EDIT_BTN_IDS.up}"></button>
+      <button class="editFav__button button fad fa-search" type="button"
+              id="${EDIT_BTN_IDS.lookup}"></button>
+      <button class="editFav__button button fad fa-arrow-down" type="button"
+              id="${EDIT_BTN_IDS.down}"></button>
+      <button class="editFav__button button fad fa-save" type="button"
+              id="${EDIT_BTN_IDS.save}"></button>
+      <button class="editFav__button button fad fa-times-octagon" type="button"
+              id="${EDIT_BTN_IDS.cancel}"></button>
+      <button class="editFav__button button fad fa-trash-alt" type="button"
+              id="${EDIT_BTN_IDS.remove}"></button>
     `;
-    // buttons in DOM order: up, lookup, down, save, cancel, delete
     const editFavText = editFavPrompt.querySelector(".editFav__toplabel");
     const nameBox = editFavPrompt.querySelector("#editFav__namebox");
     const urlBox = editFavPrompt.querySelector("#editFav__urlbox");
-    const [editFavUpBtn, editFavLookupBtn, editFavDownBtn,
-           editFavSaveBtn, editFavCancelBtn, editFavDeleteBtn] =
-      editFavPrompt.querySelectorAll("button");
+    // found inside the window: it is not on the page yet
+    const editFavUpBtn = editFavPrompt.querySelector(`#${EDIT_BTN_IDS.up}`);
+    const editFavLookupBtn = editFavPrompt.querySelector(`#${EDIT_BTN_IDS.lookup}`);
+    const editFavDownBtn = editFavPrompt.querySelector(`#${EDIT_BTN_IDS.down}`);
+    const editFavSaveBtn = editFavPrompt.querySelector(`#${EDIT_BTN_IDS.save}`);
+    const editFavCancelBtn = editFavPrompt.querySelector(`#${EDIT_BTN_IDS.cancel}`);
+    const editFavDeleteBtn = editFavPrompt.querySelector(`#${EDIT_BTN_IDS.remove}`);
     this.lookupBtn = editFavLookupBtn;
     // set via properties (null coerces to "" exactly as before)
     nameBox.value = name;

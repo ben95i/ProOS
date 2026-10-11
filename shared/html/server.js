@@ -13,7 +13,7 @@
 
 import { classDisplay, addClassToElem, base64URLSafeEncode, sendCmd, html,
   showPopup, savePOST, fileURL, promptWindow, onButtons, setDisplayById,
-  registerListeners } from './utils.js';
+  registerListeners, gridButtonTemplate, dropdownButtonTemplate } from './utils.js';
 import { removeDropdowns, openDropdown } from './menus.js';
 import Uploader from './upload.js';
 import { SSIDpwd } from './wifi.js';
@@ -41,6 +41,9 @@ let logReadSequence = 0;
 
 //// page templates ////
 
+// every button of an option panel carries the panel's own button size
+const OPTION_BUTTON_CLASS = 'svropt_button';
+
 // The options window: an empty container the server's panels are drawn into,
 // or the Pi models' one panel. f says which model the page is drawn for.
 export function serverOptionsTemplate(f) {
@@ -56,86 +59,115 @@ export function serverOptionsTemplate(f) {
 function svrOptMainTemplate() {
   return `
 <div class="svropt__main">
-  <div class="dropdown">
-    <button type="button" class="button svropt_button" id="btn-menu-atalk">
-      <span class="button__text"><i class="fab fa-apple"></i> AFP</span>
-    </button>
-    <div class="dd-content dd-button" id="atalk-menu">
+  ${dropdownButtonTemplate({
+    buttonId: 'btn-menu-atalk',
+    icon: 'fab fa-apple',
+    label: 'AFP',
+    buttonClass: OPTION_BUTTON_CLASS,
+    menuId: 'atalk-menu',
+    menuClass: 'dd-button',
+    menuContent: `
       <a id="btn-svr-startatalk"><i class="fad fa-play"></i> Start</a>
-      <a id="btn-svr-stopatalk"><i class="fad fa-stop"></i> Stop</a>
-    </div>
-  </div>
-  <div class="dropdown">
-    <button type="button" class="button svropt_button" id="btn-menu-legacy">
-      <span class="button__text"><i class="fad fa-save"></i> CIFS</span>
-    </button>
-    <div class="dd-content dd-button" id="legacy-menu">
+      <a id="btn-svr-stopatalk"><i class="fad fa-stop"></i> Stop</a>`
+  })}
+  ${dropdownButtonTemplate({
+    buttonId: 'btn-menu-legacy',
+    icon: 'fad fa-save',
+    label: 'CIFS',
+    buttonClass: OPTION_BUTTON_CLASS,
+    menuId: 'legacy-menu',
+    menuClass: 'dd-button',
+    menuContent: `
       <a id="btn-svr-startlegacy"><i class="fad fa-play"></i> Start</a>
-      <a id="btn-svr-stoplegacy"><i class="fad fa-stop"></i> Stop</a>
-    </div>
-  </div>
-  <div class="dropdown">
-    <button type="button" class="button svropt_button" id="btn-menu-xana">
-      <span class="button__text"><i class="fab fa-linux"></i> Xana</span>
-    </button>
-    <div class="dd-content dd-button" id="xana-menu">
+      <a id="btn-svr-stoplegacy"><i class="fad fa-stop"></i> Stop</a>`
+  })}
+  ${dropdownButtonTemplate({
+    buttonId: 'btn-menu-xana',
+    icon: 'fab fa-linux',
+    label: 'Xana',
+    buttonClass: OPTION_BUTTON_CLASS,
+    menuId: 'xana-menu',
+    menuClass: 'dd-button',
+    menuContent: `
       <a id="btn-svr-startxana"><i class="fad fa-play"></i> Start</a>
-      <a id="btn-svr-stopxana"><i class="fad fa-stop"></i> Stop</a>
-    </div>
-  </div>
-  <button type="button" class="button svropt_button" id="btn-open-regions">
-    <span class="button__text"><i class="fad fad fa-th"></i> Regions</span>
-  </button>
-  <div class="dropdown">
-    <button type="button" class="button svropt_button" id="btn-menu-system">
-      <span class="button__text"><i class="fad fa-microchip"></i> System</span>
-    </button>
-    <div class="dd-content dd-button" id="system-menu">
+      <a id="btn-svr-stopxana"><i class="fad fa-stop"></i> Stop</a>`
+  })}
+  ${gridButtonTemplate({
+    buttonId: 'btn-open-regions',
+    icon: 'fad fa-th',
+    label: 'Regions',
+    buttonClass: OPTION_BUTTON_CLASS
+  })}
+  ${dropdownButtonTemplate({
+    buttonId: 'btn-menu-system',
+    icon: 'fad fa-microchip',
+    label: 'System',
+    buttonClass: OPTION_BUTTON_CLASS,
+    menuId: 'system-menu',
+    menuClass: 'dd-button',
+    menuContent: `
       <a id="btn-ext-system"><i class="fad fa-link"></i> Open</a>
-      <a id="btn-svr-syslog"><i class="fad fa-tachometer"></i> Status</a>
-    </div>
-  </div>
-  <button type="button" class="button svropt_button" id="btn-open-backup">
-    <span class="button__text"><i class="fad fad fa-sync"></i> Backup</span>
-  </button>
-  <div class="dropdown">
-    <button type="button" class="button svropt_button" id="btn-menu-router">
-      <span class="button__text"><i class="fad fa-ethernet"></i> Router</span>
-    </button>
-    <div class="dd-content dd-button" id="router-menu">
+      <a id="btn-svr-syslog"><i class="fad fa-tachometer"></i> Status</a>`
+  })}
+  ${gridButtonTemplate({
+    buttonId: 'btn-open-backup',
+    icon: 'fad fa-sync',
+    label: 'Backup',
+    buttonClass: OPTION_BUTTON_CLASS
+  })}
+  ${dropdownButtonTemplate({
+    buttonId: 'btn-menu-router',
+    icon: 'fad fa-ethernet',
+    label: 'Router',
+    buttonClass: OPTION_BUTTON_CLASS,
+    menuId: 'router-menu',
+    menuClass: 'dd-button',
+    menuContent: `
       <a id="btn-ext-router"><i class="fad fa-link"></i> Open</a>
-      <a id="btn-svr-rebootrouter"><i class="fad fa-redo"></i> Reboot</a>
-    </div>
-  </div>
-  <div class="dropdown">
-    <button type="button" class="button svropt_button" id="btn-menu-netwrk">
-      <span class="button__text"><i class="fad fa-network-wired"></i> Network</span>
-    </button>
-    <div class="dd-content dd-button" id="netwrk-menu">
+      <a id="btn-svr-rebootrouter"><i class="fad fa-redo"></i> Reboot</a>`
+  })}
+  ${dropdownButtonTemplate({
+    buttonId: 'btn-menu-netwrk',
+    icon: 'fad fa-network-wired',
+    label: 'Network',
+    buttonClass: OPTION_BUTTON_CLASS,
+    menuId: 'netwrk-menu',
+    menuClass: 'dd-button',
+    menuContent: `
       <a id="btn-wifi-prompt"><i class="fad fa-wifi"></i> Access</a>
       <a id="btn-ext-edgeswitch"><i class="fad fa-sitemap"></i> Switch</a>
-      <a id="btn-svr-netscan"><i class="fad fa-chart-network"></i> LAN Scanner</a>
-    </div>
-  </div>
-  <div class="dropdown">
-    <button type="button" class="button svropt_button" id="btn-menu-unifi">
-      <span class="button__text"><i class="fad fa-router"></i> UniFi</span>
-    </button>
-    <div class="dd-content dd-button" id="unifi-menu">
+      <a id="btn-svr-netscan"><i class="fad fa-chart-network"></i> LAN Scanner</a>`
+  })}
+  ${dropdownButtonTemplate({
+    buttonId: 'btn-menu-unifi',
+    icon: 'fad fa-router',
+    label: 'UniFi',
+    buttonClass: OPTION_BUTTON_CLASS,
+    menuId: 'unifi-menu',
+    menuClass: 'dd-button',
+    menuContent: `
       <a id="btn-ext-unifi"><i class="fad fa-link"></i> Open</a>
       <a id="btn-svr-startunifi"><i class="fad fa-play"></i> Start</a>
-      <a id="btn-svr-stopunifi"><i class="fad fa-stop"></i> Stop</a>
-    </div>
-  </div>
-  <button type="button" class="button svropt_button" id="btn-close-svr-opt1">
-    <span class="button__text"><i class="fad fa-times-octagon"></i> Close</span>
-  </button>
-  <button type="button" class="button svropt_button" id="btn-svr-clearlog">
-    <span class="button__text"><i class="fad fa-trash-alt"></i> Clear</span>
-  </button>
-  <button type="button" class="button svropt_button" id="btn-upload">
-    <span class="button__text"><i class="fad fa-cloud-upload"></i> Upload</span>
-  </button>
+      <a id="btn-svr-stopunifi"><i class="fad fa-stop"></i> Stop</a>`
+  })}
+  ${gridButtonTemplate({
+    buttonId: 'btn-close-svr-opt1',
+    icon: 'fad fa-times-octagon',
+    label: 'Close',
+    buttonClass: OPTION_BUTTON_CLASS
+  })}
+  ${gridButtonTemplate({
+    buttonId: 'btn-svr-clearlog',
+    icon: 'fad fa-trash-alt',
+    label: 'Clear',
+    buttonClass: OPTION_BUTTON_CLASS
+  })}
+  ${gridButtonTemplate({
+    buttonId: 'btn-upload',
+    icon: 'fad fa-cloud-upload',
+    label: 'Upload',
+    buttonClass: OPTION_BUTTON_CLASS
+  })}
 </div>`;
 }
 registerListeners({
@@ -173,33 +205,56 @@ registerListeners({
 function svrOptBackupTemplate() {
   return `
 <div class="svropt__backup">
-  <button type="button" class="button svropt_button" id="btn-svr-last_backup_dates">
-    <span class="button__text"><i class="fad fa-history"></i> History</span>
-  </button>
-  <button type="button" class="button svropt_button" id="btn-svr-backupchk">
-    <span class="button__text"> Checksum</span>
-  </button>
-  <button type="button" class="button svropt_button" id="btn-svr-pve_vmsbkp">
-    <span class="button__text"> VMs/LXCs</span>
-  </button>
-  <button type="button" class="button svropt_button" id="btn-pwd-unlock">
-    <span class="button__text"><i class="fad fa-lock-open"></i> Unlock</span>
-  </button>
-  <button type="button" class="button svropt_button" id="btn-svr-backupstd">
-    <span class="button__text"> Standard</span>
-  </button>
-  <button type="button" class="button svropt_button" id="btn-svr-detach_bkps">
-    <span class="button__text"><i class="fad fa-eject"></i> Eject</span>
-  </button>
-  <button type="button" class="button svropt_button" id="btn-close-svr-opt2">
-    <span class="button__text"><i class="fad fa-times-octagon"></i> Close</span>
-  </button>
-  <button type="button" class="button svropt_button" id="btn-svr-pve_listsnaps">
-    <span class="button__text"> Snapshots</span>
-  </button>
-  <button type="button" class="button svropt_button" id="btn-open-svr-opt1">
-    <span class="button__text"><i class="fad fa-arrow-left"></i> Back</span>
-  </button>
+  ${gridButtonTemplate({
+    buttonId: 'btn-svr-last_backup_dates',
+    icon: 'fad fa-history',
+    label: 'History',
+    buttonClass: OPTION_BUTTON_CLASS
+  })}
+  ${gridButtonTemplate({
+    buttonId: 'btn-svr-backupchk',
+    label: 'Checksum',
+    buttonClass: OPTION_BUTTON_CLASS
+  })}
+  ${gridButtonTemplate({
+    buttonId: 'btn-svr-pve_vmsbkp',
+    label: 'VMs/LXCs',
+    buttonClass: OPTION_BUTTON_CLASS
+  })}
+  ${gridButtonTemplate({
+    buttonId: 'btn-pwd-unlock',
+    icon: 'fad fa-lock-open',
+    label: 'Unlock',
+    buttonClass: OPTION_BUTTON_CLASS
+  })}
+  ${gridButtonTemplate({
+    buttonId: 'btn-svr-backupstd',
+    label: 'Standard',
+    buttonClass: OPTION_BUTTON_CLASS
+  })}
+  ${gridButtonTemplate({
+    buttonId: 'btn-svr-detach_bkps',
+    icon: 'fad fa-eject',
+    label: 'Eject',
+    buttonClass: OPTION_BUTTON_CLASS
+  })}
+  ${gridButtonTemplate({
+    buttonId: 'btn-close-svr-opt2',
+    icon: 'fad fa-times-octagon',
+    label: 'Close',
+    buttonClass: OPTION_BUTTON_CLASS
+  })}
+  ${gridButtonTemplate({
+    buttonId: 'btn-svr-pve_listsnaps',
+    label: 'Snapshots',
+    buttonClass: OPTION_BUTTON_CLASS
+  })}
+  ${gridButtonTemplate({
+    buttonId: 'btn-open-svr-opt1',
+    icon: 'fad fa-arrow-left',
+    label: 'Back',
+    buttonClass: OPTION_BUTTON_CLASS
+  })}
 </div>`;
 }
 registerListeners({
@@ -218,42 +273,53 @@ registerListeners({
 function svrOptRegionsTemplate() {
   return `
 <div class="svropt__regions">
-  <div class="dropdown">
-    <button type="button" class="button svropt_button" id="btn-menu-archive">
-      <span class="button__text"> Archive</span>
-    </button>
-    <div class="dd-content dd-button" id="archive-menu">
+  ${dropdownButtonTemplate({
+    buttonId: 'btn-menu-archive',
+    label: 'Archive',
+    buttonClass: OPTION_BUTTON_CLASS,
+    menuId: 'archive-menu',
+    menuClass: 'dd-button',
+    menuContent: `
       <a id="btn-pwd-fusearch"><i class="fad fa-link"></i> Attach</a>
-      <a id="btn-pwd-fusearch_unmnt"><i class="fad fa-eject"></i> Detach</a>
-    </div>
-  </div>
-  <div class="dropdown">
-    <button type="button" class="button svropt_button" id="btn-menu-snapshots">
-      <span class="button__text"> Snapshots</span>
-    </button>
-    <div class="dd-content dd-button" id="snapshots-menu">
+      <a id="btn-pwd-fusearch_unmnt"><i class="fad fa-eject"></i> Detach</a>`
+  })}
+  ${dropdownButtonTemplate({
+    buttonId: 'btn-menu-snapshots',
+    label: 'Snapshots',
+    buttonClass: OPTION_BUTTON_CLASS,
+    menuId: 'snapshots-menu',
+    menuClass: 'dd-button',
+    menuContent: `
       <a id="btn-svr-mnt_snap_region"><i class="fad fa-link"></i> Attach</a>
-      <a id="btn-svr-unmnt_snap_region"><i class="fad fa-eject"></i> Detach</a>
-    </div>
-  </div>
-  <div class="dropdown">
-    <button type="button" class="button svropt_button" id="btn-menu-ramdisk">
-      <span class="button__text"> RAM Disk</span>
-    </button>
-    <div class="dd-content dd-button" id="ramdisk-menu">
+      <a id="btn-svr-unmnt_snap_region"><i class="fad fa-eject"></i> Detach</a>`
+  })}
+  ${dropdownButtonTemplate({
+    buttonId: 'btn-menu-ramdisk',
+    label: 'RAM Disk',
+    buttonClass: OPTION_BUTTON_CLASS,
+    menuId: 'ramdisk-menu',
+    menuClass: 'dd-button',
+    menuContent: `
       <a id="btn-svr-mnt_ram_region"><i class="fad fa-link"></i> Attach</a>
-      <a id="btn-svr-unmnt_ram_region"><i class="fad fa-eject"></i> Detach</a>
-    </div>
-  </div>
-  <button type="button" class="button svropt_button" id="btn-close-svr-opt3">
-    <span class="button__text"><i class="fad fa-times-octagon"></i> Close</span>
-  </button>
-  <button type="button" class="button svropt_button dark_btn" id="btn-svr-unmnt_all">
-    <span class="button__text"> Detach All</span>
-  </button>
-  <button type="button" class="button svropt_button" id="btn-open-svr-opt2">
-    <span class="button__text"><i class="fad fa-arrow-left"></i> Back</span>
-  </button>
+      <a id="btn-svr-unmnt_ram_region"><i class="fad fa-eject"></i> Detach</a>`
+  })}
+  ${gridButtonTemplate({
+    buttonId: 'btn-close-svr-opt3',
+    icon: 'fad fa-times-octagon',
+    label: 'Close',
+    buttonClass: OPTION_BUTTON_CLASS
+  })}
+  ${gridButtonTemplate({
+    buttonId: 'btn-svr-unmnt_all',
+    label: 'Detach All',
+    buttonClass: `${OPTION_BUTTON_CLASS} dark_btn`
+  })}
+  ${gridButtonTemplate({
+    buttonId: 'btn-open-svr-opt2',
+    icon: 'fad fa-arrow-left',
+    label: 'Back',
+    buttonClass: OPTION_BUTTON_CLASS
+  })}
 </div>`;
 }
 registerListeners({
@@ -277,32 +343,46 @@ registerListeners({
 function piOptionsTemplate() {
   return `
 <div>
-  <div class="dropdown">
-    <button type="button" class="button svropt_button" id="btn-menu-piwifi">
-      <span class="button__text"><i class="fad fa-wifi"></i> WiFi</span>
-    </button>
-    <div class="dd-content dd-button" id="piwifi-menu">
+  ${dropdownButtonTemplate({
+    buttonId: 'btn-menu-piwifi',
+    icon: 'fad fa-wifi',
+    label: 'WiFi',
+    buttonClass: OPTION_BUTTON_CLASS,
+    menuId: 'piwifi-menu',
+    menuClass: 'dd-button',
+    menuContent: `
       <a id="btn-show-piwifiprompt"> Setup WiFi</a>
       <a id="btn-svr-client"> Client Mode</a>
       <a id="btn-svr-apd"> Hotspot Mode</a>
-      <a id="btn-svr-wifiscan"> WiFi Scanner</a>
-    </div>
-  </div>
-  <button type="button" class="button svropt_button" id="btn-svr-showwpa">
-    <span class="button__text"> Network</span>
-  </button>
-  <button type="button" class="button svropt_button" id="btn-svr-temp">
-    <span class="button__text"> Temperature</span>
-  </button>
-  <button type="button" class="button svropt_button" id="btn-close-svr-opt4">
-    <span class="button__text"><i class="fad fa-times-octagon"></i> Close</span>
-  </button>
-  <button type="button" class="button svropt_button" id="btn-svr-pi-clearlog">
-    <span class="button__text"> Clear Log</span>
-  </button>
-  <button type="button" class="button svropt_button" id="btn-svr-resetbt">
-    <span class="button__text"><i class="fab fa-bluetooth"></i> Reset</span>
-  </button>
+      <a id="btn-svr-wifiscan"> WiFi Scanner</a>`
+  })}
+  ${gridButtonTemplate({
+    buttonId: 'btn-svr-showwpa',
+    label: 'Network',
+    buttonClass: OPTION_BUTTON_CLASS
+  })}
+  ${gridButtonTemplate({
+    buttonId: 'btn-svr-temp',
+    label: 'Temperature',
+    buttonClass: OPTION_BUTTON_CLASS
+  })}
+  ${gridButtonTemplate({
+    buttonId: 'btn-close-svr-opt4',
+    icon: 'fad fa-times-octagon',
+    label: 'Close',
+    buttonClass: OPTION_BUTTON_CLASS
+  })}
+  ${gridButtonTemplate({
+    buttonId: 'btn-svr-pi-clearlog',
+    label: 'Clear Log',
+    buttonClass: OPTION_BUTTON_CLASS
+  })}
+  ${gridButtonTemplate({
+    buttonId: 'btn-svr-resetbt',
+    icon: 'fab fa-bluetooth',
+    label: 'Reset',
+    buttonClass: OPTION_BUTTON_CLASS
+  })}
 </div>`;
 }
 registerListeners({
@@ -325,18 +405,26 @@ export function logFormTemplate() {
   <div class="popup-ctn">
     <textarea readonly class="scroll-bar-style" id="logTextBox" spellcheck="false"></textarea>
     <div class="popup-actions">
-      <button type="button" class="button button_left_txtwin" id="btn-log-close">
-        <i class="fad fa-times-octagon"></i>
-      </button>
-      <button type="button" class="button button_left_txtwin" id="btn-log-open-svr">
-        <i class="fad fa-sliders-h"></i>
-      </button>
-      <button type="button" class="button button_left_txtwin" id="btn-log-load">
-        <i class="fad fa-sync-alt"></i>
-      </button>
-      <button type="button" class="button button_right_txtwin" id="sendButton">
-        <i class="fad fa-upload"></i>
-      </button>
+      ${gridButtonTemplate({
+        buttonId: 'btn-log-close',
+        icon: 'fad fa-times-octagon',
+        buttonClass: 'button_left_txtwin'
+      })}
+      ${gridButtonTemplate({
+        buttonId: 'btn-log-open-svr',
+        icon: 'fad fa-sliders-h',
+        buttonClass: 'button_left_txtwin'
+      })}
+      ${gridButtonTemplate({
+        buttonId: 'btn-log-load',
+        icon: 'fad fa-sync-alt',
+        buttonClass: 'button_left_txtwin'
+      })}
+      ${gridButtonTemplate({
+        buttonId: SEND_BUTTON_ID,
+        icon: 'fad fa-upload',
+        buttonClass: 'button_right_txtwin'
+      })}
     </div>
   </div>
 </div>`;
@@ -505,6 +593,10 @@ async function showPiWiFiPrompt() {
   }
 }
 
+// the two buttons of the Pi's Wi-Fi setup window
+const PI_WIFI_CANCEL_BUTTON_ID = 'pinet__btn-cancel';
+const PI_WIFI_SAVE_BUTTON_ID = 'pinet__btn-save';
+
 // Asks for an SSID and password and resolves with them base64 encoded as
 // "ssid|$|password", or null when it was cancelled.
 function piWiFiPrompt(windowId) {
@@ -514,13 +606,20 @@ function piWiFiPrompt(windowId) {
       <input id="pinet__ssidbox">
       <div>Password:</div>
       <input id="pinet__passbox" type="password">
-      <button class="button pinet__btn" type="button">Cancel</button>
-      <button class="button pinet__btn" type="button">Save</button>
+      ${gridButtonTemplate({
+        buttonId: PI_WIFI_CANCEL_BUTTON_ID,
+        label: 'Cancel',
+        buttonClass: 'pinet__btn'
+      })}
+      ${gridButtonTemplate({
+        buttonId: PI_WIFI_SAVE_BUTTON_ID,
+        label: 'Save',
+        buttonClass: 'pinet__btn'
+      })}
     `);
     const ssidLabel = promptElement.querySelector("div");
     const ssidBox = document.getElementById("pinet__ssidbox");
     const passwordBox = document.getElementById("pinet__passbox");
-    const [cancelButton, saveButton] = promptElement.querySelectorAll("button");
     ssidBox.focus();
     // empties the boxes, closes the window and settles the promise; after a
     // save the promise is already settled and the null is ignored
@@ -544,10 +643,10 @@ function piWiFiPrompt(windowId) {
       closeWiFiPrompt();
     }
     onButtons(promptElement, (button) => {
-      if (button === saveButton) {
+      if (button.id === PI_WIFI_SAVE_BUTTON_ID) {
         saveWiFiSettings();
       }
-      if (button === cancelButton) {
+      if (button.id === PI_WIFI_CANCEL_BUTTON_ID) {
         closeWiFiPrompt();
       }
     });
@@ -581,7 +680,10 @@ function wifiPrompt() {
     <div>Scan for WiFi Access</div>
     <img src="img/wifi.png" id="wifi__img">
     <div id="wifi__pwdtxt"></div>
-    <button class="button" type="button" id="wifipmt__btn">Close</button>
+    ${gridButtonTemplate({
+      buttonId: 'wifipmt__btn',
+      label: 'Close'
+    })}
   `);
   // password text set separately (value is data, not markup)
   document.getElementById("wifi__pwdtxt").innerHTML = atob(SSIDpwd());
@@ -591,6 +693,8 @@ function wifiPrompt() {
 /////// password prompt ///////
 
 const PASSWORD_PROMPT_ID = 'pass__prompt_win';
+const PASSWORD_CANCEL_BUTTON_ID = 'pass__btn-cancel';
+const PASSWORD_SEND_BUTTON_ID = 'pass__btn-send';
 
 // Asks for a password and saves it to the file named, which the server side
 // reads it from; afterPOSTActions() then sends the command that needs it.
@@ -616,16 +720,23 @@ function passwordPrompt() {
     <div>Enter password:</div>
     <input id="pass__textbox" type="password">
     <div id="pass__prmbtnctr">
-      <button class="button pass__prompt_btn" type="button">Cancel</button>
-      <button class="button pass__prompt_btn" type="button">Send</button>
+      ${gridButtonTemplate({
+        buttonId: PASSWORD_CANCEL_BUTTON_ID,
+        label: 'Cancel',
+        buttonClass: 'pass__prompt_btn'
+      })}
+      ${gridButtonTemplate({
+        buttonId: PASSWORD_SEND_BUTTON_ID,
+        label: 'Send',
+        buttonClass: 'pass__prompt_btn'
+      })}
     </div>
   `);
   const passwordBox = document.getElementById("pass__textbox");
-  const sendButton = promptElement.querySelectorAll("button")[1];
   passwordBox.focus();
   return new Promise(function (resolve, reject) {
     onButtons(promptElement, (button) => {
-      if (button === sendButton) {
+      if (button.id === PASSWORD_SEND_BUTTON_ID) {
         resolve(passwordBox.value);
       } else {
         reject(new Error("User cancelled"));

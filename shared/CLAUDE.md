@@ -108,7 +108,7 @@ The third group's legend shows the current room's icon and name, and its grid is
 
 Each room is a module of its own that exports its config (`LIVING_ROOM_CONFIG` in `livingrm.js`, `BEDROOM_CONFIG` in `bedrm.js`, `BATHROOM_CONFIG` in `bathrm.js`): a key, a name, an icon, a volume target and a grid template. The module also holds the room's button listeners, its menus and its windows, and `main.js` only collects the three configs into `ROOM_CONFIGS`. The key names the room's API commands: `<key>status`, `<key>on`, `<key>off`, and device commands go through `<key>xmit`.
 
-The grids are built from `dropdownButtonTemplate()` and `gridButtonTemplate()` in `utils.js` and `powerButtonTemplate()` in `menus.js`. The volume buttons, their handlers, the subwoofer mode and the volume popup are shared by the two rooms with an amp and live in `utils.js` (`volumeButtonsTemplate`, `volumeButtonListeners`, `sendVolume`, `showVolumePopup`).
+The grids are built from `dropdownButtonTemplate()` and `gridButtonTemplate()` in `utils.js` and `powerButtonTemplate()` in `menus.js`. The Pixels and APT groups and the text scroller in `main.js`, and the Server window's option panels in `server.js`, are built from the same two; both take an optional `buttonClass` (`svropt_button`, `button__sml`), and a button may have an icon, a label or both. The windows' own buttons (log, camera, bathroom settings, bed, colour prompt, About, upload, lists, password and Wi-Fi prompts) are drawn with `gridButtonTemplate()` too. Three kinds stay written out: the temperature / humidity grid button (two icons), and the temperature window's and bookmark edit window's buttons, whose icon class sits on the button itself; every one of them has an id. The volume buttons, their handlers, the subwoofer mode and the volume popup are shared by the two rooms with an amp and live in `utils.js` (`volumeButtonsTemplate`, `volumeButtonListeners`, `sendVolume`, `showVolumePopup`).
 
 | Room | Key | Volume target | Room status reads |
 | --- | --- | --- | --- |
@@ -165,16 +165,16 @@ The bathroom's one device is the BathroomLight, a Pico W on 192.168.1.21:4000 (`
 
 ### Settings window
 
-`bathroomSettingsPrompt()` opens a centred window filled from one `bthr-light1_config` read (`min~max~presence~timeout~mode`). Each change is sent on release and confirmed in the title for 5 s ("Off delay: 6 min 8 s"); errors show there in red, and "Light offline" stays while the settings are greyed out.
+`bathroomSettingsPrompt()` opens a centred window, 302 px wide so its setting boxes end level with its row of three buttons, filled from one `bthr-light1_config` read (`min~max~presence~timeout~mode`). Each change is sent on release and confirmed in the title for 5 s ("Off delay: 6 min 8 s"); errors show there in red, and "Light offline" stays while the settings are greyed out.
 
 | Setting | Control | Range | Command |
 | --- | --- | --- | --- |
-| Nearest detection | Slider, held below the farthest | 0–1000 cm | `bthr-light1_rangemin_set_<n>` |
-| Farthest detection | Slider, held above the nearest | 0–1000 cm | `bthr-light1_rangemax_set_<n>` |
-| Presence keeps light on | Switch | 0 / 1 | `bthr-light1_presence_set_<n>` |
+| Nearest detection | Slider, held below the farthest | 0–1000 cm, shown in feet | `bthr-light1_rangemin_set_<n>` |
+| Farthest detection | Slider, held above the nearest | 0–1000 cm, shown in feet | `bthr-light1_rangemax_set_<n>` |
+| Presence hold (presence keeps the light on) | Switch | 0 / 1 | `bthr-light1_presence_set_<n>` |
 | Off delay | Slider on a cube curve (about 1 s steps at the short end) | 6 s – 1 h | `bthr-light1_timeout_set_<n>` |
 
-The Log and Sensor buttons turn the window into a log box twice as wide (680 px), filled from `bthr-light1_log` or `bthr-light1_sensor`, with Back and Close under it. Every request from the window waits for the one before it (`bthrRequest()`), because the Pico serves one request at a time.
+The Log and Sensor buttons turn the window into a log box twice as wide (680 px), filled from `bthr-light1_log` or `bthr-light1_sensor`, with Back, Refresh (reads the same read-out again) and Close under it. Every request from the window waits for the one before it (`bthrRequest()`), because the Pico serves one request at a time.
 
 ### API commands
 
@@ -323,6 +323,7 @@ Conventions for new work:
 - Add only the code a feature needs; leave existing features as they are, and reuse the site's own helpers (`sendCmd`, `openDeviceMenu`, `drawMenu`, `promptWindow`, `onButtons`, `readFile` / `writeFile`).
 - A room's template, listeners, menus and windows live in its own module and sheet; code two rooms share goes in `utils.js`, and anything that draws or opens a menu in `menus.js`. A new room exports its config and is added to `ROOM_CONFIGS` in `main.js`. A feature that stands on its own is a class in its own module with its own sheet.
 - Imports go downwards only (`main.js` → rooms and `server.js` → `menus.js` → `utils.js`); a lower module that needs something from the page takes it as a parameter or through `configureMenus()`.
+- Draw a grid's or a window's buttons with `gridButtonTemplate()` and `dropdownButtonTemplate()` rather than writing the `<button>` markup out, and give every button an id; handlers pick a button by its id, not its place in the window.
 - Register a template's buttons with `registerListeners()` directly under it.
 - Read and write state files through the site's file API, never a separate store.
 - A new API command is a case in `executeMain()`, or an entry in a room's code table; a service with its own route registers it from its own module, as `upload.js` and `camstream.js` do. Query values must fit the API's character set, so free text goes as URL-safe base64.

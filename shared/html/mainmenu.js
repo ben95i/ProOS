@@ -9,7 +9,8 @@
 // class. The picker's palette is the thememenu file, one colour per line as
 // hex_value|display_name, read by ColorPrompt itself.
 
-import { hexToRgb, loadMenu, fileURL, splitMenuData } from './utils.js';
+import { hexToRgb, loadMenu, fileURL, splitMenuData,
+  gridButtonTemplate } from './utils.js';
 import ColorPrompt from './colorprompt.js';
 
 export default class MainMenu {
@@ -347,10 +348,11 @@ export default class MainMenu {
     <img src="img/automate.png" id="about__img" />
     <div class="about__text">by Ben Provenzano III</div>
     <div class="about__text">${curYear}.${curQtr} Release</div>
-    <button type="button" class="button" id="about__btn">
-      <i class="fad fa-times-octagon right-padding"></i>
-      <span class="button__text">Close</span>
-    </button>
+    ${gridButtonTemplate({
+      buttonId: 'about__btn',
+      icon: 'fad fa-times-octagon right-padding',
+      label: 'Close'
+    })}
   </div>
   `;
     document.body.insertAdjacentHTML('beforeend', promptHTML);

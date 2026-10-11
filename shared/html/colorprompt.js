@@ -11,7 +11,8 @@
 // each picked colour to a device.
 
 import { hexToRgb, rgbToHex, rgbToHexFromStyle, hsvToRgb, rgbToHsv,
-    parsePalette, readFile, sendCmd, showPopup } from './utils.js';
+    parsePalette, readFile, sendCmd, showPopup,
+    gridButtonTemplate } from './utils.js';
 
 // the element the page keeps for the device colour prompt (drawn by main.js)
 const DEVICE_PROMPT_ANCHOR_ID = 'color-popup';
@@ -229,9 +230,12 @@ export default class ColorPrompt {
         </div>
 
         <div class="color-popup-actions">
-          <button type="button" class="button button_left_txtwin color-popup-btn" id="btn-color-close">
-            <i class="fad fa-times-octagon"></i> Close
-          </button>
+          ${gridButtonTemplate({
+            buttonId: 'btn-color-close',
+            icon: 'fad fa-times-octagon',
+            label: 'Close',
+            buttonClass: 'button_left_txtwin color-popup-btn'
+          })}
         </div>
       </div>
     `;

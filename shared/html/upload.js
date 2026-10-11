@@ -16,7 +16,8 @@
 // side, not something the browser gets to choose.
 
 import { html, showPopup, makeElement, promptWindow, onButtons,
-  removeWindow, base64URLSafeEncode, sleep } from './utils.js';
+  removeWindow, base64URLSafeEncode, sleep,
+  gridButtonTemplate } from './utils.js';
 
 const CHUNK_BYTES = 1024 * 1024; // 1MB per request
 const MAX_FILE_BYTES = 1024 * 1024 * 1024; // 1GB, per file
@@ -44,6 +45,9 @@ const LIST_ID = 'upl__list';
 const BAR_ID = 'upl__bar';
 const PCT_ID = 'upl__pct';
 const CLOSE_BTN_ID = 'upl__btn-close';
+// The button's wording has a span of its own beside the icon, as it changes
+// from Cancel to Close once the uploads are done.
+const CLOSE_LABEL_ID = 'upl__btn-close-label';
 // per-file row states
 const ROW_WAITING = 'waiting';
 const ROW_SENDING = 'sending';
@@ -370,10 +374,12 @@ export default class Uploader {
         <div class="bar_progress" id="${BAR_ID}"></div>
       </div>
       <div class="upl__pct" id="${PCT_ID}">0%</div>
-      <button type="button" class="button button__med" id="${CLOSE_BTN_ID}">
-        <i class="fad fa-times-octagon right-padding"></i>
-        <span class="button__text">Cancel</span>
-      </button>
+      ${gridButtonTemplate({
+        buttonId: CLOSE_BTN_ID,
+        icon: 'fad fa-times-octagon right-padding',
+        label: `<span id="${CLOSE_LABEL_ID}">Cancel</span>`,
+        buttonClass: 'button__med'
+      })}
     `);
     // the window sits over the page, and a click inside it must not close
     // the menus underneath
@@ -399,7 +405,7 @@ export default class Uploader {
     if (!button) {
       return;
     }
-    const label = button.querySelector('.button__text');
+    const label = document.getElementById(CLOSE_LABEL_ID);
     if (label) {
       label.innerText = text;
     }
