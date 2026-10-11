@@ -1,0 +1,18 @@
+/*
+ *  Automate -- livingrm.css
+ *
+ *  The living room's own rules (livingrm.js). The room's grid is drawn from
+ *  the shared button and menu styles, so all that is left to it is the
+ *  subwoofer mode its More... menu switches on.
+ *
+ *  Loaded after main.css and menus.css: .red_btn_menu has to come after
+ *  .button to put its red over the button's own background.
+ */
+
+/* Subs Gain: the volume buttons, the -5% and +5% buttons, and the menu row
+   that turned them, go red while they control the subwoofers */
+.red_btn_menu {
+  border-radius: 10px;
+  transition: background-color 1s ease;
+  background-color: var(--red-trans-35);
+}

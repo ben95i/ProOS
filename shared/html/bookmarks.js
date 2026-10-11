@@ -116,7 +116,7 @@ function iconMarkup(icon) {
 
 export default class Bookmarks {
 
-  // options: removeDropdowns(), main.js's own drop-down teardown
+  // options: removeDropdowns(), the drop-down teardown in menus.js
   constructor(options = {}) {
     this.removeDropdowns = function () {};
     if (typeof options.removeDropdowns === 'function') {

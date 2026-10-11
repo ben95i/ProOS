@@ -22,8 +22,8 @@ const IP_ADRS = {
     brpi: "192.168.1.15",
     brpc: "192.168.1.17",
     brpc_mac: "90:2e:16:46:86:43",
-    picolamp1: "192.168.1.18",
-    "bthr-light1": "bathroomlight.home"
+    lrmlamp1: "192.168.1.18",
+    bthrlight1: "192.168.1.21"
 };
 
 // imports //
@@ -252,16 +252,16 @@ function bathroomOff() {
     ]).catch(() => {});
 }
 
-//// window lamp (Pico) ////
+//// living room lamp #1 ////
 
-async function windowLamp1Status() {
-    return await callPico(IP_ADRS.picolamp1, "4", "0");
+async function lrmLamp1Status() {
+    return await callPico(IP_ADRS.lrmlamp1, "4", "0");
 }
-async function windowLamp1Off() {
-    return await callPico(IP_ADRS.picolamp1, "1", "2");
+async function lrmLamp1Off() {
+    return await callPico(IP_ADRS.lrmlamp1, "1", "2");
 }
-async function windowLamp1On() {
-    return await callPico(IP_ADRS.picolamp1, "1", "3");
+async function lrmLamp1On() {
+    return await callPico(IP_ADRS.lrmlamp1, "1", "3");
 }
 
 //// bedroom ////
@@ -361,34 +361,29 @@ const LR_COM_CODES = {
     subdwn_fast:   "17005"
 };
 
-// lrXmit('volup') -> raises the amp volume; lrXmit('wl1_dual_set', '120')
 async function lrXmit(arg1, arg2 = '') {
     const code = LR_COM_CODES[arg1];
     if (code) {
         return await lrComCall(code);
     }
     switch (arg1) {
-        case "wl1_dual":      return await windowLamp1Status();
-        case "wl1_dual_set":  return await callPico(IP_ADRS.picolamp1, "3", arg2);
-        case "wl1_dualoff":   return await windowLamp1Off();
-        case "wl1_dualon":    return await windowLamp1On();
-        case "wl1_led1off":   return await windowLamp1Off();
-        case "wl1_led1on":    return await windowLamp1On();
-        case "wl1_led1":      return await callPico(IP_ADRS.picolamp1, "1", "0");
-        case "wl1_led2off":   return await callPico(IP_ADRS.picolamp1, "2", "0");
-        case "wl1_led2on":    return await callPico(IP_ADRS.picolamp1, "2", "1");
-        case "wl1_led2":      return await callPico(IP_ADRS.picolamp1, "2", "2");
+        case "wl1_dual":      return await lrmLamp1Status();
+        case "wl1_dual_set":  return await callPico(IP_ADRS.lrmlamp1, "3", arg2);
+        case "wl1_dualoff":   return await lrmLamp1Off();
+        case "wl1_dualon":    return await lrmLamp1On();
+        case "wl1_led1off":   return await lrmLamp1Off();
+        case "wl1_led1on":    return await lrmLamp1On();
+        case "wl1_led1":      return await callPico(IP_ADRS.lrmlamp1, "1", "0");
+        case "wl1_led2off":   return await callPico(IP_ADRS.lrmlamp1, "2", "0");
+        case "wl1_led2on":    return await callPico(IP_ADRS.lrmlamp1, "2", "1");
+        case "wl1_led2":      return await callPico(IP_ADRS.lrmlamp1, "2", "2");
 
         case "wkststate":     return await localPing(IP_ADRS.desk);
         case "wkststateoff":
-            if (await localPing(IP_ADRS.desk) === "1") {
-              return await callApi(IP_ADRS.lrxmit, "pc_power");
-            }
+            if (await localPing(IP_ADRS.desk) === "1") return await callApi(IP_ADRS.lrxmit, "pc_power");
             return `${IP_ADRS.desk} is already offline`;
         case "wkststateon":
-            if (await localPing(IP_ADRS.desk) === "1") {
-              return `${IP_ADRS.desk} is already online`;
-            }
+            if (await localPing(IP_ADRS.desk) === "1") return `${IP_ADRS.desk} is already online`;
             return await callApi(IP_ADRS.lrxmit, "pc_power");
 
         default: return "lrXmit: invalid command";
@@ -412,7 +407,6 @@ const BTHR_PICO_CODES = {
     "bthr-light1_state":         ["2",  "4",  callPico],
     "bthr-light1_set":           ["3",  null, callPico],
     "bthr-light1_motion":        ["2",  "3",  callPico],
-
     "bthr-light1_config":        ["8",  "0",  callPico],
     "bthr-light1_rangemin":      ["8",  "4",  callPico],
     "bthr-light1_rangemin_set":  ["4",  null, callPico],
@@ -425,34 +419,30 @@ const BTHR_PICO_CODES = {
     "bthr-light1_mode":          ["8",  "13", callPico],
     "bthr-light1_mode_set":      ["13", null, callPico],
     "bthr-light1_reset":         ["12", "1",  callPico],
-
     "bthr-light1_log":           ["9",  "0",  callPicoText],
     "bthr-light1_log_set":       ["9",  null, callPicoText],
     "bthr-light1_status":        ["10", "0",  callPicoText],
     "bthr-light1_sensor":        ["10", "1",  callPicoText]
 };
 
-// A value as the Pico reads it, a whole number of up to 4 digits ("0128" ->
-// "128"), or null when it is not one, so an empty value never reaches the
-// Pico as 0. Ranges within that are checked by the Pico itself.
-function bthrValue(value) {
-    if (!isNumeric(value)) return null;
-    const number = Number(value);
-    if (number < 0 || number > 9999) return null;
-    return String(number);
-}
-
 // bthrXmit('bthr-light1on') -> fades the light on; bthrXmit('bthr-light1_set', '128')
+//
+// A "_set" command takes its value from the website. It is sent as the Pico
+// reads it, a whole number of up to 4 digits ("0128" -> "128"), and refused
+// here when it is not one, so an empty value never reaches the Pico as 0.
+// Ranges within that are checked by the Pico itself.
 async function bthrXmit(arg1, arg2 = '') {
-    const coded = BTHR_PICO_CODES[arg1];
-    if (!coded) return "bthrXmit: invalid command";
-    const [command, fixedValue, reader] = coded;
+    const codes = BTHR_PICO_CODES[arg1];
+    if (!codes) return "bthrXmit: invalid command";
+    const [command, fixedValue, reader] = codes;
     let value = fixedValue;
     if (value === null) {
-        value = bthrValue(arg2);
-        if (value === null) return "bthrXmit: invalid value";
+        if (!isNumeric(arg2)) return "bthrXmit: non-numeric value";
+        const number = Number(arg2);
+        if (number < 0 || number > 9999) return "bthrXmit: out-of-range value";
+        value = String(number);
     }
-    return await reader(IP_ADRS["bthr-light1"], command, value);
+    return await reader(IP_ADRS.bthrlight1, command, value);
 }
 
 //// room status ////
@@ -461,7 +451,7 @@ async function bthrXmit(arg1, arg2 = '') {
 async function livingRoomStatus() {
     const lrRoom = new RoomManager();
     const [lamp, desktop, stereo] = await Promise.all([
-        windowLamp1Status(),
+        lrmLamp1Status(),
         lrXmit("wkststate"),
         lrXmit("hifistate")
     ]);

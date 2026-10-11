@@ -1,0 +1,149 @@
+/*
+ *  Automate -- bathrm.css
+ *
+ *  The bathroom's own rules (bathrm.js).
+ */
+
+/*
+ *  Bathroom Settings Window
+ *
+ *  bathroomSettingsPrompt() in bathrm.js. Drawn like the colour prompt (a
+ *  300px column on black) and built from what the site already has: the
+ *  sliders are .slider-wide (menus.css), the log box is the server log's
+ *  .popup-ctn and .popup-actions, and the icon buttons are
+ *  .button_left_txtwin (main.css). The rules below that resize one of those
+ *  win at equal specificity only because this sheet loads after main.css and
+ *  menus.css -- keep it after them in index.html.
+ */
+
+#bthr__prompt {
+  top: 50%;
+  left: 50%;
+  margin-right: -50%;
+  transform: translate(-50%, -50%);
+  width: 340px;
+  height: auto;
+  padding: 10px 20px;
+  color: #fff;
+}
+
+/* showing the Light Log or Sensor Status: twice the width, for their long
+   lines, and never wider than the screen */
+#bthr__prompt.bthr__prompt--wide {
+  width: 680px;
+  max-width: 95vw;
+}
+
+/* The heading, which also shows a change or an error in its place for a few
+   seconds. Held to one line: a longer message ends in an ellipsis rather
+   than wrapping, so the boxes below never move. */
+.bthr__title {
+  font-size: 22px;
+  margin-bottom: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bthr__title--error {
+  color: var(--alert-red);
+}
+
+/* one setting, in a box drawn like the colour prompt's hex row */
+.bthr__setting {
+  padding: 10px 12px;
+  text-align: left;
+  background-color: var(--nav-menus-color);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  transition: opacity .2s ease;
+}
+
+/* the gap between boxes goes above each one after the first, so the last
+   box has nothing under it and the buttons' own spacing is all there is */
+.bthr__setting + .bthr__setting {
+  margin-top: 12px;
+}
+
+/* before the settings are read off the light, or when they could not be */
+.bthr__setting.is-disabled {
+  opacity: .4;
+  pointer-events: none;
+}
+
+.bthr__setting-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+/* the * rule in main.css puts 24px on every element, so both are set here */
+.bthr__label,
+.bthr__value {
+  font-size: 18px;
+}
+
+.bthr__value {
+  color: var(--main-40-white);
+  white-space: nowrap;
+}
+
+/* the presence switch shares a line with its label */
+.bthr__setting--switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+/* .slider-wide_container is sized for a menu row; a little lower in here */
+.bthr__slider {
+  height: 44px;
+}
+
+/* The switch is the menu-checkbox size, so it is treated the way switch.css
+   treats that one: paint containment off so the handle keeps its shadow,
+   and no ON / OFF lettering, which no longer fits in the handle. */
+.bthr__setting .toggle-switch {
+  contain: layout !important;
+  flex-shrink: 0;
+}
+
+.bthr__setting .toggle-text-on,
+.bthr__setting .toggle-text-off {
+  display: none;
+}
+
+.bthr__setting .toggle-handle {
+  padding-top: 0;
+}
+
+/* the icon buttons, centred under the boxes rather than pushed right as
+   they are in the server log window */
+/* The same 18px of space above the buttons as below them.
+   Below: the bottom of a button's walls to the window's edge is the button's
+   8px bottom margin and the window's 10px padding (the face is lifted 5px
+   and its 5px walls fill exactly that).
+   Above: the box to the button's face is this padding, the button's 8px top
+   margin, less the 5px the face is lifted: 15 + 8 - 5 = 18. */
+.bthr__actions {
+  justify-content: center;
+  padding-top: 15px;
+}
+
+/* the server log window (.popup-ctn), cut down to fit inside the prompt.
+   Hidden until the Log or Sensor button shows it in the settings' place. */
+.bthr__log {
+  display: none;
+  height: 440px;
+  padding: 0;
+}
+
+/* the light grey edge the setting boxes carry, where .popup-ctn has none */
+.bthr__log textarea {
+  font-size: 12px;
+  text-align: left;
+  border: 1px solid var(--border-color);
+}

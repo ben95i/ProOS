@@ -4,7 +4,7 @@
 // colour, and the About window. new MainMenu() then .load() to apply the
 // saved colour; showMenu() / showPiMenu() open the two menus.
 //
-// The stars toggle is drawn by main.js's drawMenu() as a browser-side
+// The stars toggle is drawn by menus.js's drawMenu() as a browser-side
 // setting row ('chk'); everything else here is built and placed by this
 // class. The picker's palette is the thememenu file, one colour per line as
 // hex_value|display_name, read by ColorPrompt itself.
@@ -176,7 +176,7 @@ export default class MainMenu {
     return true;
   }
 
-  // The server's list button. Same shape as the file menus in main.js -- a
+  // The server's list button. Same shape as the file menus in menus.js -- a
   // second press closes it, and opening it puts every other menu away first.
   async showMenu() {
     const menuElement = document.getElementById(MainMenu.MENU_ID);

@@ -5,8 +5,52 @@
 // options: presets (swatches, hex strings or { color, name }), presetFile (a
 // palette file to read instead), name (put into the heading), onClose().
 
+//
+// openColorPrompt(command, argument, title, threeArguments) is the one-call
+// form the device buttons use: it opens the page's colour prompt and sends
+// each picked colour to a device.
+
 import { hexToRgb, rgbToHex, rgbToHexFromStyle, hsvToRgb, rgbToHsv,
-    parsePalette, readFile } from './utils.js';
+    parsePalette, readFile, sendCmd, showPopup } from './utils.js';
+
+// the element the page keeps for the device colour prompt (drawn by main.js)
+const DEVICE_PROMPT_ANCHOR_ID = 'color-popup';
+// what the prompt shows before a colour has been picked
+const DEVICE_PROMPT_START_HEX = '#000000';
+
+// Opens the colour prompt for a device and sends each colour picked in it.
+// By default the colour goes out as main / command / <argument>_<hex>; with
+// threeArguments it goes out as command / argument / <hex> instead.
+// openColorPrompt('brxmit', 'bed_leds_hex_set', 'Bed Lights')
+// openColorPrompt('leds', 'hex', 'Pixels', true)
+export function openColorPrompt(command, argument, title, threeArguments = false) {
+  // the previous prompt is destroyed rather than dropped: show() wipes the
+  // anchor's markup, and an instance left behind mid-drag still holds
+  // pointermove / pointerup listeners on window
+  if (App.colorPrompt) {
+    App.colorPrompt.destroy();
+    App.colorPrompt = null;
+  }
+  const colorPrompt = new ColorPrompt(DEVICE_PROMPT_ANCHOR_ID, (strippedHex) => {
+    let action = 'main';
+    let firstArgument = command;
+    let secondArgument = `${argument}_${strippedHex}`;
+    if (threeArguments === true) {
+      action = command;
+      firstArgument = argument;
+      secondArgument = strippedHex;
+    }
+    sendCmd(action, firstArgument, secondArgument)
+      .catch(sendError => {
+        showPopup("[ColorPrompt] failed to send color: " + sendError);
+      });
+  }, {
+    name: title
+  });
+  colorPrompt.show();
+  colorPrompt.updateStateFromHex(DEVICE_PROMPT_START_HEX, true, false);
+  App.colorPrompt = colorPrompt;
+}
 
 export default class ColorPrompt {
 

@@ -1,0 +1,43 @@
+/*
+ *  Automate -- bedrm.css
+ *
+ *  The bedroom's own rules (bedrm.js). Loaded after main.css and menus.css:
+ *  .bed__btn has to come after .button to resize it.
+ */
+
+/*
+ *  Bed Adjustment Prompt Style
+ */
+
+#bed__prompt {
+  top: 50%;
+  left: 50%;
+  margin-right: -50%;
+  transform: translate(-50%, -50%);
+  width: 200px;
+  height: auto;
+  padding-top: 12px;
+  padding-left: 12px;
+  padding-right: 10px;
+  padding-bottom: 10px;  
+  color: #fff;
+}
+
+.bed__title {
+  font-size: 22px;
+  margin-bottom: 8px;
+}
+
+.bed__btn {
+  width: 150px;
+  height: 130px;
+}
+
+.bed__icon {
+  font-size: 50px;
+}
+
+#bed__btn-close {
+  width: 150px;
+  height: 65px;
+}

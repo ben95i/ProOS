@@ -1,0 +1,645 @@
+// Automate Website - server window
+//
+// The Server button's log window and the option panels that open over it:
+// the server's three panels (main, backup, regions) and the Pi models' one.
+// A panel button arms one server command and the log window's send button
+// sends it; the commands that need a password ask for it first. The windows
+// the panels open live here too -- the password prompt, the guest Wi-Fi
+// window, the Pi's Wi-Fi setup and the upload picker.
+//
+// main.js draws serverOptionsTemplate() and logFormTemplate() into the page,
+// and opens and closes the log window through showLogWindow() and
+// closeLogWindow(), as it has the camera window to close alongside it.
+
+import { classDisplay, addClassToElem, base64URLSafeEncode, sendCmd, html,
+  showPopup, savePOST, fileURL, promptWindow, onButtons, setDisplayById,
+  registerListeners } from './utils.js';
+import { removeDropdowns, openDropdown } from './menus.js';
+import Uploader from './upload.js';
+import { SSIDpwd } from './wifi.js';
+
+// the log window, its text box and its send button
+const LOG_WINDOW_ID = 'logForm';
+const LOG_TEXT_BOX_ID = 'logTextBox';
+const SEND_BUTTON_ID = 'sendButton';
+// the class the send button carries while a command is armed
+const SEND_ARMED_CLASS = 'selected_btn';
+// the file the server writes its log to
+const SERVER_LOG_FILE = 'sysout';
+
+// the options window, and the element the server's panels are drawn into
+const OPTIONS_WINDOW_CLASS = 'svropt__prompt';
+const OPTIONS_PANEL_CONTAINER_ID = 'svropt-panel-container';
+
+// The server command a panel button has armed, or null when none is. The
+// send button transmits it and disarms.
+let pendingServerCommand = null;
+
+// Log reads are numbered, so an older read that lands after a newer one
+// cannot put a stale log back on screen.
+let logReadSequence = 0;
+
+//// page templates ////
+
+// The options window: an empty container the server's panels are drawn into,
+// or the Pi models' one panel. f says which model the page is drawn for.
+export function serverOptionsTemplate(f) {
+  return `
+<div class="svropt__prompt prompt_win" data-app-injected>
+  ${f.isServer ? `
+  <div id="svropt-panel-container"></div>` : ''}
+  ${f.isPiLike ? piOptionsTemplate() : ''}
+</div>`;
+}
+
+// the server's main panel: services, network, and the way to the other two
+function svrOptMainTemplate() {
+  return `
+<div class="svropt__main">
+  <div class="dropdown">
+    <button type="button" class="button svropt_button" id="btn-menu-atalk">
+      <span class="button__text"><i class="fab fa-apple"></i> AFP</span>
+    </button>
+    <div class="dd-content dd-button" id="atalk-menu">
+      <a id="btn-svr-startatalk"><i class="fad fa-play"></i> Start</a>
+      <a id="btn-svr-stopatalk"><i class="fad fa-stop"></i> Stop</a>
+    </div>
+  </div>
+  <div class="dropdown">
+    <button type="button" class="button svropt_button" id="btn-menu-legacy">
+      <span class="button__text"><i class="fad fa-save"></i> CIFS</span>
+    </button>
+    <div class="dd-content dd-button" id="legacy-menu">
+      <a id="btn-svr-startlegacy"><i class="fad fa-play"></i> Start</a>
+      <a id="btn-svr-stoplegacy"><i class="fad fa-stop"></i> Stop</a>
+    </div>
+  </div>
+  <div class="dropdown">
+    <button type="button" class="button svropt_button" id="btn-menu-xana">
+      <span class="button__text"><i class="fab fa-linux"></i> Xana</span>
+    </button>
+    <div class="dd-content dd-button" id="xana-menu">
+      <a id="btn-svr-startxana"><i class="fad fa-play"></i> Start</a>
+      <a id="btn-svr-stopxana"><i class="fad fa-stop"></i> Stop</a>
+    </div>
+  </div>
+  <button type="button" class="button svropt_button" id="btn-open-regions">
+    <span class="button__text"><i class="fad fad fa-th"></i> Regions</span>
+  </button>
+  <div class="dropdown">
+    <button type="button" class="button svropt_button" id="btn-menu-system">
+      <span class="button__text"><i class="fad fa-microchip"></i> System</span>
+    </button>
+    <div class="dd-content dd-button" id="system-menu">
+      <a id="btn-ext-system"><i class="fad fa-link"></i> Open</a>
+      <a id="btn-svr-syslog"><i class="fad fa-tachometer"></i> Status</a>
+    </div>
+  </div>
+  <button type="button" class="button svropt_button" id="btn-open-backup">
+    <span class="button__text"><i class="fad fad fa-sync"></i> Backup</span>
+  </button>
+  <div class="dropdown">
+    <button type="button" class="button svropt_button" id="btn-menu-router">
+      <span class="button__text"><i class="fad fa-ethernet"></i> Router</span>
+    </button>
+    <div class="dd-content dd-button" id="router-menu">
+      <a id="btn-ext-router"><i class="fad fa-link"></i> Open</a>
+      <a id="btn-svr-rebootrouter"><i class="fad fa-redo"></i> Reboot</a>
+    </div>
+  </div>
+  <div class="dropdown">
+    <button type="button" class="button svropt_button" id="btn-menu-netwrk">
+      <span class="button__text"><i class="fad fa-network-wired"></i> Network</span>
+    </button>
+    <div class="dd-content dd-button" id="netwrk-menu">
+      <a id="btn-wifi-prompt"><i class="fad fa-wifi"></i> Access</a>
+      <a id="btn-ext-edgeswitch"><i class="fad fa-sitemap"></i> Switch</a>
+      <a id="btn-svr-netscan"><i class="fad fa-chart-network"></i> LAN Scanner</a>
+    </div>
+  </div>
+  <div class="dropdown">
+    <button type="button" class="button svropt_button" id="btn-menu-unifi">
+      <span class="button__text"><i class="fad fa-router"></i> UniFi</span>
+    </button>
+    <div class="dd-content dd-button" id="unifi-menu">
+      <a id="btn-ext-unifi"><i class="fad fa-link"></i> Open</a>
+      <a id="btn-svr-startunifi"><i class="fad fa-play"></i> Start</a>
+      <a id="btn-svr-stopunifi"><i class="fad fa-stop"></i> Stop</a>
+    </div>
+  </div>
+  <button type="button" class="button svropt_button" id="btn-close-svr-opt1">
+    <span class="button__text"><i class="fad fa-times-octagon"></i> Close</span>
+  </button>
+  <button type="button" class="button svropt_button" id="btn-svr-clearlog">
+    <span class="button__text"><i class="fad fa-trash-alt"></i> Clear</span>
+  </button>
+  <button type="button" class="button svropt_button" id="btn-upload">
+    <span class="button__text"><i class="fad fa-cloud-upload"></i> Upload</span>
+  </button>
+</div>`;
+}
+registerListeners({
+  'btn-upload':           () => showUpload(),
+  'btn-menu-atalk':       () => openDropdown('atalk-menu'),
+  'btn-svr-startatalk':   () => serverAction('startatalk'),
+  'btn-svr-stopatalk':    () => serverAction('stopatalk'),
+  'btn-menu-legacy':      () => openDropdown('legacy-menu'),
+  'btn-svr-startlegacy':  () => serverAction('startlegacy'),
+  'btn-svr-stoplegacy':   () => serverAction('stoplegacy'),
+  'btn-menu-unifi':       () => openDropdown('unifi-menu'),
+  'btn-ext-unifi':        () => GoToExtPage('unifi:11443/network/ff7gqlig/dashboard'),
+  'btn-svr-startunifi':   () => serverAction('startunifi'),
+  'btn-svr-stopunifi':    () => serverAction('stopunifi'),
+  'btn-menu-xana':        () => openDropdown('xana-menu'),
+  'btn-svr-startxana':    () => serverAction('startxana'),
+  'btn-svr-stopxana':     () => serverAction('stopxana'),
+  'btn-menu-system':      () => openDropdown('system-menu'),
+  'btn-ext-system':       () => GoToExtPage('pve:8006'),
+  'btn-open-backup':      () => openServerPanel(svrOptBackupTemplate),
+  'btn-open-regions':     () => openServerPanel(svrOptRegionsTemplate),
+  'btn-svr-syslog':       () => serverAction('syslog'),
+  'btn-menu-netwrk':      () => openDropdown('netwrk-menu'),
+  'btn-wifi-prompt':      () => wifiPrompt(),
+  'btn-ext-edgeswitch':   () => GoToExtPage('edgeswitch.home'),
+  'btn-svr-netscan':      () => serverAction('netscan'),
+  'btn-close-svr-opt1':   () => closeServerOptions(),
+  'btn-svr-clearlog':     () => serverAction('clearlog'),
+  'btn-menu-router':      () => openDropdown('router-menu'),
+  'btn-ext-router':       () => GoToExtPage('router.home'),
+  'btn-svr-rebootrouter': () => serverAction('rebootrouter')
+});
+
+// the server's backup panel
+function svrOptBackupTemplate() {
+  return `
+<div class="svropt__backup">
+  <button type="button" class="button svropt_button" id="btn-svr-last_backup_dates">
+    <span class="button__text"><i class="fad fa-history"></i> History</span>
+  </button>
+  <button type="button" class="button svropt_button" id="btn-svr-backupchk">
+    <span class="button__text"> Checksum</span>
+  </button>
+  <button type="button" class="button svropt_button" id="btn-svr-pve_vmsbkp">
+    <span class="button__text"> VMs/LXCs</span>
+  </button>
+  <button type="button" class="button svropt_button" id="btn-pwd-unlock">
+    <span class="button__text"><i class="fad fa-lock-open"></i> Unlock</span>
+  </button>
+  <button type="button" class="button svropt_button" id="btn-svr-backupstd">
+    <span class="button__text"> Standard</span>
+  </button>
+  <button type="button" class="button svropt_button" id="btn-svr-detach_bkps">
+    <span class="button__text"><i class="fad fa-eject"></i> Eject</span>
+  </button>
+  <button type="button" class="button svropt_button" id="btn-close-svr-opt2">
+    <span class="button__text"><i class="fad fa-times-octagon"></i> Close</span>
+  </button>
+  <button type="button" class="button svropt_button" id="btn-svr-pve_listsnaps">
+    <span class="button__text"> Snapshots</span>
+  </button>
+  <button type="button" class="button svropt_button" id="btn-open-svr-opt1">
+    <span class="button__text"><i class="fad fa-arrow-left"></i> Back</span>
+  </button>
+</div>`;
+}
+registerListeners({
+  'btn-svr-last_backup_dates': () => serverAction('last_backup_dates'),
+  'btn-svr-backupchk':         () => serverAction('backupchk'),
+  'btn-svr-pve_vmsbkp':        () => serverAction('pve_vmsbkp'),
+  'btn-pwd-unlock':            () => getPassword('pwd'),
+  'btn-svr-backupstd':         () => serverAction('backupstd'),
+  'btn-svr-detach_bkps':       () => serverAction('detach_bkps'),
+  'btn-close-svr-opt2':        () => closeServerOptions(),
+  'btn-svr-pve_listsnaps':     () => serverAction('pve_listsnaps'),
+  'btn-open-svr-opt1':         () => openServerPanel(svrOptMainTemplate)
+});
+
+// the server's regions panel: archive, snapshot and RAM disk mounts
+function svrOptRegionsTemplate() {
+  return `
+<div class="svropt__regions">
+  <div class="dropdown">
+    <button type="button" class="button svropt_button" id="btn-menu-archive">
+      <span class="button__text"> Archive</span>
+    </button>
+    <div class="dd-content dd-button" id="archive-menu">
+      <a id="btn-pwd-fusearch"><i class="fad fa-link"></i> Attach</a>
+      <a id="btn-pwd-fusearch_unmnt"><i class="fad fa-eject"></i> Detach</a>
+    </div>
+  </div>
+  <div class="dropdown">
+    <button type="button" class="button svropt_button" id="btn-menu-snapshots">
+      <span class="button__text"> Snapshots</span>
+    </button>
+    <div class="dd-content dd-button" id="snapshots-menu">
+      <a id="btn-svr-mnt_snap_region"><i class="fad fa-link"></i> Attach</a>
+      <a id="btn-svr-unmnt_snap_region"><i class="fad fa-eject"></i> Detach</a>
+    </div>
+  </div>
+  <div class="dropdown">
+    <button type="button" class="button svropt_button" id="btn-menu-ramdisk">
+      <span class="button__text"> RAM Disk</span>
+    </button>
+    <div class="dd-content dd-button" id="ramdisk-menu">
+      <a id="btn-svr-mnt_ram_region"><i class="fad fa-link"></i> Attach</a>
+      <a id="btn-svr-unmnt_ram_region"><i class="fad fa-eject"></i> Detach</a>
+    </div>
+  </div>
+  <button type="button" class="button svropt_button" id="btn-close-svr-opt3">
+    <span class="button__text"><i class="fad fa-times-octagon"></i> Close</span>
+  </button>
+  <button type="button" class="button svropt_button dark_btn" id="btn-svr-unmnt_all">
+    <span class="button__text"> Detach All</span>
+  </button>
+  <button type="button" class="button svropt_button" id="btn-open-svr-opt2">
+    <span class="button__text"><i class="fad fa-arrow-left"></i> Back</span>
+  </button>
+</div>`;
+}
+registerListeners({
+  'btn-menu-archive':          () => openDropdown('archive-menu'),
+  'btn-pwd-fusearch':          () => getPassword('fusearch'),
+  'btn-pwd-fusearch_unmnt':    () => serverAction('unmnt_arch_region'),
+  'btn-menu-snapshots':        () => openDropdown('snapshots-menu'),
+  'btn-svr-mnt_snap_region':   () => serverAction('mnt_snap_region'),
+  'btn-svr-unmnt_snap_region': () => serverAction('unmnt_snap_region'),
+  'btn-menu-ramdisk':          () => openDropdown('ramdisk-menu'),
+  'btn-svr-mnt_ram_region':    () => serverAction('mnt_ram_region'),
+  'btn-svr-unmnt_ram_region':  () => serverAction('unmnt_ram_region'),
+  'btn-close-svr-opt3':        () => closeServerOptions(),
+  'btn-svr-unmnt_all':         () => serverAction('unmnt_all'),
+  'btn-open-svr-opt2':         () => openServerPanel(svrOptMainTemplate),
+  'btn-svr-mnt_ext_region':    () => serverAction('mnt_ext_region'),
+  'btn-svr-unmnt_ext_region':  () => serverAction('unmnt_ext_region')
+});
+
+// the Pi models' options panel
+function piOptionsTemplate() {
+  return `
+<div>
+  <div class="dropdown">
+    <button type="button" class="button svropt_button" id="btn-menu-piwifi">
+      <span class="button__text"><i class="fad fa-wifi"></i> WiFi</span>
+    </button>
+    <div class="dd-content dd-button" id="piwifi-menu">
+      <a id="btn-show-piwifiprompt"> Setup WiFi</a>
+      <a id="btn-svr-client"> Client Mode</a>
+      <a id="btn-svr-apd"> Hotspot Mode</a>
+      <a id="btn-svr-wifiscan"> WiFi Scanner</a>
+    </div>
+  </div>
+  <button type="button" class="button svropt_button" id="btn-svr-showwpa">
+    <span class="button__text"> Network</span>
+  </button>
+  <button type="button" class="button svropt_button" id="btn-svr-temp">
+    <span class="button__text"> Temperature</span>
+  </button>
+  <button type="button" class="button svropt_button" id="btn-close-svr-opt4">
+    <span class="button__text"><i class="fad fa-times-octagon"></i> Close</span>
+  </button>
+  <button type="button" class="button svropt_button" id="btn-svr-pi-clearlog">
+    <span class="button__text"> Clear Log</span>
+  </button>
+  <button type="button" class="button svropt_button" id="btn-svr-resetbt">
+    <span class="button__text"><i class="fab fa-bluetooth"></i> Reset</span>
+  </button>
+</div>`;
+}
+registerListeners({
+  'btn-menu-piwifi':       () => openDropdown('piwifi-menu'),
+  'btn-show-piwifiprompt': () => showPiWiFiPrompt(),
+  'btn-svr-client':        () => serverAction('client'),
+  'btn-svr-apd':           () => serverAction('apd'),
+  'btn-svr-wifiscan':      () => serverAction('wifiscan'),
+  'btn-svr-showwpa':       () => serverAction('showwpa'),
+  'btn-svr-temp':          () => serverAction('temp'),
+  'btn-close-svr-opt4':    () => closeServerOptions(),
+  'btn-svr-pi-clearlog':   () => serverAction('clearlog'),
+  'btn-svr-resetbt':       () => serverAction('resetbt')
+});
+
+// server log popup window (all models -- Pi opens it via the System menu)
+export function logFormTemplate() {
+  return `
+<div class="log-popup popup-win" id="logForm" data-app-injected>
+  <div class="popup-ctn">
+    <textarea readonly class="scroll-bar-style" id="logTextBox" spellcheck="false"></textarea>
+    <div class="popup-actions">
+      <button type="button" class="button button_left_txtwin" id="btn-log-close">
+        <i class="fad fa-times-octagon"></i>
+      </button>
+      <button type="button" class="button button_left_txtwin" id="btn-log-open-svr">
+        <i class="fad fa-sliders-h"></i>
+      </button>
+      <button type="button" class="button button_left_txtwin" id="btn-log-load">
+        <i class="fad fa-sync-alt"></i>
+      </button>
+      <button type="button" class="button button_right_txtwin" id="sendButton">
+        <i class="fad fa-upload"></i>
+      </button>
+    </div>
+  </div>
+</div>`;
+}
+registerListeners({
+  'btn-log-open-svr': () => openServerPanel(svrOptMainTemplate),
+  'btn-log-load':     () => loadLog(SERVER_LOG_FILE),
+  'sendButton':       () => serverSend()
+});
+
+//// log window ////
+
+// Shows the log window and reads the log into it. main.js closes whatever
+// other window is open first.
+export function showLogWindow() {
+  setDisplayById(LOG_WINDOW_ID, "block");
+  loadLog(SERVER_LOG_FILE);
+}
+
+// Hides the log window, drops an armed command and closes the options window
+// over it.
+export function closeLogWindow() {
+  setDisplayById(LOG_WINDOW_ID, "none");
+  clearPendingCmd();
+  closeServerOptions();
+}
+
+// Loads an entire text file into the log window, scrolled to its newest
+// line. A command armed before the reload is dropped.
+function loadLog(file) {
+  logReadSequence += 1;
+  const readSequence = logReadSequence;
+  fetch(fileURL('read', file), { method: 'GET' })
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error(`status ${response.status}`);
+      }
+      return response.json();
+    })
+    .then(logText => {
+      // a newer read has gone out since; its text is the one to show
+      if (readSequence !== logReadSequence) {
+        return;
+      }
+      const logTextBox = document.getElementById(LOG_TEXT_BOX_ID);
+      if (!logTextBox) {
+        return;
+      }
+      logTextBox.value = logText;
+      logTextBox.scrollTop = logTextBox.scrollHeight;
+    })
+    .catch(() => {
+      showPopup("[loadLog] error fetching data.");
+    });
+  // The send button's highlight goes with the command. Only the command
+  // used to be dropped here, which left the button lit with nothing to send.
+  clearPendingCmd();
+}
+
+//// arming and sending a command ////
+
+// arms a server command; the send button then transmits it
+function serverAction(command) {
+  pendingServerCommand = command;
+  sendBtnAlert("on");
+}
+
+// Send button: transmits the armed command and notes it in the log box, or
+// asks for one to be picked when none is armed.
+function serverSend() {
+  const logTextBox = document.getElementById(LOG_TEXT_BOX_ID);
+  if (pendingServerCommand === null) {
+    logTextBox.value = "select an option.";
+  } else {
+    sendCmd('main', 'server', pendingServerCommand);
+    logTextBox.value += "\n" + pendingServerCommand + " command sent.";
+    logTextBox.scrollTop = logTextBox.scrollHeight;
+  }
+  clearPendingCmd();
+}
+
+// lights the send button while a command is armed: 'on' or 'off'
+function sendBtnAlert(state) {
+  if (state === 'on') {
+    addClassToElem('add', SEND_BUTTON_ID, SEND_ARMED_CLASS);
+  }
+  if (state === 'off') {
+    addClassToElem('remove', SEND_BUTTON_ID, SEND_ARMED_CLASS);
+  }
+}
+
+// drops the armed command and the send button's highlight with it
+function clearPendingCmd() {
+  sendBtnAlert("off");
+  pendingServerCommand = null;
+}
+
+// Once a password has been saved, arms the command that uses it and sends it
+// straight away. passwordFile is the file the password was written to.
+function afterPOSTActions(passwordFile) {
+  let commandArmed = false;
+  if (passwordFile === 'pwd') {
+    serverAction('attach_bkps');
+    commandArmed = true;
+  }
+  if (passwordFile === 'fusearch') {
+    serverAction('mnt_arch_region');
+    commandArmed = true;
+  }
+  if (commandArmed === true) {
+    serverSend();
+  }
+}
+
+//// options window ////
+
+// Opens the options window on one of the server's panels. The Pi models have
+// no panel container: their one panel is already in the window.
+function openServerPanel(panelTemplate) {
+  closeServerOptions();
+  const panelContainer = document.getElementById(OPTIONS_PANEL_CONTAINER_ID);
+  if (panelContainer) {
+    panelContainer.innerHTML = panelTemplate();
+  }
+  classDisplay(OPTIONS_WINDOW_CLASS, "block");
+}
+
+// Closes the options window, its menus and any armed command, and takes the
+// rendered panel markup out entirely.
+function closeServerOptions() {
+  removeDropdowns();
+  clearPendingCmd();
+  classDisplay(OPTIONS_WINDOW_CLASS, "none");
+  const panelContainer = document.getElementById(OPTIONS_PANEL_CONTAINER_ID);
+  if (panelContainer) {
+    panelContainer.innerHTML = "";
+  }
+}
+
+// Upload button: opens the file dialog. The uploader is kept on App, where
+// the page teardown destroys it.
+function showUpload() {
+  removeDropdowns();
+  if (!App.uploader) {
+    App.uploader = new Uploader();
+  }
+  App.uploader.pick();
+}
+
+/////// Pi Wi-Fi Window ///////
+
+const PI_WIFI_PROMPT_ID = 'pinet__prompt';
+
+// Pi options, Setup WiFi: asks for a network and password and sends them to
+// the Pi. A second press while the window is open does nothing.
+async function showPiWiFiPrompt() {
+  if (document.getElementById(PI_WIFI_PROMPT_ID)) {
+    return;
+  }
+  removeDropdowns();
+  const encodedSettings = await piWiFiPrompt(PI_WIFI_PROMPT_ID);
+  if (encodedSettings !== null && encodedSettings !== "") {
+    sendCmd("main", "confwpa", encodedSettings);
+    document.getElementById(LOG_TEXT_BOX_ID).value =
+      "Wi-Fi configuration updated, select client mode to apply changes.";
+  }
+}
+
+// Asks for an SSID and password and resolves with them base64 encoded as
+// "ssid|$|password", or null when it was cancelled.
+function piWiFiPrompt(windowId) {
+  return new Promise((resolve) => {
+    const promptElement = promptWindow(windowId, html`
+      <div>Network (SSID):</div>
+      <input id="pinet__ssidbox">
+      <div>Password:</div>
+      <input id="pinet__passbox" type="password">
+      <button class="button pinet__btn" type="button">Cancel</button>
+      <button class="button pinet__btn" type="button">Save</button>
+    `);
+    const ssidLabel = promptElement.querySelector("div");
+    const ssidBox = document.getElementById("pinet__ssidbox");
+    const passwordBox = document.getElementById("pinet__passbox");
+    const [cancelButton, saveButton] = promptElement.querySelectorAll("button");
+    ssidBox.focus();
+    // empties the boxes, closes the window and settles the promise; after a
+    // save the promise is already settled and the null is ignored
+    function closeWiFiPrompt() {
+      ssidBox.value = "";
+      passwordBox.value = "";
+      promptElement.remove();
+      resolve(null);
+    }
+    // settles with the two values, or says which one is still missing
+    function saveWiFiSettings() {
+      if (ssidBox.value === "") {
+        ssidLabel.innerHTML = "enter SSID!";
+        return;
+      }
+      if (passwordBox.value === "") {
+        ssidLabel.innerHTML = "enter password!";
+        return;
+      }
+      resolve(base64URLSafeEncode(`${ssidBox.value}|$|${passwordBox.value}`));
+      closeWiFiPrompt();
+    }
+    onButtons(promptElement, (button) => {
+      if (button === saveButton) {
+        saveWiFiSettings();
+      }
+      if (button === cancelButton) {
+        closeWiFiPrompt();
+      }
+    });
+    ssidBox.addEventListener("keyup", (keyEvent) => {
+      if (keyEvent.key === "Enter") {
+        passwordBox.focus();
+      } else if (keyEvent.key === "Escape") {
+        closeWiFiPrompt();
+      }
+    });
+    passwordBox.addEventListener("keyup", (keyEvent) => {
+      if (keyEvent.key === "Enter") {
+        saveWiFiSettings();
+      } else if (keyEvent.key === "Escape") {
+        closeWiFiPrompt();
+      }
+    });
+  });
+}
+
+/////// guest Wi-Fi window ///////
+
+const GUEST_WIFI_PROMPT_ID = 'wifi__prompt';
+
+// Network menu, Access: the QR code and password for guest WiFi access
+function wifiPrompt() {
+  if (document.getElementById(GUEST_WIFI_PROMPT_ID)) {
+    return;
+  }
+  const promptElement = promptWindow(GUEST_WIFI_PROMPT_ID, html`
+    <div>Scan for WiFi Access</div>
+    <img src="img/wifi.png" id="wifi__img">
+    <div id="wifi__pwdtxt"></div>
+    <button class="button" type="button" id="wifipmt__btn">Close</button>
+  `);
+  // password text set separately (value is data, not markup)
+  document.getElementById("wifi__pwdtxt").innerHTML = atob(SSIDpwd());
+  onButtons(promptElement, () => promptElement.remove());
+}
+
+/////// password prompt ///////
+
+const PASSWORD_PROMPT_ID = 'pass__prompt_win';
+
+// Asks for a password and saves it to the file named, which the server side
+// reads it from; afterPOSTActions() then sends the command that needs it.
+async function getPassword(passwordFile) {
+  try {
+    removeDropdowns();
+    const password = await passwordPrompt();
+    if (password !== null && password !== "" && password !== undefined) {
+      savePOST(passwordFile, [password], afterPOSTActions);
+    }
+  } catch (cancelled) {
+    // user cancelled -- nothing to do
+  }
+}
+
+// Resolves with the typed password and rejects when it was cancelled.
+// Answers null, with no new window, when the prompt is already open.
+function passwordPrompt() {
+  if (document.getElementById(PASSWORD_PROMPT_ID)) {
+    return null;
+  }
+  const promptElement = promptWindow(PASSWORD_PROMPT_ID, html`
+    <div>Enter password:</div>
+    <input id="pass__textbox" type="password">
+    <div id="pass__prmbtnctr">
+      <button class="button pass__prompt_btn" type="button">Cancel</button>
+      <button class="button pass__prompt_btn" type="button">Send</button>
+    </div>
+  `);
+  const passwordBox = document.getElementById("pass__textbox");
+  const sendButton = promptElement.querySelectorAll("button")[1];
+  passwordBox.focus();
+  return new Promise(function (resolve, reject) {
+    onButtons(promptElement, (button) => {
+      if (button === sendButton) {
+        resolve(passwordBox.value);
+      } else {
+        reject(new Error("User cancelled"));
+      }
+      promptElement.remove();
+    });
+    passwordBox.addEventListener("keyup", function (keyEvent) {
+      if (keyEvent.key === "Enter") {
+        resolve(passwordBox.value);
+        promptElement.remove();
+      } else if (keyEvent.key === "Escape") {
+        promptElement.remove();
+        reject(new Error("User cancelled"));
+      }
+    });
+  });
+}
