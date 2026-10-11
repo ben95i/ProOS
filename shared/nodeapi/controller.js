@@ -22,7 +22,8 @@ const IP_ADRS = {
     brpi: "192.168.1.15",
     brpc: "192.168.1.17",
     brpc_mac: "90:2e:16:46:86:43",
-    picolamp1: "192.168.1.18"
+    picolamp1: "192.168.1.18",
+    "bthr-light1": "bathroomlight.home"
 };
 
 // imports //
@@ -146,6 +147,13 @@ async function callPico(target, arg1, arg2 = '') {
     return response.replaceAll('\n', '');
 }
 
+// as callPico(), but keeps the lines of a multi-line answer (a log or status)
+async function callPicoText(target, arg1, arg2 = '') {
+    if (arg1 === "") return "callPicoText: argument cannot be empty";
+    const response = await commonAPIRequest(`http://${target}:4000/api?${arg1},,${arg2}~`);
+    return response.trimEnd();
+}
+
 // another Automate device, which answers on port 80
 async function callApi(target, arg1, arg2 = '', delim = '|') {
     if (arg1 === "") return "callApi: argument cannot be empty";
@@ -229,6 +237,18 @@ function livingRoomOff(baseWWW) {
         lrXmit("wkststateoff"),
         lrXmit("hifistateoff"),
         OPCLEDparser(baseWWW, "stop")
+    ]).catch(() => {});
+}
+
+function bathroomOn() {
+    Promise.all([
+        bthrXmit("bthr-light1on")
+    ]).catch(() => {});
+}
+
+function bathroomOff() {
+    Promise.all([
+        bthrXmit("bthr-light1off")
     ]).catch(() => {});
 }
 
@@ -375,6 +395,66 @@ async function lrXmit(arg1, arg2 = '') {
     }
 }
 
+//// bathroom ////
+
+// Bathroom light (Pico W) commands: command -> [Pico command, Pico value,
+// reader]. A null value is taken from the website (the "_set" commands), and
+// the log and status answer several lines, so callPicoText() reads them.
+//
+// "bthr-light1" is the brightness, 1-255: the level the light is at, or is
+// fading to, while it is on, and the level it will come on at while it is
+// off. Whether it is on is "bthr-light1_state", 1 or 0, which reports where a
+// fade is heading from the moment it starts.
+const BTHR_PICO_CODES = {
+    "bthr-light1":               ["2",  "2",  callPico],
+    "bthr-light1on":             ["2",  "1",  callPico],
+    "bthr-light1off":            ["2",  "0",  callPico],
+    "bthr-light1_state":         ["2",  "4",  callPico],
+    "bthr-light1_set":           ["3",  null, callPico],
+    "bthr-light1_motion":        ["2",  "3",  callPico],
+
+    "bthr-light1_config":        ["8",  "0",  callPico],
+    "bthr-light1_rangemin":      ["8",  "4",  callPico],
+    "bthr-light1_rangemin_set":  ["4",  null, callPico],
+    "bthr-light1_rangemax":      ["8",  "5",  callPico],
+    "bthr-light1_rangemax_set":  ["5",  null, callPico],
+    "bthr-light1_presence":      ["8",  "6",  callPico],
+    "bthr-light1_presence_set":  ["6",  null, callPico],
+    "bthr-light1_timeout":       ["8",  "7",  callPico],
+    "bthr-light1_timeout_set":   ["7",  null, callPico],
+    "bthr-light1_mode":          ["8",  "13", callPico],
+    "bthr-light1_mode_set":      ["13", null, callPico],
+    "bthr-light1_reset":         ["12", "1",  callPico],
+
+    "bthr-light1_log":           ["9",  "0",  callPicoText],
+    "bthr-light1_log_set":       ["9",  null, callPicoText],
+    "bthr-light1_status":        ["10", "0",  callPicoText],
+    "bthr-light1_sensor":        ["10", "1",  callPicoText]
+};
+
+// A value as the Pico reads it, a whole number of up to 4 digits ("0128" ->
+// "128"), or null when it is not one, so an empty value never reaches the
+// Pico as 0. Ranges within that are checked by the Pico itself.
+function bthrValue(value) {
+    if (!isNumeric(value)) return null;
+    const number = Number(value);
+    if (number < 0 || number > 9999) return null;
+    return String(number);
+}
+
+// bthrXmit('bthr-light1on') -> fades the light on; bthrXmit('bthr-light1_set', '128')
+async function bthrXmit(arg1, arg2 = '') {
+    const coded = BTHR_PICO_CODES[arg1];
+    if (!coded) return "bthrXmit: invalid command";
+    const [command, fixedValue, reader] = coded;
+    let value = fixedValue;
+    if (value === null) {
+        value = bthrValue(arg2);
+        if (value === null) return "bthrXmit: invalid value";
+    }
+    return await reader(IP_ADRS["bthr-light1"], command, value);
+}
+
 //// room status ////
 
 // Reads every living room device at once and answers { roomState, devices }.
@@ -418,6 +498,18 @@ async function bedroomStatus() {
     names.forEach((name, idx) => brRoom.addDevice(name, readings[idx]));
     brRoom.updateRoomState();
     return brRoom.getData();
+}
+
+// The bathroom is on while its light is on, whether motion or the website
+// switched it on. Read from the light's on / off state rather than its
+// brightness, which stays above 0 while the light is off (it holds the level
+// the light will come on at).
+async function bathroomStatus() {
+    const bthrRoom = new RoomManager();
+    const light = await bthrXmit("bthr-light1_state");
+    bthrRoom.addDevice('Bathroom Light', light);
+    bthrRoom.updateRoomState();
+    return bthrRoom.getData();
 }
 
 //// server actions ////
@@ -496,6 +588,18 @@ async function executeMain(baseWWW, firstArg, secondArg) {
             return "OK";
         case "broff":
             bedroomOff();
+            return "OK";
+        case "bthrxmit": {
+            const bthrcmds = parseInputData(secondArg, '_set');
+            return await bthrXmit(bthrcmds.var1, bthrcmds.var2);
+        }
+        case "bthrstatus":
+            return await bathroomStatus();
+        case "bthron":
+            bathroomOn();
+            return "OK";
+        case "bthroff":
+            bathroomOff();
             return "OK";
         case "brpi":
             return await callApi(IP_ADRS.brpi, secondArg);

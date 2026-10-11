@@ -77,11 +77,9 @@
   width: max-content;      /* hug the buttons, whatever size they are */
   min-width: 0;            /* a fieldset is min-content wide by default */
   /* 5px on the right and bottom is room for the walls; below them, the
-     spacing to the next group. All of it is bottom margin and none is top
-     margin: two groups in one column (Pixels, APT) collapse their margins
-     together while groups in different columns (APT, the room) add them,
-     so a top margin on both ended up with uneven gaps. With the bottom
-     margin alone, either way the gap is the same. */
+     spacing to the next group. The groups stack in one column, so the
+     spacing goes on the bottom only: each group then sits the same
+     distance below the walls of the one above. */
   margin: 0 5px calc(5px - -1 * var(--group-spacing)) 0;
   padding: var(--group-clear);
   /* the legend's band above the buttons */
@@ -174,46 +172,4 @@
    they did when the buttons were loose */
 .btn-group .dd-content {
   margin-top: 5px;
-}
-
-/* landscape, where the room group stands beside the left column rather than
-   under it (main.css's same query turns .grid into a row there).
-
-   The two columns end level: the room group is stretched to the height of
-   the left column, and the extra height goes into its top band, between
-   the legend and the buttons -- the legend stays where it always is and
-   the buttons sit at the bottom. A flex row can't do this (a one-line flex
-   container stretches its items to its own full height, which for .grid is
-   the whole page), so .grid is laid out as a one-row grid here instead: the
-   row is as tall as the taller column and both columns stretch to it,
-   while the row keeps to the top and the columns stay centred across, as
-   the flex row had them.
-
-   Across, the same gap as down (main.css puts 7px after .column-left); the
-   walls' 5px margin keeps the columns apart as well. */
-@media screen and (max-height: 700px) {
-  .grid {
-    display: grid;
-    grid-auto-flow: column;
-    grid-auto-columns: max-content;
-    justify-content: center;
-    align-content: start;
-    align-items: stretch;
-  }
-
-  .column-left {
-    margin-right: var(--group-spacing);
-  }
-
-  .column-right {
-    display: flex;
-    flex-direction: column;
-  }
-
-  #room-group {
-    flex: 1 0 auto;
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-end;
-  }
 }
