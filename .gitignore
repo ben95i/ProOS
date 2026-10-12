@@ -11,7 +11,11 @@ pve/network
 *authorized_keys*
 *openapd.mac*
 *pia-wg.conf*
-*Thumbs.db*
+*creds.h*
+*.ino.bin*
+*.ino.elf*
+*.ino.map*
+*.ino.uf2*
 *.tar.xz*
 *.deb*
 *.pem*
@@ -21,4 +25,3 @@ pve/network
 *.pub*
 *.pdf*
 *._*
-.ssh

@@ -241,7 +241,7 @@ const SLIDER_STEP = 1;
 
 // While a slider is dragged it sends its level at most this often. One
 // throttle is shared by every slider, as only one can be dragged at a time.
-const SLIDER_MS = 75;
+const SLIDER_MS = 120;
 const throttledSliderSend = requestThrottle((action, host, command) => {
   sendCmd(action, host, command);
 }, SLIDER_MS);
