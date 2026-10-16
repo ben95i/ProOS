@@ -88,7 +88,9 @@ The server page is a top bar over three outlined button groups: Pixels and APT i
 
 - **Colors**: colour prompt for the LED pixels (`leds hex …`).
 - **Control**: Off and Pause, plus a brightness slider for the Fadecandy LEDs.
-- **Animated**: two-column menu of LED effects from the `ledeffectmenu` file; its TextScroll entry opens the LED text scroller (colour, font, speed).
+- **Animated**: two-column menu of LED effects from the `ledeffectmenu` file; its TextScroll entry opens the LED text scroller (colour, font, speed). Shuffle is picked on the server from the `ledshuffle` file, so every host plays the same effect; a Pi asked to shuffle on its own (the LED Pi page, the LEDwall's front button) picks from its own copy of the same file.
+
+Effects, Off, Pause and the text scroller send through `sendLeds()` in `menus.js`, which shows a popup naming any LED host that did not answer.
 
 ### APT
 
@@ -218,7 +220,7 @@ Every query value has to match `[A-Za-z0-9_.#%@&-]*`, or the route answers 400 w
 | --- | --- | --- |
 | `server.js` | (entry) | The app, the three core routes, query validation, `safePath()` |
 | `controller.js` | `executeMain` | Command dispatch, the room transmitters and Picos, room scenes and room status, server commands |
-| `ledparser.js` | `OPCLEDparser` | Sends an LED command to every host in `menus/mainmenu.txt` without waiting on any of them; `fc_leds` reads the level back from the last host |
+| `ledparser.js` | `OPCLEDparser` | Sends an LED command to every host in `menus/mainmenu.txt` at once through one queue per host: one request in flight per host, and a newer brightness (`fc_set`) or scene command replaces the waiting one of its kind, so the last value always lands. `fc_set` and `hex` answer `OK` at once; other commands wait up to 1.5 s and answer `OK` or `No answer from <names>`. `fc_leds` answers with the first host's level. Server-only: the Pis install `rpi/ledparser.js` over it |
 | `statusupd.js` | `runStatusUpdate` | Probes each `HOST\|NAME\|ACTION` row of `menus/statsmenu.txt` (`ping`, or `ssh` as a TCP connect to port 22), 12 at a time, and answers `HOST\|grnind or blkind\|NAME\|ACTION` rows |
 | `weather.js` | `runWeatherWidget` | Open-Meteo reading for the place in `weather.json`, cached 5 minutes: `{ location, temperature, condition, humidity, timeOfDay, lastUpdated }` |
 | `sitelookup.js` · `favicon.js` | `runSiteLookup` · `runFaviconLookup` | For a new bookmark: a page's title and its favicon as a 24 × 24, 32-colour PNG in URL-safe base64; `{ title: "", icon: "" }` on any failure |

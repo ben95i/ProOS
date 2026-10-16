@@ -8,7 +8,7 @@
         "Strip 2: OPC pixels 60-119 -> output pixels 123 down to 64 (Fadecandy output 1).",
         "Strip 3: OPC pixels 120-179 -> output pixels 187 down to 128 (Fadecandy output 2)."
     ],
-    "listen": [null, 7891],
+    "listen": ["127.0.0.1", 7891],
     "verbose": false,
     "color": {
         "gamma": 2.5,

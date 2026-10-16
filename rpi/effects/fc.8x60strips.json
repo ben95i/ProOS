@@ -1,5 +1,5 @@
 {
-    "listen": [null, 7891],
+    "listen": ["127.0.0.1", 7891],
     "verbose": false,
     "color": {
         "gamma": 2.5,

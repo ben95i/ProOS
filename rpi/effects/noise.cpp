@@ -27,6 +27,13 @@ constexpr int FRACTAL_NOISE_OCTAVES = 4;
 constexpr int PERMUTATION_TABLE_SIZE = 512;
 constexpr int PERMUTATION_MASK_VALUE = 255;
 
+// The noise field repeats exactly every 256 units on each axis, in every octave,
+// so a coordinate can be wrapped at this period without any visible seam.
+constexpr float NOISE_FIELD_PERIOD = 256.0f;
+
+// One full turn of the sine the radial pulse is drawn with.
+constexpr float FULL_TURN_RADIANS = 6.28318530718f;
+
 // ============================================================================
 // DATA STRUCTURES
 // ============================================================================
@@ -367,21 +374,27 @@ public:
     /**
      * @brief Generates the frame payload based on the mathematical state.
      */
-    void generateFramePayload(const LedLayout& hardwareDisplayLayout, float elapsedMillisecondsCount, 
+    void generateFramePayload(const std::vector<LedPixel>& layoutPixels, float layoutLogicalWidth,
+                              float layoutLogicalHeight, double elapsedMillisecondsCount, 
                               std::vector<uint8_t>& outgoingNetworkPayloadBuffer) {
         
-        float timeMultiplierGeometric = 0.001f;
-        float geometricTimeValue = elapsedMillisecondsCount * timeMultiplierGeometric;
-        float rotatingGeometricAngle = sinf(geometricTimeValue);
+        // The elapsed time and everything multiplied from it stay in double precision.
+        // As floats they lost their fine steps after a day or so of running, and the
+        // animation turned from a smooth drift into visible jumps.
+        double timeMultiplierGeometric = 0.001;
+        double geometricTimeValue = elapsedMillisecondsCount * timeMultiplierGeometric;
+        float rotatingGeometricAngle = static_cast<float>(sin(geometricTimeValue));
         
-        float timeMultiplierZAxis = 0.00008f;
-        float advancingTimeZAxis = elapsedMillisecondsCount * timeMultiplierZAxis;
+        double timeMultiplierZAxis = 0.00008;
+        double advancingTimeZAxisRaw = elapsedMillisecondsCount * timeMultiplierZAxis;
+        float advancingTimeZAxis = static_cast<float>(fmod(advancingTimeZAxisRaw, static_cast<double>(NOISE_FIELD_PERIOD)));
         
-        float timeMultiplierHue = 0.05f;
-        float shiftingCurrentHue = elapsedMillisecondsCount * timeMultiplierHue; 
+        double timeMultiplierHue = 0.05;
+        double shiftingCurrentHueRaw = elapsedMillisecondsCount * timeMultiplierHue;
+        float shiftingCurrentHue = static_cast<float>(fmod(shiftingCurrentHueRaw, static_cast<double>(HSB_MAXIMUM_VALUE)));
         
-        float saturationTimeMultiplier = 0.000122f;
-        float saturationTimeInput = elapsedMillisecondsCount * saturationTimeMultiplier;
+        double saturationTimeMultiplier = 0.000122;
+        double saturationTimeInput = elapsedMillisecondsCount * saturationTimeMultiplier;
         double saturationNoiseRaw = sharedNoiseEngine.generateNoise(saturationTimeInput, 0.0, 0.0);
         float saturationNoiseShifted = static_cast<float>(saturationNoiseRaw) + 1.0f;
         float saturationNoiseHalved = saturationNoiseShifted * 0.5f;
@@ -390,8 +403,8 @@ public:
         float clampedSaturation = std::clamp(saturationPowered, 0.0f, 1.0f);
         float shiftingSaturationLevel = 150.0f * clampedSaturation;
         
-        float pulseTimeMultiplier = 0.000124f;
-        float pulseTimeInput = elapsedMillisecondsCount * pulseTimeMultiplier;
+        double pulseTimeMultiplier = 0.000124;
+        double pulseTimeInput = elapsedMillisecondsCount * pulseTimeMultiplier;
         double pulseNoiseRaw = sharedNoiseEngine.generateNoise(pulseTimeInput, 0.0, 0.0);
         float pulseNoiseShifted = static_cast<float>(pulseNoiseRaw) + 1.0f;
         float pulseNoiseHalved = pulseNoiseShifted * 0.5f;
@@ -401,42 +414,62 @@ public:
         float scaledOffsetCosine = offsetCosine * GLOBAL_MOVEMENT_SPEED;
         animatedOffsetX = animatedOffsetX + scaledOffsetCosine;
         
+        // This offset only ever grows. Left unbounded it reached a size where the
+        // small per frame step no longer registered and the drift stalled.
+        if (animatedOffsetX >= NOISE_FIELD_PERIOD) {
+            animatedOffsetX = animatedOffsetX - NOISE_FIELD_PERIOD;
+        }
+        
         float offsetSine = sinf(rotatingGeometricAngle);
         float scaledOffsetSine = offsetSine * GLOBAL_MOVEMENT_SPEED;
         animatedOffsetY = animatedOffsetY + scaledOffsetSine;
         
-        float zAxisTimeMultiplier = 0.000014f;
-        float zAxisTimeInput = elapsedMillisecondsCount * zAxisTimeMultiplier;
+        if (animatedOffsetY >= NOISE_FIELD_PERIOD) {
+            animatedOffsetY = animatedOffsetY - NOISE_FIELD_PERIOD;
+        } else if (animatedOffsetY <= -NOISE_FIELD_PERIOD) {
+            animatedOffsetY = animatedOffsetY + NOISE_FIELD_PERIOD;
+        }
+        
+        double zAxisTimeMultiplier = 0.000014;
+        double zAxisTimeInput = elapsedMillisecondsCount * zAxisTimeMultiplier;
         double zAxisNoiseRaw = sharedNoiseEngine.generateNoise(zAxisTimeInput, 0.0, 0.0);
         float zAxisNoiseShifted = static_cast<float>(zAxisNoiseRaw) + 1.0f;
         float zAxisNoiseHalved = zAxisNoiseShifted * 0.5f;
         float zAxisNoiseCentered = zAxisNoiseHalved - 0.5f;
         float scaledZAxisNoise = zAxisNoiseCentered * Z_AXIS_SPEED_SCALE;
         animatedOffsetZ = animatedOffsetZ + scaledZAxisNoise;
+        
+        // This offset wanders without limit and is only ever used inside a sine,
+        // so it is kept within one turn, where its small steps stay exact.
+        if (animatedOffsetZ >= FULL_TURN_RADIANS) {
+            animatedOffsetZ = animatedOffsetZ - FULL_TURN_RADIANS;
+        } else if (animatedOffsetZ <= -FULL_TURN_RADIANS) {
+            animatedOffsetZ = animatedOffsetZ + FULL_TURN_RADIANS;
+        }
 
-        float focusTimeMultiplierX = 0.000125f;
-        float focusTimeInputX = elapsedMillisecondsCount * focusTimeMultiplierX;
+        double focusTimeMultiplierX = 0.000125;
+        double focusTimeInputX = elapsedMillisecondsCount * focusTimeMultiplierX;
         double focusNoiseRawX = sharedNoiseEngine.generateNoise(focusTimeInputX, 0.0, 0.0);
         float focusNoiseShiftedX = static_cast<float>(focusNoiseRawX) + 1.0f;
         float focusNoiseHalvedX = focusNoiseShiftedX * 0.5f;
         float focusMultiplierX = focusNoiseHalvedX * 1.25f;
-        float dynamicFocusCenterX = focusMultiplierX * static_cast<float>(hardwareDisplayLayout.getLogicalWidth());
+        float dynamicFocusCenterX = focusMultiplierX * layoutLogicalWidth;
 
-        float focusTimeMultiplierY = -0.000125f;
-        float focusTimeInputY = elapsedMillisecondsCount * focusTimeMultiplierY;
+        double focusTimeMultiplierY = -0.000125;
+        double focusTimeInputY = elapsedMillisecondsCount * focusTimeMultiplierY;
         double focusNoiseRawY = sharedNoiseEngine.generateNoise(focusTimeInputY, 0.0, 0.0);
         float focusNoiseShiftedY = static_cast<float>(focusNoiseRawY) + 1.0f;
         float focusNoiseHalvedY = focusNoiseShiftedY * 0.5f;
         float focusMultiplierY = focusNoiseHalvedY * 1.25f;
-        float dynamicFocusCenterY = focusMultiplierY * static_cast<float>(hardwareDisplayLayout.getLogicalHeight());
+        float dynamicFocusCenterY = focusMultiplierY * layoutLogicalHeight;
 
-        for (size_t layoutIteratorIndex = 0; layoutIteratorIndex < hardwareDisplayLayout.getPixels().size(); 
+        for (size_t layoutIteratorIndex = 0; layoutIteratorIndex < layoutPixels.size(); 
              ++layoutIteratorIndex) {
             
-            const auto& specificMappedPixel = hardwareDisplayLayout.getPixels()[layoutIteratorIndex];
+            const LedPixel& specificMappedPixel = layoutPixels[layoutIteratorIndex];
             
-            float logicalCoordinateX = specificMappedPixel.normX * static_cast<float>(hardwareDisplayLayout.getLogicalWidth());
-            float logicalCoordinateY = specificMappedPixel.normY * static_cast<float>(hardwareDisplayLayout.getLogicalHeight());
+            float logicalCoordinateX = specificMappedPixel.normX * layoutLogicalWidth;
+            float logicalCoordinateY = specificMappedPixel.normY * layoutLogicalHeight;
 
             float deltaCoordinateX = logicalCoordinateX - dynamicFocusCenterX;
             float deltaCoordinateY = logicalCoordinateY - dynamicFocusCenterY;
@@ -474,7 +507,9 @@ public:
             float secondaryNoiseSample = secondaryNoiseRaw - 0.75f;
 
             float spatialColorVariance = 150.0f * secondaryNoiseSample;
-            float combinedHueValue = shiftingCurrentHue + spatialColorVariance + HSB_MAXIMUM_VALUE;
+            // The variance can dip to about -112, so two periods of headroom are
+            // needed to keep the value handed to fmodf() positive.
+            float combinedHueValue = shiftingCurrentHue + spatialColorVariance + (HSB_MAXIMUM_VALUE * 2.0f);
             float finalModuloHue = fmodf(combinedHueValue, HSB_MAXIMUM_VALUE);
             
             // Protect the math engine: Never pass a negative number into powf()
@@ -531,6 +566,13 @@ int main(int argumentCount, char** argumentValues) {
     
     // std::vector handles dynamic memory securely, avoiding manual memory management or leaks
     std::vector<uint8_t> outgoingNetworkPayloadBuffer(payloadSizeInBytes, 0);
+
+    // getPixels() returns a copy of the whole list. The frame loop used to call it
+    // twice per LED and keep a reference into the temporary, which pointed at freed
+    // memory, so the layout is read once here and handed to the engine.
+    const std::vector<LedPixel> layoutPixels = hardwareDisplayLayout.getPixels();
+    float layoutLogicalWidth = static_cast<float>(hardwareDisplayLayout.getLogicalWidth());
+    float layoutLogicalHeight = static_cast<float>(hardwareDisplayLayout.getLogicalHeight());
     
     AnimationEngine visualAnimationEngine;
     auto baselineStartupTime = std::chrono::steady_clock::now();
@@ -541,10 +583,12 @@ int main(int argumentCount, char** argumentValues) {
     while (true) {
         auto renderedFrameStartTime = std::chrono::steady_clock::now();
         auto elapsedTimeDifference = renderedFrameStartTime - baselineStartupTime;
-        float elapsedMillisecondsCount = std::chrono::duration<float, std::milli>(elapsedTimeDifference).count();
+        double elapsedMillisecondsCount = std::chrono::duration<double, std::milli>(elapsedTimeDifference).count();
 
         visualAnimationEngine.generateFramePayload(
-            hardwareDisplayLayout, 
+            layoutPixels,
+            layoutLogicalWidth,
+            layoutLogicalHeight,
             elapsedMillisecondsCount, 
             outgoingNetworkPayloadBuffer
         );

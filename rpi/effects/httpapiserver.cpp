@@ -200,7 +200,8 @@ void HttpApiServer::listenForConnections() {
 
     struct sockaddr_in serverAddress {};
     serverAddress.sin_family = AF_INET;
-    serverAddress.sin_addr.s_addr = INADDR_ANY;
+    // Loopback only: the one caller is ledparser.js on this same host.
+    serverAddress.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     serverAddress.sin_port = htons(static_cast<uint16_t>(serverPort));
 
     if (bind(serverSocketDescriptor, reinterpret_cast<struct sockaddr*>(&serverAddress),

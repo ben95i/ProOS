@@ -8,6 +8,9 @@ const LED_PROXY_URL = `${LOCALHOST_URL}:7892`;
 const MP4_LEDS_API_URL = `${LOCALHOST_URL}:7860`;
 const EFFECTS_DIRECTORY_PATH = `${BINARY_ROOT_PATH}/effects`;
 const LED_TYPE_CONFIG_FILE = `${BINARY_ROOT_PATH}/ledtype.txt`;
+// The effects Shuffle picks from, under the web root. The server reads the
+// same file from its own web root, so both pick from one list.
+const SHUFFLE_MENU_FILE = "/menus/ledshuffle.txt";
 const DEFAULT_LED_HARDWARE_TYPE = "8x8grid";
 const TERM_SIGNAL = "SIGKILL";
 const execAsync = util.promisify(exec);
@@ -167,7 +170,7 @@ async function OPCLEDparser(baseWWW, CommandIn = "", secondaryArgument = "") {
 
     if (effectCommand === "shuffle") {
         try {
-            const shuffleContent = await fsPromises.readFile(`${EFFECTS_DIRECTORY_PATH}/shuffle.txt`, 'utf-8');
+            const shuffleContent = await fsPromises.readFile(`${baseWWW}${SHUFFLE_MENU_FILE}`, 'utf-8');
             const lines = shuffleContent.split('\n').filter(l => l.trim() !== "");
             const selected = lines[Math.floor(Math.random() * lines.length)].trim();
             return await OPCLEDparser(baseWWW, selected, secondaryArgument);

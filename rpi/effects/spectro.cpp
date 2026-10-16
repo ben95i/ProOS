@@ -222,12 +222,16 @@ public:
         }
     }
 
-    void renderInto(DisplayBuffer& displayBuffer, float elapsedSeconds, float scrollRowsPerSecond) const {
+    // Time arrives as a double and is wrapped before it is narrowed: a float count
+    // of seconds loses its fine steps after about a day of running, which turned
+    // the smooth scroll and twinkle into visible jumps.
+    void renderInto(DisplayBuffer& displayBuffer, double elapsedSeconds, float scrollRowsPerSecond) const {
         displayBuffer.fillWith(NIGHT_SKY_COLOR);
         if (stars.empty() || fieldHeightRows <= 0.0f) return;
 
         const int gridHeight = displayBuffer.getHeight();
-        const float scrollOffsetRows = elapsedSeconds * scrollRowsPerSecond;
+        const float scrollOffsetRows = static_cast<float>(
+            std::fmod(elapsedSeconds * static_cast<double>(scrollRowsPerSecond), static_cast<double>(fieldHeightRows)));
 
         for (const Star& currentStar : stars) {
             // Wrap into [0, height). Stars are stored in grid space, so the seam
@@ -236,7 +240,8 @@ public:
             float wrappedRow = std::fmod(currentStar.rowPosition + scrollOffsetRows, fieldHeightRows);
             if (wrappedRow < 0.0f) wrappedRow += fieldHeightRows;
 
-            const float twinkleWave = std::sin(elapsedSeconds * currentStar.twinkleRate + currentStar.twinklePhase);
+            const float twinkleWave = static_cast<float>(
+                std::sin(elapsedSeconds * static_cast<double>(currentStar.twinkleRate) + currentStar.twinklePhase));
             const float twinkleScale = 1.0f - currentStar.twinkleDepth * (0.5f - 0.5f * twinkleWave);
             const float starBrightness = currentStar.baseBrightness * twinkleScale;
             if (starBrightness <= 0.0f) continue;
@@ -760,8 +765,8 @@ int main(int argumentCount, char** argumentValues) {
 
     while (globalKeepRunningFlag.load()) {
         const auto currentRenderingTimestamp = SteadyClock::now();
-        const float elapsedExecutionSeconds =
-            std::chrono::duration<float>(currentRenderingTimestamp - initialApplicationStartTime).count();
+        const double elapsedExecutionSeconds =
+            std::chrono::duration<double>(currentRenderingTimestamp - initialApplicationStartTime).count();
         const float deltaSeconds = std::min(
             std::chrono::duration<float>(currentRenderingTimestamp - previousFrameTimestamp).count(), 0.25f);
         previousFrameTimestamp = currentRenderingTimestamp;
@@ -790,8 +795,8 @@ int main(int argumentCount, char** argumentValues) {
 
         // Time based rather than one hue step per frame, so the colour cycle runs
         // at the same speed whatever the loop is doing.
-        const int activeGlobalHueState =
-            static_cast<int>(elapsedExecutionSeconds * HUE_UNITS_PER_SECOND) % (MAX_COLOR_VALUE + 1);
+        const int activeGlobalHueState = static_cast<int>(
+            std::fmod(elapsedExecutionSeconds * HUE_UNITS_PER_SECOND, static_cast<double>(MAX_COLOR_VALUE + 1)));
         const PixelColor activeBarDrawColor =
             convertHsvToRgb(activeGlobalHueState, MAX_COLOR_VALUE, MAX_COLOR_VALUE);
 

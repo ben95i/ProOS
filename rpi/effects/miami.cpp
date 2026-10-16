@@ -5,6 +5,7 @@
 #include <thread>
 #include <vector>
 #include <random>
+#include <cmath>
 
 constexpr const char* TARGET_SERVER_ADDRESS = "127.0.0.1";
 constexpr int TARGET_SERVER_PORT = 7890;
@@ -25,7 +26,12 @@ int main(int argumentCount, char** argumentValues) {
     }
     
     std::vector<uint8_t> outgoingNetworkPayloadBuffer((maximumHardwareMappingIndex + 1) * COLOR_CHANNELS_COUNT, 0);
-    int totalSystemPixelsCount = mappedHardwareLayout.getPixels().size();
+
+    // getPixels() returns a copy of the whole list. Taking a reference to one element
+    // of that temporary inside the frame loop left it pointing at freed memory, so
+    // the list is copied once here and read from this copy.
+    const std::vector<LedPixel> layoutPixels = mappedHardwareLayout.getPixels();
+    int totalSystemPixelsCount = layoutPixels.size();
     
     std::mt19937 randomGeneratorStream(std::random_device{}());
     std::uniform_real_distribution<float> randomDistribution(0.0f, 1.0f);
@@ -38,13 +44,20 @@ int main(int argumentCount, char** argumentValues) {
 
     while (true) {
         auto frameRenderStartTime = std::chrono::steady_clock::now();
-        float rawElapsedSecondsCount = std::chrono::duration<float>(frameRenderStartTime - applicationExecutionStartTime).count();
-        float scaledElapsedSeconds = rawElapsedSecondsCount * 0.6f;
+        // Time stays a double and every phase is wrapped to one period before it is
+        // narrowed: a float running total loses its fine steps after about a day,
+        // which made the animation visibly jerky.
+        double rawElapsedSecondsCount = std::chrono::duration<double>(frameRenderStartTime - applicationExecutionStartTime).count();
+        double scaledElapsedSeconds = rawElapsedSecondsCount * 0.6;
+        float colorWavePhase = static_cast<float>(std::fmod(scaledElapsedSeconds / 4.0, 1.0));
+        float regionWavePhase = static_cast<float>(std::fmod(scaledElapsedSeconds / 10.0, 1.0));
+        float twinkleSweepPosition = static_cast<float>(std::fmod(scaledElapsedSeconds, 7.0));
+        float twinkleTimePhase = static_cast<float>(std::fmod(rawElapsedSecondsCount * 0.07, 1.0));
 
         std::fill(outgoingNetworkPayloadBuffer.begin(), outgoingNetworkPayloadBuffer.end(), 0);
 
         for (int pixelIteratorIndex = 0; pixelIteratorIndex < totalSystemPixelsCount; ++pixelIteratorIndex) {
-            const auto& specificTargetPixel = mappedHardwareLayout.getPixels()[pixelIteratorIndex];
+            const LedPixel& specificTargetPixel = layoutPixels[pixelIteratorIndex];
             
             float mutatedCoordinateX = specificTargetPixel.normX;
             float mutatedCoordinateY = specificTargetPixel.normY;
@@ -60,9 +73,9 @@ int main(int argumentCount, char** argumentValues) {
             mutatedCoordinateY = mutatedCoordinateZ;
             mutatedCoordinateZ = temporarySwappedValue;
 
-            float calculatedRedChannel = ColorUtils::waveCosine(mutatedCoordinateX, scaledElapsedSeconds / 4.0f, 2.5f, 0.0f, 1.0f);
-            float calculatedGreenChannel = ColorUtils::waveCosine(mutatedCoordinateY, scaledElapsedSeconds / 4.0f, 2.5f, 0.0f, 1.0f);
-            float calculatedBlueChannel = ColorUtils::waveCosine(mutatedCoordinateZ, scaledElapsedSeconds / 4.0f, 2.5f, 0.0f, 1.0f);
+            float calculatedRedChannel = ColorUtils::waveCosine(mutatedCoordinateX, colorWavePhase, 2.5f, 0.0f, 1.0f);
+            float calculatedGreenChannel = ColorUtils::waveCosine(mutatedCoordinateY, colorWavePhase, 2.5f, 0.0f, 1.0f);
+            float calculatedBlueChannel = ColorUtils::waveCosine(mutatedCoordinateZ, colorWavePhase, 2.5f, 0.0f, 1.0f);
             ColorUtils::applyContrast(calculatedRedChannel, calculatedGreenChannel, calculatedBlueChannel, 0.5f, 1.4f);
 
             float initialClampingFactor = (calculatedRedChannel + calculatedGreenChannel + calculatedBlueChannel) / 2.0f;
@@ -75,9 +88,9 @@ int main(int argumentCount, char** argumentValues) {
             calculatedBlueChannel *= initialClampingFactor;
 
             // Secondary black out regions
-            float regionClampRed = ColorUtils::waveCosine(mutatedCoordinateX, scaledElapsedSeconds / 10.0f + 12.345f, 4.0f, 0.0f, 1.0f);
-            float regionClampGreen = ColorUtils::waveCosine(mutatedCoordinateY, scaledElapsedSeconds / 10.0f + 24.536f, 4.0f, 0.0f, 1.0f);
-            float regionClampBlue = ColorUtils::waveCosine(mutatedCoordinateZ, scaledElapsedSeconds / 10.0f + 34.675f, 4.0f, 0.0f, 1.0f);
+            float regionClampRed = ColorUtils::waveCosine(mutatedCoordinateX, regionWavePhase + 12.345f, 4.0f, 0.0f, 1.0f);
+            float regionClampGreen = ColorUtils::waveCosine(mutatedCoordinateY, regionWavePhase + 24.536f, 4.0f, 0.0f, 1.0f);
+            float regionClampBlue = ColorUtils::waveCosine(mutatedCoordinateZ, regionWavePhase + 34.675f, 4.0f, 0.0f, 1.0f);
             
             float secondaryClampingFactor = (regionClampRed + regionClampGreen + regionClampBlue) / 2.0f;
             secondaryClampingFactor = ColorUtils::remapValue(secondaryClampingFactor, 0.2f, 0.3f, 0.0f, 1.0f);
@@ -90,22 +103,21 @@ int main(int argumentCount, char** argumentValues) {
             calculatedGreenChannel = calculatedGreenChannel * 0.6f + ((calculatedRedChannel + calculatedBlueChannel) / 2.0f) * 0.4f;
 
             // Fade behind twinkle
-            float twinkleBackgroundFade = std::pow(ColorUtils::waveCosine(scaledElapsedSeconds - static_cast<float>(pixelIteratorIndex) / totalSystemPixelsCount, 0.0f, 7.0f, 0.0f, 1.0f), 20.0f);
+            float twinkleBackgroundFade = std::pow(ColorUtils::waveCosine(twinkleSweepPosition - static_cast<float>(pixelIteratorIndex) / totalSystemPixelsCount, 0.0f, 7.0f, 0.0f, 1.0f), 20.0f);
             twinkleBackgroundFade = 1.0f - twinkleBackgroundFade * 0.2f;
             calculatedRedChannel *= twinkleBackgroundFade;
             calculatedGreenChannel *= twinkleBackgroundFade;
             calculatedBlueChannel *= twinkleBackgroundFade;
 
             // Twinkle Logic
-            float twinkleAnimationSpeed = 0.07f;
             float twinkleDensityFactor = 0.1f;
-            float currentTwinklePhase = std::fmod((randomizedPixelOffsets[pixelIteratorIndex] * 7.0f + rawElapsedSecondsCount * twinkleAnimationSpeed), 1.0f);
+            float currentTwinklePhase = std::fmod((randomizedPixelOffsets[pixelIteratorIndex] * 7.0f + twinkleTimePhase), 1.0f);
             currentTwinklePhase = std::abs(currentTwinklePhase * 2.0f - 1.0f);
             currentTwinklePhase = ColorUtils::remapValue(currentTwinklePhase, 0.0f, 1.0f, -1.0f / twinkleDensityFactor, 1.1f);
             currentTwinklePhase = ColorUtils::clampValue(currentTwinklePhase, -0.5f, 1.1f);
             currentTwinklePhase = std::pow(currentTwinklePhase, 5.0f);
             
-            float twinkleMaskModifier = std::pow(ColorUtils::waveCosine(scaledElapsedSeconds - static_cast<float>(pixelIteratorIndex) / totalSystemPixelsCount, 0.0f, 7.0f, 0.0f, 1.0f), 20.0f);
+            float twinkleMaskModifier = std::pow(ColorUtils::waveCosine(twinkleSweepPosition - static_cast<float>(pixelIteratorIndex) / totalSystemPixelsCount, 0.0f, 7.0f, 0.0f, 1.0f), 20.0f);
             currentTwinklePhase *= twinkleMaskModifier;
             currentTwinklePhase = ColorUtils::clampValue(currentTwinklePhase, -0.3f, 1.0f);
             

@@ -312,7 +312,12 @@ void runOpcReceiver() {
             }
         }
 
-        for (size_t clientIndex = 0; clientIndex < connectedClients.size();) {
+        // Only the clients that were in this poll() have a descriptor entry. One
+        // accepted just above has none yet, and reading past the end of the list
+        // picked up a stale entry that could close the new connection at once.
+        const size_t polledClientCount = pollDescriptors.size() - 1;
+
+        for (size_t clientIndex = 0; clientIndex < polledClientCount;) {
             const short events = pollDescriptors[clientIndex + 1].revents;
             bool shouldClose = (events & (POLLERR | POLLHUP | POLLNVAL)) != 0;
 

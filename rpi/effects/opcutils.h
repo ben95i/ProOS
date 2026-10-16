@@ -166,7 +166,8 @@ private:
 // ---------------------------------------------------------------------------
 
 // Fixed-cadence loop timer that resyncs instead of spinning when a deadline is
-// missed, and backs the rate off if the work consistently overruns.
+// missed, backs the rate off if the work consistently overruns, and works its
+// way back to the target rate once the overrun has passed.
 class FramePacer {
 public:
     void start(double targetHz);
@@ -177,6 +178,7 @@ public:
 private:
     std::chrono::steady_clock::time_point deadline_{};
     std::chrono::nanoseconds interval_{0};
+    std::chrono::nanoseconds targetInterval_{0};
     std::chrono::nanoseconds slowestInterval_{0};
     int framesInWindow_ = 0;
     int lateFramesInWindow_ = 0;

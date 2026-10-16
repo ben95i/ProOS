@@ -14,6 +14,8 @@
 #include <condition_variable>
 #include <atomic>
 #include <filesystem>
+#include <system_error>
+#include <sys/time.h>
 
 // Native POSIX network headers
 #include <sys/socket.h>
@@ -25,6 +27,17 @@ constexpr const char* OpcServerIpAddress = "127.0.0.1";
 constexpr int OpcServerPortNumber = 7890;
 constexpr int HttpServerPortNumber = 7860;
 const std::string ApprovedVideoDirectory = "/opt/rpi/effects/videos/"; 
+
+// Faster videos are thinned to this rate to prevent overwhelming the OPC server
+constexpr double MaximumOutputFramesPerSecond = 60.0;
+// Output frames the player will skip at once to catch up before it gives up and resyncs
+constexpr int MaximumCatchUpFrames = 8;
+// Each LED averages up to this many video samples across and down its cell
+constexpr int MaximumTapsPerAxis = 8;
+// Ceiling on the samples read per frame over all LEDs together
+constexpr size_t MaximumTapsPerFrame = 32768;
+// A control client that connects and then says nothing is dropped after this long
+constexpr int HttpClientTimeoutSeconds = 2;
 
 // Global execution state changed to std::atomic to eliminate race conditions across threads
 std::atomic<bool> isGlobalApplicationRunning{true};
@@ -60,11 +73,12 @@ private:
      * * This function iterates through the layout configuration to find the highest 
      * assigned LED index. Since each LED requires 3 bytes (Red, Green, Blue), 
      * it calculates the total required memory footprint.
-     * * @return int The total number of bytes required.
+     * * @param layoutPixels The LED list, copied once from the layout by the caller.
+     * @return int The total number of bytes required.
      */
-    int calculateRequiredPayloadByteLength() const {
+    int calculateRequiredPayloadByteLength(const std::vector<LedPixel>& layoutPixels) const {
         int maximumHardwarePixelIndex = 0;
-        for (const auto& individualPixel : configuredDisplayLayout.getPixels()) {
+        for (const auto& individualPixel : layoutPixels) {
             if (individualPixel.opcIndex > maximumHardwarePixelIndex) {
                 maximumHardwarePixelIndex = individualPixel.opcIndex;
             }
@@ -86,16 +100,103 @@ private:
     }
 
     /**
+     * @brief Builds the table of frame byte offsets each LED averages its colour from.
+     * * Every LED covers a rectangle of the video (its cell). Reading one video pixel 
+     * per LED makes the LEDs shimmer, because fine detail and compression noise land 
+     * on the LED at random. Instead each LED averages a small grid of sample points 
+     * (taps) spread evenly over its cell, which approximates an area filter without 
+     * touching the rest of the frame.
+     * * @param layoutPixels The LED list.
+     * @param targetAspectRatio The display's width / height.
+     * @param frameWidth Width of the decoded frame in pixels.
+     * @param frameHeight Height of the decoded frame in pixels.
+     * @param frameRowByteStep Bytes from one frame row to the next.
+     * @param tapByteOffsets Receives tapsPerLed offsets for each LED, in LED order.
+     * @return int The number of taps per LED.
+     */
+    int buildTapByteOffsets(const std::vector<LedPixel>& layoutPixels, float targetAspectRatio,
+                            int frameWidth, int frameHeight, size_t frameRowByteStep,
+                            std::vector<size_t>& tapByteOffsets) const {
+        float nativeVideoAspectRatio = static_cast<float>(frameWidth) / static_cast<float>(frameHeight);
+        int croppedRenderWidth = frameWidth;
+        int croppedRenderHeight = frameHeight;
+        int renderOffsetX = 0;
+        int renderOffsetY = 0;
+
+        if (nativeVideoAspectRatio > targetAspectRatio) {
+            croppedRenderWidth = static_cast<int>(frameHeight * targetAspectRatio);
+            croppedRenderWidth = std::clamp(croppedRenderWidth, 1, frameWidth);
+            renderOffsetX = (frameWidth - croppedRenderWidth) / 2;
+        } else {
+            croppedRenderHeight = static_cast<int>(frameWidth / targetAspectRatio);
+            croppedRenderHeight = std::clamp(croppedRenderHeight, 1, frameHeight);
+            renderOffsetY = (frameHeight - croppedRenderHeight) / 2;
+        }
+
+        // The size of one LED's cell in video pixels
+        int logicalColumns = std::max(configuredDisplayLayout.getLogicalWidth(), 1);
+        int logicalRows = std::max(configuredDisplayLayout.getLogicalHeight(), 1);
+        float cellWidth = std::max(static_cast<float>(croppedRenderWidth) / logicalColumns, 1.0f);
+        float cellHeight = std::max(static_cast<float>(croppedRenderHeight) / logicalRows, 1.0f);
+
+        // More taps than the cell has pixels would only read the same pixel twice
+        int tapsAcross = std::clamp(static_cast<int>(cellWidth), 1, MaximumTapsPerAxis);
+        int tapsDown = std::clamp(static_cast<int>(cellHeight), 1, MaximumTapsPerAxis);
+
+        // Keep the work per frame bounded on displays with many LEDs
+        while (layoutPixels.size() * tapsAcross * tapsDown > MaximumTapsPerFrame) {
+            if (tapsAcross == 1 && tapsDown == 1) {
+                break;
+            } else if (tapsAcross >= tapsDown) {
+                tapsAcross -= 1;
+            } else {
+                tapsDown -= 1;
+            }
+        }
+
+        tapByteOffsets.clear();
+        tapByteOffsets.reserve(layoutPixels.size() * tapsAcross * tapsDown);
+
+        for (const auto& activePixel : layoutPixels) {
+            // normX runs from 0 to 1 across the LED centres, so the cell's left edge
+            // runs from the crop's left edge to one cell short of its right edge.
+            float cellLeft = renderOffsetX + activePixel.normX * (croppedRenderWidth - cellWidth);
+            float cellTop = renderOffsetY + activePixel.normY * (croppedRenderHeight - cellHeight);
+
+            for (int tapRow = 0; tapRow < tapsDown; ++tapRow) {
+                int sampledPixelY = static_cast<int>(cellTop + (tapRow + 0.5f) * cellHeight / tapsDown);
+                sampledPixelY = std::clamp(sampledPixelY, 0, frameHeight - 1);
+
+                for (int tapColumn = 0; tapColumn < tapsAcross; ++tapColumn) {
+                    int sampledPixelX = static_cast<int>(cellLeft + (tapColumn + 0.5f) * cellWidth / tapsAcross);
+                    sampledPixelX = std::clamp(sampledPixelX, 0, frameWidth - 1);
+
+                    size_t byteOffset = static_cast<size_t>(sampledPixelY) * frameRowByteStep
+                                      + static_cast<size_t>(sampledPixelX) * 3;
+                    tapByteOffsets.push_back(byteOffset);
+                }
+            }
+        }
+
+        return tapsAcross * tapsDown;
+    }
+
+    /**
      * @brief The core worker thread responsible for decoding video and transmitting pixels.
      * * This function runs endlessly until the application shuts down. It waits for 
      * video requests, opens the stream via hardware acceleration, dynamically 
      * determines the frame rate, and maps video pixels to physical LED coordinates.
      */
     void videoDecodingTask() {
+        // getPixels() returns a copy of the whole LED list under a mutex, so it is
+        // taken ONCE here and never called from the per-frame loops.
+        const std::vector<LedPixel> layoutPixels = configuredDisplayLayout.getPixels();
+        const float targetAspectRatio = configuredDisplayLayout.getTargetAspect();
+
         // Memory Optimization: Allocate buffers ONCE for the entire lifecycle of the thread
-        const int requiredPayloadByteLength = calculateRequiredPayloadByteLength();
+        const int requiredPayloadByteLength = calculateRequiredPayloadByteLength(layoutPixels);
         std::vector<uint8_t> framePayloadBuffer(requiredPayloadByteLength, 0);
-        std::vector<size_t> textureLookupOffsets;
+        std::vector<size_t> tapByteOffsets;
         cv::Mat currentDecodedFrame;
         
         while (isGlobalApplicationRunning == true) {
@@ -131,114 +232,187 @@ private:
             if (isVideoStreamOpened == false) {
                 std::cerr << "Error: Unable to open " << activeFilePath << std::endl;
                 std::lock_guard<std::mutex> lock(playbackStateMutex);
-                isPlaybackActive = false;
+                if (hasNewVideoRequest == false) {
+                    isPlaybackActive = false;
+                }
                 continue;
             }
 
-            hardwareVideoCaptureStream.set(cv::CAP_PROP_BUFFERSIZE, 1);
-            
             // Dynamically calculate the frame rate based on the video file metadata
             double framesPerSecond = hardwareVideoCaptureStream.get(cv::CAP_PROP_FPS);
             
-            if (framesPerSecond <= 0.0) {
-                framesPerSecond = 30.0; // Fallback default if metadata is missing or corrupted
-            } else if (framesPerSecond > 60.0) {
-                framesPerSecond = 60.0; // Cap the frame rate to prevent overwhelming the OPC server
+            // Fallback default if metadata is missing or corrupted (NaN fails both comparisons)
+            if (!(framesPerSecond >= 1.0 && framesPerSecond <= 1000.0)) {
+                framesPerSecond = 30.0;
             }
             
-            long long frameDurationNanoseconds = static_cast<long long>(1000000000.0 / framesPerSecond);
-            const std::chrono::nanoseconds targetFrameDuration(frameDurationNanoseconds);
+            // A video faster than the output cap keeps its real speed: only every
+            // Nth frame is shown, and the frames between are decoded but not converted.
+            int sourceFrameStride = static_cast<int>(std::ceil(framesPerSecond / MaximumOutputFramesPerSecond));
+            if (sourceFrameStride < 1) {
+                sourceFrameStride = 1;
+            }
+            
+            long long frameDurationNanoseconds = static_cast<long long>(1000000000.0 * sourceFrameStride / framesPerSecond);
+            const std::chrono::nanoseconds outputFrameDuration(frameDurationNanoseconds);
             
             int lastCapturedFrameWidth = -1;
             int lastCapturedFrameHeight = -1;
+            size_t lastCapturedFrameRowByteStep = 0;
+            int tapsPerLed = 1;
+            bool hasRewoundWithoutFrame = false;
+            bool wasOpcServerConnected = false;
+
+            // The moment the next frame is due on the LEDs. It advances by exactly one
+            // frame duration per frame, so decode time and wake-up latency do not
+            // accumulate into the video running slow.
+            auto nextFrameDeadline = std::chrono::steady_clock::now();
 
             // Inner Playback Loop
             while (isGlobalApplicationRunning == true) {
-                auto currentFrameStartTimestamp = std::chrono::steady_clock::now();
+                int sourceFramesToSkip = sourceFrameStride - 1;
 
-                hardwareVideoCaptureStream >> currentDecodedFrame;
-                
-                bool isFrameEmpty = currentDecodedFrame.empty();
-                if (isFrameEmpty == true) {
-                    hardwareVideoCaptureStream.set(cv::CAP_PROP_POS_FRAMES, 0); // Seamless loop
+                // When decoding has fallen behind, drop frames rather than play in slow motion
+                auto currentTimestamp = std::chrono::steady_clock::now();
+                if (currentTimestamp > nextFrameDeadline + outputFrameDuration) {
+                    long long outputFramesBehind = (currentTimestamp - nextFrameDeadline) / outputFrameDuration;
+                    if (outputFramesBehind > MaximumCatchUpFrames) {
+                        // Too far behind to catch up by skipping: carry on from here
+                        nextFrameDeadline = currentTimestamp;
+                    } else {
+                        sourceFramesToSkip += static_cast<int>(outputFramesBehind) * sourceFrameStride;
+                        nextFrameDeadline += outputFramesBehind * outputFrameDuration;
+                    }
+                }
+
+                // grab() decodes a frame without the colour conversion and copy of read()
+                bool isFrameAvailable = true;
+                for (int skippedFrames = 0; skippedFrames < sourceFramesToSkip; ++skippedFrames) {
+                    if (hardwareVideoCaptureStream.grab() == false) {
+                        isFrameAvailable = false;
+                        break;
+                    }
+                }
+                if (isFrameAvailable == true) {
+                    isFrameAvailable = hardwareVideoCaptureStream.read(currentDecodedFrame);
+                }
+                if (currentDecodedFrame.empty() == true) {
+                    isFrameAvailable = false;
+                }
+
+                if (isFrameAvailable == false) {
+                    // End of file: rewind for a seamless loop. A file that gives no frame
+                    // straight after a rewind is unplayable, and retrying it would spin
+                    // this thread at full CPU with no way to stop it.
+                    bool isRewound = false;
+                    if (hasRewoundWithoutFrame == false) {
+                        isRewound = hardwareVideoCaptureStream.set(cv::CAP_PROP_POS_FRAMES, 0);
+                    }
+                    if (isRewound == false) {
+                        std::cerr << "Error: No frames could be read from " << activeFilePath << std::endl;
+                        break;
+                    }
+                    hasRewoundWithoutFrame = true;
+                    nextFrameDeadline = std::chrono::steady_clock::now();
                     continue;
+                }
+                hasRewoundWithoutFrame = false;
+
+                if (currentDecodedFrame.type() != CV_8UC3) {
+                    std::cerr << "Error: Unsupported pixel format in " << activeFilePath << std::endl;
+                    break;
                 }
 
                 // Recalculate mapping offsets ONLY if resolution changes to save CPU cycles
-                if (currentDecodedFrame.cols != lastCapturedFrameWidth || currentDecodedFrame.rows != lastCapturedFrameHeight) {
-                    textureLookupOffsets.clear();
-                    float nativeVideoAspectRatio = static_cast<float>(currentDecodedFrame.cols) / static_cast<float>(currentDecodedFrame.rows);
-                    int croppedRenderWidth = currentDecodedFrame.cols;
-                    int croppedRenderHeight = currentDecodedFrame.rows;
-                    int renderOffsetX = 0;
-                    int renderOffsetY = 0;
-
-                    if (nativeVideoAspectRatio > configuredDisplayLayout.getTargetAspect()) {
-                        croppedRenderWidth = static_cast<int>(currentDecodedFrame.rows * configuredDisplayLayout.getTargetAspect());
-                        renderOffsetX = (currentDecodedFrame.cols - croppedRenderWidth) / 2;
-                    } else {
-                        croppedRenderHeight = static_cast<int>(currentDecodedFrame.cols / configuredDisplayLayout.getTargetAspect());
-                        renderOffsetY = (currentDecodedFrame.rows - croppedRenderHeight) / 2;
-                    }
-
-                    for (const auto& activePixel : configuredDisplayLayout.getPixels()) {
-                        int sampledPixelX = renderOffsetX + static_cast<int>(activePixel.normX * (croppedRenderWidth - 1));
-                        int sampledPixelY = renderOffsetY + static_cast<int>(activePixel.normY * (croppedRenderHeight - 1));
-                        
-                        sampledPixelX = std::clamp(sampledPixelX, 0, currentDecodedFrame.cols - 1);
-                        sampledPixelY = std::clamp(sampledPixelY, 0, currentDecodedFrame.rows - 1);
-                        
-                        size_t byteOffset = (sampledPixelY * currentDecodedFrame.cols + sampledPixelX) * 3;
-                        textureLookupOffsets.push_back(byteOffset);
-                    }
+                size_t frameRowByteStep = currentDecodedFrame.step[0];
+                if (currentDecodedFrame.cols != lastCapturedFrameWidth
+                    || currentDecodedFrame.rows != lastCapturedFrameHeight
+                    || frameRowByteStep != lastCapturedFrameRowByteStep) {
+                    tapsPerLed = buildTapByteOffsets(layoutPixels, targetAspectRatio,
+                                                     currentDecodedFrame.cols, currentDecodedFrame.rows,
+                                                     frameRowByteStep, tapByteOffsets);
                     
                     lastCapturedFrameWidth = currentDecodedFrame.cols; 
                     lastCapturedFrameHeight = currentDecodedFrame.rows;
+                    lastCapturedFrameRowByteStep = frameRowByteStep;
                 }
 
-                uint8_t* rawOpenCvBufferData = currentDecodedFrame.data;
-                for (size_t index = 0; index < configuredDisplayLayout.getPixels().size(); ++index) {
-                    uint8_t* sourceBgrPixel = &rawOpenCvBufferData[textureLookupOffsets[index]];
-                    int baseIndex = configuredDisplayLayout.getPixels()[index].opcIndex * 3;
-                    
-                    framePayloadBuffer[baseIndex]     = sourceBgrPixel[2]; // Red
-                    framePayloadBuffer[baseIndex + 1] = sourceBgrPixel[1]; // Green
-                    framePayloadBuffer[baseIndex + 2] = sourceBgrPixel[0]; // Blue
-                }
-
-                bool isTransmissionSuccessful = networkPixelTransmitter.sendPixelPayload(0, framePayloadBuffer.data(), framePayloadBuffer.size());
-                if (isTransmissionSuccessful == false) {
-                    std::cerr << "Lost connection to OPC Server." << std::endl;
-                    break; 
-                }
+                // Average each LED's taps, rounding to the nearest level
+                const uint8_t* rawOpenCvBufferData = currentDecodedFrame.data;
+                const size_t* nextTapByteOffset = tapByteOffsets.data();
+                const unsigned int roundingHalf = tapsPerLed / 2;
                 
-                // Wait for the exact frame duration, but allow immediate wake-up if playback state changes
-                std::unique_lock<std::mutex> lock(playbackStateMutex);
-                bool stateChangedInterrupt = playbackStateConditionVariable.wait_until(
-                    lock, 
-                    currentFrameStartTimestamp + targetFrameDuration, 
-                    [this] { 
-                        if (isPlaybackActive == false) {
-                            return true;
-                        } else if (hasNewVideoRequest == true) {
-                            return true;
-                        } else if (isGlobalApplicationRunning == false) {
-                            return true;
-                        } else {
-                            return false;
-                        }
+                for (const auto& activePixel : layoutPixels) {
+                    unsigned int blueSum = 0;
+                    unsigned int greenSum = 0;
+                    unsigned int redSum = 0;
+                    
+                    for (int tapIndex = 0; tapIndex < tapsPerLed; ++tapIndex) {
+                        const uint8_t* sourceBgrPixel = rawOpenCvBufferData + *nextTapByteOffset;
+                        nextTapByteOffset += 1;
+                        blueSum  += sourceBgrPixel[0];
+                        greenSum += sourceBgrPixel[1];
+                        redSum   += sourceBgrPixel[2];
                     }
-                );
+                    
+                    int baseIndex = activePixel.opcIndex * 3;
+                    framePayloadBuffer[baseIndex]     = static_cast<uint8_t>((redSum + roundingHalf) / tapsPerLed);   // Red
+                    framePayloadBuffer[baseIndex + 1] = static_cast<uint8_t>((greenSum + roundingHalf) / tapsPerLed); // Green
+                    framePayloadBuffer[baseIndex + 2] = static_cast<uint8_t>((blueSum + roundingHalf) / tapsPerLed);  // Blue
+                }
+
+                // Hold the frame until it is due, but allow immediate wake-up if playback state
+                // changes. Checking here, straight before the send, also keeps a frame from
+                // reaching the LEDs after a STOP that arrived while the file was opening.
+                bool stateChangedInterrupt = false;
+                {
+                    std::unique_lock<std::mutex> lock(playbackStateMutex);
+                    stateChangedInterrupt = playbackStateConditionVariable.wait_until(
+                        lock, 
+                        nextFrameDeadline, 
+                        [this] { 
+                            if (isPlaybackActive == false) {
+                                return true;
+                            } else if (hasNewVideoRequest == true) {
+                                return true;
+                            } else if (isGlobalApplicationRunning == false) {
+                                return true;
+                            } else {
+                                return false;
+                            }
+                        }
+                    );
+                }
 
                 if (stateChangedInterrupt == true) {
                     break; // Exit inner loop instantly on STOP or new video request
                 }
+
+                // A false return is not fatal: the client drops a frame when the server is
+                // backed up and reconnects by itself, so playback carries on either way.
+                networkPixelTransmitter.sendPixelPayload(0, framePayloadBuffer.data(), framePayloadBuffer.size());
+                
+                bool isOpcServerConnected = networkPixelTransmitter.isConnected();
+                if (wasOpcServerConnected == true && isOpcServerConnected == false) {
+                    std::cerr << "Lost connection to OPC Server, reconnecting." << std::endl;
+                }
+                wasOpcServerConnected = isOpcServerConnected;
+
+                nextFrameDeadline += outputFrameDuration;
             }
 
             // Proper memory cleanup for this specific video file
             hardwareVideoCaptureStream.release(); 
             currentDecodedFrame.release();        
             releaseOpcResource();
+
+            // Playback that ended by itself (unplayable file) must not look active
+            {
+                std::lock_guard<std::mutex> lock(playbackStateMutex);
+                if (hasNewVideoRequest == false) {
+                    isPlaybackActive = false;
+                }
+            }
         }
     }
 
@@ -246,9 +420,12 @@ public:
     VideoPlaybackEngine(const LedLayout& layout) 
         : configuredDisplayLayout(layout), networkPixelTransmitter(OpcServerIpAddress, OpcServerPortNumber) {
         
-        bool directoryExists = std::filesystem::exists(ApprovedVideoDirectory);
+        // The error_code overloads do not throw: the service user may not be allowed
+        // to create the directory, and that must not abort the program at startup.
+        std::error_code fileSystemError;
+        bool directoryExists = std::filesystem::exists(ApprovedVideoDirectory, fileSystemError);
         if (directoryExists == false) {
-            std::filesystem::create_directory(ApprovedVideoDirectory);
+            std::filesystem::create_directory(ApprovedVideoDirectory, fileSystemError);
         }
         
         videoDecodingThread = std::thread(&VideoPlaybackEngine::videoDecodingTask, this);
@@ -317,6 +494,14 @@ bool isValidSecureFilename(const std::string& filenameToValidate) {
  * @param playbackService A reference to the engine that manages the decoding thread.
  */
 void processIncomingHttpRequest(int clientSocketDescriptor, VideoPlaybackEngine& playbackService) {
+    // Requests are served one at a time on the main thread, so a silent client
+    // must not be able to hold the control API (and with it STOP) forever.
+    timeval clientSocketTimeout;
+    clientSocketTimeout.tv_sec = HttpClientTimeoutSeconds;
+    clientSocketTimeout.tv_usec = 0;
+    setsockopt(clientSocketDescriptor, SOL_SOCKET, SO_RCVTIMEO, &clientSocketTimeout, sizeof(clientSocketTimeout));
+    setsockopt(clientSocketDescriptor, SOL_SOCKET, SO_SNDTIMEO, &clientSocketTimeout, sizeof(clientSocketTimeout));
+
     char requestBuffer[2048] = {0};
     ssize_t bytesRead = read(clientSocketDescriptor, requestBuffer, sizeof(requestBuffer) - 1);
     
@@ -347,7 +532,9 @@ void processIncomingHttpRequest(int clientSocketDescriptor, VideoPlaybackEngine&
                     httpStatusCode = 400; 
                     responseContent = "{\"status\":\"error\", \"message\":\"Invalid filename requested.\"}";
                 } else {
-                    bool targetFileExists = std::filesystem::exists(ApprovedVideoDirectory + action);
+                    // is_regular_file with an error_code never throws, and refuses a directory
+                    std::error_code fileSystemError;
+                    bool targetFileExists = std::filesystem::is_regular_file(ApprovedVideoDirectory + action, fileSystemError);
                     if (targetFileExists == false) {
                         httpStatusCode = 404; 
                         responseContent = "{\"status\":\"error\", \"message\":\"Target video file not found.\"}";
@@ -402,11 +589,13 @@ void processIncomingHttpRequest(int clientSocketDescriptor, VideoPlaybackEngine&
  * safely while remaining responsive to incoming requests and operating system 
  * shutdown signals.
  * * @param playbackService A reference to the engine that manages the decoding thread.
+ * @return true If the service ran until shutdown.
+ * @return false If the service could not be started.
  */
-void initializeNetworkService(VideoPlaybackEngine& playbackService) {
+bool initializeNetworkService(VideoPlaybackEngine& playbackService) {
     int serverSocketFileDescriptor = socket(AF_INET, SOCK_STREAM, 0);
     if (serverSocketFileDescriptor < 0) {
-        return;
+        return false;
     }
 
     int socketReuseFlag = 1;
@@ -414,21 +603,22 @@ void initializeNetworkService(VideoPlaybackEngine& playbackService) {
 
     sockaddr_in serverNetAddress;
     serverNetAddress.sin_family = AF_INET;
-    serverNetAddress.sin_addr.s_addr = INADDR_ANY;
+    // Loopback only: the one caller is ledparser.js on this same host
+    serverNetAddress.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     serverNetAddress.sin_port = htons(HttpServerPortNumber);
 
     int bindingStatus = bind(serverSocketFileDescriptor, (struct sockaddr*)&serverNetAddress, sizeof(serverNetAddress));
     if (bindingStatus < 0) {
         std::cerr << "Failed to bind network service to port " << HttpServerPortNumber << std::endl;
         close(serverSocketFileDescriptor);
-        return;
+        return false;
     }
     
     int listeningStatus = listen(serverSocketFileDescriptor, 10);
     if (listeningStatus < 0) {
         std::cerr << "Failed to transition network service to listening mode." << std::endl;
         close(serverSocketFileDescriptor);
-        return;
+        return false;
     }
 
     std::cout << "Service active at http://localhost:" << HttpServerPortNumber << std::endl;
@@ -453,6 +643,7 @@ void initializeNetworkService(VideoPlaybackEngine& playbackService) {
         }
     }
     close(serverSocketFileDescriptor);
+    return true;
 }
 
 int main(int argumentCount, char** argumentValues) {
@@ -467,8 +658,17 @@ int main(int argumentCount, char** argumentValues) {
     LedLayout targetDisplayLayout;
     targetDisplayLayout.parseArgument(argumentValues[1]);
 
-    VideoPlaybackEngine playbackEngine(targetDisplayLayout);
-    initializeNetworkService(playbackEngine);
+    if (targetDisplayLayout.getPixels().empty() == true) {
+        std::cerr << "Error: Layout \"" << argumentValues[1] << "\" has no LEDs." << std::endl;
+        return 1;
+    }
 
+    VideoPlaybackEngine playbackEngine(targetDisplayLayout);
+    bool serviceRanUntilShutdown = initializeNetworkService(playbackEngine);
+
+    // A non-zero exit lets systemd see a failed start (port already in use)
+    if (serviceRanUntilShutdown == false) {
+        return 1;
+    }
     return 0;
 }

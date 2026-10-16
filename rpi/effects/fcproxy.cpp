@@ -228,9 +228,9 @@ struct ProxyClient {
 };
 
 void runInboundReceiver() {
-    // INADDR_ANY preserved: effect programs may run on other hosts.
+    // Loopback only: every effect program runs on this host, as with opcserver.
     const int listenSocket =
-        opcutils::createListenSocket(INADDR_ANY, OPC_LISTEN_PORT, MAX_OPC_CLIENTS);
+        opcutils::createListenSocket(INADDR_LOOPBACK, OPC_LISTEN_PORT, MAX_OPC_CLIENTS);
     if (listenSocket < 0) {
         opcutils::isRunning.store(false);
         return;
@@ -273,7 +273,12 @@ void runInboundReceiver() {
             }
         }
 
-        for (size_t clientIndex = 0; clientIndex < connectedClients.size();) {
+        // Only the clients that were in this poll() have a descriptor entry. One
+        // accepted just above has none yet, and reading past the end of the list
+        // picked up a stale entry that could close the new connection at once.
+        const size_t polledClientCount = pollDescriptors.size() - 1;
+
+        for (size_t clientIndex = 0; clientIndex < polledClientCount;) {
             const short events = pollDescriptors[clientIndex + 1].revents;
             bool shouldClose = (events & (POLLERR | POLLHUP | POLLNVAL)) != 0;
 

@@ -293,6 +293,21 @@ function createListItem(hostColumn, rowType, rowLabel, rowIndex) {
   return rowElement;
 }
 
+// The server's answer when some LED hosts did not take a command, followed by
+// their names (NO_ANSWER_PREFIX in nodeapi/ledparser.js).
+const LED_NO_ANSWER = 'No answer from';
+
+// Sends an LED command to every LED host and shows which of them did not
+// answer, if any. Resolves with the reply, as sendCmd() does.
+// sendLeds('stop'); sendLeds('textscroll', base64)
+export async function sendLeds(command, value = '') {
+  const reply = await sendCmd('leds', command, value);
+  if (typeof reply === 'string' && reply.startsWith(LED_NO_ANSWER)) {
+    showPopup(reply);
+  }
+  return reply;
+}
+
 // LED effects menu: a row plays its effect, and TextScroll opens the scroller
 function buildLedEffectRow(row) {
   if (row.value == 'shuffle') {
@@ -302,7 +317,7 @@ function buildLedEffectRow(row) {
     if (row.value == 'textscroll') {
       callMenuHook('openTextScroll');
     } else {
-      sendCmd('leds', row.value);
+      sendLeds(row.value);
     }
   });
 }

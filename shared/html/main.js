@@ -16,7 +16,7 @@ import { classDisplay, cleanString, base64URLSafeEncode, sendCmd,
   dropdownButtonTemplate } from './utils.js';
 import { configureMenus, removeDropdowns, openDropdown, drawMenu,
   destroyActiveSwitches, beginMenuRequest, menuRequestCurrent,
-  showDynFileMenu, showPowerMenu } from './menus.js';
+  showDynFileMenu, showPowerMenu, sendLeds } from './menus.js';
 import { LIVING_ROOM_CONFIG } from './livingrm.js';
 import { BEDROOM_CONFIG } from './bedrm.js';
 import { BATHROOM_CONFIG, closeBathroomSettings } from './bathrm.js';
@@ -439,8 +439,8 @@ registerListeners({
   'btn-ledeffectmenu':     () => showDynFileMenu('ledeffectmenu', true),
   'btn-ledcolorprompt':    () => openColorPrompt('leds', 'hex', 'Pixels', true),
   'btn-power-fc_leds':     () => showPowerMenu('fc_leds'),
-  'btn-cmd-leds-off':      () => sendCmd('leds', 'stop'),
-  'btn-cmd-leds-pause':    () => sendCmd('leds', 'pause')
+  'btn-cmd-leds-off':      () => sendLeds('stop'),
+  'btn-cmd-leds-pause':    () => sendLeds('pause')
 });
 
 // the On and Off rows the three APT menus hold from the start
@@ -678,7 +678,7 @@ function closeTextScroll() {
 
 function clearLEDsMessage() {
   clearTextScrollBox();
-  sendCmd('leds', 'stop');
+  sendLeds('stop');
 }
 
 function setTextScrollColor(color) {
@@ -708,7 +708,7 @@ function sendTextScroll() {
   textbox.value = '';
   const [color, font, speed] = App.ledScrollData;
   const commands = `${message}|${color}|${font}|${speed}`;
-  sendCmd('leds', 'textscroll', base64URLSafeEncode(commands)).then((data) => {
+  sendLeds('textscroll', base64URLSafeEncode(commands)).then((data) => {
     if (data === null || data == "") {
       textbox.placeholder = "Error sending message!";
     } else {

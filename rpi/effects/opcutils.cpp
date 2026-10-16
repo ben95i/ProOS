@@ -444,6 +444,7 @@ bool Ditherer::render(const uint8_t* source, const uint32_t scaleTable[256], uin
 void FramePacer::start(double targetHz) {
     const double safeHz = std::max(1.0, targetHz);
     interval_ = std::chrono::nanoseconds(static_cast<long long>(1e9 / safeHz));
+    targetInterval_ = interval_;
     slowestInterval_ = interval_ * 3;  // never back off past a third of the target
     deadline_ = std::chrono::steady_clock::now();
     framesInWindow_ = 0;
@@ -460,6 +461,14 @@ void FramePacer::noteFrameRendered() {
             interval_ += (interval_ / 20);
             if (interval_ > slowestInterval_) {
                 interval_ = slowestInterval_;
+            }
+        } else if (lateFramesInWindow_ == 0 && interval_ > targetInterval_) {
+            // A clean window: step back toward the target. Without this every
+            // busy spell slowed the refresh for good, so a server left running
+            // for weeks ended up at a third of its rate until it was restarted.
+            interval_ -= (interval_ / 40);
+            if (interval_ < targetInterval_) {
+                interval_ = targetInterval_;
             }
         }
         framesInWindow_ = 0;

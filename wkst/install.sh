@@ -17,7 +17,7 @@ After=multi-user.target
 [Service]
 Type=oneshot
 ExecStart=/usr/bin/nvidia-smi -pm 1
-ExecStart=/usr/bin/nvidia-smi -lgc 1300,2130
+ExecStart=/usr/bin/nvidia-smi -lgc 1600,2130
 
 [Install]
 WantedBy=multi-user.target
@@ -45,7 +45,7 @@ tee /etc/fstab >/dev/null <<'EOF'
 #
 UUID=AC46-2BA9                             /boot/efi      vfat   defaults   0  2
 UUID=1b5d9265-2b47-440c-b698-586a7d2b6835  /              ext4   defaults   0  1
-UUID=e3ce5d70-8f2d-4f98-a81e-e5c1b94900af  /mnt/Local     ext4   defaults   0  0
+UUID=298a7de8-9962-4366-8be1-65c188c7f6a8  /mnt/Local     ext4   defaults   0  1
 /swapfile                                  swap           swap   defaults   0  0
 tmpfs                                      /tmp           tmpfs  defaults,noatime,mode=1777   0  0
 ben@files.home:/       /mnt/SFTP      fuse.sshfs  noauto,x-systemd.automount,x-systemd.idle-timeout=120,x-systemd.mount-timeout=5,_netdev,nofail,ssh_command=/root/sshfs_wrapper.sh,default_permissions,allow_other,reconnect,ServerAliveInterval=15,ServerAliveCountMax=2,uid=1000,gid=1000   0  0

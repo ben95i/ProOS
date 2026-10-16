@@ -5,6 +5,21 @@
 
 const bool RING_93_INVERT_Y = true; // flip image 180 degrees (93 LED rings)
 
+// One OPC message carries at most 65535 bytes, which is 21845 RGB pixels.
+const int MAX_LAYOUT_LED_COUNT = 21845;
+
+// A zero or negative size divides by zero in the coordinate maths, and an absurd
+// one tries to allocate millions of pixels. Either way the default is used.
+static bool isUsableLayoutSize(int firstDimension, int secondDimension) {
+    if (firstDimension < 1 || secondDimension < 1) {
+        return false;
+    }
+    if (firstDimension > MAX_LAYOUT_LED_COUNT || secondDimension > MAX_LAYOUT_LED_COUNT) {
+        return false;
+    }
+    return (firstDimension * secondDimension) <= MAX_LAYOUT_LED_COUNT;
+}
+
 void LedLayout::parseArgument(const std::string& layoutArgument) {
     std::string ringStandard = "93ring";
     std::string ringInverted = "93ringinv";
@@ -31,6 +46,11 @@ void LedLayout::parseArgument(const std::string& layoutArgument) {
         int parsedLedsPerStrip = defaultLedsPerStrip;
         
         sscanf(layoutArgument.c_str(), "%dx%dstrips", &parsedStripsCount, &parsedLedsPerStrip);
+        if (isUsableLayoutSize(parsedStripsCount, parsedLedsPerStrip) == false) {
+            std::cerr << "Invalid layout '" << layoutArgument << "', using the default strips\n";
+            parsedStripsCount = defaultStripsCount;
+            parsedLedsPerStrip = defaultLedsPerStrip;
+        }
         setupStrips(parsedStripsCount, parsedLedsPerStrip);
     } 
     else {
@@ -43,6 +63,11 @@ void LedLayout::parseArgument(const std::string& layoutArgument) {
             sscanf(layoutArgument.c_str(), "%dx%dgrid", &parsedWidth, &parsedHeight);
         } else {
             sscanf(layoutArgument.c_str(), "%dx%d", &parsedWidth, &parsedHeight);
+        }
+        if (isUsableLayoutSize(parsedWidth, parsedHeight) == false) {
+            std::cerr << "Invalid layout '" << layoutArgument << "', using the default grid\n";
+            parsedWidth = defaultWidth;
+            parsedHeight = defaultHeight;
         }
         setupGrid(parsedWidth, parsedHeight);
     }

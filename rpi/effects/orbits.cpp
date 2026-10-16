@@ -192,12 +192,16 @@ ColorValues convertHsvToRgb(float hueDegrees, float saturation, float brightness
 // Holds on a palette hue, then sweeps to the next one along the shorter arc of
 // the colour wheel so the transition stays saturated instead of washing out
 // through grey the way a straight RGB blend would.
-ColorValues resolvePaletteColor(float elapsedSeconds, int paletteOffset) {
-    constexpr float fullCycleSeconds = COLOR_HOLD_SECONDS + COLOR_FADE_SECONDS;
+//
+// Time arrives as a double: a float count of seconds loses its fine steps after
+// about a day of running, which showed as stepped fades and a stuttering orbit.
+ColorValues resolvePaletteColor(double elapsedSeconds, int paletteOffset) {
+    constexpr double fullCycleSeconds = COLOR_HOLD_SECONDS + COLOR_FADE_SECONDS;
 
-    const int cyclesCompleted = static_cast<int>(elapsedSeconds / fullCycleSeconds);
-    const float secondsIntoCycle =
-        elapsedSeconds - static_cast<float>(cyclesCompleted) * fullCycleSeconds;
+    const long long cyclesCompletedTotal = static_cast<long long>(elapsedSeconds / fullCycleSeconds);
+    const float secondsIntoCycle = static_cast<float>(
+        elapsedSeconds - static_cast<double>(cyclesCompletedTotal) * fullCycleSeconds);
+    const int cyclesCompleted = static_cast<int>(cyclesCompletedTotal % ORB_HUE_PALETTE_SIZE);
 
     float blendRatio = 0.0f;
     if (secondsIntoCycle > COLOR_HOLD_SECONDS) {
@@ -337,14 +341,14 @@ int main(int argumentCount, char** argumentValues) {
 
     while (true) {
         const auto activeFrameStartTime = SteadyClock::now();
-        const float totalElapsedApplicationSeconds =
-            std::chrono::duration<float>(activeFrameStartTime - systemExecutionStartTime).count();
+        const double totalElapsedApplicationSeconds =
+            std::chrono::duration<double>(activeFrameStartTime - systemExecutionStartTime).count();
 
         std::fill(sceneColorBuffer.begin(), sceneColorBuffer.end(), ColorValues{0, 0, 0});
 
-        const float orbitAngleRadians = totalElapsedApplicationSeconds * orbitSpeed;
-        const float orbitCosine = std::cos(orbitAngleRadians);
-        const float orbitSine = std::sin(orbitAngleRadians);
+        const double orbitAngleRadians = totalElapsedApplicationSeconds * static_cast<double>(orbitSpeed);
+        const float orbitCosine = static_cast<float>(std::cos(orbitAngleRadians));
+        const float orbitSine = static_cast<float>(std::sin(orbitAngleRadians));
 
         // The second orb is exactly half a turn behind, so its offsets are negated.
         const float calculatedOrbPositionX1 = SCENE_CENTER_X + orbitCosine * KINETIC_ORBIT_RADIUS;

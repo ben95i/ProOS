@@ -6,6 +6,8 @@
 #include <stdexcept>
 #include <thread>
 #include <chrono>
+#include <cctype>
+#include <cstdint>
 
 // Configuration
 constexpr const char* TARGET_OPC_HOST = "127.0.0.1";
@@ -19,6 +21,13 @@ struct RGBColor {
 RGBColor parseHexColorCode(const std::string& hexString) {
     if (hexString.length() != 6) {
         throw std::invalid_argument("Hex color must be 6 characters (e.g., 0000FF)");
+    }
+    // std::stoul alone accepts a sign, a "0x" prefix and trailing junk, so
+    // "12zzzz" was taken as a colour. Every character has to be a hex digit.
+    for (char hexCharacter : hexString) {
+        if (std::isxdigit(static_cast<unsigned char>(hexCharacter)) == 0) {
+            throw std::invalid_argument("Hex color must only hold 0-9 and A-F");
+        }
     }
     uint32_t parsedValue = std::stoul(hexString, nullptr, 16);
     return {
@@ -86,12 +95,23 @@ int main(int argc, char* argv[]) {
     std::cout << "Sending " << argv[2] << " mapped to " << layout.getPixels().size() 
               << " LEDs (Max index: " << maxOpcIndex << ")..." << std::endl;
 
-    for (int frame = 0; frame < 10; ++frame) {
-        if (!displayClient.sendPixelPayload(0, pixelPayloadData.data(), pixelPayloadData.size())) {
-            std::cerr << "Error: Failed to transmit frame " << frame << std::endl;
-            break;
+    // The client drops a frame while the server is busy and waits half a second
+    // before it retries a failed connection, so one failed send is not the end:
+    // keep trying until the colour has gone out ten times or the time is up.
+    const int requiredFrameCount = 10;
+    const int maximumSendAttempts = 100;
+    int transmittedFrameCount = 0;
+
+    for (int attempt = 0; attempt < maximumSendAttempts && transmittedFrameCount < requiredFrameCount; ++attempt) {
+        if (displayClient.sendPixelPayload(0, pixelPayloadData.data(), pixelPayloadData.size())) {
+            transmittedFrameCount += 1;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+
+    if (transmittedFrameCount == 0) {
+        std::cerr << "Error: Could not reach the OPC server, color not sent." << std::endl;
+        return 1;
     }
 
     std::cout << "Done." << std::endl;
