@@ -1,0 +1,22 @@
+# /etc/fstab: static file system information
+# Updated: 8/9/2026
+# Use 'blkid' to print the universally unique identifier for a device; this may
+# be used with UUID= as a more robust way to name devices that works even if
+# disks are added and removed. See fstab(5).
+#
+# <file system>             <mount point>  <type>  <options>  <dump>  <pass>
+#
+UUID=AC46-2BA9                             /boot/efi      vfat   defaults   0  2
+UUID=1b5d9265-2b47-440c-b698-586a7d2b6835  /              ext4   defaults   0  1
+UUID=298a7de8-9962-4366-8be1-65c188c7f6a8  /mnt/Local     ext4   defaults   0  1
+/swapfile                                  swap           swap   defaults   0  0
+tmpfs                                      /tmp           tmpfs  defaults,noatime,mode=1777   0  0
+ben@files.home:/       /mnt/SFTP      fuse.sshfs  noauto,x-systemd.automount,x-systemd.idle-timeout=120,x-systemd.mount-timeout=5,_netdev,nofail,ssh_command=/root/sshfs_wrapper.sh,default_permissions,allow_other,reconnect,ServerAliveInterval=15,ServerAliveCountMax=2,uid=1000,gid=1000   0  0
+//files.home/Data      /mnt/Data      cifs        noauto,x-systemd.automount,x-systemd.idle-timeout=120,x-systemd.mount-timeout=5,_netdev,nofail,credentials=/root/smb.credentials,iocharset=utf8,vers=3.0,soft,echo_interval=5,handletimeout=5000,uid=1000,gid=1000   0  0
+//files.home/Media     /mnt/Media     cifs        noauto,x-systemd.automount,x-systemd.idle-timeout=120,x-systemd.mount-timeout=5,_netdev,nofail,credentials=/root/smb.credentials,iocharset=utf8,vers=3.0,soft,echo_interval=5,handletimeout=5000,uid=1000,gid=1000   0  0
+//files.home/Scratch   /mnt/Scratch   cifs        noauto,x-systemd.automount,x-systemd.idle-timeout=120,x-systemd.mount-timeout=5,_netdev,nofail,credentials=/root/smb.credentials,iocharset=utf8,vers=3.0,soft,echo_interval=5,handletimeout=5000,uid=1000,gid=1000   0  0
+//files.home/Cameras   /mnt/Cameras   cifs        noauto,x-systemd.automount,x-systemd.idle-timeout=120,x-systemd.mount-timeout=5,_netdev,nofail,credentials=/root/smb.credentials,iocharset=utf8,vers=3.0,soft,echo_interval=5,handletimeout=5000,uid=1000,gid=1000   0  0
+//files.home/Regions   /mnt/Regions   cifs        noauto,x-systemd.automount,x-systemd.idle-timeout=120,x-systemd.mount-timeout=5,_netdev,nofail,credentials=/root/smb.credentials,iocharset=utf8,vers=3.0,soft,echo_interval=5,handletimeout=5000,uid=1000,gid=1000   0  0
+//files.home/Games     /mnt/Games     cifs        noauto,x-systemd.automount,x-systemd.idle-timeout=120,x-systemd.mount-timeout=5,_netdev,nofail,credentials=/root/smb.credentials,iocharset=utf8,vers=3.0,soft,echo_interval=5,handletimeout=5000,uid=1000,gid=1000   0  0
+//files.home/MP3s      /mnt/MP3s      cifs        noauto,x-systemd.automount,x-systemd.idle-timeout=120,x-systemd.mount-timeout=5,_netdev,nofail,credentials=/root/smb.credentials,iocharset=utf8,vers=3.0,soft,echo_interval=5,handletimeout=5000,uid=1000,gid=1000   0  0
+//files.home/External  /mnt/External  cifs        noauto,x-systemd.automount,x-systemd.idle-timeout=120,x-systemd.mount-timeout=5,_netdev,nofail,credentials=/root/smb.credentials,iocharset=utf8,vers=3.0,soft,echo_interval=5,handletimeout=5000,uid=1000,gid=1000   0  0

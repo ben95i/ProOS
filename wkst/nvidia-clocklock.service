@@ -1,0 +1,11 @@
+[Unit]
+Description=Lock NVIDIA GPU clocks to reduce Wayland stutter
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/nvidia-smi -pm 1
+ExecStart=/usr/bin/nvidia-smi -lgc 1600,2130
+
+[Install]
+WantedBy=multi-user.target

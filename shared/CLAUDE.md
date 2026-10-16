@@ -114,7 +114,7 @@ The grids are built from `dropdownButtonTemplate()` and `gridButtonTemplate()` i
 
 | Room | Key | Volume target | Room status reads |
 | --- | --- | --- | --- |
-| Living Room | `lr` | `lrxmit`, 0–100 | Main Lamp, Backlight, Desktop PC, Stereo System |
+| Living Room | `lr` | LEDwall (`lrxmit`), 0–100 | Main Lamp, Backlight, Desktop PC, Stereo System |
 | Bedroom | `br` | `brpi`, 0–192 shown as % | Desk Lamp, Bed Lights, RetroPi TV, Vintage Macs, Bedroom TV, Bedroom PC, Audio System |
 | Bathroom | `bthr` | none | Bathroom Light |
 
@@ -230,7 +230,7 @@ Every query value has to match `[A-Za-z0-9_.#%@&-]*`, or the route answers 400 w
 
 ### Commands
 
-Device addresses are in one table at the top of `controller.js`, `IP_ADRS`: `lrxmit` 192.168.1.12, `desk` .14, `brpi` .15, `brpc` .17 (with its MAC for wake-on-LAN), `lrmlamp1` .18 and `bthrlight1` .21.
+Device addresses are in one table at the top of `controller.js`, `IP_ADRS`: `lrxmit` 192.168.1.12 (the LEDwall), `desk` .14, `brpi` .15, `brpc` .17 (with its MAC for wake-on-LAN), `lrmlamp1` .18 and `bthrlight1` .21.
 
 `executeMain(baseWWW, arg, var)` switches on `arg`. For the three `…xmit` commands `var` is split at `_set`, so `wl1_dual_set_120` reaches the room as `wl1_dual_set` and `120`.
 
@@ -250,7 +250,7 @@ Device addresses are in one table at the top of `controller.js`, `IP_ADRS`: `lrx
 | `sitelookup` | a URL, base64 | `runSiteLookup()` |
 | `server` | a command name | Appends "`<name>` sent." to `ram/sysout.txt` and drops an empty `ram/<name>.txt` trigger file for the host's shell side to act on; `netscan` runs here instead and writes its table into the log |
 
-**Living room (`lrXmit`).** The stereo commands are codes sent to the transmitter at 192.168.1.12 (`extcom`): power (`hifistate`, `…on`, `…off`), inputs (`usb`, `aux`, `phono`, `coax`, `opt`, `autodac`, `curinput`), volume (`volup`, `voldwn`, `volupc`, `voldwnc`, `volmute`, `voldisplay`), `vlimit`, `togglehpf`, `curhpfvollim` and the subwoofers (`subup`, `subdwn`, `submute`, `subup_fast`, `subdwn_fast`). The living room lamp is a Pico at 192.168.1.18 (`lrmlamp1`; `lrmLamp1Status()`, `lrmLamp1On()`, `lrmLamp1Off()`): `wl1_dual` reads both channels as `lamp~backlight`, `wl1_dualon` / `off` and `wl1_led1…` / `wl1_led2…` switch them, `wl1_dual_set_<n>` dims. `wkststate` pings the desktop (192.168.1.14), and its `on` / `off` press the PC power relay only when the ping says the state would change.
+**Living room (`lrXmit`).** The stereo commands are codes sent to the LEDwall at 192.168.1.12 (`extcom`): power (`hifistate`, `…on`, `…off`), inputs (`usb`, `aux`, `phono`, `coax`, `opt`, `autodac`, `curinput`), volume (`volup`, `voldwn`, `volupc`, `voldwnc`, `volmute`, `voldisplay`), `vlimit`, `togglehpf`, `curhpfvollim` and the subwoofers (`subup`, `subdwn`, `submute`, `subup_fast`, `subdwn_fast`). The living room lamp is a Pico at 192.168.1.18 (`lrmlamp1`; `lrmLamp1Status()`, `lrmLamp1On()`, `lrmLamp1Off()`): `wl1_dual` reads both channels as `lamp~backlight`, `wl1_dualon` / `off` and `wl1_led1…` / `wl1_led2…` switch them, `wl1_dual_set_<n>` dims. `wkststate` pings the desktop (192.168.1.14), and its `on` / `off` press the PC power relay only when the ping says the state would change.
 
 **Bedroom (`brXmit`).** Codes go to the Bedroom Pi at 192.168.1.15 (`hwcom`). A status code answers three digits, one per device, where 9 means on; each command names the digit it reads (`brlamp1` 0, `brmacs` 1, `retropi` 2). Also `brtv`, the bed (`bed_adj_up` / `dwn` / `stop`, `bed_leds`, `bed_leds_rb` / `cy` / `sw` / `off` / `pause`, `bed_leds_set_<n>`, `bed_leds_hex_set_<hex>`) and `roomth` (temperature~humidity). `brpc` pings 192.168.1.17, `brpcon` sends wake-on-LAN and `brpcoff` asks the PC to sleep.
 
