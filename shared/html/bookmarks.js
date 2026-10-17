@@ -70,7 +70,7 @@ const EDIT_BTN_IDS = {
 };
 const PREVIEW_EMPTY_CLASS = 'editFav__iconpreview--empty';
 const SELECTED_CLASS = 'dd-selected';
-const MAX_NAME_LENGTH = 42;
+const MAX_NAME_LENGTH = 30;
 const LOCKED_MSG = "read/only, locked by another user";
 const INFO_ICON_HTML = '<i class="fad fa-info-circle"></i>';
 const ICON_CHARS = /^[A-Za-z0-9_@-]*$/;

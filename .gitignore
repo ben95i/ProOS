@@ -1,10 +1,4 @@
-rpi/pkgs
-rpi/sounds
-rpi/sources
-rpi/RetroPie-Setup
-mgmt/keys
 pve/vmbkps
-pve/photos
 pve/network
 *auto.creds*
 *sasl_passwd*
@@ -17,6 +11,9 @@ pve/network
 *.ino.map*
 *.ino.uf2*
 *.tar.xz*
+*.tar*
+*.gz*
+*.mp4*
 *.deb*
 *.pem*
 *.crt*

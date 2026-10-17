@@ -34,11 +34,15 @@ const MENU_HOOKS = {
   onRoomPicked: null,
   // () => void: the TextScroll row of the LED effects menu was picked
   openTextScroll: null,
+  // () => void: the More... row of the Pixels Control menu was picked. Set
+  // by the server page only; without it the row is left off.
+  openPixels: null,
   // (settingName) => { get(), set(on) } for a 'chk' row, or undefined
   browserSetting: null
 };
 
-// Sets the page hooks above. Called once by main.js while it loads.
+// Sets the page hooks above. Called by main.js while it loads; a hook not
+// named in `hooks` keeps what it had.
 export function configureMenus(hooks) {
   for (const hookName of Object.keys(MENU_HOOKS)) {
     if (typeof hooks[hookName] === 'function') {
@@ -241,7 +245,7 @@ const SLIDER_STEP = 1;
 
 // While a slider is dragged it sends its level at most this often. One
 // throttle is shared by every slider, as only one can be dragged at a time.
-const SLIDER_MS = 120;
+export const SLIDER_MS = 120;
 const throttledSliderSend = requestThrottle((action, host, command) => {
   sendCmd(action, host, command);
 }, SLIDER_MS);
@@ -254,6 +258,7 @@ const SETTING_SWITCH_HEIGHT = '26px';
 // is drawn as a status row (see buildStatusRow).
 const ROW_BUILDERS = {
   'ledeffectmenu': buildLedEffectRow,
+  'pixelsmore': buildPixelsMoreRow,
   'room': buildRoomRow,
   'relaxmenu': buildRelaxRow,
   'relaxactive': buildRelaxRow,
@@ -319,6 +324,14 @@ function buildLedEffectRow(row) {
     } else {
       sendLeds(row.value);
     }
+  });
+}
+
+// Pixels Control menu: the More... row, which opens the Pixels window
+function buildPixelsMoreRow(row) {
+  row.element.appendChild(makeElement('i', 'fad fa-cog'));
+  row.element.addEventListener("click", function() {
+    callMenuHook('openPixels');
   });
 }
 
@@ -591,6 +604,7 @@ const CUSTOM_LEDS = {
 
 // the Fadecandy pixels, which are asked through the 'leds' action
 const FADECANDY_MENU = 'fc_leds';
+const PIXELS_MORE_LABEL = 'More...';
 
 // The button of a power menu and the dropdown under it, with the ids
 // showPowerMenu(target, name) looks for.
@@ -676,6 +690,11 @@ export function showPowerMenu(target, menu = null) {
       menuData += menuErrorRow(menu);
     } else {
       menuData += powerMenuRows(menu, target, state, level);
+    }
+    // under the slider, and there even when no host answered: the Pixels
+    // window shows each host on its own, and which of them is down
+    if (menu == FADECANDY_MENU && MENU_HOOKS.openPixels !== null) {
+      menuData += menuRow(FADECANDY_MENU, 'pixelsmore', PIXELS_MORE_LABEL);
     }
     setSpinner(textId, spinnerId, false);
     if (!menuRequestCurrent(token)) {

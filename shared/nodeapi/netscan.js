@@ -4,9 +4,9 @@ const execFileAsync = util.promisify(execFile);
 
 // column widths of the printed table
 const COL_IP = 15;
-const COL_HOST = 15;
-const COL_VENDOR = 21;
-const COL_MAC = 19; // a MAC is 17 characters plus two of padding
+const COL_HOST = 20;
+const COL_VENDOR = 25;
+const COL_MAC = 17;
 const COL_SEPARATOR = ' ';
 
 // pads or truncates text to a fixed width: formatCol('abc', 5) -> 'abc  '

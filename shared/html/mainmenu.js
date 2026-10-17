@@ -6,11 +6,11 @@
 //
 // The stars toggle is drawn by menus.js's drawMenu() as a browser-side
 // setting row ('chk'); everything else here is built and placed by this
-// class. The picker's palette is the thememenu file, one colour per line as
+// class. The LED hosts' pages, once rows of this menu, are linked from the
+// Pixels window (pixels.js). The picker's palette is the thememenu file, one colour per line as
 // hex_value|display_name, read by ColorPrompt itself.
 
-import { hexToRgb, loadMenu, fileURL, splitMenuData,
-  gridButtonTemplate } from './utils.js';
+import { hexToRgb, gridButtonTemplate } from './utils.js';
 import ColorPrompt from './colorprompt.js';
 
 export default class MainMenu {
@@ -23,14 +23,13 @@ export default class MainMenu {
   static SLOT_ATTR = 'mainmenu-slot';
 
   static MENU_ID = 'mainmenu';
-  static MENU_FILE = 'mainmenu'; // the server menu's URL rows, and nothing else
   static PI_MENU_ID = 'pi-mainmenu';
 
   // Both menus, written out in the order they are drawn. A row this class
   // does not build is plain markup sitting where it goes; a row it does is a
-  // token -- {{color}} the colour box, {{stars}} the toggle drawMenu() draws,
-  // {{links}} the URLs out of the mainmenu file. Move a line and the menu
-  // moves with it; take a token out and those rows are left off altogether.
+  // token -- {{color}} the colour box, {{stars}} the toggle drawMenu() draws.
+  // Move a line and the menu moves with it; take a token out and that row is
+  // left off altogether.
   //
   // The icon goes last on every row: the rows are laid out with their two
   // ends pushed apart, so an icon written after the label lands against the
@@ -39,7 +38,6 @@ export default class MainMenu {
     <a id="btn-about-main">About<i class="fad fa-info"></i></a>
     {{color}}
     {{stars}}
-    {{links}}
   `;
 
   static PI_MENU_HTML = `
@@ -99,9 +97,6 @@ export default class MainMenu {
     // colour can be seen as it is chosen; this holds what it was last
     // repainted in, and storage is not written until the prompt closes.
     this.pending = null;
-    // bumped per menu request, so a file landing after the menu has been
-    // closed or opened again cannot draw itself over what is on screen
-    this.menuToken = 0;
   }
 
   //// the theme colour ////
@@ -177,50 +172,29 @@ export default class MainMenu {
     return true;
   }
 
-  // The server's list button. Same shape as the file menus in menus.js -- a
+  // The server's list button. Same shape as the menus in menus.js -- a
   // second press closes it, and opening it puts every other menu away first.
-  async showMenu() {
+  // Its rows are all in the markup, so it is drawn where it is pressed.
+  showMenu() {
     const menuElement = document.getElementById(MainMenu.MENU_ID);
     if (!this.openMenuElement(menuElement)) {
       return;
     }
-    const token = ++this.menuToken;
-    const data = await loadMenu(fileURL('read', MainMenu.MENU_FILE));
-    // Opened again, or closed outright, while the file was in the air. The
-    // display check matters as much as the token: drawing now would call
-    // drawMenu(), which clears whichever menu has since taken the screen.
-    if (token !== this.menuToken || menuElement.style.display !== 'block') {
-      return;
-    }
-    // a file that could not be read still leaves a menu worth having
-    this.drawRows(menuElement, MainMenu.MENU_HTML, data);
+    this.drawRows(menuElement, MainMenu.MENU_HTML);
   }
 
-  // The Pi's list button. Its rows are already in the markup, so there is no
-  // file to wait for and the menu is drawn where it is pressed.
+  // The Pi's list button, drawn the same way.
   showPiMenu() {
     const menuElement = document.getElementById(MainMenu.PI_MENU_ID);
     if (!this.openMenuElement(menuElement)) {
       return;
     }
-    // nothing above the token here, but a file menu opened a moment ago can
-    // still be in the air and this menu is what it would draw over
-    this.menuToken += 1;
-    this.drawRows(menuElement, MainMenu.PI_MENU_HTML, '');
+    this.drawRows(menuElement, MainMenu.PI_MENU_HTML);
   }
 
   // Draws the menu: its own markup from the template, then the rows that are
   // built rather than written -- each moved into the marker its token left.
-  drawRows(menuElement, template, fileRows) {
-    // The file comes back from the API wrapped in quotes, and splitMenuData()
-    // takes a quote off only the very start and end of what it is handed.
-    // Putting the stars row in front would leave the file's opening quote in
-    // the middle of the string, where it survives into the first row and ends
-    // up on the front of its URL. So the file is unquoted here first.
-    let rows = '';
-    if (fileRows && typeof fileRows === 'string') {
-      rows = splitMenuData(fileRows).join('\n');
-    }
+  drawRows(menuElement, template) {
     // the menu's own rows, with an empty marker standing in for each set of
     // built ones. Whatever was here last time goes with it.
     menuElement.innerHTML = template.replace(/\{\{(\w+)\}\}/g,
@@ -228,13 +202,11 @@ export default class MainMenu {
     // drawMenu() appends to the end of the container, so what it draws is
     // picked back up below and moved into the markers
     if (typeof window.drawMenu === 'function') {
-      window.drawMenu(MainMenu.STARS_ROW + rows, menuElement.id);
+      window.drawMenu(MainMenu.STARS_ROW, menuElement.id);
     }
-    // the stars row was the first thing drawMenu() was given, so it is the
-    // first node it made; the file's URLs are whatever follows it
+    // the stars row is the one node drawMenu() made
     const drawn = (App.dynMenuNodes || []).slice();
     this.fillSlot(menuElement, 'stars', drawn.slice(0, 1).map(row => this.iconLast(row)));
-    this.fillSlot(menuElement, 'links', drawn.slice(1));
     const colorRow = this.colorRow();
     this.fillSlot(menuElement, 'color', [colorRow]);
     // removeDynMenus() takes the rows back out by node, so this one is handed

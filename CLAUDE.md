@@ -71,7 +71,7 @@ The Automate status menu (`shared/html/menus/statsmenu.txt`) and the LED host li
 
 ## Deployment: `login.sh`
 
-`login.sh` runs on `mgmt`, where the repo is at `/mnt/Projects/ProOS` (its `ROOTDIR`), and needs `/opt/deploy` as a scratch folder. It loads `mgmt/keys/<host>.rsa` (servers) or `mgmt/keys/rpi.rsa` (all Pis) into an `ssh-agent`, checks port 22 with `nc`, then:
+`login.sh` runs on `mgmt`, where the repo is at `/mnt/Projects/ProOS` (its `ROOTDIR`), and needs `/opt/deploy` as a scratch folder. A host's key (`mgmt/keys/<host>.rsa` for servers, `rpi.rsa` for all Pis) has a passphrase when the host's folder holds an empty `ssh.pwd` marker file (`<host>/ssh.pwd`; for the Pi key, `rpi/ssh.pwd` or any Pi module's); all marked keys share one passphrase. Marked keys go through one `ssh-agent` per terminal session (keyed by the calling shell's PID, socket under `$XDG_RUNTIME_DIR/ssh-agents/`, or `/dev/shm/proos-<uid>/` without it): the first marked login in a terminal adds every marked key in one `ssh-add` call, so a single `Enter passphrase:` prompt unlocks them all (the script is its own `SSH_ASKPASS` prompter, so no key path is shown; Enter skips a key for the rest of the session), and later runs reuse the agent. Unmarked keys are used straight from the file. Each connection uses `-o IdentitiesOnly=yes -i` with the host's key (its public key taken from the agent when unlocked), so ssh never offers the other loaded keys. The agent is removed by `login clearkeys`, by the `EXIT` trap in `mgmt/config/profile_ben`, when its shell is gone, or after 8 h; the passphrase itself is never stored. It checks port 22 with `nc`, then:
 
 | Command | Does |
 | --- | --- |
@@ -81,7 +81,8 @@ The Automate status menu (`shared/html/menus/statsmenu.txt`) and the LED host li
 | `login <module> init <host>` | Deploy module `<module>` onto the Pi currently reachable as `<host>` (renames it to `<module>`) |
 | `login <pi> <cmd>` | Runs `rpi <cmd>` on the Pi (see `rpi/rpi.sh`) |
 | `login update-server` | `apt upgrade` on every folder with an `lxc.conf` / `qemu.conf` |
-| `login cmds` · `login rmtmp` | Command cheat sheet · delete deploy temp files |
+| `login clearkeys` | Forget this terminal's unlocked keys (stops its agent) |
+| `login cmds` · `login rmtmp` | Command cheat sheet · delete deploy temp files and stop every session agent |
 
 After a deploy a menu offers re-deploy, update packages, reboot (a Pi reboots into read-only mode with `rpi ro`) or a shell.
 
@@ -129,7 +130,7 @@ The Pis run the same `shared/nodeapi/server.js`, but `rpi/controller.js` replace
 - `brpi/modconf/custom.js`: serial via `ztermcom` (one FIFO queue, at most 8 waiting) to the amp on `/dev/ttyUSB0` and the bedroom hub on `/dev/ttyAMA0` (`hwcom`, `usbcom`), amp power/inputs/volume, `bed_leds_hex_set`, relax sounds (`relaxmenu.txt`, `relaxrun.sh` → `rpi-relaxloop.service`), activity LED flash.
 - `ledwall/modconf/custom.js`: `extcom` (serial), `front_btn` (LED shuffle), white LED, `pc_power`.
 
-`rpi/ledparser.js` replaces the server's LED fan-out with the local effect runner: it spawns one effect binary from `/opt/rpi/effects`, plays videos through `mp4toleds`, and sets brightness through the proxy. Shuffle picks from `menus/ledshuffle.txt`.
+`rpi/ledparser.js` replaces the server's LED fan-out with the local effect runner: it spawns one effect binary from `/opt/rpi/effects`, plays videos through `mp4toleds`, and sets brightness through the proxy. Shuffle picks from `menus/ledshuffle.txt`. Each command also records what the pixels show, which `fc_status` (`/api?action=leds&arg=fc_status`) answers as JSON with the brightness: `{ effect, state, color, brightness }`, state `off` (stopped, or black), `active`, `paused` (also an effect that ended on its own) or `color` (RRGGBB); the server's Pixels window reads it.
 
 ### Local services and ports
 
@@ -191,15 +192,17 @@ This is how the Automate Server window controls the host:
 
 ## Conventions across the repo
 
-- Shell scripts are bash with `## Comment` section headers, ALL_CAPS variables and functions, and copy-then-`chmod`/`chown` per installed file. Match that style in installers.
-- Installers must be re-runnable: guard one-time steps with a marker file (`/etc/rpi-conf.done`, `/etc/iommu.enabled`, `/etc/zfsautosnap.enabled`) and use `apt-get install --no-upgrade --ignore-missing`.
+Code style rules (naming, comments, shell, JavaScript and CSS) live only in `CODESTYLE.md`, imported at the end of this file. This section covers how the repo is organised and worked on.
+
 - A new Pi service is a `rpi-<name>.service` in `rpi/config/systemd/`, not enabled, started from the module's `boot.sh` with settings passed by `systemctl set-environment`.
 - A new Pi module is a folder with `boot.sh` and `modconf/{brand.txt,modinit,config.txt}`; `brand.txt` becomes the page title, AirPlay/Bluetooth/Samba name.
-- A new server is a folder with `config/installer.sh` and a marker file; add its key as `mgmt/keys/<name>.rsa`.
+- A new server is a folder with `config/installer.sh` and a marker file; add its key as `mgmt/keys/<name>.rsa`, plus an empty `<name>/ssh.pwd` if the key has the shared passphrase.
 - Secrets are git-ignored and must stay out of commits and docs: `mgmt/keys/`, `*.rsa`, `*.pub`, `*.pem`, `*.crt`, `*.key`, `authorized_keys`, `auto.creds`, `creds.h`, `sasl_passwd`, `pia-wg.conf`. Don't print their contents.
 - `._*` and `.DS_Store` files are macOS metadata, ignored by git; leave them alone.
 - Large binaries in the tree (`pve/vmbkps/*.zst`, `rpi/effects/videos/`, firmware builds, photos) are backups or assets, not sources to read.
 - There is no git or node in this workstation's shell, and no test suite: verify shell changes by reading them, and the website as described in the Automate reference.
+
+@CODESTYLE.md
 
 ## Automate website reference
 

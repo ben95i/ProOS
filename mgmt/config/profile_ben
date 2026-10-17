@@ -8,6 +8,9 @@ alias login="$PROS_PATH/login.sh"
 alias logon="$PROS_PATH/login.sh"
 alias less='less --RAW-CONTROL-CHARS'
 
+## Forget the SSH keys login.sh unlocked for this terminal when the shell exits
+trap "$PROS_PATH/login.sh clearkeys > /dev/null" EXIT
+
 ## Colorized lists
 export LS_OPTS='--color=auto'
 alias ls='ls $LS_OPTS'

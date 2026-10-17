@@ -20,6 +20,7 @@ import { configureMenus, removeDropdowns, openDropdown, drawMenu,
 import { LIVING_ROOM_CONFIG } from './livingrm.js';
 import { BEDROOM_CONFIG } from './bedrm.js';
 import { BATHROOM_CONFIG, closeBathroomSettings } from './bathrm.js';
+import { openPixelsWindow, closePixelsWindow } from './pixels.js';
 import { serverOptionsTemplate, logFormTemplate, showLogWindow,
   closeLogWindow } from './server.js';
 import RoomStateManager from './roomstate.js';
@@ -50,6 +51,7 @@ window.App = {
   cameraView: null,
   colorPrompt: null,
   bathroomSettings: null,
+  pixelsWindow: null,
   mainMenu: null,
   activeSwitches: [],
   fileData: [],
@@ -90,6 +92,9 @@ function serverFeatures() {
   App.roomStateManager = new RoomStateManager('status_anchor');
   window.weatherWidget = new WeatherWidget();
   window.weatherWidget.activate();
+  // the Pixels window reaches every LED host through the server's API, so
+  // only the server's Control menu offers it
+  configureMenus({ openPixels: openPixelsWindow });
 }
 
 // injects the markup for the given model, replacing any previous render
@@ -98,14 +103,20 @@ function renderPage(model) {
   document.body.insertAdjacentHTML('afterbegin', buildPageHTML(model));
 }
 
+// The server serves index.html as written, so its title is SERVER_MODEL.
+// Every Pi's installer swaps that title for its brand.txt name ("Bedroom",
+// "LEDwall", "RaspberryPi" without one), so any other title is a Pi: a LED
+// Pi when it holds "led", a plain Pi otherwise -- whatever else it says.
+const SERVER_MODEL = 'Automate';
+
 function buildPageHTML(model) {
-  const raspPi = model.toLowerCase().includes('pi');
-  const ledPi = model.toLowerCase().includes('led');
-  serverMode = !(raspPi || ledPi);
+  const modelName = model.trim();
+  serverMode = modelName === SERVER_MODEL;
+  const ledPi = !serverMode && modelName.toLowerCase().includes('led');
   const select = {
     isServer: serverMode,
     isLedCapable: serverMode || ledPi,
-    isPiLike: raspPi || ledPi          
+    isPiLike: !serverMode
   };
   return [
     '<canvas id="star-canvas" data-app-injected></canvas>',
@@ -934,6 +945,7 @@ function destroyPageServices() {
     App.colorPrompt = null;
   }
   closeBathroomSettings();
+  closePixelsWindow();
   if (App.bookmarks) {
     App.bookmarks.close();
     App.bookmarks = null;

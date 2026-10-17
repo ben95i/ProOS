@@ -23,6 +23,26 @@ let inMemoryState = {
 // State Mutex to prevent zombie processes during rapid requests
 let isSwitchingEffect = false; 
 
+// What the pixels are showing, answered by fc_status. Each command sets it
+// rather than it being read off the running process: writecolor exits as
+// soon as its colour is written, and a video plays inside mp4toleds.
+//   state 'off'    -- stopped, cleared, or set to black
+//         'active' -- `effect` is running
+//         'paused' -- `effect` was running and its last frame is held
+//         'color'  -- the solid colour `color` (RRGGBB, no '#') is set
+const LED_STATE_OFF = "off";
+const LED_STATE_ACTIVE = "active";
+const LED_STATE_PAUSED = "paused";
+const LED_STATE_COLOR = "color";
+const HEX_COLOR_PATTERN = /^[0-9A-Fa-f]{6}$/;
+const BLACK_HEX_COLOR = "000000";
+
+let ledStatus = {
+    state: LED_STATE_OFF,
+    effect: null,
+    color: null
+};
+
 function logInternalError(functionName, errorMessage, identifier) {
     console.error(`${functionName}: ${errorMessage}, ${identifier}`);
 }
@@ -30,6 +50,46 @@ function logInternalError(functionName, errorMessage, identifier) {
 function recordEffectState(processId, effectName) {
     inMemoryState.processId = processId;
     inMemoryState.effectName = effectName;
+}
+
+// Sets what fc_status answers: recordLedStatus(LED_STATE_ACTIVE, "maze")
+function recordLedStatus(state, effect = null, color = null) {
+    ledStatus = { state, effect, color };
+}
+
+// A solid colour, or off when it is black. A value that is not RRGGBB
+// leaves the status as it was.
+function recordColorStatus(hexColor) {
+    if (!HEX_COLOR_PATTERN.test(hexColor)) {
+        return;
+    }
+    const upperHexColor = hexColor.toUpperCase();
+    if (upperHexColor === BLACK_HEX_COLOR) {
+        recordLedStatus(LED_STATE_OFF);
+        return;
+    }
+    recordLedStatus(LED_STATE_COLOR, null, upperHexColor);
+}
+
+// The status and the brightness, for the server's Pixels window:
+//   { effect: "maze", state: "active", color: null, brightness: 128 }
+//   { effect: null, state: "color", color: "FF8800", brightness: 255 }
+// brightness is null when the LED proxy does not answer with a level.
+async function readLedStatus() {
+    let brightness = null;
+    try {
+        const proxyResponse = await fetch(`${LED_PROXY_URL}/brightness`, { signal: AbortSignal.timeout(1000) });
+        const levelText = (await proxyResponse.text()).trim();
+        if (/^\d+$/.test(levelText)) {
+            brightness = Number(levelText);
+        }
+    } catch (proxyError) {}
+    return {
+        effect: ledStatus.effect,
+        state: ledStatus.state,
+        color: ledStatus.color,
+        brightness: brightness
+    };
 }
 
 async function forceKillOrphanedProcesses() {
@@ -85,7 +145,16 @@ async function executeEffectProcess(binaryPath, binaryArguments, effectName) {
         }
 
         newProcess.on('close', () => {
-            if (inMemoryState.processId === newProcess.pid) recordEffectState(null, null);
+            if (inMemoryState.processId === newProcess.pid) {
+                recordEffectState(null, null);
+                // An effect that ended on its own, rather than being stopped
+                // here, leaves its last frame held, as a pause does.
+                // writecolor always ends on its own, but its status is a
+                // colour, never active.
+                if (ledStatus.state === LED_STATE_ACTIVE) {
+                    recordLedStatus(LED_STATE_PAUSED, ledStatus.effect);
+                }
+            }
         });
 
         newProcess.on('error', (spawnError) => {
@@ -116,6 +185,7 @@ async function initializeSystemOnStartup() {
         await forceKillOrphanedProcesses();
         const hardwareType = await fetchLedHardwareType();
         await executeEffectProcess(`${EFFECTS_DIRECTORY_PATH}/writecolor`, [hardwareType, "000000"], "startup_clear");
+        recordLedStatus(LED_STATE_OFF);
         isSystemInitialized = true;
     } catch (e) {
         logInternalError("initializeSystemOnStartup", "critical failure", e.message);
@@ -147,12 +217,21 @@ async function OPCLEDparser(baseWWW, CommandIn = "", secondaryArgument = "") {
     if (effectCommand === "pause") {
         await stopActiveEffect();
         await forceKillOrphanedProcesses();
+        // a colour, or pixels already off, stay as they were
+        if (ledStatus.state === LED_STATE_ACTIVE) {
+            recordLedStatus(LED_STATE_PAUSED, ledStatus.effect);
+        }
         return "paused";
     }
     if (effectCommand === "stop") {
         await executeEffectProcess(`${EFFECTS_DIRECTORY_PATH}/writecolor`, [currentLedHardware, "000000"], "stop_clear");
         await forceKillOrphanedProcesses();
+        recordLedStatus(LED_STATE_OFF);
         return "stopped";
+    }
+
+    if (effectCommand === "fc_status") {
+        return await readLedStatus();
     }
 
     if (effectCommand === "fc_set" || effectCommand === "fc_leds") {
@@ -184,6 +263,8 @@ async function OPCLEDparser(baseWWW, CommandIn = "", secondaryArgument = "") {
         await fsPromises.access(`${EFFECTS_DIRECTORY_PATH}/videos/${videoFileName}`);
         await stopActiveEffect();
         const apiResponse = await fetch(`${MP4_LEDS_API_URL}/api?video=${videoFileName}`, { signal: AbortSignal.timeout(1000) });
+        // mp4toleds loops the video until it is told otherwise
+        recordLedStatus(LED_STATE_ACTIVE, effectCommand);
         return await apiResponse.text();
     } catch (e) {}
 
@@ -224,11 +305,13 @@ async function OPCLEDparser(baseWWW, CommandIn = "", secondaryArgument = "") {
         }
 
         await executeEffectProcess(`${EFFECTS_DIRECTORY_PATH}/${effectCommand}`, binaryArgs, `cpp_${effectCommand}`);
+        recordLedStatus(LED_STATE_ACTIVE, effectCommand);
         return `Binary Effect: ${effectCommand}`;
     }
 
     if (effectCommand === "hex") {
         await executeEffectProcess(`${EFFECTS_DIRECTORY_PATH}/writecolor`, [currentLedHardware, secondaryArgument], "hex_color");
+        recordColorStatus(secondaryArgument);
         return `Set Color to #: ${secondaryArgument}`;
     }
 
