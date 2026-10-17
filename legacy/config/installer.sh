@@ -30,8 +30,8 @@ ${SHRPASS}
 ${SHRPASS}
 EOD
 smbpasswd -a -s ${SHRUSER} << EOD
-***REMOVED***
-***REMOVED***
+DUMMY
+DUMMY
 EOD
 smbpasswd -a -s ${SHRUSER} << EOD
 ${SHRPASS}

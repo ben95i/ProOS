@@ -1,3 +1,3 @@
 export function SSIDpwd() {
-   return '***REMOVED***';
+   return 'cGhvbmljcy44Ny5yZXBseS4yMTg=';
 }

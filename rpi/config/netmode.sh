@@ -183,10 +183,10 @@ fi
 ## Read Custom Hotspot Configuration
 if [ -e "/boot/firmware/apd.conf" ] && READ_CREDS /boot/firmware/apd.conf; then
   APD_SSID="$CRED_SSID"
-  APD_PWD="***REMOVED***"
+  APD_PWD="$CRED_PWD"
 else
   APD_SSID=$(cat /etc/hostname)
-  APD_PWD="***REMOVED***"
+  APD_PWD="raspberry"
 fi
 ## Hotspot Configuration (network 192.168.10.1/24)
 APD_ARGS=(type wifi ifname wlan0 con-name RPiHotspot
