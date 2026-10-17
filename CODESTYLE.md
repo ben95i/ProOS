@@ -1,6 +1,6 @@
 ## Code style
 
-These are the code style rules for everything in ProOS. Project structure (where files and features go) is described in `CLAUDE.md`.
+These are the code style rules for everything in ProOS. Project structure (where files and features go) is described in [`README.md`](README.md).
 
 ### General
 
