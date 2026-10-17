@@ -1,6 +1,6 @@
 # ProOS
 
-Configuration and code for every host on the home network, one folder per host. A folder's name is the host's name on the network (`<name>.home`), and `login.sh` deploys a folder to the host of the same name. `README.md` is the owner's older overview; where it disagrees with this file (it still lists `aptcam`, `hifi`, `touchpi` and `plex`, which no longer have folders), trust the code.
+Configuration and code for every host on the home network, one folder per host, by Ben Provenzano III. A folder's name is the host's name on the network (`<name>.home`), and `login.sh` deploys a folder to the host of the same name. Every host is set up over the network from a stock install: a Pi never needs a keyboard or display attached, and its own web page handles Wi-Fi setup afterwards.
 
 The Automate home automation website (`shared/html`, `shared/nodeapi`) has its own full reference, imported at the end of this file.
 
@@ -22,7 +22,7 @@ One Proxmox server (`pve`) runs the network's services as LXC containers and KVM
   │  router VM 100 · appletalk VM 103 · xana VM 105 · unifi VM 107                   │
   │  ZFS: rpool (boot) · tank/datastore (data, mirrored) · scratch SSD · ext. backups │
   └──────────────────────────────────────────────────────────────────────────────────┘
-       Pis: brpi · ledwall · ledgrid · ledstrip · doorway · homepi · btpi · stereo
+       Pis: brpi · ledwall · ledgrid · ledstrip · doorway · homepi · btpi · lrpi
        Microcontrollers: BathroomLight, LivingRoomLamp (Pico W) · Bedroom hub, amp, IR hub (AVR)
 ```
 
@@ -33,7 +33,7 @@ Every top-level folder is one of four kinds. `login.sh` tells them apart by the 
 | Kind | Folders | Layout | Deployed by |
 | --- | --- | --- | --- |
 | Pi base | `rpi/` | Programs, `config/` (installer, systemd units, system configs), `effects/` (LED programs) | Copied to every Pi first, to `/opt/rpi` |
-| Pi module | `brpi` `btpi` `doorway` `homepi` `ledgrid` `ledstrip` `ledwall` `stereo` | `boot.sh`, `modconf/` (`brand.txt`, `modinit`, `config.txt`, other configs), extra programs or firmware | Overlaid onto `/opt/rpi` after the base |
+| Pi module | `brpi` `btpi` `doorway` `homepi` `ledgrid` `ledstrip` `ledwall` `lrpi` | `boot.sh`, `modconf/` (`brand.txt`, `modinit`, `config.txt`, other configs), extra programs or firmware | Overlaid onto `/opt/rpi` after the base |
 | Server (LXC / VM / PC) | `automate` `files` `legacy` `media` `mgmt` (LXC); `appletalk` `xana` (VM); `pve` (the Proxmox host); `brpc` (a physical PC) | `config/installer.sh` plus the files it installs; `lxc.conf` / `qemu.conf` / `pc.conf` marker | Tarred to `/tmp/config` and `installer.sh` run |
 | Not deployed | `shared/` (Automate site, deployed with `automate` and every Pi), `wkst/` (this workstation, `install.sh` run by hand) | | |
 
@@ -62,7 +62,7 @@ DNS domain `home`, LAN 192.168.1.0/24, gateway and DNS the router at 192.168.1.1
 | `ledstrip` | Pi | | 3×60 strips (Fadecandy) |
 | `doorway` | Pi | | IMX462 IR camera: `rtspcam` (RTSP on :8554/cam), `minimotion` recorder, `ldrdetect` day/night, rclone to Google Drive, Cameras share |
 | `homepi` | Pi | | Family-home camera hub: `motion` with two cameras, uploads via rclone |
-| `btpi` · `stereo` | Pi | | Audio receivers: AirPlay (shairport-sync) and Bluetooth (BlueALSA) into a stereo |
+| `btpi` · `lrpi` | Pi | | Audio receivers: AirPlay (shairport-sync) and Bluetooth (BlueALSA) into a stereo; `btpi` adds Bluetooth to a vintage stereo, `lrpi` (formerly `stereo`) is the living room's, branded "Living Room" |
 | `desk` | PC | .14 | Living room desktop, pinged by `wkststate` |
 | `lrmlamp1` · `bthrlight1` | Pico W | .18 · .21 | Living room lamp, bathroom light (firmware in `automate/devices/`) |
 | `wkst` | Workstation | | This machine: mounts the `files` shares under `/mnt/*` (so this repo, `/mnt/Data/Projects/ProOS`, is the Data share) |
@@ -83,6 +83,8 @@ The Automate status menu (`shared/html/menus/statsmenu.txt`) and the LED host li
 | `login update-server` | `apt upgrade` on every folder with an `lxc.conf` / `qemu.conf` |
 | `login clearkeys` | Forget this terminal's unlocked keys (stops its agent) |
 | `login cmds` · `login rmtmp` | Command cheat sheet · delete deploy temp files and stop every session agent |
+
+**A new Pi.** Start from stock Raspberry Pi OS with root SSH login and password authentication enabled, then run `login <module> init <host>`: the first connection falls back to the root password, and the installer replaces root's `authorized_keys` with `rpi/config/authorized_keys` (the public half of `mgmt/keys/rpi.rsa`, git-ignored) and installs an `sshd_config` that allows root by key only (`PermitRootLogin without-password`, `PasswordAuthentication no`).
 
 After a deploy a menu offers re-deploy, update packages, reboot (a Pi reboots into read-only mode with `rpi ro`) or a shell.
 
@@ -113,7 +115,7 @@ Requires Raspberry Pi OS on Debian **trixie**; the installer refuses anything el
 
 ### Read-only root
 
-Pis run with an OverlayFS root, so writes go to RAM and the Pi can be unplugged safely. `rpi rw` / `rpi ro` reboot into read-write / read-only (via `raspi-config nonint disable_overlayfs`/`enable_overlayfs`); the boot partition is remounted rw only for the moment it is written. Anything that must survive a reboot on a Pi has to be written in rw mode or to the boot partition / a USB drive.
+Pis run with an OverlayFS root, so writes go to RAM and the Pi can be unplugged safely (the SD cards used to corrupt when a Pi lost power). `rpi rw` / `rpi ro` reboot into read-write / read-only (via `raspi-config nonint disable_overlayfs`/`enable_overlayfs`); the boot partition is remounted rw only for the moment it is written. Anything that must survive a reboot on a Pi has to be written in rw mode or to the boot partition / a USB drive.
 
 ### Networking (`rpi/config/netmode.sh`)
 
@@ -199,7 +201,7 @@ Code style rules (naming, comments, shell, JavaScript and CSS) live only in `COD
 - A new server is a folder with `config/installer.sh` and a marker file; add its key as `mgmt/keys/<name>.rsa`, plus an empty `<name>/ssh.pwd` if the key has the shared passphrase.
 - Secrets are git-ignored and must stay out of commits and docs: `mgmt/keys/`, `*.rsa`, `*.pub`, `*.pem`, `*.crt`, `*.key`, `authorized_keys`, `auto.creds`, `creds.h`, `sasl_passwd`, `pia-wg.conf`. Don't print their contents.
 - `._*` and `.DS_Store` files are macOS metadata, ignored by git; leave them alone.
-- Large binaries in the tree (`pve/vmbkps/*.zst`, `rpi/effects/videos/`, firmware builds, photos) are backups or assets, not sources to read.
+- Large binaries in the tree (`pve/vmbkps/*.zst`, `rpi/effects/videos/`, firmware builds, photos) are backups or assets, not sources to read. Photos of the builds are in `btpi/photos`, `ledstrip/photos`, `ledwall/photos` and `pve/photos`, and are not deployed.
 - There is no git or node in this workstation's shell, and no test suite: verify shell changes by reading them, and the website as described in the Automate reference.
 
 @CODESTYLE.md

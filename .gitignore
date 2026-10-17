@@ -22,3 +22,6 @@ pve/network
 *.pub*
 *.pdf*
 *._*
+.DS_Store
+*.unf
+*.unifi
