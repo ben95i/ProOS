@@ -1,5 +1,6 @@
 pve/vmbkps
 pve/network
+*esp32/*/build
 *auto.creds*
 *sasl_passwd*
 *authorized_keys*
@@ -10,11 +11,15 @@ pve/network
 *.ino.elf*
 *.ino.map*
 *.ino.uf2*
+*.unifi
+*.unf
+*.gz*
 *.tar.xz*
 *.tar*
-*.gz*
 *.mp4*
 *.deb*
+*.exe*
+*.mkv*
 *.pem*
 *.crt*
 *.key*
@@ -23,5 +28,3 @@ pve/network
 *.pdf*
 *._*
 .DS_Store
-*.unf
-*.unifi

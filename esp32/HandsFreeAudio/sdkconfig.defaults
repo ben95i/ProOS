@@ -1,0 +1,109 @@
+#
+# sdkconfig.defaults - HRV-HandsFree-Audio
+#
+# Derived by diffing the project's sdkconfig against a stock ESP-IDF v6.0.1
+# esp32 configuration, then minimising: these 32 symbols are the complete set
+# that cannot be derived from the others. Everything else in sdkconfig follows
+# from these, so it does not belong here.
+#
+# Verified: kconfgen with this file reproduces all 1697 non-hardware symbols of
+# the original sdkconfig exactly, zero differences. Only current symbol names
+# are used - no deprecated aliases - so this survives IDF upgrades.
+#
+# To use: place next to the top-level CMakeLists.txt, delete sdkconfig, and
+# build. IDF regenerates sdkconfig from this file.
+#
+
+# --- Target ---------------------------------------------------------------
+CONFIG_IDF_TARGET="esp32"
+
+# --- Partition table ------------------------------------------------------
+# Bluedroid with Classic BT, A2DP and HFP does not fit a default-size app.
+CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
+
+# --- Compiler -------------------------------------------------------------
+# -O2. Matters for the microphone task's per-sample float work.
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+
+# --- CPU ------------------------------------------------------------------
+# 240 MHz. Headroom for the voice-switched gate's float maths and for the
+# microphone task to keep up with RX DMA under Bluetooth radio load.
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+
+# --- Bluetooth: controller ------------------------------------------------
+CONFIG_BT_ENABLED=y
+CONFIG_BTDM_CTRL_MODE_BR_EDR_ONLY=y
+# One SCO/eSCO channel. This is the phone call's audio link.
+CONFIG_BTDM_CTRL_BR_EDR_MAX_SYNC_CONN=1
+# SCO audio over HCI, i.e. call audio arrives as PCM in software. This is what
+# makes bluetoothHandsFreeReceiveCallback() see the far end's samples at all,
+# and therefore what makes the echo gate's reference signal possible.
+CONFIG_BTDM_CTRL_BR_EDR_SCO_DATA_PATH_HCI=y
+
+# --- Bluetooth: Bluedroid host --------------------------------------------
+CONFIG_BT_CLASSIC_ENABLED=y
+# BLE off: this device is Classic-only. Saves a significant amount of RAM.
+# CONFIG_BT_BLE_ENABLED is not set
+CONFIG_BT_A2DP_ENABLE=y
+CONFIG_BT_HFP_ENABLE=y
+CONFIG_BT_HFP_AUDIO_DATA_PATH_HCI=y
+CONFIG_BT_SPP_ENABLED=y
+CONFIG_BT_BTC_TASK_STACK_SIZE=4096
+CONFIG_BT_BTU_TASK_STACK_SIZE=8092
+
+# --- Load-bearing, currently matching the IDF 6.0.1 default ---------------
+# Redundant today. Pinned deliberately: if a future IDF flips either of these,
+# the project breaks in ways that look like a hardware fault rather than a
+# config change. WBS is what gives you mSBC 16 kHz calls instead of CVSD 8 kHz.
+CONFIG_BT_HFP_CLIENT_ENABLE=y
+CONFIG_BT_HFP_WBS_ENABLE=y
+
+# ==========================================================================
+# INHERITED FROM AN OLDER IDF - review before keeping
+# ==========================================================================
+# Everything below differs from the IDF 6.0.1 default but has nothing to do
+# with Bluetooth audio. These are almost certainly values your sdkconfig
+# picked up under an older IDF and carried forward through upgrades, not
+# choices anyone made for this project.
+#
+# They are included because you asked to preserve all custom settings, and
+# dropping them silently would change behaviour. If you would rather adopt the
+# current IDF defaults, delete this whole block and rebuild - none of it is
+# referenced by main.c.
+#
+#   symbol                                      here    IDF 6.0.1 default
+#   COMPILER_ASSERT_NDEBUG_EVALUATE             y       n
+#   COMPILER_DISABLE_DEFAULT_ERRORS             y       n
+#   COMPILER_ORPHAN_SECTIONS_PLACE              y       n
+#   HTTPD_MAX_REQ_HDR_LEN                       512     1024
+#   LIBC_NEWLIB                                 y       n
+#   FATFS_LFN_NONE                              y       n
+#   FATFS_USE_DYN_BUFFERS                       n       y
+#   FREERTOS_IN_IRAM                            y       n
+#   LOG_COLORS                                  y       n
+#   LWIP_HOOK_IP6_INPUT_NONE                    y       n
+#   MBEDTLS_THREADING_C                         n       y
+#   MBEDTLS_SSL_KEEP_PEER_CERTIFICATE           y       n
+#   MBEDTLS_ECP_FIXED_POINT_OPTIM               y       n
+#   MBEDTLS_LARGE_KEY_SOFTWARE_MPI              n       y
+#   ESP_PROTOCOMM_SUPPORT_SECURITY_VERSION_0    y       n
+#   ESP_PROTOCOMM_SUPPORT_SECURITY_VERSION_1    y       n
+#   VFS_SUPPORT_TERMIOS                         y       n
+
+CONFIG_COMPILER_ASSERT_NDEBUG_EVALUATE=y
+CONFIG_COMPILER_DISABLE_DEFAULT_ERRORS=y
+CONFIG_COMPILER_ORPHAN_SECTIONS_PLACE=y
+CONFIG_HTTPD_MAX_REQ_HDR_LEN=512
+CONFIG_LIBC_NEWLIB=y
+CONFIG_FATFS_LFN_NONE=y
+# CONFIG_FATFS_USE_DYN_BUFFERS is not set
+CONFIG_FREERTOS_IN_IRAM=y
+CONFIG_LOG_COLORS=y
+CONFIG_LWIP_HOOK_IP6_INPUT_NONE=y
+# CONFIG_MBEDTLS_THREADING_C is not set
+CONFIG_MBEDTLS_SSL_KEEP_PEER_CERTIFICATE=y
+CONFIG_MBEDTLS_ECP_FIXED_POINT_OPTIM=y
+# CONFIG_MBEDTLS_LARGE_KEY_SOFTWARE_MPI is not set
+CONFIG_ESP_PROTOCOMM_SUPPORT_SECURITY_VERSION_0=y
+CONFIG_ESP_PROTOCOMM_SUPPORT_SECURITY_VERSION_1=y
+CONFIG_VFS_SUPPORT_TERMIOS=y
