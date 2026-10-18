@@ -119,7 +119,9 @@ export default class RoomStateManager {
     this.container.classList.remove('status-loading');
     this.setRefreshing(true);
     try {
-      const resp = await sendCmd('main', App.currentRoom + 'status', '');
+      // the status light turns red on a failure, so no popup as well
+      const resp = await sendCmd('main', App.currentRoom + 'status', '',
+        { quiet: true });
       // isRunning belongs to whoever replaced us, so it is left alone
       if (this.stale(gen)) {
         return;

@@ -287,7 +287,7 @@ Each feature larger than a room button is a class in its own module, and anythin
 | Area | Exports |
 | --- | --- |
 | Timing | `refreshInterval()` 10 s, `timeoutInterval()` 50 s, `sleep`, `requestThrottle` (with `cancel()`), `trackPromise`, `singleFlight`, `awaitQuiet` |
-| API | `sendCmd(action, arg, var)` → parsed JSON, or null with the failure reported; `loadMenu(url)` |
+| API | `sendCmd(action, arg, var, options)` → parsed JSON, or null with the failure reported (`{ quiet: true }` logs it to the console only); `loadMenu(url)` |
 | Files | `fileURL`, `readFile`, `writeFile` (retried after 250 and 750 ms on a dropped connection or 502–504), `savePOST`, `sendFileBeacon`, `reportFileFailure(what)` (reports why the last file request failed) |
 | Text | `splitMenuData`, `cleanString`, `splitByDelimiter`, `isNumeric`, `parsePalette`, `menuRow`, `indicator` |
 | DOM | `html` tag, `makeElement`, `svgElement`, `promptWindow`, `onButtons`, `setSpinner`, `classDisplay`, `setDisplayById` |
@@ -302,14 +302,14 @@ Each feature larger than a room button is a class in its own module, and anythin
 
 | Export | What it does |
 | --- | --- |
-| `showPopup(message, options)` | The popup at the top of the page, 4 s; a plain notice ("[lists] password changed.") is markup, an error passes a node, a class, a duration and a rank |
+| `showPopup(message, options)` | The popup at the top of the page, 4 s; a plain notice ("[lists] password changed.") is markup, an error passes a node, a class and a duration |
 | `reportError(what, error)` | Logs a caught failure and shows it as one of the two kinds below, whichever the error is |
 | `reportNotConnected(what, reason)` · `reportException(what, reason)` | One kind directly, with a sentence of its own |
 | `HttpError(status, body)` | Thrown for an error answer, so its status and text reach the popup |
 | `logError(what, error)` | Console only, no popup |
 | `installErrorHandlers()` | Reports uncaught errors and rejections; called once from `main.js` |
 
-**Not connected** (wifi-slash icon) is a request that got no answer (Safari "Load failed", Chrome "Failed to fetch"), the device being offline, a 502–504 from lighttpd while the API is down, or LED hosts that did not answer. **Exception has occurred** (alert icon) is anything else: an error status, an answer that is not JSON, an error thrown in the page. Both show a sentence, then rows for what the page was doing (`what`, a gerund phrase: "sending lrxmit wl1_dual"), the error, the server's answer and where it was thrown, for 7 s, and log it all to the console under `[Automate]`. While an error is on screen, a later one of the same or lower rank (Not connected outranks an exception) goes to the console only, since the first is usually the cause of the rest.
+**Not connected** (wifi-slash icon) is a request that got no answer (Safari "Load failed", Chrome "Failed to fetch"), the device being offline, a 502–504 from lighttpd while the API is down, or LED hosts that did not answer. **Exception has occurred** (alert icon) is anything else: an error status, an answer that is not JSON, an error thrown in the page. Both show a sentence, then rows for what the page was doing (`what`, a gerund phrase: "sending lrxmit wl1_dual"), the error, the server's answer and where it was thrown, for 7 s, and log it all to the console under `[Automate]`. The newest error replaces the one on screen, so the popup always names the latest failure. The room status refresh shows no popup at all (`sendCmd(…, { quiet: true })`): its light turns red instead, and the failure is logged. `drawMenu()` given no data only logs, since the request that came back empty has already reported why.
 
 Files are pipe-delimited text, one row per line. Lists rows are `LIST_ID|LIST_NAME|ITEM_ID|ITEM_NAME|CHECK_STATE` with row order as the order; stored names are printable ASCII without `|`, and an item's line breaks are stored as `~`.
 

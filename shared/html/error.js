@@ -29,20 +29,15 @@ const LOG_PREFIX = '[Automate]';
 const ANSWER_MAX_CHARS = 160;
 const COMMAND_MAX_CHARS = 60;
 
-// The two kinds of failure. A popup still on screen is only replaced by a
-// failure of a higher rank: the first failure is usually the cause of the
-// ones that follow it (a dropped request, then a menu with nothing to draw),
-// and those go to the console only. An ordinary message ranks 0.
-const MESSAGE_RANK = 0;
+
+// the two kinds of failure
 const ERROR_KINDS = {
   connection: {
-    rank: 2,
     icon: 'fad fa-wifi-slash',
     title: 'Not connected',
     popupClass: 'popup-error popup-error--connection'
   },
   exception: {
-    rank: 1,
     icon: 'fad fa-exclamation-triangle',
     title: 'Exception has occurred',
     popupClass: 'popup-error popup-error--exception'
@@ -74,7 +69,6 @@ const HTTP_STATUS_TEXT = {
 //// message popup ////
 
 let messagePopupTimer = null;
-let messagePopupRank = MESSAGE_RANK;
 
 // lets the page teardown drop a pending fade
 export function clearPopupTimer() {
@@ -84,15 +78,10 @@ export function clearPopupTimer() {
   }
 }
 
-// whether a popup is on screen and not yet fading
-function popupShowing() {
-  return messagePopupTimer !== null;
-}
-
 // Shows a message in the popup at the top of the page for four seconds. The
 // message is markup, or a node the caller built. options.popupClass styles
-// one kind of popup and goes with its message, options.duration is its time
-// on screen in ms, and options.rank is an error's rank (see ERROR_KINDS).
+// one kind of popup and goes with its message, and options.duration is its
+// time on screen in ms.
 // showPopup("[lists] saved.")
 export function showPopup(message, options = {}) {
   let popupWindow = document.getElementById(POPUP_ID);
@@ -129,14 +118,9 @@ export function showPopup(message, options = {}) {
   if (options.duration) {
     duration = options.duration;
   }
-  messagePopupRank = MESSAGE_RANK;
-  if (options.rank) {
-    messagePopupRank = options.rank;
-  }
   clearPopupTimer();
   messagePopupTimer = setTimeout(() => {
     messagePopupTimer = null;
-    messagePopupRank = MESSAGE_RANK;
     // the listener above removes the window once the fade ends
     popupWindow.classList.add(POPUP_FADE_CLASS);
   }, duration);
@@ -246,8 +230,8 @@ function exceptionSentence(error) {
   return 'Part of the page failed.';
 }
 
-// Logs a failure and shows it, unless a failure of at least its rank is on
-// screen already; then it goes to the console only.
+// Logs a failure and shows it in place of whatever is on screen, so the
+// popup always names the newest failure.
 function presentError(kind, what, sentence, error) {
   const logLine = `${LOG_PREFIX} ${kind.title} while ${what}: ${sentence}`;
   if (error === null) {
@@ -255,14 +239,10 @@ function presentError(kind, what, sentence, error) {
   } else {
     console.error(logLine, error);
   }
-  if (popupShowing() && messagePopupRank >= kind.rank) {
-    return;
-  }
   const content = errorPopupContent(kind, sentence, errorRows(what, error));
   showPopup(content, {
     popupClass: kind.popupClass,
-    duration: ERROR_MS,
-    rank: kind.rank
+    duration: ERROR_MS
   });
 }
 

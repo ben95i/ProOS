@@ -7,7 +7,7 @@
 // encryption in encrypt.js, and the message popup and error reports in
 // error.js.
 
-import { HttpError, reportError, reportNotConnected,
+import { HttpError, reportError, reportNotConnected, logError,
   describeCommand } from './error.js';
 
 const REFRESH_INTERVAL = 10; // seconds, room status refresh
@@ -37,9 +37,11 @@ function encodeArg(value) {
 // Sends one command to the device API and returns the parsed JSON answer, or
 // null when the request failed, which is reported in the error popup. The
 // body is read inside the same try, so a connection that drops part way
-// through an answer is reported as lost too.
+// through an answer is reported as lost too. options.quiet logs a failure to
+// the console only, for a caller that shows failures itself.
 // sendCmd('main', 'brxmit', 'brtvon')
-export async function sendCmd(act, arg1, arg2 = '') {
+// sendCmd('main', 'lrstatus', '', { quiet: true })
+export async function sendCmd(act, arg1, arg2 = '', options = {}) {
   const url = location.protocol + "//" + location.hostname + "/api?var=" +
     encodeArg(arg2) + "&arg=" + encodeArg(arg1) + "&action=" + encodeArg(act);
   try {
@@ -50,7 +52,12 @@ export async function sendCmd(act, arg1, arg2 = '') {
     }
     return JSON.parse(answerText);
   } catch (error) {
-    reportError(`sending ${describeCommand(act, arg1, arg2)}`, error);
+    const what = `sending ${describeCommand(act, arg1, arg2)}`;
+    if (options.quiet === true) {
+      logError(what, error);
+    } else {
+      reportError(what, error);
+    }
     return null;
   }
 }

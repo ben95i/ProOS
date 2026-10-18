@@ -18,7 +18,7 @@
 import { classDisplay, cleanString, splitMenuData, isNumeric, splitByDelimiter,
   sendCmd, loadMenu, fileURL, makeElement, setSpinner, menuRow,
   indicator, requestThrottle, dropdownButtonTemplate } from './utils.js';
-import { reportException, reportNotConnected } from './error.js';
+import { reportException, reportNotConnected, logError } from './error.js';
 import { subwooferVolumeEnabled, subwooferVolumeMode,
   SUBWOOFER_CLASS } from './volctrl.js';
 import ToggleSwitch, { toggleSwitchCallback } from './switch.js';
@@ -142,6 +142,11 @@ export function drawMenu(data, menuId, config = undefined) {
     twoColumnRows = config.TwoColumns;
   }
   removeDynMenus();
+  if (data === null || data === undefined) {
+    // the request that came back empty has already reported why
+    logError(`drawing the ${menuId} menu`, 'no data came back to draw');
+    return;
+  }
   if (!data || typeof data !== 'string') {
     reportException(`drawing the ${menuId} menu`, 'No data came back to draw.');
     return;
