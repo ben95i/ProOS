@@ -188,14 +188,10 @@ function showBathroomMode() {
 // setting's place in it, and `key` is its name in the _set command
 const BTHR_CONFIG_FIELDS = 5;
 const BTHR_SETTINGS = [
-  { key: 'rangemin', field: 0, kind: 'range', label: 'Nearest detection',
-    min: 0, max: 1000, partner: 'rangemax' },
-  { key: 'rangemax', field: 1, kind: 'range', label: 'Farthest detection',
-    min: 0, max: 1000, partner: 'rangemin' },
+  { key: 'timeout', field: 3, kind: 'delay', label: 'Off delay', min: 10, max: 3600 }, // in seconds
   { key: 'presence', field: 2, kind: 'switch', label: 'Presence hold' },
-  // the light takes up to 9999 s; the slider stops at an hour
-  { key: 'timeout', field: 3, kind: 'delay', label: 'Off delay',
-    min: 6, max: 3600 }
+  { key: 'rangemin', field: 0, kind: 'range', label: 'Nearest detection', min: 0, max: 762, partner: 'rangemax' }, // in cm
+  { key: 'rangemax', field: 1, kind: 'range', label: 'Farthest detection', min: 0, max: 762, partner: 'rangemin' } // in cm
 ];
 
 // The off delay runs 6 s to an hour, too wide for a plain slider: the short
@@ -212,7 +208,7 @@ const BTHR_TITLE_SENSOR = 'Sensor Status';
 const BTHR_DISABLED_CLASS = 'is-disabled';
 // A change, or what went wrong, is shown in place of the heading for this
 // long, and then the heading comes back.
-const BTHR_MESSAGE_MS = 5000;
+const BTHR_MESSAGE_MS = 3000;
 const BTHR_TITLE_ERROR_CLASS = 'bthr__title--error';
 // on the heading while a message stands in its place: smaller and grey
 const BTHR_TITLE_MESSAGE_CLASS = 'bthr__title--message';
@@ -221,8 +217,8 @@ const BTHR_PROMPT_ID = 'bthr__prompt';
 // the size of the window's six icon buttons
 const BTHR_BUTTON_CLASS = 'button_left_txtwin';
 // the size the presence switch is drawn at
-const BTHR_SWITCH_WIDTH = '64px';
-const BTHR_SWITCH_HEIGHT = '30px';
+const BTHR_SWITCH_WIDTH = '75px';
+const BTHR_SWITCH_HEIGHT = '35px';
 
 // Opens the Settings window and fills it from the light. A second press of
 // Settings while it is open does nothing.

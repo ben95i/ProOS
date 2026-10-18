@@ -33,7 +33,7 @@ MODULE="$1"
 CMD="$2"
 INIT_HOST="$3"
 ## names that are folders in the repo but not hosts
-DENIED_NAMES=("logon" "login" ".ssh" "rpi" "wkst" "shared" "sources")
+DENIED_NAMES=("logon" "login" "rpi" "wkst" "shared" "router")
 ## connection settings
 SSH_PORT="22"
 SSH_TIMEOUT="450ms"
@@ -96,15 +96,14 @@ KEY_NAME(){
   basename "$keyFile" .rsa
 }
 
-## Returns 0 when a module folder is a server (lxc.conf, qemu.conf or pc.conf marker, or the router).
+## Returns 0 when a module folder is a server (lxc.conf, qemu.conf or pc.conf marker).
 ## Example: IS_SERVER_MODULE pve  ->  0,  IS_SERVER_MODULE brpi  ->  1
 IS_SERVER_MODULE(){
   local moduleName="$1"
   local moduleDir="$ROOT_DIR/$moduleName"
   if [ -e "$moduleDir/qemu.conf" ] || \
      [ -e "$moduleDir/lxc.conf" ] || \
-     [ -e "$moduleDir/pc.conf" ] || \
-     [ "$moduleName" == "router" ]; then
+     [ -e "$moduleDir/pc.conf" ]; then
     return 0
   fi
   return 1
@@ -549,14 +548,10 @@ REBOOT_HOST(){
   REMOTE_RUN "reboot"
 }
 
-## Opens a shell on targetHost (admin on the router, root elsewhere), exiting when it is down.
+## Opens a shell on targetHost, exiting when it is down.
 SSH_LOGIN(){
-  local loginUser="root"
   CHECK_HOST_ONLINE "yes"
-  if [ "$MODULE" == "router" ]; then
-    loginUser="admin"
-  fi
-  SSH_AS "$loginUser"
+  SSH_AS "root"
 }
 
 ## Runs the apt upgrades on every server folder (one with an lxc.conf or qemu.conf), one at a time.
@@ -620,8 +615,8 @@ DEPLOY_SERVER(){
   cp -rf "$ROOT_DIR/$MODULE/config" "$workFolder/"
   if [ "$MODULE" == "automate" ]; then
     echo "Copying shared software..."
-    cp -rf "$ROOT_DIR/shared/html" "$workFolder/config/"
-    cp -rf "$ROOT_DIR/shared/nodeapi" "$workFolder/config/"
+    cp -rvf "$ROOT_DIR/shared/html" "$workFolder/config/"
+    cp -rvf "$ROOT_DIR/shared/nodeapi" "$workFolder/config/"
   fi
   echo "Compressing files..."
   COPYFILE_DISABLE=true tar -C "$workFolder" -cf "$workFolder/config.tar" config
@@ -796,10 +791,6 @@ PRGM_INIT(){
     hostMode="pi"
   fi
   if [ "$hostMode" == "nonpi" ]; then
-    if [ "$MODULE" == "router" ] && [ -n "$CMD" ]; then
-      echo "Router login cannot contain arguments!"
-      EXIT_PRGM
-    fi
     SSH_IDENTITY "$KEYS_DIR/$MODULE.rsa"
     targetHost="$MODULE$DOMAIN"
     if [ "$CMD" == "sync" ]; then
