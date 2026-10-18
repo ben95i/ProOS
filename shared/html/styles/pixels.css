@@ -104,22 +104,6 @@
   margin-top: 2px;
   font-size: 16px; /* a step under the 18px name */
   color: #c1c1c1;
-  transition: opacity .2s ease;
-}
-
-/* a state line that has just changed fades in (pixelsShowState() in
-   pixels.js), rather than the new text appearing at once */
-.pixels__state--fade {
-  animation: pixels-fade-in .3s ease-out;
-}
-
-@keyframes pixels-fade-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
 }
 
 /* the solid colour a host is set to, ringed so a dark colour still shows on

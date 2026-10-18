@@ -1,8 +1,0 @@
-[Unit]
-Description=Restart X11 every 30 days
-
-[Timer]
-OnActiveSec=30d
-
-[Install]
-WantedBy=timers.target

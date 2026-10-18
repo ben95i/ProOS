@@ -56,8 +56,6 @@ const PIXELS_BUTTON_CLASS = 'button_left_txtwin';
 const PIXELS_LOADING_CLASS = 'is-loading';
 const PIXELS_DOWN_CLASS = 'is-down';
 const PIXELS_MESSAGE_ERROR_CLASS = 'pixels__message--error';
-// on a state line that has just changed, to fade it in (pixels.css)
-const PIXELS_STATE_FADE_CLASS = 'pixels__state--fade';
 // the Refresh icon, which turns while the hosts are being asked
 const PIXELS_REFRESH_ICON_ID = 'pixels__refresh-icon';
 const PIXELS_SPIN_CLASS = 'fa-spin';
@@ -305,7 +303,7 @@ function pixelsHostBox(pixelsWindow, host, hostIndex) {
     url: host.url,
     box: box,
     stateLine: stateLine,
-    // what the state line shows, so an unchanged status is not faded in again
+    // what the state line shows, so an unchanged status is not redrawn
     stateKey: '',
     slider: slider,
     // the animation frame of a slider moving to a new level, or null
@@ -356,7 +354,7 @@ function pixelsShowHost(pixelsWindow, hostControls, status) {
   hostControls.slider.disabled = isDown;
   if (isDown) {
     pixelsStopSlide(hostControls);
-    // so the line fades in again when the host comes back
+    // so the line is drawn again when the host comes back
     hostControls.stateKey = '';
     return;
   }
@@ -415,7 +413,7 @@ function pixelsStopSlide(hostControls) {
   hostControls.slideFrame = null;
 }
 
-// Writes a host's state line, and fades it in when it says something new:
+// Writes a host's state line when it says something new, with no fade:
 //   { state: 'active', effect: 'maze' }    -> "Maze is active"
 //   { state: 'paused', effect: 'maze' }    -> "Maze is paused"
 //   { state: 'color', color: 'FF8800' }    -> an orange dot, then "is set"
@@ -449,12 +447,6 @@ function pixelsShowState(pixelsWindow, hostControls, status) {
   } else {
     stateLine.textContent = lineText;
   }
-  // The fade is a CSS animation, which runs again only once the class has
-  // come off and the browser has seen it gone: reading offsetWidth makes it
-  // lay the line out without the class before it goes back on.
-  stateLine.classList.remove(PIXELS_STATE_FADE_CLASS);
-  void stateLine.offsetWidth;
-  stateLine.classList.add(PIXELS_STATE_FADE_CLASS);
 }
 
 // Asks one host for its status. sendCmd() answers the parsed reply: the

@@ -457,8 +457,8 @@ async function livingRoomStatus() {
     ]);
     // the lamp answers both of its channels as "lamp~backlight"
     const [lampMain, lampBacklight] = splitByDelimiter(lamp, '~');
-    lrRoom.addDevice('Main Lamp', lampMain);
-    lrRoom.addDevice('Backlight', lampBacklight);
+    lrRoom.addDevice('Floor Lamp', lampMain);
+    lrRoom.addDevice('Lamp Backlight', lampBacklight);
     lrRoom.addDevice('Desktop PC', desktop);
     lrRoom.addDevice('Stereo System', stereo);
     lrRoom.updateRoomState();
@@ -543,10 +543,12 @@ async function executeMain(baseWWW, firstArg, secondArg) {
             return "OK";
         case "allon":
             bedroomOn();
+            bathroomOn();
             livingRoomOn(baseWWW);
             return "OK";
         case "alloff":
             bedroomOff();
+            bathroomOff();
             livingRoomOff(baseWWW);
             return "OK";
         case "lrxmit": {
