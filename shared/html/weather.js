@@ -5,6 +5,7 @@
 // The API answers { location, temperature, condition, humidity, timeOfDay }.
 
 import { makeElement } from './utils.js';
+import { logError } from './error.js';
 
 const REFRESH_MS = 60 * 1000; // one minute
 const ANCHOR_ID = 'weather_anchor';
@@ -113,7 +114,7 @@ export default class WeatherWidget {
       this._updateWeatherUI();
     } catch (error) {
       if (this._stale(gen)) return;
-      console.error('Failed to fetch weather data:', error);
+      logError('reading the weather', error);
       this._setSpinner(false);
       if (this.iconElement) {
         this.iconElement.className = ERROR_ICON;
@@ -154,7 +155,7 @@ export default class WeatherWidget {
   _renderIcon() {
     this.container = document.getElementById(ANCHOR_ID);
     if (!this.container) {
-      console.error(`${ANCHOR_ID} not found in the DOM.`);
+      logError('drawing the weather icon', `${ANCHOR_ID} not found in the DOM.`);
       return;
     }
     this.iconElement = makeElement('i', DEFAULT_ICON);

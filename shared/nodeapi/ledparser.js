@@ -15,7 +15,7 @@ const LEVEL_READ_TIMEOUT = 1500; // in (ms)
 const ANSWER_WAIT = 1500; // in (ms)
 
 // The page reads this prefix as "some hosts did not answer" and shows the
-// message (LED_NO_ANSWER in menus.js). The Pis' own replies never start
+// message (LED_NO_ANSWER in dropdowns.js). The Pis' own replies never start
 // with it.
 const NO_ANSWER_PREFIX = "No answer from";
 

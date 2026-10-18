@@ -11,7 +11,7 @@
 
 import { sendCmd, readFile, splitMenuData, promptWindow, onButtons,
   makeElement, requestThrottle, gridButtonTemplate } from './utils.js';
-import { removeDropdowns, SLIDER_MS } from './menus.js';
+import { removeDropdowns, SLIDER_MS } from './dropdowns.js';
 
 // the LED hosts, one per line as URL|NAME; nodeapi/ledparser.js sends
 // every Pixels command to the same list

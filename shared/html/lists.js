@@ -47,11 +47,14 @@
 // A list added while the encrypted lists are open is one of them; one added
 // while they are shut is plain. The lock in the corner is the switch.
 
-import { splitMenuData, cleanString, isNumeric, removeWindow, showPopup,
+import { splitMenuData, cleanString, isNumeric, removeWindow,
   dragGripElement, DragSort, FileLock, readFile, writeFile, sendFileBeacon,
-  html, FileCrypt, cryptoReady, isCryptBlob, cryptContext, encryptText,
-  searchRowElement, searchTerm, searchMatches, makeElement, singleFlight,
-  trackPromise, awaitQuiet, gridButtonTemplate } from './utils.js';
+  html, searchRowElement, searchTerm, searchMatches, makeElement,
+  singleFlight, trackPromise, awaitQuiet, gridButtonTemplate,
+  reportFileFailure } from './utils.js';
+import { showPopup, reportException } from './error.js';
+import { FileCrypt, cryptoReady, isCryptBlob, cryptContext,
+  encryptText } from './encrypt.js';
 
 const FILE_NAME = 'lists.save';
 const LOCK_FILE = 'lists-lock.save';
@@ -901,7 +904,7 @@ export default class Lists {
       return;
     }
     if (this.store.online === false) {
-      warn("server connection not available.");
+      reportFileFailure('opening the lists');
     }
     this.render();
   }
@@ -1909,7 +1912,7 @@ export default class Lists {
   async cryptState() {
     const state = await this.runBusy(() => this.store.crypt.status());
     if (state === null) {
-      warn("server connection not available.");
+      reportFileFailure('reading the lists password record');
     }
     return state;
   }
@@ -1944,7 +1947,7 @@ export default class Lists {
   // memory. A write that fails leaves everything open rather than lose it.
   async lockLists() {
     if (this.store.dirty === true && !await this.saveOut()) {
-      warn("changes not saved, still unlocked.");
+      reportFileFailure('saving the lists before locking them');
       return false;
     }
     await this.store.lockUp();
@@ -2049,7 +2052,8 @@ export default class Lists {
     // whatever was already encrypted opens now
     const found = await this.runBusy(() => this.store.unsealAll());
     if (found.failed > 0) {
-      warn(`${found.failed} encrypted list(s) would not open.`);
+      reportException('unlocking the lists',
+        `${found.failed} encrypted list(s) would not open.`);
     }
     this.render();
   }

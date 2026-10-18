@@ -5,7 +5,7 @@
  *  the shared button and menu styles, so all that is left to it is the
  *  subwoofer mode its More... menu switches on.
  *
- *  Loaded after main.css and menus.css: .red_btn_menu has to come after
+ *  Loaded after main.css and dropdowns.css: .red_btn_menu has to come after
  *  .button to put its red over the button's own background.
  */
 

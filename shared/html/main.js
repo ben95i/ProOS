@@ -6,17 +6,20 @@
 // the page teardown.
 //
 // The rooms live in their own modules (livingrm.js, bedrm.js, bathrm.js),
-// the Server window in server.js, the dropdown menus in menus.js, and what
-// they share in utils.js.
+// the Server window in server.js, the dropdown menus in dropdowns.js, the
+// volume buttons the amp rooms share in volctrl.js, and what they share in
+// utils.js.
 
 import { classDisplay, cleanString, base64URLSafeEncode, sendCmd,
-  timeoutInterval, html, clearPopupTimer, clearVolumePopupTimer,
-  promptWindow, onButtons, setSpinner, setDisplayById, menuRow,
-  registerListeners, dispatchRegisteredListener, gridButtonTemplate,
+  timeoutInterval, html, promptWindow, onButtons,
+  setSpinner, setDisplayById, menuRow, registerListeners,
+  dispatchRegisteredListener, gridButtonTemplate,
   dropdownButtonTemplate } from './utils.js';
+import { clearVolumePopupTimer } from './volctrl.js';
+import { clearPopupTimer, installErrorHandlers } from './error.js';
 import { configureMenus, removeDropdowns, openDropdown, drawMenu,
   destroyActiveSwitches, beginMenuRequest, menuRequestCurrent,
-  showDynFileMenu, showPowerMenu, sendLeds } from './menus.js';
+  showDynFileMenu, showPowerMenu, sendLeds } from './dropdowns.js';
 import { LIVING_ROOM_CONFIG } from './livingrm.js';
 import { BEDROOM_CONFIG } from './bedrm.js';
 import { BATHROOM_CONFIG, closeBathroomSettings } from './bathrm.js';
@@ -67,6 +70,7 @@ window.App = {
 
 // main entry point
 window.addEventListener("DOMContentLoaded", () => {
+  installErrorHandlers();
   loadPage();
   loadFeatures();
 });
@@ -79,7 +83,7 @@ function loadPage() {
 
 function loadFeatures() {
   if (serverMode) serverFeatures();
-  App.mainMenu = new MainMenu();
+  App.mainMenu = new MainMenu({ isServer: serverMode });
   App.mainMenu.load();
   App.starBackground = new AnimatedBackground('star-canvas', starsAnimationEnabled());
   App.starBackground.activate();
@@ -255,7 +259,7 @@ function pickRoom(roomKey) {
   refreshRoomState();
 }
 
-// menus.js sits below this module and cannot import from it, so what its
+// dropdowns.js sits below this module and cannot import from it, so what its
 // rows and its close need from the page is handed over here
 configureMenus({
   closePageMenus: closePageMenus,
@@ -337,14 +341,9 @@ function topNavTemplate(f) {
   return `
 <div class="topnav nohide" data-app-injected>
   <div id="topnav-left">
-    ${f.isServer ? `
     <a id="btn-mainmenu">
       <i class="fad fa-list"></i>
-    </a>` : ''}
-    ${f.isPiLike ? `
-    <a id="btn-pimainmenu">
-      <i class="fad fa-list"></i>
-    </a>` : ''}
+    </a>
     ${f.isServer ? `
     <a id="btn-show-bookmarks">
       <i class="fad fa-star"></i>
@@ -371,24 +370,20 @@ function topNavTemplate(f) {
 }
 registerListeners({
   'btn-mainmenu':        () => App.mainMenu && App.mainMenu.showMenu(),
-  'btn-pimainmenu':      () => App.mainMenu && App.mainMenu.showPiMenu(),
   'btn-show-bookmarks':  () => showBookmarks(),
   'room_anchor':         () => openRoomDropdown(),
   'btn-add-bookmark':    () => App.bookmarks && App.bookmarks.addBookmark(),
   'nav_stats_menu':      () => showStatusMenu()
 });
 
-// mainmenu / pi-mainmenu are left empty here: their rows are written out in
-// MainMenu.MENU_HTML / PI_MENU_HTML, in the order they are drawn, so each
-// menu can be reordered in one place. The handlers for those ids are still
+// mainmenu is left empty here: its rows are written out in MainMenu.MENU_HTML
+// (server) and PI_MENU_HTML (Pi), in the order they are drawn, so each menu
+// can be reordered in one place. The handlers for those ids are still
 // registered below.
 function navDropdownsTemplate(f) {
   return `
 <div class="nav_dd_left" data-app-injected>
-  ${f.isServer ? `
-  <div class="dd-content dd-menu" id="mainmenu"></div>` : ''}
-  ${f.isPiLike ? `
-  <div class="dd-content dd-menu" id="pi-mainmenu"></div>` : ''}
+  <div class="dd-content dd-menu" id="mainmenu"></div>
   <div class="dd-content dd-menu" id="bookmarks"></div>
   <div class="dd-content dd-menu" id="roomstatus"></div>
   <div class="dd-content dd-menu" id="main-room-dropdown"></div>
@@ -398,10 +393,9 @@ function navDropdownsTemplate(f) {
 </div>`;
 }
 registerListeners({
-  'btn-about-main': () => App.mainMenu && App.mainMenu.aboutPrompt(),
-  'btn-about-pi':   () => App.mainMenu && App.mainMenu.aboutPrompt(),
-  'btn-log-pi':     () => openLogWindow(),
-  'btn-home-pi':    () => GoToHomePage()
+  'btn-about':   () => App.mainMenu && App.mainMenu.aboutPrompt(),
+  'btn-log-pi':  () => openLogWindow(),
+  'btn-home-pi': () => GoToHomePage()
 });
 
 // main control grid (server + LEDpi): the groups stack in one centred column,
@@ -426,8 +420,8 @@ function mainGridTemplate(f) {
         spinnerId: 'fc_leds-spinner',
         menuId: 'fc_leds-menu',
         menuContent: `
-          <a id="btn-cmd-leds-off"> Off<i class="fad fa-toggle-off"></i></a>
-          <a id="btn-cmd-leds-pause"> Pause<i class="fad fa-pause"></i></a>`
+          <a id="btn-cmd-leds-pause"> Pause<i class="fad fa-pause"></i></a>
+          <a id="btn-cmd-leds-off"> Off<i class="fad fa-toggle-off"></i></a>`
       })}
       ${dropdownButtonTemplate({
         buttonId: 'btn-ledeffectmenu',

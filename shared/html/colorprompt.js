@@ -11,8 +11,9 @@
 // each picked colour to a device.
 
 import { hexToRgb, rgbToHex, rgbToHexFromStyle, hsvToRgb, rgbToHsv,
-    parsePalette, readFile, sendCmd, showPopup,
+    parsePalette, readFile, sendCmd,
     gridButtonTemplate } from './utils.js';
+import { reportError } from './error.js';
 
 // the element the page keeps for the device colour prompt (drawn by main.js)
 const DEVICE_PROMPT_ANCHOR_ID = 'color-popup';
@@ -43,7 +44,7 @@ export function openColorPrompt(command, argument, title, threeArguments = false
     }
     sendCmd(action, firstArgument, secondArgument)
       .catch(sendError => {
-        showPopup("[ColorPrompt] failed to send color: " + sendError);
+        reportError(`sending the colour #${strippedHex}`, sendError);
       });
   }, {
     name: title

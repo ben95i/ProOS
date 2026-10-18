@@ -615,8 +615,8 @@ DEPLOY_SERVER(){
   cp -rf "$ROOT_DIR/$MODULE/config" "$workFolder/"
   if [ "$MODULE" == "automate" ]; then
     echo "Copying shared software..."
-    cp -rvf "$ROOT_DIR/shared/html" "$workFolder/config/"
-    cp -rvf "$ROOT_DIR/shared/nodeapi" "$workFolder/config/"
+    cp -rf "$ROOT_DIR/shared/html" "$workFolder/config/"
+    cp -rf "$ROOT_DIR/shared/nodeapi" "$workFolder/config/"
   fi
   echo "Compressing files..."
   COPYFILE_DISABLE=true tar -C "$workFolder" -cf "$workFolder/config.tar" config

@@ -18,7 +18,7 @@ There is no build step, test suite or linter in the repo; `html/` is served as w
 
 Automate is a one-page home automation site that runs the apartment's lights, audio, PCs, LEDs and doorway camera from a phone or browser. It is plain JavaScript ES modules with no framework: `index.html` loads `main.js`, which draws the whole page from template literals and imports one module per feature and one per room.
 
-The modules import in one direction only, so none of them can call back up: `utils.js` at the bottom, `menus.js` above it, the room modules (`livingrm.js`, `bedrm.js`, `bathrm.js`) and the Server window (`server.js`) above that, and `main.js` on top. What `menus.js` needs from the page (the rooms, the LED text scroller, the browser settings, the bookmarks and weather menus) is handed to it once by `configureMenus()` in `main.js`.
+The modules import in one direction only, so none of them can call back up: `error.js` (the message popup and error reports) at the bottom, `utils.js` above it, `volctrl.js` (the amp rooms' volume controls) and `dropdowns.js` above it, the room modules (`livingrm.js`, `bedrm.js`, `bathrm.js`) and the Server window (`server.js`) above that, and `main.js` on top. What `dropdowns.js` needs from the page (the rooms, the LED text scroller, the browser settings, the bookmarks and weather menus) is handed to it once by `configureMenus()` in `main.js`.
 
 One codebase serves three device models. `main.js` reads the model from the page's `<title>` at load and draws only that model's markup; markup for the other models never reaches the page.
 
@@ -52,7 +52,7 @@ Shared state lives on `window.App`: the service instances (room status, stars, l
 
 ### Dynamic menus
 
-All of the menu code is in `menus.js` (styles in `styles/menus.css`). Most dropdowns are filled from text rows, one per line, as `HOST|TYPE|NAME`; a row that sends a command carries `cmd~<host>~<command>` in its first field. `drawMenu(data, menuId, { TwoColumns, MenuScroll })` turns the rows into links, and `createListItem()` builds each one through the `ROW_BUILDERS` table, one function per row type. Each request stamps a token (`beginMenuRequest()`), and a reply that lands after another menu was opened is dropped.
+All of the menu code is in `dropdowns.js` (styles in `styles/dropdowns.css`). Most dropdowns are filled from text rows, one per line, as `HOST|TYPE|NAME`; a row that sends a command carries `cmd~<host>~<command>` in its first field. `drawMenu(data, menuId, { TwoColumns, MenuScroll })` turns the rows into links, and `createListItem()` builds each one through the `ROW_BUILDERS` table, one function per row type. Each request stamps a token (`beginMenuRequest()`), and a reply that lands after another menu was opened is dropped.
 
 `openDeviceMenu(config)` is the common path for a device button: open the dropdown, show the button spinner, send one command, build rows from the reply, draw. `showPowerMenu(target, menu)` is the on / off and slider menu, and `showInputMenu(config)` an amp's input list.
 
@@ -91,7 +91,7 @@ The server page is a top bar over three outlined button groups: Pixels and APT i
 - **Control**: Off and Pause, a brightness slider for the Fadecandy LEDs, and (server only) **More...**, which opens the Pixels window: one box per LED host in the `mainmenu` file with its name, a status line under it, a link to its page and its own brightness slider. Every host is asked for its status at once (`fc_host_status`), so a host that is down shows "Not available" in red without holding up the rest. The status line reads "Maze is active" or "Maze is paused" (the effect's name from the `ledeffectmenu` file), a dot in the colour then "is set" for a solid colour, or "Not active" when stopped or black; a slider sends `fc_host_set_<n>` to its host only, throttled while dragged and once more on release. Close and Refresh span the boxes' width. Refresh reads the host list and every status again, its icon turning until all have answered; while the list is unchanged the boxes stay, each slider gliding to its new level (one being held stays put) and a state line that changed fading in (`pixels.js`, `styles/pixels.css`).
 - **Animated**: two-column menu of LED effects from the `ledeffectmenu` file; its TextScroll entry opens the LED text scroller (colour, font, speed). Shuffle is picked on the server from the `ledshuffle` file, so every host plays the same effect; a Pi asked to shuffle on its own (the LED Pi page, the LEDwall's front button) picks from its own copy of the same file.
 
-Effects, Off, Pause and the text scroller send through `sendLeds()` in `menus.js`, which shows a popup naming any LED host that did not answer.
+Effects, Off, Pause and the text scroller send through `sendLeds()` in `dropdowns.js`, which shows a popup naming any LED host that did not answer.
 
 ### APT
 
@@ -111,7 +111,7 @@ The third group's legend shows the current room's icon and name, and its grid is
 
 Each room is a module of its own that exports its config (`LIVING_ROOM_CONFIG` in `livingrm.js`, `BEDROOM_CONFIG` in `bedrm.js`, `BATHROOM_CONFIG` in `bathrm.js`): a key, a name, an icon, a volume target and a grid template. The module also holds the room's button listeners, its menus and its windows, and `main.js` only collects the three configs into `ROOM_CONFIGS`. The key names the room's API commands: `<key>status`, `<key>on`, `<key>off`, and device commands go through `<key>xmit`.
 
-The grids are built from `dropdownButtonTemplate()` and `gridButtonTemplate()` in `utils.js` and `powerButtonTemplate()` in `menus.js`. The Pixels and APT groups and the text scroller in `main.js`, and the Server window's option panels in `server.js`, are built from the same two; both take an optional `buttonClass` (`svropt_button`, `button__sml`), and a button may have an icon, a label or both. The windows' own buttons (log, camera, bathroom settings, Pixels, bed, colour prompt, About, upload, lists, password and Wi-Fi prompts) are drawn with `gridButtonTemplate()` too. Three kinds stay written out: the temperature / humidity grid button (two icons), and the temperature window's and bookmark edit window's buttons, whose icon class sits on the button itself; every one of them has an id. The volume buttons, their handlers, the subwoofer mode and the volume popup are shared by the two rooms with an amp and live in `utils.js` (`volumeButtonsTemplate`, `volumeButtonListeners`, `sendVolume`, `showVolumePopup`).
+The grids are built from `dropdownButtonTemplate()` and `gridButtonTemplate()` in `utils.js` and `powerButtonTemplate()` in `dropdowns.js`. The Pixels and APT groups and the text scroller in `main.js`, and the Server window's option panels in `server.js`, are built from the same two; both take an optional `buttonClass` (`svropt_button`, `button__sml`), and a button may have an icon, a label or both. The windows' own buttons (log, camera, bathroom settings, Pixels, bed, colour prompt, About, upload, lists, password and Wi-Fi prompts) are drawn with `gridButtonTemplate()` too. Three kinds stay written out: the temperature / humidity grid button (two icons), and the temperature window's and bookmark edit window's buttons, whose icon class sits on the button itself; every one of them has an id. The volume buttons, their handlers, the subwoofer mode and the volume popup are shared by the two rooms with an amp and live in `volctrl.js` (`volumeButtonsTemplate`, `volumeButtonListeners`, `sendVolume`, `showVolumePopup`).
 
 | Room | Key | Volume target | Room status reads |
 | --- | --- | --- | --- |
@@ -263,7 +263,8 @@ Each feature larger than a room button is a class in its own module, and anythin
 
 | Module | Class | What it does |
 | --- | --- | --- |
-| `menus.js` | (functions) | Dropdowns, `drawMenu` / `createListItem`, the menu request token, power, input, file and API menus |
+| `dropdowns.js` | (functions) | Dropdowns, `drawMenu` / `createListItem`, the menu request token, power, input, file and API menus |
+| `volctrl.js` | (functions) | The amp rooms' volume buttons: `volumeButtonsTemplate`, `volumeButtonListeners`, `registerVolumeButtons`, `sendVolume`, the subwoofer mode (`subwooferVolumeEnabled`, `subwooferVolumeMode`), the volume popup (`showVolumePopup`, `clearVolumePopupTimer`) |
 | `livingrm.js` · `bedrm.js` · `bathrm.js` | (functions) | One room each: config, grid template, listeners, menus and windows |
 | `server.js` | (functions) | Server log window, option panels, armed command and send, password prompt, Wi-Fi windows, upload button |
 | `pixels.js` | (functions) | Pixels window: per-host brightness sliders and links for the LED hosts in the `mainmenu` file |
@@ -275,25 +276,40 @@ Each feature larger than a room button is a class in its own module, and anythin
 | `weather.js` | `WeatherWidget` | Weather in the top bar and its menu |
 | `bookmarks.js` | `Bookmarks` | Bookmarks menu, add / edit window, file and lock |
 | `lists.js` | `Lists`, `ListStore` | Lists window: lists and items, drag re-order, multi-select delete, completed toggles, per-list encryption, edit lock, connection status |
+| `encrypt.js` | `FileCrypt` | Browser-side encryption of a file, used by `lists.js` (with its key, blob and password record helpers): PBKDF2 (310,000 rounds) splits into an AES-256-GCM key kept in the tab and a verifier hashed into a `V1\|SALT\|ITERATIONS\|CHECK` record file; the key is never stored or sent to the server |
 | `upload.js` | `Uploader` | Photo and video upload in 1 MB chunks to `nodeapi/upload.js`, rebuilt under `/mnt/upload` |
 | `camera.js` | `CameraView` | Doorway live stream relayed by `nodeapi/camstream.js` (`/api/camera/<name>`), full screen |
 | `wifi.js` | `SSIDpwd()` | Guest Wi-Fi password for the QR window |
+| `error.js` | `HttpError` | The message popup and every failure report (see *Errors* below) |
 
 ### utils.js
 
 | Area | Exports |
 | --- | --- |
 | Timing | `refreshInterval()` 10 s, `timeoutInterval()` 50 s, `sleep`, `requestThrottle` (with `cancel()`), `trackPromise`, `singleFlight`, `awaitQuiet` |
-| API | `sendCmd(action, arg, var)` → parsed JSON or null; `loadMenu(url)` |
-| Files | `fileURL`, `readFile`, `writeFile` (retried after 250 and 750 ms on a dropped connection or 502–504), `savePOST`, `sendFileBeacon` |
+| API | `sendCmd(action, arg, var)` → parsed JSON, or null with the failure reported; `loadMenu(url)` |
+| Files | `fileURL`, `readFile`, `writeFile` (retried after 250 and 750 ms on a dropped connection or 502–504), `savePOST`, `sendFileBeacon`, `reportFileFailure(what)` (reports why the last file request failed) |
 | Text | `splitMenuData`, `cleanString`, `splitByDelimiter`, `isNumeric`, `parsePalette`, `menuRow`, `indicator` |
-| DOM | `html` tag, `makeElement`, `svgElement`, `promptWindow`, `onButtons`, `setSpinner`, `classDisplay`, `setDisplayById`, `showPopup` |
+| DOM | `html` tag, `makeElement`, `svgElement`, `promptWindow`, `onButtons`, `setSpinner`, `classDisplay`, `setDisplayById` |
 | Buttons | `registerListeners`, `dispatchRegisteredListener`, `gridButtonTemplate`, `dropdownButtonTemplate` |
-| Volume | `volumeButtonsTemplate`, `volumeButtonListeners`, `registerVolumeButtons`, `sendVolume`, `subwooferVolumeEnabled`, `subwooferVolumeMode`, `showVolumePopup`, `clearVolumePopupTimer` |
 | Colour | `hexToRgb`, `rgbToHex`, `hsvToRgb`, `rgbToHsv`, `mapNumber` |
 | Search and drag | `searchRowElement`, `searchTerm`, `searchMatches`, `DragSort` |
 | Edit lock | `FileLock`: a lock file beside the data holding one row, `OWNER_TOKEN\|TIMESTAMP`, kept alive by a heartbeat; `onLost()` fires when another window takes it |
-| Encryption | `FileCrypt` and helpers: PBKDF2 (310,000 rounds) splits into an AES-256-GCM key kept in the tab and a verifier hashed into a `V1\|SALT\|ITERATIONS\|CHECK` record file; the key is never stored or sent to the server |
+
+### Errors
+
+`error.js` holds the message popup and every report of a failure, styled by `styles/error.css`. It imports nothing, so `utils.js` and every other module can use it.
+
+| Export | What it does |
+| --- | --- |
+| `showPopup(message, options)` | The popup at the top of the page, 4 s; a plain notice ("[lists] password changed.") is markup, an error passes a node, a class, a duration and a rank |
+| `reportError(what, error)` | Logs a caught failure and shows it as one of the two kinds below, whichever the error is |
+| `reportNotConnected(what, reason)` · `reportException(what, reason)` | One kind directly, with a sentence of its own |
+| `HttpError(status, body)` | Thrown for an error answer, so its status and text reach the popup |
+| `logError(what, error)` | Console only, no popup |
+| `installErrorHandlers()` | Reports uncaught errors and rejections; called once from `main.js` |
+
+**Not connected** (wifi-slash icon) is a request that got no answer (Safari "Load failed", Chrome "Failed to fetch"), the device being offline, a 502–504 from lighttpd while the API is down, or LED hosts that did not answer. **Exception has occurred** (alert icon) is anything else: an error status, an answer that is not JSON, an error thrown in the page. Both show a sentence, then rows for what the page was doing (`what`, a gerund phrase: "sending lrxmit wl1_dual"), the error, the server's answer and where it was thrown, for 7 s, and log it all to the console under `[Automate]`. While an error is on screen, a later one of the same or lower rank (Not connected outranks an exception) goes to the console only, since the first is usually the cause of the rest.
 
 Files are pipe-delimited text, one row per line. Lists rows are `LIST_ID|LIST_NAME|ITEM_ID|ITEM_NAME|CHECK_STATE` with row order as the order; stored names are printable ASCII without `|`, and an item's line breaks are stored as `~`.
 
@@ -301,8 +317,8 @@ Files are pipe-delimited text, one row per line. Lists rows are `LIST_ID|LIST_NA
 
 CSS is one sheet per component under `styles/`, and the order of the `<link>` tags in `index.html` matters: several component rules beat a `main.css` rule only by coming after it.
 
-1. `main.css`: fonts (JosefinSans), the palette, buttons, prompts, popups, spinners. Must load first.
-2. `menus.css`, then `livingrm.css`, `bedrm.css`, `bathrm.css`, then `server.css`: the dropdown menus and their rows, each room's own rules (subwoofer mode, bed window, bathroom settings), and the Server window (log size, options panels, password and Wi-Fi prompts). Cut out of `main.css` and kept directly after it, in this order, so they meet every later sheet as they did before.
+1. `main.css`: fonts (JosefinSans), the palette, buttons, prompts, popups, spinners. Must load first. `error.css` (the message popup and its error forms) comes straight after it.
+2. `dropdowns.css`, then `livingrm.css`, `bedrm.css`, `bathrm.css`, then `server.css`: the dropdown menus and their rows, each room's own rules (subwoofer mode, bed window, bathroom settings), and the Server window (log size, options panels, password and Wi-Fi prompts). Cut out of `main.css` and kept directly after it, in this order, so they meet every later sheet as they did before.
 3. `groups.css`: the outlined Pixels, APT and room groups, and the landscape layout.
 4. `stars.css`, `roomstate.css`, `weather.css`, `switch.css`, `upload.css`, `camera.css`, `colorprompt.css`, `pixels.css`, `bookmarks.css`.
 5. `lists.css`: last, since it holds the drag-handle and search-row rules the bookmarks menu also uses.
@@ -319,8 +335,9 @@ The CSS rules to keep (`calc()`, `:hover`, translucency, the palette) are in `..
 
 Where new work goes (code style rules, including buttons, listeners and helpers, are in `../CODESTYLE.md`):
 
-- A room's template, listeners, menus and windows live in its own module and sheet; code two rooms share goes in `utils.js`, and anything that draws or opens a menu in `menus.js`. A new room exports its config and is added to `ROOM_CONFIGS` in `main.js`. A feature that stands on its own is a class in its own module with its own sheet.
-- Imports go downwards only (`main.js` → rooms and `server.js` → `menus.js` → `utils.js`); a lower module that needs something from the page takes it as a parameter or through `configureMenus()`.
+- A room's template, listeners, menus and windows live in its own module and sheet; code two rooms share goes in `utils.js` (the volume controls in `volctrl.js`), and anything that draws or opens a menu in `dropdowns.js`. A new room exports its config and is added to `ROOM_CONFIGS` in `main.js`. A feature that stands on its own is a class in its own module with its own sheet.
+- Imports go downwards only (`main.js` → rooms and `server.js` → `dropdowns.js` → `volctrl.js` → `utils.js` → `error.js`); a lower module that needs something from the page takes it as a parameter or through `configureMenus()`.
 - Read and write state files through the site's file API, never a separate store.
+- Report failures through `error.js` (`reportError` around a request, `reportFileFailure` after a failed `readFile` / `writeFile`), never a hand-written popup; `showPopup` is for notices.
 - A new API command is a case in `executeMain()`, or an entry in a room's code table; a service with its own route registers it from its own module, as `upload.js` and `camstream.js` do. Query values must fit the API's character set, so free text goes as URL-safe base64.
 - Pico firmware answers the `callPico` form: `http://<host>:4000/api?<cmd>,,<value>~`, with errors as text under HTTP 200.

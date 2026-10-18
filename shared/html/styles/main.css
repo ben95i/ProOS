@@ -5,7 +5,7 @@
  *  font faces, the :root palette, the button styles, the shared spinners and
  *  the keyframes.
  *
- *  The dropdown menus are in menus.css, each room's own rules in
+ *  The dropdown menus are in dropdowns.css, each room's own rules in
  *  livingrm.css, bedrm.css and bathrm.css, and the Server window's in
  *  server.css. Those five load directly after this file and in that order,
  *  ahead of every other component sheet, so
@@ -463,12 +463,12 @@ input.chkbox {
 .dd-content a.mainmenu-colorbox {
   border-radius: 5px;
   margin: 5px;
-  /* the same sum as the stars row (menus.css) -- 8px out, 8px in */
+  /* the same sum as the stars row (dropdowns.css) -- 8px out, 8px in */
   padding-left: 8px;
   padding-right: 8px;
 }
 
-/* Every icon in the two main menus and the room menu, in a box of one width
+/* Every icon in the main menu and the room menu, in a box of one width
    and centred in it. The duotone glyphs are not all the same width, so left
    to themselves they sit a few pixels apart down the menu; this is the same
    thing Font Awesome's own fa-fw does. The child combinator keeps it off
@@ -476,7 +476,6 @@ input.chkbox {
    all. The room selector's icon in the nav takes the same box, so it matches
    the rows of the menu it opens. */
 #mainmenu a > i,
-#pi-mainmenu a > i,
 #main-room-dropdown a > i,
 #current-room-icon {
   flex-shrink: 0;
@@ -621,19 +620,6 @@ html.theme-light .thermometer .temperature:before {
   z-index: 999;
   overflow: hidden;
   resize: none;
-}
-
-/*
- *  Message Popup
- */
-
-#msg-text {
-  height: 100%;
-  text-align: center;
-  text-decoration: none;
-  font-size: 25px;
-  color: #fff;
-  margin: 5px;
 }
 
 /*

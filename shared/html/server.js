@@ -12,9 +12,10 @@
 // closeLogWindow(), as it has the camera window to close alongside it.
 
 import { classDisplay, addClassToElem, base64URLSafeEncode, sendCmd, html,
-  showPopup, savePOST, fileURL, promptWindow, onButtons, setDisplayById,
+  savePOST, fileURL, promptWindow, onButtons, setDisplayById,
   registerListeners, gridButtonTemplate, dropdownButtonTemplate } from './utils.js';
-import { removeDropdowns, openDropdown } from './menus.js';
+import { removeDropdowns, openDropdown } from './dropdowns.js';
+import { HttpError, reportError } from './error.js';
 import Uploader from './upload.js';
 import { SSIDpwd } from './wifi.js';
 
@@ -460,7 +461,9 @@ function loadLog(file) {
   fetch(fileURL('read', file), { method: 'GET' })
     .then((response) => {
       if (!response.ok) {
-        throw new Error(`status ${response.status}`);
+        return response.text().then((answerText) => {
+          throw new HttpError(response.status, answerText);
+        });
       }
       return response.json();
     })
@@ -476,8 +479,8 @@ function loadLog(file) {
       logTextBox.value = logText;
       logTextBox.scrollTop = logTextBox.scrollHeight;
     })
-    .catch(() => {
-      showPopup("[loadLog] error fetching data.");
+    .catch((error) => {
+      reportError(`reading the ${file} log`, error);
     });
   // The send button's highlight goes with the command. Only the command
   // used to be dropped here, which left the button lit with nothing to send.

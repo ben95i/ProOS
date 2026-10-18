@@ -1,8 +1,8 @@
 /*
- *  Automate -- menus.css
+ *  Automate -- dropdowns.css
  *
- *  The dropdown menus menus.js opens and fills: the dropdown containers, the
- *  rows drawMenu() / createListItem() draw in them (links, indicator dots,
+ *  The dropdown menus dropdowns.js opens and fills: the dropdown containers,
+ *  the rows drawMenu() / createListItem() draw in them (links, indicator dots,
  *  setting switches, sliders) and the icon tints the rows use.
  *
  *  Loaded directly after main.css, which holds the palette these rules draw

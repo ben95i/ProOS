@@ -15,9 +15,10 @@
 // The API answers the folder the files land in; it is a constant on that
 // side, not something the browser gets to choose.
 
-import { html, showPopup, makeElement, promptWindow, onButtons,
+import { html, makeElement, promptWindow, onButtons,
   removeWindow, base64URLSafeEncode, sleep,
   gridButtonTemplate } from './utils.js';
+import { showPopup, reportException } from './error.js';
 
 const CHUNK_BYTES = 1024 * 1024; // 1MB per request
 const MAX_FILE_BYTES = 1024 * 1024 * 1024; // 1GB, per file
@@ -219,7 +220,8 @@ export default class Uploader {
     this.setTitle(heading);
     this.setCloseLabel('Close');
     if (failed > 0) {
-      showPopup(`[upload] ${failed} file(s) failed to upload.`);
+      reportException('uploading files',
+        `${failed} of ${this.queue.length} file(s) failed to upload.`);
     } else if (summary.cancelled !== true && done > 0) {
       showPopup(`[upload] ${done} file(s) uploaded.`);
     }

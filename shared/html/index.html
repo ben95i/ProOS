@@ -10,14 +10,15 @@
        ORDER MATTERS: main.css holds the globals (palette, .button, .dd-content,
        the shared spinners) and must stay first, because several component
        rules override one of its rules at equal specificity and only win by
-       coming later. menus.css (the dropdown menus), the three room sheets
+       coming later. dropdowns.css (the dropdown menus), the three room sheets
        and server.css (the Server window) were cut out of main.css in turn
        and stay directly after it, in this order, so their rules meet every
        other sheet's as they did before.
        lists.css stays last of the two list-style sheets: it carries the drag
        handle rules the bookmarks menu also uses. -->
   <link href="styles/main.css" rel="stylesheet" type="text/css">
-  <link href="styles/menus.css" rel="stylesheet" type="text/css">
+  <link href="styles/error.css" rel="stylesheet" type="text/css">
+  <link href="styles/dropdowns.css" rel="stylesheet" type="text/css">
   <link href="styles/livingrm.css" rel="stylesheet" type="text/css">
   <link href="styles/bedrm.css" rel="stylesheet" type="text/css">
   <link href="styles/bathrm.css" rel="stylesheet" type="text/css">
@@ -33,7 +34,7 @@
   <link href="styles/pixels.css" rel="stylesheet" type="text/css">
   <link href="styles/bookmarks.css" rel="stylesheet" type="text/css">
   <link href="styles/lists.css" rel="stylesheet" type="text/css">
-  <!-- main.js imports every other module itself (the rooms, menus.js,
+  <!-- main.js imports every other module itself (the rooms, dropdowns.js,
        utils.js and the rest), so they need no tags of their own -->
   <script type="module" src="main.js"></script>
 </head>

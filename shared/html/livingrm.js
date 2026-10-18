@@ -6,10 +6,11 @@
 // main.js lists LIVING_ROOM_CONFIG among its rooms and draws the grid.
 
 import { registerListeners, gridButtonTemplate, dropdownButtonTemplate,
-  volumeButtonsTemplate, volumeButtonListeners, registerVolumeButtons,
-  sendVolume, isNumeric, menuRow, indicator } from './utils.js';
+  isNumeric, menuRow, indicator } from './utils.js';
+import { volumeButtonsTemplate, volumeButtonListeners, registerVolumeButtons,
+  sendVolume } from './volctrl.js';
 import { showPowerMenu, powerButtonTemplate, openDeviceMenu, showInputMenu,
-  menuErrorRow, menuOfflineRow } from './menus.js';
+  menuErrorRow, menuOfflineRow } from './dropdowns.js';
 
 // the room transmitter every living room command goes through
 const LIVING_ROOM_TARGET = 'lrxmit';

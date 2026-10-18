@@ -1,16 +1,18 @@
 // Automate Website - main menu
 //
 // The list button in the top left corner: the menu behind it, the theme
-// colour, and the About window. new MainMenu() then .load() to apply the
-// saved colour; showMenu() / showPiMenu() open the two menus.
+// colour, and the About window. new MainMenu({ isServer }) then .load() to
+// apply the saved colour; showMenu() opens the menu with the rows of the
+// page's model (MENU_HTML on the server, PI_MENU_HTML on a Pi).
 //
-// The stars toggle is drawn by menus.js's drawMenu() as a browser-side
+// The stars toggle is drawn by dropdowns.js's drawMenu() as a browser-side
 // setting row ('chk'); everything else here is built and placed by this
 // class. The LED hosts' pages, once rows of this menu, are linked from the
 // Pixels window (pixels.js). The picker's palette is the thememenu file, one colour per line as
 // hex_value|display_name, read by ColorPrompt itself.
 
-import { hexToRgb, gridButtonTemplate } from './utils.js';
+import { hexToRgb, gridButtonTemplate, registerListeners } from './utils.js';
+import { openDropdown, drawMenu } from './dropdowns.js';
 import ColorPrompt from './colorprompt.js';
 
 export default class MainMenu {
@@ -22,10 +24,10 @@ export default class MainMenu {
   // for are being put in place
   static SLOT_ATTR = 'mainmenu-slot';
 
+  // the dropdown main.js draws under the list button, on every model
   static MENU_ID = 'mainmenu';
-  static PI_MENU_ID = 'pi-mainmenu';
 
-  // Both menus, written out in the order they are drawn. A row this class
+  // The server's and the Pi's rows, written out in the order they are drawn. A row this class
   // does not build is plain markup sitting where it goes; a row it does is a
   // token -- {{color}} the colour box, {{stars}} the toggle drawMenu() draws.
   // Move a line and the menu moves with it; take a token out and that row is
@@ -35,13 +37,13 @@ export default class MainMenu {
   // ends pushed apart, so an icon written after the label lands against the
   // menu's right edge. The handlers for these ids are registered in main.js.
   static MENU_HTML = `
-    <a id="btn-about-main">About<i class="fad fa-info"></i></a>
+    <a id="btn-about">About<i class="fad fa-info"></i></a>
     {{color}}
     {{stars}}
   `;
 
   static PI_MENU_HTML = `
-    <a id="btn-about-pi">About<i class="fad fa-info"></i></a>
+    <a id="btn-about">About<i class="fad fa-info"></i></a>
     {{color}}
     {{stars}}
     <a id="btn-log-pi">System<i class="fad fa-wrench"></i></a>
@@ -91,12 +93,20 @@ export default class MainMenu {
   static LIGHT_LUMA = 135;
 
   static ABOUT_WIN_ID = 'about__prompt';
+  static ABOUT_CLOSE_ID = 'about__btn';
 
-  constructor() {
+  // isServer picks the menu's rows: true for the server's, false for a Pi's.
+  //   new MainMenu({ isServer: false })  ->  About, Colors, stars, System, Home
+  constructor({ isServer }) {
     // While the picker is open the page is repainted on every move, so the
     // colour can be seen as it is chosen; this holds what it was last
     // repainted in, and storage is not written until the prompt closes.
     this.pending = null;
+    if (isServer) {
+      this.menuTemplate = MainMenu.MENU_HTML;
+    } else {
+      this.menuTemplate = MainMenu.PI_MENU_HTML;
+    }
   }
 
   //// the theme colour ////
@@ -157,63 +167,35 @@ export default class MainMenu {
 
   //// the menu ////
 
-  // Opens a menu, or shuts it when it is already open. Answers false when
-  // there is nothing more to do -- no element, or it was just closed.
-  openMenuElement(menuElement) {
-    if (!menuElement) {
-      return false;
-    }
-    if (menuElement.style.display === 'block') {
-      menuElement.style.display = 'none';
-      return false;
-    }
-    if (typeof window.removeDropdowns === 'function') window.removeDropdowns();
-    menuElement.style.display = 'block';
-    return true;
-  }
-
-  // The server's list button. Same shape as the menus in menus.js -- a
-  // second press closes it, and opening it puts every other menu away first.
-  // Its rows are all in the markup, so it is drawn where it is pressed.
+  // The list button. Same shape as the other menus in dropdowns.js -- a second
+  // press closes it, and opening it puts every other menu away first. Its
+  // rows are all in the template, so it is drawn afresh each time it opens.
   showMenu() {
+    if (!openDropdown(MainMenu.MENU_ID)) {
+      return;
+    }
     const menuElement = document.getElementById(MainMenu.MENU_ID);
-    if (!this.openMenuElement(menuElement)) {
-      return;
-    }
-    this.drawRows(menuElement, MainMenu.MENU_HTML);
-  }
-
-  // The Pi's list button, drawn the same way.
-  showPiMenu() {
-    const menuElement = document.getElementById(MainMenu.PI_MENU_ID);
-    if (!this.openMenuElement(menuElement)) {
-      return;
-    }
-    this.drawRows(menuElement, MainMenu.PI_MENU_HTML);
+    this.drawRows(menuElement);
   }
 
   // Draws the menu: its own markup from the template, then the rows that are
   // built rather than written -- each moved into the marker its token left.
-  drawRows(menuElement, template) {
+  drawRows(menuElement) {
     // the menu's own rows, with an empty marker standing in for each set of
     // built ones. Whatever was here last time goes with it.
-    menuElement.innerHTML = template.replace(/\{\{(\w+)\}\}/g,
+    menuElement.innerHTML = this.menuTemplate.replace(/\{\{(\w+)\}\}/g,
       (whole, slot) => `<span data-${MainMenu.SLOT_ATTR}="${slot}"></span>`);
     // drawMenu() appends to the end of the container, so what it draws is
     // picked back up below and moved into the markers
-    if (typeof window.drawMenu === 'function') {
-      window.drawMenu(MainMenu.STARS_ROW, menuElement.id);
-    }
-    // the stars row is the one node drawMenu() made
-    const drawn = (App.dynMenuNodes || []).slice();
-    this.fillSlot(menuElement, 'stars', drawn.slice(0, 1).map(row => this.iconLast(row)));
+    drawMenu(MainMenu.STARS_ROW, menuElement.id);
+    // the stars row is the one node drawMenu() made (none if it drew nothing)
+    const starsRows = App.dynMenuNodes.slice(0, 1);
+    this.fillSlot(menuElement, 'stars', starsRows.map(row => this.iconLast(row)));
     const colorRow = this.colorRow();
     this.fillSlot(menuElement, 'color', [colorRow]);
     // removeDynMenus() takes the rows back out by node, so this one is handed
     // over with the rows drawMenu() made
-    if (App.dynMenuNodes) {
-      App.dynMenuNodes.push(colorRow);
-    }
+    App.dynMenuNodes.push(colorRow);
     // the palette is wanted by the picker rather than by the menu, so it is
     // only started here -- by the time the row is pressed it is usually in
     ColorPrompt.warmPalette(MainMenu.PALETTE_FILE);
@@ -221,7 +203,7 @@ export default class MainMenu {
 
   // Sends a row's icon to the end of it. createListItem() puts the icon first
   // and the switch after it, which is right for a menu row anywhere else;
-  // these two menus carry their icons down the right hand edge.
+  // this menu carries its icons down the right hand edge.
   iconLast(row) {
     if (!row) {
       return row;
@@ -307,6 +289,8 @@ export default class MainMenu {
 
   //// the about window ////
 
+  // Opens the About window, unless it is already open. Its Close button is
+  // registered below the class.
   aboutPrompt() {
     const winId = MainMenu.ABOUT_WIN_ID;
     if (document.getElementById(winId)) return;
@@ -321,18 +305,23 @@ export default class MainMenu {
     <div class="about__text">by Ben Provenzano III</div>
     <div class="about__text">${curYear}.${curQtr} Release</div>
     ${gridButtonTemplate({
-      buttonId: 'about__btn',
+      buttonId: MainMenu.ABOUT_CLOSE_ID,
       icon: 'fad fa-times-octagon right-padding',
       label: 'Close'
     })}
   </div>
   `;
     document.body.insertAdjacentHTML('beforeend', promptHTML);
-    const aboutprompt = document.getElementById(winId);
-    aboutprompt.addEventListener('click', (btn_evnt) => {
-      if (btn_evnt.target.closest('button')) {
-        aboutprompt.remove();
-      }
-    });
+  }
+
+  // Takes the About window down, if it is open.
+  static closeAboutPrompt() {
+    const aboutWindow = document.getElementById(MainMenu.ABOUT_WIN_ID);
+    if (aboutWindow) {
+      aboutWindow.remove();
+    }
   }
 }
+registerListeners({
+  [MainMenu.ABOUT_CLOSE_ID]: () => MainMenu.closeAboutPrompt()
+});

@@ -5,11 +5,11 @@
 // amp's volume buttons and its input menu. main.js lists BEDROOM_CONFIG among
 // its rooms and draws the grid.
 
-import { registerListeners, dropdownButtonTemplate, volumeButtonsTemplate,
-  volumeButtonListeners, sendCmd, requestThrottle, promptWindow,
-  onButtons, gridButtonTemplate } from './utils.js';
+import { registerListeners, dropdownButtonTemplate, sendCmd,
+  requestThrottle, promptWindow, onButtons, gridButtonTemplate } from './utils.js';
+import { volumeButtonsTemplate, volumeButtonListeners } from './volctrl.js';
 import { showPowerMenu, powerButtonTemplate, showDynAPIMenu,
-  showInputMenu } from './menus.js';
+  showInputMenu } from './dropdowns.js';
 import { openColorPrompt } from './colorprompt.js';
 
 // the room transmitter, and the Bedroom Pi that drives the amp
@@ -59,9 +59,9 @@ function bedroomGridTemplate() {
     menuContent: `
       <a id="btn-bed-adjprompt"> Adjust<i class="fad fa-sort-circle-up"></i></a>
       <a id="bed_leds-colorprompt"> Colors<i class="fad fa-palette"></i></a>
+      <a id="bed_leds-rainbow"> Rainbow</a>
       <a id="bed_leds-colorcycle"> Cycle</a>
       <a id="bed_leds-sweep"> Sweep</a>
-      <a id="bed_leds-rainbow"> Rainbow</a>
     `
   })}
   ${dropdownButtonTemplate({

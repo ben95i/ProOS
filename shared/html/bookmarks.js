@@ -18,10 +18,11 @@
 // an edit window is open or a row is being moved. While another user holds it
 // the grips are hidden and the edit icons report the menu as read only.
 
-import { html, showPopup, cleanString, splitMenuData, base64URLSafeEncode,
+import { html, cleanString, splitMenuData, base64URLSafeEncode,
   base64URLSafeToStandard, sendCmd, dragGripElement, DragSort, FileLock,
   readFile, writeFile, sendFileBeacon, LOCK_TAG, searchRowElement, searchTerm,
-  searchMatches, makeElement, singleFlight } from './utils.js';
+  searchMatches, makeElement, singleFlight, reportFileFailure } from './utils.js';
+import { showPopup, reportException } from './error.js';
 
 const FILE_NAME = 'bookmarks.save';
 const LOCK_FILE = 'bookmarks-lock.save';
@@ -125,7 +126,7 @@ function iconMarkup(icon) {
 
 export default class Bookmarks {
 
-  // options: removeDropdowns(), the drop-down teardown in menus.js
+  // options: removeDropdowns(), the drop-down teardown in dropdowns.js
   constructor(options = {}) {
     this.removeDropdowns = function () {};
     if (typeof options.removeDropdowns === 'function') {
@@ -257,7 +258,7 @@ export default class Bookmarks {
     }
     if (text === null || typeof text !== 'string') {
       this.removeLoading();
-      showPopup("[bookmarks] no data to parse.");
+      reportFileFailure('loading the bookmarks');
       return;
     }
     this.readOnly = busy;
@@ -563,7 +564,7 @@ export default class Bookmarks {
       return false; // closed while the file was being read; claim nothing
     }
     if (text === null) {
-      showPopup("[bookmarks] server connection not available.");
+      reportFileFailure('opening the bookmarks for editing');
       return false;
     }
     if (busy) {
@@ -651,7 +652,7 @@ export default class Bookmarks {
 
   async endLockedEdit() {
     if (!await this.releaseLock()) {
-      showPopup("[bookmarks] failed to save, server connection not available.");
+      reportFileFailure('saving the bookmarks');
       return false;
     }
     return true;
@@ -1096,7 +1097,7 @@ export default class Bookmarks {
     if (/[.!?]$/.test(detail)) {
       stop = "";
     }
-    showPopup(`[bookmarks] site lookup failed: ${detail}${stop}`);
+    reportException('looking up the bookmark\'s site', `${detail}${stop}`);
     this.setLookupIcon(LOOKUP_FAIL_ICON_CLASS);
     this.lookupTimer = setTimeout(() => {
       this.lookupTimer = null;

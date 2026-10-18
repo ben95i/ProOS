@@ -4,6 +4,8 @@
 // start the loop. pause() / resume() follow the page activity timeout,
 // setEnabled() is the user's own setting, destroy() ends the instance.
 
+import { logError } from './error.js';
+
 const BG_COLOR = '#000000';
 const BG_STAR_DENSITY = 2500; // one star per this many pixels
 const BG_STAR_SIZE = 1.7;
@@ -111,7 +113,7 @@ export default class AnimatedBackground {
     this.enabled = enabled !== false;
     this.canvas = document.getElementById(canvasId);
     if (!this.canvas) {
-      console.error(`AnimatedBackground: Canvas with id '${canvasId}' not found.`);
+      logError('starting the stars background', `canvas '${canvasId}' not found.`);
       return;
     }
     this.ctx = this.canvas.getContext('2d');

@@ -1,4 +1,4 @@
-// Automate Website - menus
+// Automate Website - dropdowns
 //
 // Everything a dropdown menu needs, in one place: opening and closing the
 // dropdowns, drawing a menu's rows from text (drawMenu / createListItem),
@@ -16,9 +16,11 @@
 // through configureMenus().
 
 import { classDisplay, cleanString, splitMenuData, isNumeric, splitByDelimiter,
-  sendCmd, showPopup, loadMenu, fileURL, makeElement, setSpinner, menuRow,
-  indicator, requestThrottle, dropdownButtonTemplate, subwooferVolumeEnabled,
-  subwooferVolumeMode, SUBWOOFER_CLASS } from './utils.js';
+  sendCmd, loadMenu, fileURL, makeElement, setSpinner, menuRow,
+  indicator, requestThrottle, dropdownButtonTemplate } from './utils.js';
+import { reportException, reportNotConnected } from './error.js';
+import { subwooferVolumeEnabled, subwooferVolumeMode,
+  SUBWOOFER_CLASS } from './volctrl.js';
 import ToggleSwitch, { toggleSwitchCallback } from './switch.js';
 
 //// page hooks ////
@@ -91,7 +93,7 @@ export function removeDropdowns() {
   callMenuHook('closePageMenus');
 }
 
-// roomstate.js, weather.js and mainmenu.js reach these two through window
+// roomstate.js and weather.js reach these two through window
 window.removeDropdowns = removeDropdowns;
 
 // Opens a dropdown, or shuts it when it is already open. Answers true when
@@ -141,7 +143,7 @@ export function drawMenu(data, menuId, config = undefined) {
   }
   removeDynMenus();
   if (!data || typeof data !== 'string') {
-    showPopup("[drawMenu] no data to parse.");
+    reportException(`drawing the ${menuId} menu`, 'No data came back to draw.');
     return;
   }
   const menuElement = document.getElementById(menuId);
@@ -187,7 +189,7 @@ export function drawMenu(data, menuId, config = undefined) {
   scrollMenuIntoView(menuElement);
 }
 
-// roomstate.js and mainmenu.js draw their rows through window.drawMenu
+// roomstate.js draws its rows through window.drawMenu
 window.drawMenu = drawMenu;
 
 // scrolls down to the menu only when it runs past the bottom of the viewport
@@ -302,13 +304,13 @@ function createListItem(hostColumn, rowType, rowLabel, rowIndex) {
 // their names (NO_ANSWER_PREFIX in nodeapi/ledparser.js).
 const LED_NO_ANSWER = 'No answer from';
 
-// Sends an LED command to every LED host and shows which of them did not
-// answer, if any. Resolves with the reply, as sendCmd() does.
-// sendLeds('stop'); sendLeds('textscroll', base64)
+// Sends an LED command to every LED host and reports which of them did not
+// answer, if any, as Not connected. Resolves with the reply, as sendCmd()
+// does. sendLeds('stop'); sendLeds('textscroll', base64)
 export async function sendLeds(command, value = '') {
   const reply = await sendCmd('leds', command, value);
   if (typeof reply === 'string' && reply.startsWith(LED_NO_ANSWER)) {
-    showPopup(reply);
+    reportNotConnected(`sending the LED command ${command}`, `${reply}.`);
   }
   return reply;
 }
@@ -659,8 +661,8 @@ function powerMenuRows(menu, target, state, level) {
   }
   // append brightness slider and buttons
   rows += menuRow(`${state}~${target}~${menu}`, 'slidercust', '');
-  rows += menuRow(`main~${customLeds.hostDevice}~${customLeds.offCmd}`, 'off', 'Off');
   rows += menuRow(`main~${customLeds.hostDevice}~${customLeds.pauseCmd}`, 'pause', 'Pause');
+  rows += menuRow(`main~${customLeds.hostDevice}~${customLeds.offCmd}`, 'off', 'Off');
   return rows;
 }
 

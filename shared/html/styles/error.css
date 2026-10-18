@@ -1,0 +1,102 @@
+/*
+ *  Automate -- error.css
+ *
+ *  The message popup (showPopup() in error.js) and its two error forms:
+ *  Not connected and Exception has occurred. The popup's frame is main.css's
+ *  .popup-alert, which the volume popup shares; an error widens it and lays
+ *  out an icon and title, a sentence, then labelled rows of detail.
+ *
+ *  main.css gives every element (*) its own font size, so each text element
+ *  here sets one rather than inheriting it from its box.
+ */
+
+/*
+ *  Message Popup
+ */
+
+#msg-text {
+  height: 100%;
+  text-align: center;
+  text-decoration: none;
+  font-size: 25px;
+  color: #fff;
+  margin: 5px;
+}
+
+/*
+ *  Error Popup
+ */
+
+.popup-error {
+  --error-popup-width: 300px;
+  width: var(--error-popup-width);
+  margin-left: calc(var(--error-popup-width) / -2);
+  padding: 12px;
+}
+
+.popup-error--connection {
+  --error-icon-color: var(--alert-red);
+}
+
+.popup-error--exception {
+  --error-icon-color: var(--yellow-ind);
+}
+
+.error-popup {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.error-popup__head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.error-popup__icon {
+  flex: 0 0 auto;
+  font-size: 28px;
+  color: var(--error-icon-color);
+}
+
+.error-popup__title {
+  font-size: 22px;
+  line-height: 1.1;
+  white-space: nowrap;
+  padding-top: 4px; /* JosefinSans sits high in its line box */
+}
+
+.error-popup__text {
+  margin-top: 8px;
+  font-size: 16px;
+  line-height: 1.25;
+  color: #fff;
+}
+
+.error-popup__rows {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--nav-menus-color);
+  text-align: left;
+  line-height: 1.3;
+}
+
+.error-popup__row {
+  display: flex;
+  gap: 8px;
+}
+
+.error-popup__label {
+  flex: 0 0 52px;
+  font-size: 14px;
+  color: var(--alt-filler);
+}
+
+.error-popup__value {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 14px;
+  color: #fff;
+  overflow-wrap: anywhere;
+}

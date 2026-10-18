@@ -8,11 +8,11 @@ const net = require('net');
 
 const execFileAsync = util.promisify(execFile);
 
-const MAX_PARALLEL = 12;
+const MAX_PARALLEL = 15;
 const MAX_WAIT = '1.0';
-const PING_TIMEOUT = 3000; // in (ms)
+const PING_TIMEOUT = 1500; // in (ms)
 const SSH_PORT = 22;
-const TCP_PROBE_TIMEOUT = 1000; // in (ms)
+const TCP_PROBE_TIMEOUT = 750; // in (ms)
 const TCP_PROBE_ATTEMPTS = 2;
 const ONLINE = 'grnind';  // green indicator
 const OFFLINE = 'blkind'; // black indicator

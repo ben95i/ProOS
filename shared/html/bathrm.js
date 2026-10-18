@@ -8,7 +8,7 @@
 import { registerListeners, gridButtonTemplate, dropdownButtonTemplate,
   sendCmd, cleanString, isNumeric, menuRow, promptWindow,
   onButtons } from './utils.js';
-import { openDeviceMenu, inputMenuRows, removeDropdowns } from './menus.js';
+import { openDeviceMenu, inputMenuRows, removeDropdowns } from './dropdowns.js';
 import ToggleSwitch from './switch.js';
 
 // What main.js needs to know about the room. key names its API commands

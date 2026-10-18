@@ -4,11 +4,11 @@
  *  The Pixels window (pixels.js), drawn like the Bathroom Light settings
  *  window (bathrm.css): a narrow column on black with one box per LED host,
  *  each holding the host's name over a line saying what it is showing, a
- *  link to its page and a .slider-wide (menus.css), over the
+ *  link to its page and a .slider-wide (dropdowns.css), over the
  *  .button_left_txtwin Close and Refresh buttons (main.css) in
  *  .popup-actions. The rules below that resize one of those
  *  win at equal specificity only because this sheet loads after main.css and
- *  menus.css -- keep it after them in index.html.
+ *  dropdowns.css -- keep it after them in index.html.
  */
 
 #pixels__prompt {

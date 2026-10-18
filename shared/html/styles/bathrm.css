@@ -9,11 +9,11 @@
  *
  *  bathroomSettingsPrompt() in bathrm.js. Drawn like the colour prompt (a
  *  narrow column on black) and built from what the site already has: the
- *  sliders are .slider-wide (menus.css), the log box is the server log's
+ *  sliders are .slider-wide (dropdowns.css), the log box is the server log's
  *  .popup-ctn and .popup-actions, and the icon buttons are
  *  .button_left_txtwin (main.css). The rules below that resize one of those
  *  win at equal specificity only because this sheet loads after main.css and
- *  menus.css -- keep it after them in index.html.
+ *  dropdowns.css -- keep it after them in index.html.
  */
 
 #bthr__prompt {
