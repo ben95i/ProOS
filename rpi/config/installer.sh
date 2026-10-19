@@ -73,14 +73,14 @@ apt-get -y update --allow-releaseinfo-change
 apt-get $APTARGS locales console-setup aptitude libnss-mdns libnss3-tools xxd autofs \
  wget bc uuid-runtime iptables jq rsync screen parallel sudo nano curl wireless-regdb \
  zsync libpq5 htop lsb-release avahi-daemon avahi-utils hostapd dnsmasq-base pkg-config \
- cryptsetup cryptsetup-bin texi2html nmap autoconf gnucobol4 avrdude libao-common sox npm \
+ cryptsetup cryptsetup-bin texi2html nmap autoconf gnucobol4 libao-common sox npm \
  wireless-tools overlayroot iw wpasupplicant dirmngr triggerhappy default-jre-headless sed \
  automake cifs-utils fuse apt-utils sqlite3 shairport-sync socat libexpat1 fastfetch ffmpeg \
  gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-ugly \
  gstreamer1.0-plugins-bad gstreamer1.0-alsa gstreamer1.0-libav libgstreamer-plugins-base1.0-0 \
  gstreamer1.0-libcamera rng-tools5 gpiod net-tools python3 python3-pip python3-venv v4l-utils \
  x264 xmltoman samba build-essential autoconf make libtool binutils i2c-tools cmake yasm minicom \
- rclone unzip bluetooth pi-bluetooth bluez bluez-tools bluez-alsa-utils libbluetooth3 mpg321 arduino \
+ rclone unzip bluetooth pi-bluetooth bluez bluez-tools bluez-alsa-utils libbluetooth3 mpg321 \
  samba-common-bin samba-libs libjson-glib-1.0-0 libupnp6 alsa-base alsa-utils uglifyjs \
  nodejs mpv raspi-utils lame usbutils lighttpd yui-compressor g++ libgstrtspserver-1.0-dev
 
@@ -93,22 +93,7 @@ apt-get $APTARGS libgtk2.0-dev libbluetooth-dev libpng-dev libdaemon-dev libpopt
  libtheora-dev libssl-dev libx11-dev libxml2-dev libxslt1-dev zlib1g-dev libdbus-1-dev \
  libva-dev libvdpau-dev libvorbis-dev libxext-dev libxfixes-dev libdbus-glib-1-dev \
  libsoxr-dev libao-dev libreadline-dev libsoup2.4-dev libgcrypt-dev libconfig-dev \
- libjson-glib-dev libsodium-dev libopencv-dev libgpiod-dev
-
-## Install X11
-apt-get $APTARGS xserver-xorg xorg x11-common x11-common xserver-xorg-input-evdev \
- xserver-xorg-legacy xvfb libxext6 libxtst6 xprintidle xdotool wmctrl openbox gpicview \
- lxde-common lxsession pcmanfm lxterminal xfce4-panel xfce4-whiskermenu-plugin
-
-if [ ! -e "/usr/bin/arduino-cli" ]; then
-  echo "Installing Arduino command line..."
-  rm -f /opt/rpi/arduino-cli
-  curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR=/usr/bin sh
-  arduino-cli version
-  arduino-cli core update-index
-  arduino-cli core install arduino:avr
-  arduino-cli lib install Encoder@1.4.4
-fi
+ libjson-glib-dev libsodium-dev libopencv-core-dev libopencv-videoio-dev libgpiod-dev
 
 ## Camera Motion Server
 apt-get $APTARGS motion libmicrohttpd12t64
@@ -349,22 +334,9 @@ chmod u=rwx,g=rx,o=rx /etc/sudoers.d/010_pi-nopasswd
 chmod u=r,g=r,o= /etc/sudoers.d/010_pi-nopasswd
 usermod -a -G sudo pi
 
-## X Server
+## Pi Groups
 usermod -a -G tty pi
 usermod -a -G video pi
-cp -f $TMPDIR/Xwrapper.config /etc/X11
-chmod 644 /etc/X11/Xwrapper.config
-chown root:root /etc/X11/Xwrapper.config
-mkdir -p /home/pi/.config/lxsession
-chown -R pi:pi /home/pi/.config/lxsession
-mkdir -p /home/pi/.config/lxsession/LXDE
-chown -R pi:pi /home/pi/.config/lxsession/LXDE
-cp -f $TMPDIR/xdesktop.conf /home/pi/.config/lxsession/LXDE/desktop.conf
-chmod 644 /home/pi/.config/lxsession/LXDE/desktop.conf
-chown pi:pi /home/pi/.config/lxsession/LXDE/desktop.conf
-cp -f $TMPDIR/xautostart /home/pi/.config/lxsession/LXDE/autostart
-chmod +x /home/pi/.config/lxsession/LXDE/autostart
-chown pi:pi /home/pi/.config/lxsession/LXDE/autostart
 
 ## Bluetooth
 cp -f $TMPDIR/btmain.conf /etc/bluetooth/main.conf
@@ -474,6 +446,14 @@ cp -f $TMPDIR/motion /etc/default/motion
 chmod 644 /etc/default/motion
 chown root:root /etc/default/motion
 mkdir -p /etc/motion
+
+## Free SD Card Space (once per Pi)
+if [ ! -e "/etc/rpi-cleanup.done" ]; then
+  echo "Running cleanup..."
+  bash $TMPDIR/cleanup.sh
+else
+  echo "Cleanup already done, skipping."
+fi
 
 ## Compile Programs
 $TMPDIR/compile.sh

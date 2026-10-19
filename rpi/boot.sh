@@ -1,8 +1,6 @@
 #!/bin/bash
 ##
 
-## Start X11 Server
-#systemctl start rpi-x11
 ## AirPlay Support
 #systemctl start rpi-airplay
 ## Bluetooth Audio

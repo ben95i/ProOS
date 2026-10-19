@@ -100,22 +100,6 @@ echo 'ncftpput -R -v -u "ben" z97mx.home / local-folder'
 exit
 ;;
 
-xkeycap)
-## List X11 keycodes 'run as user'
-#keycode 162 = XF86AudioPlay
-#keycode 164 = XF86AudioStop
-#keycode 153 = XF86AudioNext
-#keycode 144 = XF86AudioPrev
-#keycode 115 = F13
-#keycode 117 = F35
-#keycode 234 = F19
-#keycode 233 = F20
-export XDG_RUNTIME_DIR=/run/user/1000
-export DISPLAY=:0
-/usr/bin/xev
-exit
-;;
-
 ufs)
 ## USB file server
 systemctl stop nmbd

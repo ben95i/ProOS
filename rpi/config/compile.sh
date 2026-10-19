@@ -121,13 +121,19 @@ SHARED_DEPS=""
 ## LED Effects ########################################
 # Every effect links ledlayout.cpp and opcclient.cpp, so a change to either
 # rebuilds the whole list below.
+# mp4toleds links only the OpenCV core and videoio modules, so the Pi needs
+# libopencv-core-dev and libopencv-videoio-dev rather than all of libopencv-dev
+# (whose opencv4.pc lists every module). Some of OpenCV's headers sit under the
+# multiarch path, e.g. /usr/include/arm-linux-gnueabihf/opencv4.
+OPENCV_LIBS="-I/usr/include/opencv4 -I/usr/include/$(gcc -dumpmachine)/opencv4 \
+             -lopencv_core -lopencv_videoio"
 SHARED_DEPS="$LED_EF/ledlayout.cpp $LED_EF/ledlayout.h \
              $LED_EF/opcclient.cpp $LED_EF/opcclient.h"
 
 #      description                      name        flags                  libs
 effect "LED Text Scrolling Program"     textscroll  "-O3 -Wall"            ""
 effect "LED Maze Program"               maze        "-std=c++17 -O2"       "-pthread"
-effect "Video File to OPC Program"      mp4toleds   "-O3"                  "$(pkg-config --cflags --libs opencv4) -pthread"
+effect "Video File to OPC Program"      mp4toleds   "-O3"                  "$OPENCV_LIBS -pthread"
 effect "O-scope LED Program"            oscope      "-O3"                  "-lasound -pthread"
 effect "Spectrogram LED Program"        spectro     "-O3"                  "-lasound -pthread"
 effect "Noise LED Program"              noise       "-O3"                  "-lm"

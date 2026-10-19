@@ -111,14 +111,15 @@ Requires Raspberry Pi OS on Debian **trixie**; the installer refuses anything el
 
 ### Installer (`rpi/config/installer.sh`)
 
-1. **First run only** (no `/etc/rpi-conf.done`): locale, time zone, `pi` user, a long apt package list (build tools, GStreamer, ffmpeg, Bluetooth, X11/LXDE, node, lighttpd, motion, arduino-cli), purges cron, logrotate, swap, PulseAudio/PipeWire, cups and others, deletes old `rpi-*` units.
+1. **First run only** (no `/etc/rpi-conf.done`): locale, time zone, `pi` user, a long apt package list (build tools, GStreamer, ffmpeg, Bluetooth, node, lighttpd, motion; no X11 desktop), purges cron, logrotate, swap, PulseAudio/PipeWire, cups and others, deletes old `rpi-*` units.
 2. **Every run**: read-only boot partition, `config.txt`, sshd and key, `sysctl`, NetworkManager, journald (to RAM), systemd units from `config/systemd/` into `/etc/systemd/system/`, `/etc/netmode.sh` and `/etc/preinit.sh`.
 3. **Node API**: moves `rpi/controller.js`, `rpi/ledparser.js` and `rpi/custom.js` over the shared ones in `/opt/nodeapi` (`npm install` only when `package.json` changed, tracked in `.deps.hash`).
 4. **Website**: rsyncs the staged html into `/var/www/html` (keeping `ram/`), replaces the title `>Automate<` with the module's `brand.txt` name (this is how `main.js` picks the Pi or LED Pi page model), minifies, and gives `www-data` sudo on `servercmds.sh` and `relaxrun.sh` only.
 5. Bluetooth, ALSA, Samba USB share, udev USB automount, motion defaults, hostname and `/etc/hosts`.
-6. **`config/compile.sh`**: builds the C/C++ programs (below).
-7. First run: enables `ssh avahi-daemon proinit NetworkManager timesyncd`, disables the rest (lighttpd, bluetooth, smbd, hostapd …), touches `/etc/rpi-conf.done`.
-8. Runs `/opt/rpi/modconf/modinit` (the module's own installer), then **deletes `/opt/rpi/modconf`**; restarts lighttpd and nodeapi; links `/usr/bin/rpi` → `rpi.sh`; deletes `/opt/rpi/config`.
+6. **`config/cleanup.sh`**, once per Pi (skipped while `/etc/rpi-cleanup.done` exists; delete it and deploy to run it again), so the system fits an 8 GB card: swaps `libopencv-dev` for `libopencv-core-dev` + `libopencv-videoio-dev`; purges the X11 desktop, the `arduino` apt package and its AVR toolchain, USB Wi-Fi dongle firmware, the `v6` kernels, every kernel but the running and newest, and all kernel headers; deletes `arduino-cli` and `~/.arduino15` unless the module's `modinit` installs it (only `brpi` does); installs `config/dpkg-nodoc.conf` as `/etc/dpkg/dpkg.cfg.d/01-nodoc` and deletes docs, man pages and non-English translations; clears the apt lists and npm cache.
+7. **`config/compile.sh`**: builds the C/C++ programs (below).
+8. First run: enables `ssh avahi-daemon proinit NetworkManager timesyncd`, disables the rest (lighttpd, bluetooth, smbd, hostapd …), touches `/etc/rpi-conf.done`.
+9. Runs `/opt/rpi/modconf/modinit` (the module's own installer), then **deletes `/opt/rpi/modconf`**; restarts lighttpd and nodeapi; links `/usr/bin/rpi` → `rpi.sh`; deletes `/opt/rpi/config`.
 
 ### Boot sequence
 

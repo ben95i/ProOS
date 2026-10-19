@@ -39,6 +39,18 @@ chmod 400 /etc/auto.creds
 chown root:root /etc/auto.creds
 mkdir -p /mnt/smb
 
+## Arduino Command Line (flashes the amp and the bedroom hub)
+## The base installer removes arduino-cli from any module whose modinit does
+## not install it.
+if [ ! -e "/usr/bin/arduino-cli" ]; then
+  echo "Installing Arduino command line..."
+  curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR=/usr/bin sh
+  arduino-cli version
+  arduino-cli core update-index
+  arduino-cli core install arduino:avr
+  arduino-cli lib install Encoder@1.4.4
+fi
+
 ## Custom Node API
 cp -f $BIN/modconf/custom.js /opt/nodeapi/
 chmod 644 /opt/nodeapi/custom.js
