@@ -1,6 +1,6 @@
 # HandsFreeAudio (ESP32 car Bluetooth receiver)
 
-ESP-IDF firmware for an ESP32 that turns a Honda HR-V's head unit into a Bluetooth car kit. It plays phone music (A2DP sink, 44.1 kHz) and handles calls (HFP hands-free client, CVSD 8 kHz or mSBC 16 kHz) through an I2S DAC, picks up the driver's voice from an I2S microphone, and maps four touch pads to play, pause / hang up, next and previous. It advertises as **`Honda_HR-V`** (the log `TAG` is also the Bluetooth name).
+ESP-IDF firmware for an ESP32 that turns a Honda HR-V's head unit into a Bluetooth car kit. It plays phone music (A2DP sink, 44.1 kHz) and handles calls (HFP hands-free client, CVSD 8 kHz or mSBC 16 kHz) through an I2S DAC, picks up the driver's voice from an I2S microphone, and maps four touch pads to play-pause toggle / hang up, Siri / mic mute, next and previous. It advertises as **`Honda_HR-V`** (the log `TAG` is also the Bluetooth name).
 
 This project stands alone inside ProOS: it is not a host, `login.sh` does not deploy it, and the ProOS code style in `CODESTYLE.md` applies (camelCase, verbose expressions broken into named intermediates, a comment on every function).
 
@@ -27,7 +27,7 @@ ESP-IDF **6.0.1**, target `esp32` (the project was started under 5.5.3). There i
 idf.py build flash monitor
 ```
 
-Key build settings, all in `sdkconfig.defaults`: 4 MB flash (the LOLIN32's), unused Bluetooth profiles off (SPP, HFP Audio Gateway, OBEX client, AVRCP cover art), 2 host ACL links, Bluedroid and system task stacks sized from the `DIAG stack` readings (re-check those readings after any change that adds work to a task), Classic BT only (BLE off, and `initializeBluetoothStack()` releases the controller's BLE RAM with `esp_bt_controller_mem_release(ESP_BT_MODE_BLE)`), A2DP + HFP client + SPP, **SCO audio over HCI** (`BTDM_CTRL_BR_EDR_SCO_DATA_PATH_HCI`, `BT_HFP_AUDIO_DATA_PATH_HCI`, so call audio reaches the app as PCM, which is what the echo gate's reference needs), wideband speech (`BT_HFP_WBS_ENABLE`, mSBC), one SCO link, large single-app partition, -O2, 240 MHz. The lower block of that file is settings inherited from an older IDF and unrelated to audio.
+Key build settings, all in `sdkconfig.defaults`: 4 MB flash (the LOLIN32's), console at 921600 baud (`idf.py monitor` follows it), unused Bluetooth profiles off (SPP, HFP Audio Gateway, OBEX client, AVRCP cover art), 2 host ACL links, Bluedroid and system task stacks sized from the `DIAG stack` readings (re-check those readings after any change that adds work to a task), Classic BT only (BLE off, and `initializeBluetoothStack()` releases the controller's BLE RAM with `esp_bt_controller_mem_release(ESP_BT_MODE_BLE)`), A2DP + HFP client + SPP, **SCO audio over HCI** (`BTDM_CTRL_BR_EDR_SCO_DATA_PATH_HCI`, `BT_HFP_AUDIO_DATA_PATH_HCI`, so call audio reaches the app as PCM, which is what the echo gate's reference needs), wideband speech (`BT_HFP_WBS_ENABLE`, mSBC), one SCO link, large single-app partition, -O2, 240 MHz. The lower block of that file is settings inherited from an older IDF and unrelated to audio.
 
 ## Hardware
 
@@ -35,8 +35,8 @@ Key build settings, all in `sdkconfig.defaults`: 4 MB flash (the LOLIN32's), unu
 | --- | --- | --- |
 | DAC I2S (I2S0, master, stereo 16-bit) | BCLK 23 · WS 26 · DATA 25 | UDA1334A |
 | Mic I2S (I2S1, master, mono 32-bit, left slot) | BCLK 21 · WS 32 · DATA 34 | Top 16 bits used (`>> 16`) |
-| Touch pad Play | 18 | TTP224 touch module, active high, pulled down, polled every 100 ms |
-| Touch pad Pause / end call | 4 | Hangs up or rejects (`esp_hf_client_reject_call`) while a call is ringing or active |
+| Touch pad Siri / mute (`TOUCH_PAD_SIRI_MUTE`) | 18 | TTP224 touch module, active high, pulled down, polled every 100 ms. During a call (or ringing) toggles `isMicMuted`: microphoneTask sends silence after all processing, and clears it when the call ends. Otherwise starts Siri (`esp_hf_client_start_voice_recognition`), or stops it while `isVoiceRecognitionActive` (from `ESP_HF_CLIENT_BVRA_EVT`) |
+| Touch pad Play-pause / end call (`TOUCH_PAD_PLAY_PAUSE`) | 4 | While a call is ringing or active, only hangs up or rejects it (`esp_hf_client_reject_call`); otherwise toggles play / pause from `isMediaPlaying`, which follows the phone's AVRCP play status notifications (`bluetoothAvrcpControllerCallback`), or the A2DP stream state for a phone without them |
 | Touch pad Next | 19 | AVRCP passthrough |
 | Touch pad Previous | 22 | AVRCP passthrough |
 
@@ -49,7 +49,7 @@ Both I2S channels use `I2S_CLK_SRC_DEFAULT` (PLL), never APLL: APLL would not sw
 | Code | Runs on | Does |
 | --- | --- | --- |
 | `app_main()` | | NVS (erase and retry on bad partition), mutexes / buffers (aborts if any is NULL), touch pads, both I2S channels, filter coefficients, Bluetooth, tasks; then reconnects A2DP to the last phone saved in NVS (`bt_storage` / `last_bda`) |
-| `touchPanelTask` | core 1, prio 5 | Edge-detects the pads, sends AVRCP or hangs up |
+| `touchPanelTask` | core 1, prio 5, 2048 B stack | Edge-detects the pads, sends AVRCP (`sendAvrcpButton`) or hangs up. Its stack reading is low only until a pad is pressed: 1536 B overflowed on a press |
 | `audioOutputTask` | core 1, prio 15 | Music: waits for 20 KB pre-roll in the 40 KB `a2dpRingBuffer`, then writes to the DAC; re-buffers on underflow; idles during a call |
 | `microphoneTask` | core 1, prio 10, 6 KB stack | Sleeps on a task notification outside calls. In a call: reads 120-sample frames, high-pass 200 Hz → low-pass 7 kHz → `MICROPHONE_GAIN` → clamp → voice gate → `microphoneStreamBuffer`, then `esp_hf_client_outgoing_data_ready()` |
 | `bluetoothA2dpSinkDataCallback` | Bluedroid | Music PCM into the ring buffer, never blocking (drops when full) |
@@ -99,7 +99,7 @@ Not an echo canceller: half-duplex ducking. Once per mic frame (7.5 ms at 16 kHz
 | Switch | Current | Effect |
 | --- | --- | --- |
 | `ECHO_MODE` | `ECHO_MODE_SPEEX` | Which echo handling is compiled in (above) |
-| `DIAG_LOG_ENABLED` | 1 | Call-time budget for the echo canceller: once a second mic frame time against the frame period, heap free / largest block / minimum, mic task stack left (`DIAG mic …`); every 10 s each core's idle share and the busiest tasks (`DIAG cpu …`) and every task's unused stack, tightest first (`DIAG stack free B: …`); heap at boot and at call start (`DIAG heap …`). Printed by `diagnosticsTask` (core 1, priority 2), never by the mic task. Needs `CONFIG_FREERTOS_USE_TRACE_FACILITY` and `CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS` |
+| `DIAG_LOG_ENABLED` | 1 | Call-time budget for the echo canceller: once a second mic frame time against the frame period, heap free / largest block / minimum, mic task stack left (`DIAG mic …`, which also counts `empty` uplink fetches: no whole frame queued, a click at the far end); then the crackle counters (`DIAG audio spk underruns N full-scale N | mic clipped N of N`: speaker descriptors played as silence, downlink samples the phone sent already clipped, mic samples clipped by `MICROPHONE_GAIN`), all 0 in a clean call; every 10 s each core's idle share and the busiest tasks (`DIAG cpu …`) and every task's unused stack, tightest first (`DIAG stack free B: …`); heap at boot and at call start (`DIAG heap …`). Printed by `diagnosticsTask` (core 1, priority 2), never by the mic task. Needs `CONFIG_FREERTOS_USE_TRACE_FACILITY` and `CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS` |
 
 Current tuning: `AEC_FAR_ACTIVE_LEVEL` 500, `AEC_ECHO_COUPLING_DB` −20, `AEC_NEAREND_MARGIN` 6, `AEC_DUCK_DEPTH_DB` −32, `AEC_FAR_RELEASE_MS` 180, `AEC_DUCK_RECOVERY_MS` 120, `AEC_SPEAKER_ATTENUATION_DB` −2. They were tuned in the car; the tuning log, the calibration assistant and `GATE-TUNING-GUIDE.md` that did it were removed (in git history), since the gate is being replaced (AEC-PLAN.md) and only stays for A/B comparison and as a fallback. `AEC_ECHO_COUPLING_DB` is relative to the mic after `MICROPHONE_GAIN`, so changing the gain or the speaker trim moves it.
 

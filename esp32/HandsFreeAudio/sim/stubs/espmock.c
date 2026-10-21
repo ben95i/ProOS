@@ -502,11 +502,16 @@ int mockI2sTxPop(i2s_chan_handle_t c, uint8_t *out) {
     if (!c->enabled) { pthread_mutex_unlock(&c->m); return 0; }
     mockTxPops++;
     i2s_isr_callback_t onSent = c->callbacks.on_sent;
+    i2s_isr_callback_t onSendOverflow = c->callbacks.on_send_q_ovf;
     void *context = c->callbackContext;
     if (c->readyCount == 0) {
         mockI2sTxUnderruns++;
         int emptyBytes = c->descBytes;
         pthread_mutex_unlock(&c->m);
+        if (onSendOverflow) {   /* the driver reports an underrun as a send queue overflow */
+            i2s_event_data_t event = { NULL, (size_t)emptyBytes };
+            onSendOverflow(c, &event, context);
+        }
         if (onSent) {   /* an underrun plays an auto-cleared, silent descriptor */
             static uint8_t silentDescriptor[16384];
             i2s_event_data_t event = { silentDescriptor, (size_t)emptyBytes };
@@ -585,6 +590,17 @@ uint8_t *esp_bt_dev_get_address(void) { return ownAddr; }
 
 esp_err_t esp_avrc_ct_init(void) { return ESP_OK; }
 esp_err_t esp_avrc_ct_send_passthrough_cmd(uint8_t tl, uint8_t k, uint8_t s) { (void)tl; (void)k; (void)s; return ESP_OK; }
+esp_avrc_ct_cb_t mockAvrcCtCb = NULL;
+esp_err_t esp_avrc_ct_register_callback(esp_avrc_ct_cb_t cb) { mockAvrcCtCb = cb; return ESP_OK; }
+esp_err_t esp_avrc_ct_send_get_rn_capabilities_cmd(uint8_t tl) { (void)tl; return ESP_OK; }
+esp_err_t esp_avrc_ct_send_register_notification_cmd(uint8_t tl, uint8_t e, uint32_t p) { (void)tl; (void)e; (void)p; return ESP_OK; }
+bool esp_avrc_rn_evt_bit_mask_operation(esp_avrc_bit_mask_op_t op, esp_avrc_rn_evt_cap_mask_t *events,
+                                        esp_avrc_rn_event_ids_t id) {
+    uint16_t bit = (uint16_t)(1u << id);
+    if (op == ESP_AVRC_BIT_MASK_OP_SET) { events->bits |= bit; return true; }
+    if (op == ESP_AVRC_BIT_MASK_OP_CLEAR) { events->bits &= (uint16_t)~bit; return true; }
+    return (events->bits & bit) != 0;
+}
 
 esp_a2d_cb_t mockA2dCb = NULL; esp_a2d_sink_data_cb_t mockA2dDataCb = NULL;
 esp_err_t esp_a2d_register_callback(esp_a2d_cb_t cb) { mockA2dCb = cb; return ESP_OK; }
@@ -600,4 +616,6 @@ esp_err_t esp_hf_client_register_callback(esp_hf_client_cb_t cb) { mockHfCb = cb
 esp_err_t esp_hf_client_register_data_callback(esp_hf_client_incoming_data_cb_t r, esp_hf_client_outgoing_data_cb_t s) { mockHfRecvCb = r; mockHfSendCb = s; return ESP_OK; }
 esp_err_t esp_hf_client_init(void) { return ESP_OK; }
 esp_err_t esp_hf_client_reject_call(void) { return ESP_OK; }
+esp_err_t esp_hf_client_start_voice_recognition(void) { return ESP_OK; }
+esp_err_t esp_hf_client_stop_voice_recognition(void) { return ESP_OK; }
 esp_err_t esp_hf_client_outgoing_data_ready(void) { __sync_fetch_and_add(&mockOutgoingReadyPending, 1); return ESP_OK; }

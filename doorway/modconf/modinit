@@ -53,4 +53,7 @@ chmod 400 /etc/auto.creds
 chown root:root /etc/auto.creds
 mkdir -p /mnt/smb
 
+## Script Symlink(s)
+ln -sf /opt/rpi/cpusb.sh /usr/bin/cpusb
+
 exit

@@ -159,8 +159,9 @@ typedef struct {
 } i2s_std_config_t;
 
 /* Event callbacks. The simulated I2S clock (sim.c's hardware thread) calls on_sent
-   for every descriptor it plays (zeros on an underrun, as auto_clear does) and
-   on_recv_q_ovf when the mic queue drops a descriptor. */
+   for every descriptor it plays (zeros on an underrun, as auto_clear does),
+   on_send_q_ovf on a speaker underrun and on_recv_q_ovf when the mic queue drops a
+   descriptor. */
 #define IRAM_ATTR
 typedef struct { void *dma_buf; size_t size; } i2s_event_data_t;
 typedef bool (*i2s_isr_callback_t)(i2s_chan_handle_t handle, i2s_event_data_t *event, void *user_ctx);
@@ -253,14 +254,36 @@ typedef enum { ESP_AVRC_PT_CMD_PLAY = 0x44, ESP_AVRC_PT_CMD_PAUSE = 0x46,
 typedef enum { ESP_AVRC_PT_CMD_STATE_PRESSED = 0, ESP_AVRC_PT_CMD_STATE_RELEASED } esp_avrc_pt_cmd_state_t;
 esp_err_t esp_avrc_ct_init(void);
 esp_err_t esp_avrc_ct_send_passthrough_cmd(uint8_t tl, uint8_t key, uint8_t state);
+typedef enum { ESP_AVRC_CT_CONNECTION_STATE_EVT = 0, ESP_AVRC_CT_PASSTHROUGH_RSP_EVT,
+               ESP_AVRC_CT_CHANGE_NOTIFY_EVT, ESP_AVRC_CT_GET_RN_CAPABILITIES_RSP_EVT } esp_avrc_ct_cb_event_t;
+typedef enum { ESP_AVRC_RN_PLAY_STATUS_CHANGE = 0x01 } esp_avrc_rn_event_ids_t;
+typedef enum { ESP_AVRC_PLAYBACK_STOPPED = 0, ESP_AVRC_PLAYBACK_PLAYING, ESP_AVRC_PLAYBACK_PAUSED,
+               ESP_AVRC_PLAYBACK_FWD_SEEK, ESP_AVRC_PLAYBACK_REV_SEEK } esp_avrc_playback_stat_t;
+typedef enum { ESP_AVRC_BIT_MASK_OP_TEST = 0, ESP_AVRC_BIT_MASK_OP_SET, ESP_AVRC_BIT_MASK_OP_CLEAR } esp_avrc_bit_mask_op_t;
+typedef struct { uint16_t bits; } esp_avrc_rn_evt_cap_mask_t;
+typedef union { esp_avrc_playback_stat_t playback; uint8_t volume; } esp_avrc_rn_param_t;
+typedef union {
+    struct { bool connected; esp_bd_addr_t remote_bda; } conn_stat;
+    struct { uint8_t event_id; esp_avrc_rn_param_t event_parameter; } change_ntf;
+    struct { uint8_t cap_count; esp_avrc_rn_evt_cap_mask_t evt_set; } get_rn_caps_rsp;
+} esp_avrc_ct_cb_param_t;
+typedef void (*esp_avrc_ct_cb_t)(esp_avrc_ct_cb_event_t e, esp_avrc_ct_cb_param_t *p);
+esp_err_t esp_avrc_ct_register_callback(esp_avrc_ct_cb_t cb);
+esp_err_t esp_avrc_ct_send_get_rn_capabilities_cmd(uint8_t tl);
+esp_err_t esp_avrc_ct_send_register_notification_cmd(uint8_t tl, uint8_t event_id, uint32_t event_parameter);
+bool esp_avrc_rn_evt_bit_mask_operation(esp_avrc_bit_mask_op_t op, esp_avrc_rn_evt_cap_mask_t *events,
+                                        esp_avrc_rn_event_ids_t event_id);
+extern esp_avrc_ct_cb_t mockAvrcCtCb;
 
 /* A2DP */
 typedef enum { ESP_A2D_CONNECTION_STATE_EVT = 0, ESP_A2D_AUDIO_STATE_EVT, ESP_A2D_AUDIO_CFG_EVT } esp_a2d_cb_event_t;
 typedef enum { ESP_A2D_CONNECTION_STATE_DISCONNECTED = 0, ESP_A2D_CONNECTION_STATE_CONNECTING,
                ESP_A2D_CONNECTION_STATE_CONNECTED } esp_a2d_connection_state_t;
+typedef enum { ESP_A2D_AUDIO_STATE_SUSPEND = 0, ESP_A2D_AUDIO_STATE_STARTED } esp_a2d_audio_state_t;
 #define ESP_A2D_MCT_SBC 0
 typedef union {
     struct { esp_a2d_connection_state_t state; esp_bd_addr_t remote_bda; } conn_stat;
+    struct { esp_a2d_audio_state_t state; esp_bd_addr_t remote_bda; } audio_stat;
     struct { struct { int type; uint8_t cie[10]; } mcc; } audio_cfg;
 } esp_a2d_cb_param_t;
 typedef void (*esp_a2d_cb_t)(esp_a2d_cb_event_t e, esp_a2d_cb_param_t *p);
@@ -277,8 +300,10 @@ typedef enum {
     ESP_HF_CLIENT_CONNECTION_STATE_EVT = 0,
     ESP_HF_CLIENT_AUDIO_STATE_EVT,
     ESP_HF_CLIENT_CIND_CALL_EVT,
-    ESP_HF_CLIENT_CIND_CALL_SETUP_EVT
+    ESP_HF_CLIENT_CIND_CALL_SETUP_EVT,
+    ESP_HF_CLIENT_BVRA_EVT
 } esp_hf_client_cb_event_t;
+typedef enum { ESP_HF_VR_STATE_DISABLED = 0, ESP_HF_VR_STATE_ENABLED } esp_hf_vr_state_t;
 typedef enum { ESP_HF_CLIENT_CONNECTION_STATE_DISCONNECTED = 0, ESP_HF_CLIENT_CONNECTION_STATE_CONNECTING,
                ESP_HF_CLIENT_CONNECTION_STATE_CONNECTED, ESP_HF_CLIENT_CONNECTION_STATE_SLC_CONNECTED,
                ESP_HF_CLIENT_CONNECTION_STATE_DISCONNECTING } esp_hf_client_connection_state_t;
@@ -290,6 +315,7 @@ typedef enum { ESP_HF_CALL_SETUP_STATUS_IDLE = 0, ESP_HF_CALL_SETUP_STATUS_INCOM
 typedef union {
     struct { esp_hf_client_connection_state_t state; esp_bd_addr_t remote_bda; } conn_stat;
     struct { esp_hf_client_audio_state_t state; } audio_stat;
+    struct { esp_hf_vr_state_t value; } bvra;
     struct { esp_hf_call_status_t status; } call;
     struct { esp_hf_call_setup_status_t status; } call_setup;
 } esp_hf_client_cb_param_t;
@@ -300,6 +326,8 @@ esp_err_t esp_hf_client_register_callback(esp_hf_client_cb_t cb);
 esp_err_t esp_hf_client_register_data_callback(esp_hf_client_incoming_data_cb_t r, esp_hf_client_outgoing_data_cb_t s);
 esp_err_t esp_hf_client_init(void);
 esp_err_t esp_hf_client_reject_call(void);
+esp_err_t esp_hf_client_start_voice_recognition(void);
+esp_err_t esp_hf_client_stop_voice_recognition(void);
 esp_err_t esp_hf_client_outgoing_data_ready(void);
 extern esp_hf_client_cb_t               mockHfCb;
 extern esp_hf_client_incoming_data_cb_t mockHfRecvCb;

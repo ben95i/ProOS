@@ -325,7 +325,7 @@ CSS is one sheet per component under `styles/`, and the order of the `<link>` ta
 
 **Colour.** Everything derives from one `--main-color` set by the theme picker; `:root` mixes it with white, black and transparency into the rest of the palette (`--main-trans-35` for button faces, `--main-black-30` to `-50` for the walls). When the colour's BT.601 brightness passes 135 (`MainMenu.LIGHT_LUMA`), the page takes `.theme-light` and button text turns black.
 
-**Groups.** A group sizes itself around its buttons, so button size is set only on `.button` (150 × 105 px). `groups.css` exposes its spacing as variables: 3 columns, 7 px clear, gap and spacing, a 24 px legend band, a 20% fill.
+**Groups.** A group sizes itself around its buttons, so button size is set only on `.button` (150 × 105 px). `groups.css` exposes its spacing as variables: 3 columns, 7 px clear, gap and spacing, a 12 px label with a 7 px gap above and below its capitals, a 20% fill.
 
 The CSS rules to keep (`calc()`, `:hover`, translucency, the palette) are in `../CODESTYLE.md`.
 

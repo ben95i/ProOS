@@ -38,19 +38,42 @@
  */
 
 .svropt__prompt {
+  /* the black space between the window's border and the buttons, the same
+     on all four sides */
+  --svropt-edge: 10px;
+  /* the black space between two buttons */
+  --svropt-gap: 8px;
+  /* how far a .button's face sits up and left of its box (its
+     translate(-5px, -5px) in main.css), the depth of its side walls */
+  --svropt-wall: 5px;
   display: none;
   overflow-y: visible;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
   margin-right: -50%;
-  padding-top: 5px;
-  width: 460px;
+  width: auto;
   height: auto;
 }
 
+/* A panel's buttons, three to a row. Each button's face is drawn a wall's
+   depth up and left of its box and its walls end at the box, so the top and
+   left padding and the gaps add a wall's depth to stay that wide on screen. */
+.svropt__panel {
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  column-gap: calc(var(--svropt-gap) - -1 * var(--svropt-wall));
+  row-gap: calc(var(--svropt-gap) - -1 * var(--svropt-wall));
+  padding-top: calc(var(--svropt-edge) - -1 * var(--svropt-wall));
+  padding-left: calc(var(--svropt-edge) - -1 * var(--svropt-wall));
+  padding-right: var(--svropt-edge);
+  padding-bottom: var(--svropt-edge);
+}
+
 .svropt_button {
-  width: 135px;  
+  display: block;
+  margin: 0;
+  width: 135px;
 }
 
 .svropt_button_lgr {

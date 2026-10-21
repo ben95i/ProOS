@@ -313,7 +313,7 @@ function selectRoom(_mode) {
     // delegated dispatcher, so rendering the markup is all that's needed
     container.innerHTML = config.template();
   }
-  // the nav and the room group's legend show the same icon and name
+  // the nav and the room group's label show the same icon and name
   showRoomIdentity('current-room-icon', 'current-room-label', config);
   showRoomIdentity('room-group-icon', 'room-group-label', config);
   App.currentRoom = _mode;
@@ -406,7 +406,7 @@ function mainGridTemplate(f) {
 <div data-app-injected>
   <div class="grid">
     <fieldset class="btn-group">
-      <legend><i class="fad fa-stars"></i><span>Pixels</span></legend>
+      <div class="btn-group-label"><i class="fad fa-stars"></i><span>Pixels</span></div>
       ${gridButtonTemplate({
         buttonId: 'btn-ledcolorprompt',
         icon: 'fad fa-palette',
@@ -434,7 +434,7 @@ function mainGridTemplate(f) {
     ${f.isServer ? roomControlsTemplate() : ''}
     ${f.isServer ? `
     <fieldset class="btn-group" id="room-group">
-      <legend><i id="room-group-icon"></i><span id="room-group-label"></span></legend>
+      <div class="btn-group-label"><i id="room-group-icon"></i><span id="room-group-label"></span></div>
       <div id="room-grid-container"></div>
     </fieldset>` : ''}
   </div>
@@ -473,7 +473,7 @@ function roomControlsTemplate() {
 <div>
   <p class="grid-sep"></p>
   <fieldset class="btn-group">
-  <legend><i class="fad fa-home"></i><span>APT</span></legend>
+  <div class="btn-group-label"><i class="fad fa-home"></i><span>APT</span></div>
   ${dropdownButtonTemplate({
     buttonId: 'btn-menu-allmenu',
     icon: 'fad fa-plug',

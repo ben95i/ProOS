@@ -85,6 +85,10 @@ CONFIG_BT_HFP_WBS_ENABLE=y
 # Small fixed cost; can go once the echo canceller is sized (AEC-PLAN.md).
 CONFIG_FREERTOS_USE_TRACE_FACILITY=y
 CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y
+# Console at 921600 baud: a DIAG line takes ~1 ms on the UART instead of ~9 ms, so
+# a log line from Bluedroid's task waits far less for the log lock during a call.
+# idf.py monitor follows this setting; the ROM's first boot lines are still at 115200.
+CONFIG_ESP_CONSOLE_UART_BAUDRATE=921600
 
 # ==========================================================================
 # INHERITED FROM AN OLDER IDF - review before keeping

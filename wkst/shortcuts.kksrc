@@ -2,11 +2,15 @@
 switch-to-activity-d85314e6-7777-4cff-829d-510f4cb50c8c=
 
 [Custom Commands][net.local.sh-2.desktop]
-Exec=sh -c "curl 'http://automate.home/api?arg=lrlightsoff&var=&action=main'"\n
+Exec=sh -c "curl 'http://automate.home/api?arg=lrlightsoff&var=&action=main'"
 Name=Lights Off
 
+[Custom Commands][net.local.sh-3.desktop]
+Exec=sh -c "curl 'http://automate.home/api?var=hifitoggle&arg=lrxmit&action=main'"
+Name=Toggle Stereo Power
+
 [Custom Commands][net.local.sh.desktop]
-Exec=sh -c "curl 'http://automate.home/api?arg=lrlightson&var=&action=main'"\n
+Exec=sh -c "curl 'http://automate.home/api?arg=lrlightson&var=&action=main'"
 Name=Lights On
 
 [Custom Commands][net.local.toggle_split_screen.sh.desktop]
@@ -143,13 +147,13 @@ Toggle Screen Reader On and Off=Meta+Alt+S
 
 [kmix][Global Shortcuts]
 decrease_microphone_volume=Microphone Volume Down
-decrease_volume=Volume Down; F12; F4
+decrease_volume=F12; Volume Down; F4
 decrease_volume_small=
 increase_microphone_volume=Microphone Volume Up
-increase_volume=Volume Up; Ins; F5
+increase_volume=Ins; F5; Volume Up
 increase_volume_small=
 mic_mute=Microphone Mute; Meta+Volume Mute
-mute=F3; F11; Volume Mute
+mute=F11; F3; Volume Mute
 
 [ksmserver][Global Shortcuts]
 Halt Without Confirmation=
@@ -350,6 +354,9 @@ stopmedia=Media Stop
 
 [net.local.sh-2.desktop][Global Shortcuts]
 _launch=F1
+
+[net.local.sh-3.desktop][Global Shortcuts]
+_launch=Ctrl+F11
 
 [net.local.sh.desktop][Global Shortcuts]
 _launch=F2

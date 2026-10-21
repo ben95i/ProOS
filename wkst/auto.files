@@ -1,0 +1,17 @@
+# /etc/auto.files: autofs direct map for the files server's shares
+# Each share is mounted on first access and unmounted after 10 idle minutes
+# (--timeout in /etc/auto.master.d/files.autofs). A share that fails to mount
+# is retried on the next access after negative_timeout (/etc/autofs.conf).
+# Must not be executable, or autofs runs it as a program map.
+#
+# <mount point>  <options>  <location>
+#
+/mnt/SFTP      -fstype=fuse.sshfs,rw,ssh_command=/root/sshfs_wrapper.sh,default_permissions,allow_other,reconnect,ServerAliveInterval=5,ServerAliveCountMax=3,uid=1000,gid=1000   :ben@files.home\:/
+/mnt/Data      -fstype=cifs,rw,credentials=/root/smb.credentials,iocharset=utf8,vers=3.0,soft,echo_interval=5,handletimeout=5000,uid=1000,gid=1000,dir_mode=0700   ://files.home/Data
+/mnt/Media     -fstype=cifs,rw,credentials=/root/smb.credentials,iocharset=utf8,vers=3.0,soft,echo_interval=5,handletimeout=5000,uid=1000,gid=1000,dir_mode=0700   ://files.home/Media
+/mnt/Scratch   -fstype=cifs,rw,credentials=/root/smb.credentials,iocharset=utf8,vers=3.0,soft,echo_interval=5,handletimeout=5000,uid=1000,gid=1000,dir_mode=0700   ://files.home/Scratch
+/mnt/Cameras   -fstype=cifs,rw,credentials=/root/smb.credentials,iocharset=utf8,vers=3.0,soft,echo_interval=5,handletimeout=5000,uid=1000,gid=1000,dir_mode=0700   ://files.home/Cameras
+/mnt/Regions   -fstype=cifs,rw,credentials=/root/smb.credentials,iocharset=utf8,vers=3.0,soft,echo_interval=5,handletimeout=5000,uid=1000,gid=1000,dir_mode=0700   ://files.home/Regions
+/mnt/Games     -fstype=cifs,rw,credentials=/root/smb.credentials,iocharset=utf8,vers=3.0,soft,echo_interval=5,handletimeout=5000,uid=1000,gid=1000,dir_mode=0700   ://files.home/Games
+/mnt/MP3s      -fstype=cifs,rw,credentials=/root/smb.credentials,iocharset=utf8,vers=3.0,soft,echo_interval=5,handletimeout=5000,uid=1000,gid=1000,dir_mode=0700   ://files.home/MP3s
+/mnt/External  -fstype=cifs,rw,credentials=/root/smb.credentials,iocharset=utf8,vers=3.0,soft,echo_interval=5,handletimeout=5000,uid=1000,gid=1000,dir_mode=0700   ://files.home/External

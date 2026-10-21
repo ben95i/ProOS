@@ -59,7 +59,7 @@ export function serverOptionsTemplate(f) {
 // the server's main panel: services, network, and the way to the other two
 function svrOptMainTemplate() {
   return `
-<div class="svropt__main">
+<div class="svropt__panel svropt__main">
   ${dropdownButtonTemplate({
     buttonId: 'btn-menu-atalk',
     icon: 'fab fa-apple',
@@ -205,7 +205,7 @@ registerListeners({
 // the server's backup panel
 function svrOptBackupTemplate() {
   return `
-<div class="svropt__backup">
+<div class="svropt__panel svropt__backup">
   ${gridButtonTemplate({
     buttonId: 'btn-svr-last_backup_dates',
     icon: 'fad fa-history',
@@ -273,7 +273,7 @@ registerListeners({
 // the server's regions panel: archive, snapshot and RAM disk mounts
 function svrOptRegionsTemplate() {
   return `
-<div class="svropt__regions">
+<div class="svropt__panel svropt__regions">
   ${dropdownButtonTemplate({
     buttonId: 'btn-menu-archive',
     label: 'Archive',
@@ -343,7 +343,7 @@ registerListeners({
 // the Pi models' options panel
 function piOptionsTemplate() {
   return `
-<div>
+<div class="svropt__panel">
   ${dropdownButtonTemplate({
     buttonId: 'btn-menu-piwifi',
     icon: 'fad fa-wifi',

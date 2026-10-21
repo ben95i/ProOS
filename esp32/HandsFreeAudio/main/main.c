@@ -31,8 +31,8 @@
 static const char *TAG = "Honda_HR-V";
 
 // --- Touch Panel Pins ---
-#define TOUCH_PAD_PLAY       GPIO_NUM_18
-#define TOUCH_PAD_PAUSE      GPIO_NUM_4
+#define TOUCH_PAD_SIRI_MUTE  GPIO_NUM_18
+#define TOUCH_PAD_PLAY_PAUSE GPIO_NUM_4
 #define TOUCH_PAD_NEXT_TRACK GPIO_NUM_19
 #define TOUCH_PAD_PREV_TRACK GPIO_NUM_22
 
@@ -322,16 +322,27 @@ static const char *NVS_KEY_BLUETOOTH_MAC = "last_bda";
  * (AEC-PLAN.md, step 0) can be sized from numbers rather than estimates. During a
  * call a low-priority task prints, once per DIAG_LOG_PERIOD_MS:
  *
- *   DIAG mic 16k 133 frames avg 412 max 980 of 7500 us (5%/13%) | uplink fetches 133 skipped 0 | heap free 98K largest 61K min 85K | mic stack free 3120 B
+ *   DIAG mic 16k 133 frames avg 412 max 980 of 7500 us (5%/13%) | uplink fetches 133 empty 0 skipped 0 | heap free 98K largest 61K min 85K | mic stack free 3120 B
+ *   DIAG audio spk underruns 0 full-scale 0 | mic clipped 0 of 15960
  *
  *   frames   microphone frames processed in the window (133 a second at 16 kHz)
  *   avg/max  microphoneTask time from the end of the I2S read to the frame being
  *            queued, against the frame period (the budget); max includes time the
  *            task was preempted
- *   uplink   times Bluedroid fetched uplink audio, and pokes held back because it
- *            had stopped (see UPLINK_UNANSWERED_POKE_LIMIT); ~133 and 0 in a call
+ *   uplink   times Bluedroid fetched uplink audio, those that found no whole frame
+ *            queued (the phone gets a gap: a click at the far end), and pokes held
+ *            back because it had stopped (see UPLINK_UNANSWERED_POKE_LIMIT); ~133, 0
+ *            and 0 in a healthy call
  *   heap     free 8-bit heap now, largest single block, lowest free since boot
  *   stack    microphoneTask stack never used since boot (6144 B allocated)
+ *
+ * The audio line counts what crackles, all 0 in a clean call:
+ *
+ *   underruns   speaker DMA descriptors (3.75 ms at 16 kHz) played as silence because
+ *               no downlink audio had arrived: a click in the car
+ *   full-scale  downlink samples the phone sent already at +-32767: clipped upstream
+ *   clipped     mic samples MICROPHONE_GAIN pushed past int16 range: distortion at
+ *               the far end, of the mic samples in the window
  *
  * With ECHO_MODE_SPEEX it follows each of those with the echo canceller's line
  * (see logEchoCanceller()):
@@ -349,7 +360,7 @@ static const char *NVS_KEY_BLUETOOTH_MAC = "last_bda";
  *
  * At boot it prints the heap once, after Bluetooth and the tasks are up.
  *
- * microphoneTask only adds to three counters; all formatting and UART output happens
+ * microphoneTask only adds to a few counters; all formatting and UART output happens
  * in diagnosticsTask, so the log cannot stall microphone processing. The CPU line
  * needs CONFIG_FREERTOS_USE_TRACE_FACILITY and CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS
  * (sdkconfig.defaults). Set to 0 for daily use.
@@ -390,12 +401,47 @@ static volatile bool enableHfpStereoMode = false;
 static volatile bool isMicHardwareEnabled = false; 
 static volatile bool isCallActiveOrRinging = false;
 
+// Whether the phone's media is playing, for pad 1's play / pause toggle. Set from the
+// phone's AVRCP play status notifications when it sends them (iPhones do), otherwise
+// from the A2DP stream starting and suspending. Written by the Bluedroid task and by
+// touchPanelTask (its guess right after a press, until the phone confirms); a single
+// bool, so reads need no lock.
+static volatile bool isMediaPlaying = false;
+static volatile bool hasPlayStatusNotifications = false;
+
+// Pad 4's state. isMicMuted is toggled by touchPanelTask during a call and cleared by
+// microphoneTask when the call ends, so the next call always starts unmuted.
+// isVoiceRecognitionActive follows the phone's +BVRA reports (Siri listening or not).
+static volatile bool isMicMuted = false;
+static volatile bool isVoiceRecognitionActive = false;
+
+// AVRCP transaction labels (0-15), one per kind of request, so a reply to one is never
+// matched to another.
+#define AVRCP_LABEL_PASSTHROUGH   0
+#define AVRCP_LABEL_CAPABILITIES  1
+#define AVRCP_LABEL_PLAY_STATUS   2
+
 // Times Bluedroid has called bluetoothHandsFreeSendCallback(), whatever it returned.
 // Written only by the Bluedroid task, read by microphoneTask (poke back-off) and the
 // diagnostics. A single aligned 32-bit word, so reads need no lock.
 static volatile uint32_t uplinkFetchCount = 0;
 // Pokes microphoneTask skipped while backing off. Written only by microphoneTask.
 static volatile uint32_t uplinkSkippedPokeCount = 0;
+
+// Crackle counters for the DIAG lines. Each has one writer, so a plain increment is
+// safe; diagnosticsTask only reads them and logs the change since its last line.
+// Fetches that found less than a whole frame queued, so Bluedroid got no audio.
+// Written only by the Bluedroid task.
+static volatile uint32_t uplinkEmptyFetchCount = 0;
+// Times the call-profile speaker DMA ran out of audio and played auto-cleared silence.
+// Written only by the TX on_send_q_ovf interrupt.
+static volatile uint32_t speakerUnderrunCount = 0;
+// Call samples the phone sent at full scale (+32767 or -32768): clipped before they
+// reached us. Written only by the Bluedroid task.
+static volatile uint32_t speakerFullScaleSampleCount = 0;
+// Mic samples clipped by MICROPHONE_GAIN on the way to the phone. Written only by
+// microphoneTask.
+static volatile uint32_t micClippedSampleCount = 0;
 
 // Dynamic filter coefficients based on current sample rate
 static float activeLowPassAlpha = 0.0f;
@@ -642,6 +688,16 @@ static bool IRAM_ATTR micOverflowCallback(i2s_chan_handle_t channel, i2s_event_d
 #endif
 
 /**
+ * @brief TX on_send_q_ovf interrupt: the speaker DMA had no new call audio and plays
+ *        a silent (auto-cleared) descriptor instead. Counted for the DIAG audio line.
+ * * @return false: no task is woken.
+ */
+static bool IRAM_ATTR speakerUnderrunCallback(i2s_chan_handle_t channel, i2s_event_data_t *event, void *userContext) {
+    speakerUnderrunCount++;
+    return false;
+}
+
+/**
  * @brief NEW: Builds the I2S Tx (speaker) channel with a given DMA geometry.
  * * Factored out of initializeI2sTransmitChannel() so the channel can be rebuilt with
  * call-sized DMA buffers when a call starts and music-sized buffers when it ends.
@@ -650,7 +706,7 @@ static bool IRAM_ATTR micOverflowCallback(i2s_chan_handle_t channel, i2s_event_d
  */
 static void createTransmitChannel(uint32_t sampleRate, uint32_t descriptorCount,
                                   uint32_t framesPerDescriptor, uint32_t preloadDescriptors,
-                                  bool isReferenceCaptured) {
+                                  bool isCallProfile) {
     i2s_chan_config_t transmitConfiguration = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
     transmitConfiguration.dma_desc_num = descriptorCount;
     transmitConfiguration.dma_frame_num = framesPerDescriptor;
@@ -671,16 +727,16 @@ static void createTransmitChannel(uint32_t sampleRate, uint32_t descriptorCount,
     transmitStandardConfiguration.clk_cfg.clk_src = I2S_CLK_SRC_DEFAULT;
     i2s_channel_init_std_mode(txChannel, &transmitStandardConfiguration);
 
+    // Callbacks must be registered before the channel is enabled. The call profile
+    // counts underruns and, with the echo canceller, captures its reference; music
+    // needs neither.
+    if (isCallProfile) {
+        i2s_event_callbacks_t transmitCallbacks = { .on_send_q_ovf = speakerUnderrunCallback };
 #if AEC_SPEEX_ENABLED
-    // The echo canceller's reference: callbacks must be registered before the channel
-    // is enabled. Music never needs it.
-    if (isReferenceCaptured) {
-        i2s_event_callbacks_t transmitCallbacks = { .on_sent = speakerSentCallback };
+        transmitCallbacks.on_sent = speakerSentCallback;
+#endif
         i2s_channel_register_event_callback(txChannel, &transmitCallbacks, NULL);
     }
-#else
-    (void)isReferenceCaptured;
-#endif
 
     // Prime the DMA queue with silence while the channel is still in the READY state.
     // i2s_channel_preload_data() only works before the clock starts, which is exactly the
@@ -831,8 +887,64 @@ void bluetoothA2dpSinkDataCallback(const uint8_t *audioData, uint32_t dataLength
     }
 }
 
+/* * ============================================================================
+ * Callbacks: AVRCP (Media Remote Control)
+ * ============================================================================
+ */
+
 /**
- * @brief Handles A2DP control events (Connection, Audio Config).
+ * @brief Asks the phone to report its next play status change (AVRCP notifications
+ * fire once, so this is sent again after every one).
+ */
+static void registerPlayStatusNotification(void) {
+    esp_avrc_ct_send_register_notification_cmd(AVRCP_LABEL_PLAY_STATUS,
+                                               ESP_AVRC_RN_PLAY_STATUS_CHANGE, 0);
+}
+
+/**
+ * @brief Handles AVRCP controller events to follow the phone's play state.
+ * * On connect asks which notifications the phone supports; when play status is one of
+ * them, registers for it and keeps isMediaPlaying in step with each change:
+ *   connect -> capabilities reply (play status supported) -> register -> change
+ *   notification (PLAYING) -> isMediaPlaying = true -> register again ...
+ * * @param event The AVRCP controller event type.
+ * @param parameter Pointer to event-specific parameters.
+ */
+void bluetoothAvrcpControllerCallback(esp_avrc_ct_cb_event_t event, esp_avrc_ct_cb_param_t *parameter) {
+    if (event == ESP_AVRC_CT_CONNECTION_STATE_EVT) {
+        bool isConnected = parameter->conn_stat.connected;
+        if (isConnected) {
+            esp_avrc_ct_send_get_rn_capabilities_cmd(AVRCP_LABEL_CAPABILITIES);
+        } else {
+            hasPlayStatusNotifications = false;
+            isMediaPlaying = false;
+        }
+    } else if (event == ESP_AVRC_CT_GET_RN_CAPABILITIES_RSP_EVT) {
+        bool isPlayStatusSupported = esp_avrc_rn_evt_bit_mask_operation(ESP_AVRC_BIT_MASK_OP_TEST,
+                                                                       &parameter->get_rn_caps_rsp.evt_set,
+                                                                       ESP_AVRC_RN_PLAY_STATUS_CHANGE);
+        hasPlayStatusNotifications = isPlayStatusSupported;
+        ESP_LOGI(TAG, "--- AVRCP: play status notifications %s ---",
+                 isPlayStatusSupported ? "supported" : "not supported, following A2DP");
+        if (isPlayStatusSupported) {
+            registerPlayStatusNotification();
+        }
+    } else if (event == ESP_AVRC_CT_CHANGE_NOTIFY_EVT) {
+        bool isPlayStatusChange = (parameter->change_ntf.event_id == ESP_AVRC_RN_PLAY_STATUS_CHANGE);
+        if (isPlayStatusChange) {
+            esp_avrc_playback_stat_t playbackStatus = (esp_avrc_playback_stat_t)parameter->change_ntf.event_parameter.playback;
+            // Seeking still counts as playing: a press should pause it.
+            bool isPlayingNow = (playbackStatus == ESP_AVRC_PLAYBACK_PLAYING ||
+                                 playbackStatus == ESP_AVRC_PLAYBACK_FWD_SEEK ||
+                                 playbackStatus == ESP_AVRC_PLAYBACK_REV_SEEK);
+            isMediaPlaying = isPlayingNow;
+            registerPlayStatusNotification();
+        }
+    }
+}
+
+/**
+ * @brief Handles A2DP control events (Connection, Audio State, Audio Config).
  * * When connected, triggers saving the MAC address to NVS. When the SBC codec is 
  * negotiated, commands the I2S hardware to switch to 44.1kHz.
  * * @param event The A2DP callback event type.
@@ -841,6 +953,7 @@ void bluetoothA2dpSinkDataCallback(const uint8_t *audioData, uint32_t dataLength
 void bluetoothAppA2dpCallback(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *parameter) {
     bool isConnectionStateEvent = (event == ESP_A2D_CONNECTION_STATE_EVT);
     bool isAudioConfigEvent = (event == ESP_A2D_AUDIO_CFG_EVT);
+    bool isAudioStateEvent = (event == ESP_A2D_AUDIO_STATE_EVT);
 
     if (isConnectionStateEvent) {
         bool isConnected = (parameter->conn_stat.state == ESP_A2D_CONNECTION_STATE_CONNECTED);
@@ -848,6 +961,13 @@ void bluetoothAppA2dpCallback(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *para
         if (isConnected) {
             ESP_LOGI(TAG, "--- A2DP Device Connected ---");
             saveBluetoothAddressToNvs(parameter->conn_stat.remote_bda);
+        }
+    } else if (isAudioStateEvent) {
+        // Fallback play state for phones without AVRCP play status notifications. Not
+        // used otherwise: the stream also starts for system sounds and stays up a few
+        // seconds after a pause, so it lags what the phone's player is doing.
+        if (!hasPlayStatusNotifications) {
+            isMediaPlaying = (parameter->audio_stat.state == ESP_A2D_AUDIO_STATE_STARTED);
         }
     } else if (isAudioConfigEvent) {
         ESP_LOGI(TAG, "--- A2DP Configuration Event---");
@@ -890,11 +1010,18 @@ void bluetoothHandsFreeReceiveCallback(const uint8_t *audioBuffer, uint32_t buff
     uint32_t farEndLevelAccumulator = 0;
 #endif
 
+    uint32_t fullScaleSamples = 0;
+
     for (uint32_t index = 0; index < numberOfSamples; index++) {
         uint32_t leftChannelIndex = index * 2;
         uint32_t rightChannelIndex = leftChannelIndex + 1;
         
         int16_t currentSample = pcm16Data[index];
+
+        bool isFullScale = (currentSample == INT16_MAX || currentSample == INT16_MIN);
+        if (isFullScale) {
+            fullScaleSamples++;
+        }
 
         // Optional fixed trim on the speaker path (AEC_SPEAKER_ATTENUATION_DB), in every
         // echo mode. Skipped entirely when set to 0 dB, so the samples pass through untouched.
@@ -917,6 +1044,8 @@ void bluetoothHandsFreeReceiveCallback(const uint8_t *audioBuffer, uint32_t buff
             stereoBuffer[rightChannelIndex] = currentSample;
         }
     }
+
+    speakerFullScaleSampleCount += fullScaleSamples;
 
 #if AEC_GATE_ENABLED
     // Publish as a PEAK HOLD, not an assignment. microphoneTask clears this when it
@@ -960,6 +1089,7 @@ uint32_t bluetoothHandsFreeSendCallback(uint8_t *outputBuffer, uint32_t bufferSi
     // STRICT FRAME ENFORCEMENT
     // Never return partial frames to the mSBC encoder. 
     if (xStreamBufferBytesAvailable(microphoneStreamBuffer) < bufferSize) {
+        uplinkEmptyFetchCount++;
         return 0;
     }
 
@@ -987,6 +1117,14 @@ void bluetoothHandsFreeClientCallback(esp_hf_client_cb_event_t event, esp_hf_cli
     bool isCallEvent = (event == ESP_HF_CLIENT_CIND_CALL_EVT);
     bool isCallSetupEvent = (event == ESP_HF_CLIENT_CIND_CALL_SETUP_EVT);
     bool isConnectionStateEvent = (event == ESP_HF_CLIENT_CONNECTION_STATE_EVT);
+    bool isVoiceRecognitionEvent = (event == ESP_HF_CLIENT_BVRA_EVT);
+
+    // --- Catch Siri starting or stopping (the phone reports it, whoever started it) ---
+    if (isVoiceRecognitionEvent) {
+        bool isEnabled = (parameter->bvra.value == ESP_HF_VR_STATE_ENABLED);
+        isVoiceRecognitionActive = isEnabled;
+        ESP_LOGI(TAG, "HFP: Voice recognition %s", isEnabled ? "started" : "stopped");
+    }
 
     // --- Catch HFP link Connect/Disconnect ---
     // Caches the remote phone's address. Kept for logging/diagnostics and so any future
@@ -1000,6 +1138,7 @@ void bluetoothHandsFreeClientCallback(esp_hf_client_cb_event_t event, esp_hf_cli
             ESP_LOGI(TAG, "HFP: Link connected, remote address cached");
         } else if (parameter->conn_stat.state == ESP_HF_CLIENT_CONNECTION_STATE_DISCONNECTED) {
             isHfpRemoteAddressValid = false;
+            isVoiceRecognitionActive = false;
         }
     }
     // --- Catch Incoming/Outgoing Ringing ---
@@ -1181,37 +1320,64 @@ static void logHeapUsage(const char *when) {
              (unsigned)(minimumFreeBytes / 1024));
 }
 
-// Uplink counters at the last log line; only diagnosticsTask touches these.
+/**
+ * @brief Returns how much a running counter grew since the last call for it, and
+ *        remembers its value for the next one.
+ * * Example: counter 540, last 400 -> returns 140, last becomes 540. Unsigned
+ * subtraction keeps it right across a wrap.
+ * * @param counter        A counter one other task or interrupt increments.
+ * @param countAtLastLog Its value at the last log line; only diagnosticsTask uses it.
+ */
+static uint32_t takeCountSinceLastLog(const volatile uint32_t *counter, uint32_t *countAtLastLog) {
+    uint32_t countNow = *counter;
+    uint32_t countSinceLastLog = countNow - *countAtLastLog;
+    *countAtLastLog = countNow;
+    return countSinceLastLog;
+}
+
+// Call audio counts for one DIAG window.
+typedef struct {
+    uint32_t uplinkFetches;         // Bluedroid fetches (~133 a second at 16 kHz)
+    uint32_t uplinkEmptyFetches;    // of those, ones that found no whole frame
+    uint32_t uplinkSkippedPokes;    // pokes held back (see UPLINK_UNANSWERED_POKE_LIMIT)
+    uint32_t speakerUnderruns;      // speaker descriptors played as silence
+    uint32_t speakerFullScale;      // phone samples already at full scale
+    uint32_t micClipped;            // mic samples clipped by MICROPHONE_GAIN
+} CallAudioCounts;
+
+// Counter values at the last log line; only diagnosticsTask touches these.
 static uint32_t uplinkFetchCountAtLastLog = 0;
+static uint32_t uplinkEmptyFetchCountAtLastLog = 0;
 static uint32_t uplinkSkippedPokeCountAtLastLog = 0;
+static uint32_t speakerUnderrunCountAtLastLog = 0;
+static uint32_t speakerFullScaleCountAtLastLog = 0;
+static uint32_t micClippedCountAtLastLog = 0;
 
 /**
- * @brief Returns how many uplink fetches and skipped pokes happened since the last
- *        call, and starts a new window.
- * * Example, one second of a healthy 16 kHz call: fetches ~133, skipped 0. While the
- * SCO link is closing: fetches 0, skipped climbing.
- * * @param fetchesOut Times Bluedroid called bluetoothHandsFreeSendCallback().
- * @param skippedOut Pokes microphoneTask held back (see UPLINK_UNANSWERED_POKE_LIMIT).
+ * @brief Returns the call audio counts since the last call, and starts a new window.
+ * * Example, one second of a healthy 16 kHz call: fetches ~133, empty 0, skipped 0,
+ * underruns 0, full scale 0, clipped 0. While the SCO link is closing: fetches 0,
+ * skipped climbing.
  */
-static void takeUplinkCounts(uint32_t *fetchesOut, uint32_t *skippedOut) {
-    uint32_t fetchCountNow = uplinkFetchCount;
-    uint32_t skippedCountNow = uplinkSkippedPokeCount;
-    *fetchesOut = fetchCountNow - uplinkFetchCountAtLastLog;
-    *skippedOut = skippedCountNow - uplinkSkippedPokeCountAtLastLog;
-    uplinkFetchCountAtLastLog = fetchCountNow;
-    uplinkSkippedPokeCountAtLastLog = skippedCountNow;
+static CallAudioCounts takeCallAudioCounts(void) {
+    CallAudioCounts counts;
+    counts.uplinkFetches = takeCountSinceLastLog(&uplinkFetchCount, &uplinkFetchCountAtLastLog);
+    counts.uplinkEmptyFetches = takeCountSinceLastLog(&uplinkEmptyFetchCount, &uplinkEmptyFetchCountAtLastLog);
+    counts.uplinkSkippedPokes = takeCountSinceLastLog(&uplinkSkippedPokeCount, &uplinkSkippedPokeCountAtLastLog);
+    counts.speakerUnderruns = takeCountSinceLastLog(&speakerUnderrunCount, &speakerUnderrunCountAtLastLog);
+    counts.speakerFullScale = takeCountSinceLastLog(&speakerFullScaleSampleCount, &speakerFullScaleCountAtLastLog);
+    counts.micClipped = takeCountSinceLastLog(&micClippedSampleCount, &micClippedCountAtLastLog);
+    return counts;
 }
 
 /**
  * @brief Logs the once-a-second call budget line: microphone frame time against the
- *        frame period, uplink fetches and skipped pokes, the heap, and the microphone
- *        task's unused stack.
+ *        frame period, uplink fetches (empty ones and skipped pokes), the heap, and the
+ *        microphone task's unused stack; then the audio line with the crackle counters.
  */
 static MicFrameTiming logCallBudget(void) {
     MicFrameTiming windowTiming = takeMicFrameTiming();
-    uint32_t uplinkFetches = 0;
-    uint32_t uplinkSkippedPokes = 0;
-    takeUplinkCounts(&uplinkFetches, &uplinkSkippedPokes);
+    CallAudioCounts audioCounts = takeCallAudioCounts();
 
     // Frame period in microseconds: 120 samples are 7500 us at 16 kHz, 15000 us at 8 kHz.
     uint32_t sampleRate = activeSampleRate;
@@ -1246,7 +1412,7 @@ static MicFrameTiming logCallBudget(void) {
     }
 
     ESP_LOGI(TAG, "DIAG mic %luk %lu frames avg %lu max %lu of %lu us (%lu%%/%lu%%) | "
-                  "uplink fetches %lu skipped %lu | "
+                  "uplink fetches %lu empty %lu skipped %lu | "
                   "heap free %uK largest %uK min %uK | mic stack free %u B",
              (unsigned long)(sampleRate / 1000),
              (unsigned long)windowTiming.frameCount,
@@ -1255,12 +1421,20 @@ static MicFrameTiming logCallBudget(void) {
              (unsigned long)frameBudgetMicroseconds,
              (unsigned long)averagePercent,
              (unsigned long)maxPercent,
-             (unsigned long)uplinkFetches,
-             (unsigned long)uplinkSkippedPokes,
+             (unsigned long)audioCounts.uplinkFetches,
+             (unsigned long)audioCounts.uplinkEmptyFetches,
+             (unsigned long)audioCounts.uplinkSkippedPokes,
              (unsigned)(freeBytes / 1024),
              (unsigned)(largestBlockBytes / 1024),
              (unsigned)(minimumFreeBytes / 1024),
              micStackFreeBytes);
+
+    uint32_t micSamplesInWindow = windowTiming.frameCount * DMA_FRAME_SIZE_SAMPLES;
+    ESP_LOGI(TAG, "DIAG audio spk underruns %lu full-scale %lu | mic clipped %lu of %lu",
+             (unsigned long)audioCounts.speakerUnderruns,
+             (unsigned long)audioCounts.speakerFullScale,
+             (unsigned long)audioCounts.micClipped,
+             (unsigned long)micSamplesInWindow);
     return windowTiming;
 }
 
@@ -1494,10 +1668,10 @@ static void diagnosticsTask(void *taskParameters) {
         bool isCallStarting = (isCallActive && !wasCallActive);
 
         if (isCallStarting) {
-            uint32_t discardedFetches = 0;
-            uint32_t discardedSkippedPokes = 0;
+            // Discards the counts from before the call, and the call-start underruns
+            // while the speaker waits for the first downlink frame.
             takeMicFrameTiming();
-            takeUplinkCounts(&discardedFetches, &discardedSkippedPokes);
+            takeCallAudioCounts();
 #if AEC_SPEEX_ENABLED
             resetEchoCounters();
 #endif
@@ -1529,54 +1703,80 @@ static void diagnosticsTask(void *taskParameters) {
  * ============================================================================
  */
 
- // Handles TTP224 inputs and sends AVRCP control commands
+/**
+ * @brief Sends one media button to the phone as an AVRCP press and release.
+ * * @param command    The AVRCP key, e.g. ESP_AVRC_PT_CMD_FORWARD.
+ * @param actionName What the log line calls it, e.g. "Next Track".
+ */
+static void sendAvrcpButton(esp_avrc_pt_cmd_t command, const char *actionName) {
+    esp_avrc_ct_send_passthrough_cmd(AVRCP_LABEL_PASSTHROUGH, command, ESP_AVRC_PT_CMD_STATE_PRESSED);
+    vTaskDelay(pdMS_TO_TICKS(50));
+    esp_avrc_ct_send_passthrough_cmd(AVRCP_LABEL_PASSTHROUGH, command, ESP_AVRC_PT_CMD_STATE_RELEASED);
+    ESP_LOGI(TAG, "--- AVRCP: %s ---", actionName);
+}
+
+// Handles TTP224 inputs and sends AVRCP control commands
 void touchPanelTask(void *taskParameters) {
     bool previousPad1 = false, previousPad2 = false, previousPad3 = false, previousPad4 = false;
 
     while (true) {
-        bool currentPad1 = gpio_get_level(TOUCH_PAD_PAUSE);
+        bool currentPad1 = gpio_get_level(TOUCH_PAD_PLAY_PAUSE);
         bool currentPad2 = gpio_get_level(TOUCH_PAD_NEXT_TRACK);
         bool currentPad3 = gpio_get_level(TOUCH_PAD_PREV_TRACK);
-        bool currentPad4 = gpio_get_level(TOUCH_PAD_PLAY);
+        bool currentPad4 = gpio_get_level(TOUCH_PAD_SIRI_MUTE);
 
-        // Pad 1: Pause / End Call
+        // Pad 1: Play / Pause toggle, or End Call
         if (currentPad1 && !previousPad1) {
 
             if (isCallActiveOrRinging) {
-                // 1. If a call is active or ringing, end it.
+                // During a call (or while ringing) this pad only ends or rejects it.
                 // This sends the AT+CHUP command to hang up or reject the call.
                 esp_hf_client_reject_call();
                 ESP_LOGI(TAG, "--- HFP: Call Ended/Rejected via Touch Pad ---");
             } else {
-                esp_avrc_ct_send_passthrough_cmd(0, ESP_AVRC_PT_CMD_PAUSE, ESP_AVRC_PT_CMD_STATE_PRESSED);
-                vTaskDelay(pdMS_TO_TICKS(50));
-                esp_avrc_ct_send_passthrough_cmd(0, ESP_AVRC_PT_CMD_PAUSE, ESP_AVRC_PT_CMD_STATE_RELEASED);
-                ESP_LOGI(TAG, "--- AVRCP: Pausing ---");
+                bool wasMediaPlaying = isMediaPlaying;
+                // Assume the press worked until the phone reports otherwise, so a second
+                // press before its notification (or before A2DP suspends) still toggles.
+                isMediaPlaying = !wasMediaPlaying;
+                if (wasMediaPlaying) {
+                    sendAvrcpButton(ESP_AVRC_PT_CMD_PAUSE, "Pausing");
+                } else {
+                    sendAvrcpButton(ESP_AVRC_PT_CMD_PLAY, "Playing");
+                }
             }
         }
 
         // Pad 2: Next Track
         if (currentPad2 && !previousPad2) {
-            esp_avrc_ct_send_passthrough_cmd(0, ESP_AVRC_PT_CMD_FORWARD, ESP_AVRC_PT_CMD_STATE_PRESSED);
-            vTaskDelay(pdMS_TO_TICKS(50));
-            esp_avrc_ct_send_passthrough_cmd(0, ESP_AVRC_PT_CMD_FORWARD, ESP_AVRC_PT_CMD_STATE_RELEASED);
-            ESP_LOGI(TAG, "--- AVRCP: Next Track ---");
+            sendAvrcpButton(ESP_AVRC_PT_CMD_FORWARD, "Next Track");
         }
 
         // Pad 3: Previous Track
         if (currentPad3 && !previousPad3) {
-            esp_avrc_ct_send_passthrough_cmd(0, ESP_AVRC_PT_CMD_BACKWARD, ESP_AVRC_PT_CMD_STATE_PRESSED);
-            vTaskDelay(pdMS_TO_TICKS(50));
-            esp_avrc_ct_send_passthrough_cmd(0, ESP_AVRC_PT_CMD_BACKWARD, ESP_AVRC_PT_CMD_STATE_RELEASED);
-            ESP_LOGI(TAG, "--- AVRCP: Previous Track ---");
+            sendAvrcpButton(ESP_AVRC_PT_CMD_BACKWARD, "Previous Track");
         }
 
-        // Pad 4: Play
+        // Pad 4: Mic mute toggle in a call, otherwise Siri
         if (currentPad4 && !previousPad4) {
-            esp_avrc_ct_send_passthrough_cmd(0, ESP_AVRC_PT_CMD_PLAY, ESP_AVRC_PT_CMD_STATE_PRESSED);
-            vTaskDelay(pdMS_TO_TICKS(50));
-            esp_avrc_ct_send_passthrough_cmd(0, ESP_AVRC_PT_CMD_PLAY, ESP_AVRC_PT_CMD_STATE_RELEASED);
-            ESP_LOGI(TAG, "--- AVRCP: Playing ---");
+
+            if (isCallActiveOrRinging) {
+                // Pressed while ringing, the mute applies to the call once answered.
+                bool isMutedNow = !isMicMuted;
+                isMicMuted = isMutedNow;
+                ESP_LOGI(TAG, "--- HFP: Mic %s ---", isMutedNow ? "muted" : "unmuted");
+            } else if (isVoiceRecognitionActive) {
+                // A second press while Siri is listening closes it.
+                esp_hf_client_stop_voice_recognition();
+                ESP_LOGI(TAG, "--- HFP: Stopping Siri ---");
+            } else {
+                // Sends AT+BVRA=1; the phone opens the call audio link for Siri itself.
+                esp_err_t voiceResult = esp_hf_client_start_voice_recognition();
+                if (voiceResult == ESP_OK) {
+                    ESP_LOGI(TAG, "--- HFP: Starting Siri ---");
+                } else {
+                    ESP_LOGW(TAG, "--- HFP: Siri not started (error %d, phone not connected?) ---", (int)voiceResult);
+                }
+            }
         }
 
         previousPad1 = currentPad1;
@@ -1695,6 +1895,21 @@ static float clampToSampleRange(float value) {
         return -32768.0f;
     }
     return 0.0f;
+}
+
+/**
+ * @brief Clamps an amplified mic sample into int16 range, adding 1 to clippedCount
+ *        when it was outside it (e.g. 40000.0 -> 32767.0, count + 1).
+ * * @param amplifiedSample The sample after MICROPHONE_GAIN.
+ * @param clippedCount    The frame's running count of clipped samples.
+ */
+static float clampCountingClips(float amplifiedSample, uint32_t *clippedCount) {
+    bool isClipping = (amplifiedSample > 32767.0f || amplifiedSample < -32768.0f);
+    if (isClipping) {
+        (*clippedCount)++;
+    }
+    float clampedSample = clampToSampleRange(amplifiedSample);
+    return clampedSample;
 }
 
 /**
@@ -1915,6 +2130,7 @@ void microphoneTask(void *taskParameters) {
             previousHighPassInput = 0;
             previousHighPassOutput = 0.0f;
             resetUplinkPokeState(&uplinkPokeState);
+            isMicMuted = false;
 
 #if AEC_GATE_ENABLED
             // Reset the gate to fully OPEN between calls. Waking up mid-duck would mute
@@ -1994,6 +2210,7 @@ void microphoneTask(void *taskParameters) {
             int64_t frameStartMicroseconds = esp_timer_get_time();
 #endif
             uint32_t numberOfSamples = bytesReadFromHardware / 4;
+            uint32_t clippedSamples = 0;
 
 #if AEC_GATE_ENABLED
             float microphoneLevelAccumulator = 0.0f;
@@ -2034,7 +2251,7 @@ void microphoneTask(void *taskParameters) {
 #else
                 float amplifiedSample = lowPassResult * MICROPHONE_GAIN;
                 // Clamp in the FLOAT domain, before the conversion (see clampToSampleRange).
-                float amplifiedResult = clampToSampleRange(amplifiedSample);
+                float amplifiedResult = clampCountingClips(amplifiedSample, &clippedSamples);
 #endif
 
 #if AEC_GATE_ENABLED
@@ -2053,7 +2270,7 @@ void microphoneTask(void *taskParameters) {
 
             for (uint32_t index = 0; index < numberOfSamples; index++) {
                 float amplifiedSample = (float)echoOutputFrame[index] * MICROPHONE_GAIN;
-                float clampedSample = clampToSampleRange(amplifiedSample);
+                float clampedSample = clampCountingClips(amplifiedSample, &clippedSamples);
                 processedVoiceBuffer[index] = (int16_t)clampedSample;
             }
 #endif
@@ -2116,7 +2333,15 @@ void microphoneTask(void *taskParameters) {
             previousGateGain = gateGain;
 #endif  /* AEC_GATE_ENABLED */
 
+            micClippedSampleCount += clippedSamples;
+
             uint32_t bufferPayloadSizeBytes = numberOfSamples * sizeof(int16_t);
+
+            // Mute sends silence in place of the frame, after the processing above, so
+            // the echo canceller keeps adapting and the uplink timing is unchanged.
+            if (isMicMuted) {
+                memset(processedVoiceBuffer, 0, bufferPayloadSizeBytes);
+            }
 
             // NEW: hold the uplink backlog at a fixed low water mark instead of waiting
             // for the stream buffer to fill. Whatever sits in this buffer is pure
@@ -2167,10 +2392,10 @@ void microphoneTask(void *taskParameters) {
     gpio_config_t touchPanelConfiguration = {
         .intr_type = GPIO_INTR_DISABLE,
         .mode = GPIO_MODE_INPUT,
-        .pin_bit_mask = (1ULL << TOUCH_PAD_PAUSE) | 
+        .pin_bit_mask = (1ULL << TOUCH_PAD_PLAY_PAUSE) | 
                         (1ULL << TOUCH_PAD_NEXT_TRACK) | 
                         (1ULL << TOUCH_PAD_PREV_TRACK) | 
-                        (1ULL << TOUCH_PAD_PLAY),
+                        (1ULL << TOUCH_PAD_SIRI_MUTE),
         .pull_down_en = GPIO_PULLDOWN_ENABLE,
         .pull_up_en = GPIO_PULLUP_DISABLE
     };
@@ -2255,6 +2480,7 @@ void initializeBluetoothStack(void) {
 
     // Initialize AVRCP Controller
     esp_avrc_ct_init();
+    esp_avrc_ct_register_callback(bluetoothAvrcpControllerCallback);
 
     esp_hf_client_register_callback(bluetoothHandsFreeClientCallback);
     esp_hf_client_register_data_callback(bluetoothHandsFreeReceiveCallback, bluetoothHandsFreeSendCallback);
@@ -2329,9 +2555,10 @@ void app_main(void) {
     // Start Tasks
     // NEW: microphoneTask stack raised from 4096 - it now carries an extra float frame
     // buffer and runs the echo canceller's float maths.
-    // touchPanelTask and audioOutputTask are sized from the DIAG stack readings
-    // (2026-10-19): they used ~0.4 KB and ~1.7 KB, so each keeps over 1 KB spare.
-    xTaskCreatePinnedToCore(touchPanelTask, "touchPanelTask", 1536, NULL, 5, NULL, 1);
+    // audioOutputTask is sized from the DIAG stack readings (2026-10-19): it used ~1.7 KB.
+    // touchPanelTask stays at 2048: the readings were taken without a pad press, and a
+    // press (ESP_LOGI plus the AVRCP / HFP call) overflowed 1536 and restarted the board.
+    xTaskCreatePinnedToCore(touchPanelTask, "touchPanelTask", 2048, NULL, 5, NULL, 1);
     xTaskCreatePinnedToCore(microphoneTask, "microphoneTask", 6144, NULL, 10, &micTaskHandle, 1);
     xTaskCreatePinnedToCore(audioOutputTask, "audioOutputTask", 3072, NULL, 15, NULL, 1);
 

@@ -76,7 +76,7 @@ DNS domain `home`, LAN 192.168.1.0/24, gateway and DNS the router at 192.168.1.1
 | `btpi` · `lrpi` | Pi | | Audio receivers: AirPlay (shairport-sync) and Bluetooth (BlueALSA) into a stereo; `btpi` adds Bluetooth to a vintage stereo, `lrpi` (formerly `stereo`) is the living room's, branded "Living Room" |
 | `desk` | PC | .14 | Living room desktop, pinged by `wkststate` |
 | `lrmlamp1` · `bthrlight1` | Pico W | .18 · .21 | Living room lamp, bathroom light (firmware in `automate/devices/`) |
-| `wkst` | Workstation | | This machine: mounts the `files` shares under `/mnt/*` (so this repo, `/mnt/Data/Projects/ProOS`, is the Data share) |
+| `wkst` | Workstation | | This machine: mounts the `files` shares under `/mnt/*` with autofs (`auto.files`), detached while `files` is down by `share-watchdog.sh` (so this repo, `/mnt/Data/Projects/ProOS`, is the Data share) |
 
 The Automate status menu (`shared/html/menus/statsmenu.txt`) and the LED host list (`menus/mainmenu.txt`) are the living lists of hosts the website talks to.
 

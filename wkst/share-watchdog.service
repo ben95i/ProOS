@@ -1,0 +1,12 @@
+[Unit]
+Description=Detach the files server's shares while it is down
+Wants=network-online.target
+After=network-online.target autofs.service
+
+[Service]
+ExecStart=/opt/scripts/share-watchdog.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

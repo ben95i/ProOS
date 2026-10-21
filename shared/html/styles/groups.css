@@ -3,7 +3,7 @@
  *
  *  The outlined button groups in the main grid (mainGridTemplate and
  *  roomControlsTemplate in main.js), each a <fieldset class="btn-group">
- *  whose <legend> names it:
+ *  whose first child, a .btn-group-label, names it:
  *    Pixels      Colors / Pixels / Animated
  *    APT         Room / Lights / Power, YouTube / Temp / Media,
  *                Doorway / Server / Lists
@@ -26,13 +26,12 @@
  *  under the next group), so it keeps 5px of margin on the right and bottom
  *  for the walls to stand in.
  *
- *  The legend is taken out of the border and set inside the group, top
- *  left: positioned absolutely, it is no longer the fieldset's "rendered
- *  legend", so the border runs unbroken and the walls follow a plain
- *  rectangle. It fills the band between the top border and the button
- *  faces, --group-label-height tall, and centres the icon and the text in
- *  it, so they sit midway between the two whatever the height. The text is
- *  half the band's height.
+ *  The label is the group's first row, inside the border, top left: a div
+ *  rather than a <legend>, so the border runs unbroken and the walls follow
+ *  a plain rectangle. Its text box is trimmed to the capitals, cap top to
+ *  baseline, and its icon takes no height, so the band is exactly
+ *  --group-label-gap above the capitals and --group-label-gap below them
+ *  to the button faces, at any --group-label-size.
  *
  *  The .btn-group .button rule only changes the margins and alignment;
  *  .button and .button:active in main.css still draw the face, the walls
@@ -54,9 +53,10 @@
   /* the outline's colour: the buttons' face colour, which is what their
      edge is drawn in (lit by the same white rim the group carries below) */
   --group-border-color: var(--main-trans-35);
-  --group-label-height: 24px;  /* top border to button faces; the legend is
-                                  centred in it, its text half this size */
-  --group-label-indent: 8px;   /* the legend, further in than the buttons */
+  --group-label-size: 12px;    /* the label's text and icon */
+  --group-label-gap: 7px;      /* top border to the label's capitals, and
+                                  their baseline to the button faces */
+  --group-label-indent: 8px;   /* the label, further in than the buttons */
   /* the fill: this much of --group-fill-color, the rest see-through.
      0% is fully transparent; try 20% to 40% for a tinted glass */
   --group-fill-color: var(--main-black-50);
@@ -73,7 +73,6 @@
 }
 
 .btn-group {
-  position: relative;      /* for the legend */
   width: max-content;      /* hug the buttons, whatever size they are */
   min-width: 0;            /* a fieldset is min-content wide by default */
   /* 5px on the right and bottom is room for the walls; below them, the
@@ -82,8 +81,8 @@
      distance below the walls of the one above. */
   margin: 0 5px calc(5px - -1 * var(--group-spacing)) 0;
   padding: var(--group-clear);
-  /* the legend's band above the buttons */
-  padding-top: var(--group-label-height);
+  /* the label's band is the first row, so it starts at the top border */
+  padding-top: 0;
   border: var(--group-border) solid var(--group-border-color);
   /* 10px, the button's own corner (.button in main.css), plus the clear
      and the border, so the outline curves round the buttons evenly */
@@ -108,19 +107,16 @@
   display: block;
 }
 
-/* the band from the top border down to the button faces, one clear plus
-   the indent in, with the icon and the text centred in it top to bottom */
-.btn-group legend {
-  position: absolute;
-  top: 0;
-  left: calc(var(--group-clear) - -1 * var(--group-label-indent));
+/* the label: the group's first row, the indent further in than the
+   buttons, with the icon and the text centred top to bottom. One gap above
+   the text and one below it, which with the text trimmed to its capitals
+   puts them midway between the top border and the button faces. */
+.btn-group-label {
+  grid-column: 1 / -1;
   display: flex;
   align-items: center;
-  height: var(--group-label-height);
-  margin: 0;
-  padding: 0;
+  padding: var(--group-label-gap) 0 var(--group-label-gap) var(--group-label-indent);
   font-weight: bold;
-  line-height: 1;
   letter-spacing: .2em;
   text-transform: uppercase;
   white-space: nowrap;
@@ -129,27 +125,27 @@
   user-select: none;
 }
 
-/* the * rule in main.css puts 24px on every element, the legend's icon and
+/* the * rule in main.css puts 24px on every element, the label's icon and
    its text span included, so both are set here. "> *", not " *": a
    selector ending in a bare * is tried against every element on the page
    with a walk up through all its ancestors; with ">" the walk is one step. */
-.btn-group legend,
-.btn-group legend > * {
-  font-size: calc(var(--group-label-height) * .5);
+.btn-group-label,
+.btn-group-label > * {
+  font-size: var(--group-label-size);
 }
 
-/* a Font Awesome glyph fills its one-em box, so centring the box centres
-   the icon */
-.btn-group legend i {
+/* no height, so the band is the text's alone: a Font Awesome glyph fills
+   its one-em box, which is centred on a line of no height, and that line
+   is centred on the capitals */
+.btn-group-label i {
   margin-right: 6px;
-  line-height: 1;
+  line-height: 0;
 }
 
-/* JosefinSans capitals sit high in their line: centring the line leaves
-   them .12em above the middle, so the text is let down by that much */
-.btn-group legend span {
-  position: relative;
-  top: .12em;
+/* the text's box trimmed from cap top to baseline, so the gaps measure to
+   the capitals themselves rather than to the font's line */
+.btn-group-label span {
+  text-box: trim-both cap alphabetic;
 }
 
 /* size comes from .button itself (main.css); only the margins differ.

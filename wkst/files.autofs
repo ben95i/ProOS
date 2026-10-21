@@ -1,0 +1,3 @@
+# /etc/auto.master.d/files.autofs: the files server's shares, as a direct map
+# (absolute mount points, so /mnt/Local stays a plain local mount)
+/-  /etc/auto.files  --timeout=600
