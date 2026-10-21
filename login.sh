@@ -3,6 +3,7 @@
 ### by Ben Provenzano III
 ###
 ### Usage: login <host> [sync | reset | <rpi command>]
+###        login <host1,host2,...> [sync | reset | <rpi command>]   (one tmux tile per host)
 ###        login <module> init <host>
 ###        login update-server | clearkeys | cmds | rmtmp
 
@@ -34,6 +35,8 @@ CMD="$2"
 INIT_HOST="$3"
 ## names that are folders in the repo but not hosts
 DENIED_NAMES=("logon" "login" "rpi" "wkst" "shared" "router")
+## commands given in place of a host name, handled by HANDLE_STANDALONE_COMMANDS
+STANDALONE_COMMANDS=("cmds" "clearkeys" "update-server" "rmtmp")
 ## connection settings
 SSH_PORT="22"
 SSH_TIMEOUT="450ms"
@@ -109,19 +112,37 @@ IS_SERVER_MODULE(){
   return 1
 }
 
-## Returns 0 when a name is on the DENIED_NAMES list. Example: IS_DENIED_NAME shared  ->  0
-IS_DENIED_NAME(){
-  local moduleName="$1"
-  local deniedName
-  for deniedName in "${DENIED_NAMES[@]}"; do
-    if [ "$moduleName" == "$deniedName" ]; then
+## Returns 0 when the first argument equals one of the others. Example: IN_LIST rpi logon rpi wkst  ->  0
+IN_LIST(){
+  local wantedItem="$1"
+  shift
+  local listItem
+  for listItem in "$@"; do
+    if [ "$wantedItem" == "$listItem" ]; then
       return 0
     fi
   done
   return 1
 }
 
-## Removes the server deploy work folder, if any. Runs on every exit through the EXIT trap.
+## Returns 0 when a name is on the DENIED_NAMES list. Example: IS_DENIED_NAME shared  ->  0
+IS_DENIED_NAME(){
+  local moduleName="$1"
+  IN_LIST "$moduleName" "${DENIED_NAMES[@]}"
+}
+
+## Prints the SSH key file for a module: its own key for a server, rpi.rsa for a Pi.
+## Example: HOST_KEY_FILE pve  ->  /mnt/ssh/keys/pve.rsa,  HOST_KEY_FILE brpi  ->  /mnt/ssh/keys/rpi.rsa
+HOST_KEY_FILE(){
+  local moduleName="$1"
+  if IS_SERVER_MODULE "$moduleName"; then
+    echo "$KEYS_DIR/$moduleName.rsa"
+  else
+    echo "$KEYS_DIR/rpi.rsa"
+  fi
+}
+
+## Removes the server deploy work folder, if any.
 REMOVE_WORK_FOLDER(){
   if [ -n "$workFolder" ] && [ -d "$workFolder" ]; then
     rm -r "$workFolder"
@@ -129,11 +150,22 @@ REMOVE_WORK_FOLDER(){
   workFolder=""
 }
 
+## Runs on every exit through the EXIT trap: removes the work folder, and in a tmux tile
+## (PROOS_TILE=1) waits for a key, so the tile's last lines stay readable before it closes.
+EXIT_CLEANUP(){
+  REMOVE_WORK_FOLDER
+  if [ "$PROOS_TILE" == "1" ]; then
+    read -r -s -n 1 -p "Press any key to close this tile..."
+    echo
+  fi
+}
+
 ######## Terminal Session SSH Agent ########
 ## A key has a passphrase when its module folder holds an "ssh.pwd" marker
 ## ($ROOT_DIR/<module>/ssh.pwd); every marked key shares one passphrase.
 ## Marked keys are unlocked once per terminal into an ssh-agent whose socket
 ## is $AGENT_ROOT/<shell pid>/sock. Unmarked keys are used from their file.
+## The tmux tiles of "login host1,host2" share the agent of the terminal that opened them.
 
 ## Prints a process's start time, empty when the process is gone. Example: PROC_STAMP 4199  ->  1234567
 PROC_STAMP(){
@@ -256,7 +288,24 @@ AGENT_REAP(){
 }
 
 ## Connects to this terminal's agent (keyed by the calling shell's PID), starting it when needed.
+## A tmux tile uses the agent folder handed to it in PROOS_AGENT_DIR while that agent runs,
+## and falls back to its own agent once it has stopped.
 AGENT_START(){
+  local agentParent
+  local inheritedState
+  if [ -n "$PROOS_AGENT_DIR" ]; then
+    agentParent=$(dirname "$PROOS_AGENT_DIR")
+    if [ "$agentParent" == "$AGENT_ROOT" ] && [ -d "$PROOS_AGENT_DIR" ]; then
+      sessionDir="$PROOS_AGENT_DIR"
+      export SSH_AUTH_SOCK="$sessionDir/sock"
+      AGENT_REAP
+      AGENT_STATUS
+      inheritedState=$?
+      if [ "$inheritedState" -ne 2 ]; then
+        return
+      fi
+    fi
+  fi
   sessionDir="$AGENT_ROOT/$PPID"
   export SSH_AUTH_SOCK="$sessionDir/sock"
   AGENT_REAP
@@ -685,6 +734,111 @@ DEPLOY_HOST(){
   done
 }
 
+######## Multiple Hosts ########
+
+## Returns 0 when one name of a host list may be opened in a tile, printing why not otherwise.
+## Example: CHECK_TILE_HOST rpi  ->  1, "rpi: hostname not allowed."
+CHECK_TILE_HOST(){
+  local hostName="$1"
+  if IS_DENIED_NAME "$hostName"; then
+    echo "$hostName: hostname not allowed."
+    return 1
+  fi
+  if IN_LIST "$hostName" "${STANDALONE_COMMANDS[@]}"; then
+    echo "$hostName: not a host, run \"login $hostName\" on its own."
+    return 1
+  fi
+  return 0
+}
+
+## Opens one tmux tile per host in a comma separated MODULE, each running "login <host> [CMD]",
+## then exits. Every marked key is unlocked here first, so the tiles share this terminal's agent
+## and ask for no passphrase. Inside tmux the tiles open as a new window of the current session.
+## Example: login brpi,ledwall,pve sync  ->  three tiles, each deploying its host
+TILE_LOGIN(){
+  local hostNames=()
+  local tileHosts=()
+  local hostName
+  local hostsValid="yes"
+  local tileEnvironment
+  local tileCommand
+  local windowName
+  local tmuxSession
+  local terminalRows
+  local terminalColumns
+  local sizeOptions=()
+  local tmuxIds
+  local windowId
+  local firstPaneId
+  local hostIndex
+  if ! command -v tmux > /dev/null; then
+    echo "tmux is not installed, exiting!"
+    EXIT_PRGM
+  fi
+  if [ "$CMD" == "init" ]; then
+    echo "init takes one module and one host, exiting!"
+    EXIT_PRGM
+  fi
+  IFS=',' read -r -a hostNames <<< "$MODULE"
+  for hostName in "${hostNames[@]}"; do
+    if [ -z "$hostName" ]; then
+      continue
+    fi
+    if ! CHECK_TILE_HOST "$hostName"; then
+      hostsValid="no"
+    fi
+    tileHosts+=("$hostName")
+  done
+  if [ "$hostsValid" == "no" ]; then
+    EXIT_PRGM
+  fi
+  if [ ${#tileHosts[@]} -eq 0 ]; then
+    echo "No hosts given, exiting!"
+    EXIT_PRGM
+  fi
+  ## Unlocks the marked keys once; sessionDir stays empty when no host has a marked key
+  for hostName in "${tileHosts[@]}"; do
+    SSH_IDENTITY "$(HOST_KEY_FILE "$hostName")"
+  done
+  ## Each tile runs this script directly (no shell), with its settings passed through env
+  tileEnvironment=(env "PROOS_TILE=1")
+  if [ -n "$sessionDir" ]; then
+    tileEnvironment+=("PROOS_AGENT_DIR=$sessionDir")
+  fi
+  windowName=$(JOIN_BY "," "${tileHosts[@]}")
+  for (( hostIndex = 0; hostIndex < ${#tileHosts[@]}; hostIndex++ )); do
+    hostName="${tileHosts[$hostIndex]}"
+    tileCommand=("${tileEnvironment[@]}" "$SCRIPT_PATH" "$hostName")
+    if [ -n "$CMD" ]; then
+      tileCommand+=("$CMD")
+    fi
+    if [ "$hostIndex" -gt 0 ]; then
+      tmux split-window -t "$windowId" "${tileCommand[@]}"
+      ## Re-tiled after every split, so a new pane always finds room
+      tmux select-layout -t "$windowId" tiled > /dev/null
+      continue
+    fi
+    if [ -n "$TMUX" ]; then
+      tmuxIds=$(tmux new-window -P -F '#{window_id} #{pane_id}' -n "$windowName" "${tileCommand[@]}")
+    else
+      tmuxSession="login-$$"
+      ## A detached session is drawn at the terminal's size, so the tiles fit before it attaches
+      read -r terminalRows terminalColumns < <(stty size 2>/dev/null)
+      if [ -n "$terminalRows" ] && [ -n "$terminalColumns" ]; then
+        sizeOptions=(-x "$terminalColumns" -y "$terminalRows")
+      fi
+      tmuxIds=$(tmux new-session -d -P -F '#{window_id} #{pane_id}' -s "$tmuxSession" -n "$windowName" \
+        "${sizeOptions[@]}" "${tileCommand[@]}")
+    fi
+    read -r windowId firstPaneId <<< "$tmuxIds"
+  done
+  tmux select-pane -t "$firstPaneId"
+  if [ -z "$TMUX" ]; then
+    tmux attach-session -t "$tmuxSession"
+  fi
+  EXIT_PRGM
+}
+
 ######## Command Line ########
 
 ## Prints the usage menu.
@@ -704,6 +858,9 @@ login "Hostname" sync
 
 Reset ProOS (full config script) Pi Only
 login "Hostname" reset
+
+Several hosts at once, one tmux tile each (same option for every host)
+login "Host1,Host2,Host3" [sync | reset | "rpi command"]
 
 Initialize ProOS (configure a base Pi or reconfigure one) Pi Only
 login "Module" init "Hostname"
@@ -785,19 +942,21 @@ HANDLE_STANDALONE_COMMANDS(){
 ## Picks the host and key for MODULE, then deploys, runs a Pi command or opens a shell.
 PRGM_INIT(){
   HANDLE_STANDALONE_COMMANDS
+  if [[ "$MODULE" == *,* ]]; then
+    TILE_LOGIN
+  fi
   if IS_SERVER_MODULE "$MODULE"; then
     hostMode="nonpi"
   else
     hostMode="pi"
   fi
+  SSH_IDENTITY "$(HOST_KEY_FILE "$MODULE")"
   if [ "$hostMode" == "nonpi" ]; then
-    SSH_IDENTITY "$KEYS_DIR/$MODULE.rsa"
     targetHost="$MODULE$DOMAIN"
     if [ "$CMD" == "sync" ]; then
       DEPLOY_HOST
     fi
   else
-    SSH_IDENTITY "$KEYS_DIR/rpi.rsa"
     if [ "$CMD" == "init" ]; then
       targetHost="$INIT_HOST$DOMAIN"
       echo "Initializing $targetHost with the $MODULE module..."
@@ -823,5 +982,5 @@ if [ "$PROOS_ASKPASS" == "1" ]; then
   ASKPASS "$1"
   exit
 fi
-trap REMOVE_WORK_FOLDER EXIT
+trap EXIT_CLEANUP EXIT
 PRGM_INIT

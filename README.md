@@ -91,6 +91,7 @@ The Automate status menu (`shared/html/menus/statsmenu.txt`) and the LED host li
 | `login <pi> reset` | Deploy a Pi after deleting `/etc/rpi-conf.done`, so the installer's first-run phase runs again |
 | `login <module> init <host>` | Deploy module `<module>` onto the Pi currently reachable as `<host>` (renames it to `<module>`) |
 | `login <pi> <cmd>` | Runs `rpi <cmd>` on the Pi (see `rpi/rpi.sh`) |
+| `login <host1>,<host2>,… [<cmd>]` | Opens one tmux tile per host (a new window when already inside tmux), each running `login <host> [<cmd>]` with the same `<cmd>` (not `init`). The keys are unlocked once before the tiles open and the tiles share that terminal's agent (`PROOS_AGENT_DIR`); each tile waits for a key before it closes. `mgmt` installs `/etc/tmux.conf` with `mouse on`, so a click selects a tile |
 | `login update-server` | `apt upgrade` on every folder with an `lxc.conf` / `qemu.conf` |
 | `login clearkeys` | Forget this terminal's unlocked keys (stops its agent) |
 | `login cmds` · `login rmtmp` | Command cheat sheet · delete deploy temp files and stop every session agent |

@@ -18,8 +18,14 @@
 #include "esp_avrc_api.h"
 #include "esp_hf_client_api.h"
 #include "esp_log.h"
+#include "esp_attr.h"
+#include "esp_timer.h"
+#include "esp_heap_caps.h"
 #include "nvs.h"
 #include "nvs_flash.h"
+#include "speex/speex_echo.h"
+#include "speex/speex_preprocess.h"
+#include "speexdsp_alloc.h"
 
 // --- Constants ---
 static const char *TAG = "Honda_HR-V";
@@ -42,12 +48,16 @@ static const uint16_t SAMPLE_RATE_8K = 8000;
 static const uint16_t SAMPLE_RATE_16K = 16000;
 static const uint16_t SAMPLE_RATE_44K = 44100;
 
-static const uint32_t DMA_FRAME_SIZE_SAMPLES = 120;
+// Samples per mic DMA frame, and per echo canceller frame: 7.5 ms at 16 kHz, 15 ms at
+// 8 kHz. A macro rather than a const so it can size static arrays.
+#define DMA_FRAME_SIZE_SAMPLES 120u
 
 // OPTIMIZATION: Deep Buffering for A2DP Crackle Prevention
 static const uint32_t RING_BUFFER_SIZE_BYTES = 40 * 1024;     
 static const uint32_t PRE_ROLL_THRESHOLD_BYTES = 20 * 1024;   
-static const uint32_t STREAM_BUFFER_SIZE_BYTES = 2048;
+// Uplink queue to Bluedroid. The backlog trim in microphoneTask keeps it at or under
+// HFP_UPLINK_MAX_BACKLOG_BYTES (480), so 1 KB is double what it ever holds.
+static const uint32_t STREAM_BUFFER_SIZE_BYTES = 1024;
 static const uint32_t TRIGGER_LEVEL_BYTES = 128;
 
 static const float MICROPHONE_GAIN = 2.0f;
@@ -56,7 +66,10 @@ static const float MICROPHONE_GAIN = 2.0f;
 // body is not scoped to that function in C - it leaks into the rest of the translation
 // unit for every line that follows. Keeping it here makes that explicit and avoids any
 // future accidental redefinition/clash.
-#define MAX_HFP_SAMPLES 512
+// Largest call frame the receive callback takes, in samples. HFP delivers at most
+// 120 (one 7.5 ms mSBC frame; CVSD frames are 60), so 240 is twice the largest. The
+// stereo copy of it lives on the Bluedroid task's stack: 240 x 2 x 2 = 960 bytes.
+#define MAX_HFP_SAMPLES 240
 
 // --- DSP Filter Frequencies ---
 #define MATH_PI 3.14159265358979323846f
@@ -117,7 +130,7 @@ static const char *NVS_KEY_BLUETOOTH_MAC = "last_bda";
  * HFP uplink latency control
  * ============================================================================
  *
- * microphoneStreamBuffer is 2048 bytes = 1024 samples = 64 ms at 16 kHz. The original
+ * microphoneStreamBuffer was 2048 bytes = 1024 samples = 64 ms at 16 kHz. The original
  * code only discarded audio once that was completely full, so whatever backlog built up
  * at call start stayed there for the rest of the call and was added to the uplink delay.
  * The backlog is now held to a fixed low water mark, discarding the OLDEST whole frames.
@@ -127,6 +140,23 @@ static const char *NVS_KEY_BLUETOOTH_MAC = "last_bda";
 // The original 250 ms settle delay costs a quarter of a second of the near-end
 // talker's first words. 80 ms is enough for the baseband to settle.
 #define HFP_MIC_STARTUP_DELAY_MS      80
+
+// Uplink poke back-off. Each microphone frame ends with
+// esp_hf_client_outgoing_data_ready(), and Bluedroid answers by calling
+// bluetoothHandsFreeSendCallback(). When the phone ends a call, the SCO link closes
+// some time before ESP_HF_CLIENT_AUDIO_STATE_EVT reports it, and every poke in that
+// gap fails inside Bluedroid with "bta_hf_client_sco_co_out_data invalid air mode:
+// 255". Each of those error lines blocks the Bluetooth task on the UART for a few
+// ms, which delays the event further, which allows more pokes: one call end logged
+// over 100 of them. So once this many pokes in a row have gone unanswered (60 ms at
+// 16 kHz), only every UPLINK_BACKOFF_POKE_INTERVAL-th frame pokes (every 120 ms).
+// One answered poke ends the back-off, so a live link loses at most one interval.
+// Overridable so the simulator can compare runs with the back-off effectively off:
+// make -C sim run S=4 CFLAGS="-O2 -g -DUPLINK_UNANSWERED_POKE_LIMIT=1000000000"
+#ifndef UPLINK_UNANSWERED_POKE_LIMIT
+#define UPLINK_UNANSWERED_POKE_LIMIT  8
+#endif
+#define UPLINK_BACKOFF_POKE_INTERVAL  16
 
 /* * ============================================================================
  * Voice-switched gating (half-duplex echo suppression)  -- TUNING BLOCK
@@ -160,65 +190,47 @@ static const char *NVS_KEY_BLUETOOTH_MAC = "last_bda";
  * enough to simply span it: the far-end envelope is still elevated when the echo
  * it caused finally arrives. That is why the release is slow and the attack fast.
  *
- * HOW TO TUNE IT IN THE CAR
- * -------------------------
- * Leave AEC_GATE_LOG_ENABLED at 1 for the first few calls. Once a second the mic
- * task prints:
- *
- *   GATE far=1234 mic=5678 echoRef=617 gain=-32.0dB duck=71%
- *
- *   far     - level of the far end's voice as sent to the DAC
- *   mic     - level at the microphone after HPF/LPF/MICROPHONE_GAIN
- *   echoRef - the near-end threshold the mic level is being compared against
- *   gain    - what the uplink is currently scaled by
- *   duck    - percentage of the last second spent ducked
- *
- * Tune in this order:
- *
- *  1. AEC_FAR_ACTIVE_LEVEL. Sit in a silent call and watch "far" with nobody
- *     speaking. Set this ~3x above whatever idle value you see. Too low and the
- *     gate latches shut on line noise and you are permanently muted; too high and
- *     quiet talkers get no suppression at all.
- *
- *  2. AEC_ECHO_COUPLING_DB. Have the far end talk while you stay silent, and
- *     compare "mic" against "far". mic/far expressed in dB IS your real acoustic
- *     coupling. Put that number here. Every physical change - moving the mic,
- *     changing head unit volume, AEC_SPEAKER_ATTENUATION_DB below - moves it.
- *
- *  3. AEC_NEAREND_MARGIN. Now have both ends talk. If the far end still hears
- *     echo when you both speak, raise it (harder to open the gate, more of a
- *     one-way radio). If your own voice gets chopped when you talk over them,
- *     lower it. This is the single knob that trades echo against duplex feel.
- *
- *  4. AEC_DUCK_DEPTH_DB last, and only if a residue is still audible. -32 dB is
- *     already inaudible under road noise; going to -60 or muting outright makes
- *     the far end think the line has dropped, because they lose your background
- *     noise entirely. Keeping some noise through is what makes it sound alive.
+ * TUNING
+ * ------
+ * The values below were tuned in the car. The tuning log and calibration
+ * assistant that measured them were removed once the gate was scheduled for
+ * replacement by SpeexDSP echo cancellation (AEC-PLAN.md); they are in git history.
  */
 
-// Master switch. Set to 0 to compile the gate out entirely and get the previous
-// straight-through microphone path back for an A/B comparison.
-#define AEC_GATE_ENABLED              1
+// Which echo handling the uplink uses (see "SpeexDSP echo cancellation" below):
+//   ECHO_MODE_NONE   straight microphone path, for A/B comparison
+//   ECHO_MODE_GATE   this voice-switched gate (the old behaviour)
+//   ECHO_MODE_SPEEX  SpeexDSP adaptive echo cancellation with residual suppression
+// Overridable from the build, e.g. the simulator's CFLAGS="-DECHO_MODE=1".
+#define ECHO_MODE_NONE                0
+#define ECHO_MODE_GATE                1
+#define ECHO_MODE_SPEEX               2
+#ifndef ECHO_MODE
+#define ECHO_MODE                     ECHO_MODE_SPEEX
+#endif
+#define AEC_GATE_ENABLED              (ECHO_MODE == ECHO_MODE_GATE)
+#define AEC_SPEEX_ENABLED             (ECHO_MODE == ECHO_MODE_SPEEX)
 
 // Far-end level, in mean |sample| units (16-bit full scale = 32767), above which
-// the far end counts as talking. See step 1 above.
+// the far end counts as talking. Too low and the gate latches shut on line noise;
+// too high and quiet talkers get no suppression.
 #define AEC_FAR_ACTIVE_LEVEL          500.0f
 
 // Speaker-to-microphone coupling, in dB, MEASURED AT THE POINT THE GATE SEES IT -
 // that is, after MICROPHONE_GAIN has already been applied. It is NOT the raw
 // acoustic coupling, and it is not necessarily negative.
 //
-// The 0.0 dB default is the arithmetic of this specific build: a car cabin with
-// the mic a metre or so off-axis from the speaker is roughly -6 dB of acoustic
-// coupling, and MICROPHONE_GAIN of 2.0 puts +6 dB straight back on. Net zero.
-// Change MICROPHONE_GAIN and this has to move with it, dB for dB.
+// -20 dB is the value tuned for this car. The untuned starting point was 0.0 dB,
+// the arithmetic of this build: a car cabin with the mic a metre or so off-axis
+// from the speaker is roughly -6 dB of acoustic coupling, and MICROPHONE_GAIN of
+// 2.0 puts +6 dB straight back on. Change MICROPHONE_GAIN and this has to move
+// with it, dB for dB.
 //
 // Higher = the gate assumes a stronger echo and stays shut more readily.
-// See step 2 above for how to measure yours instead of trusting this.
 #define AEC_ECHO_COUPLING_DB          (-20.0f)
 
 // How far the microphone must exceed the expected echo level, in dB, before the
-// gate accepts it as genuine near-end speech and opens back up. See step 3.
+// gate accepts it as genuine near-end speech and opens back up.
 // Higher = more echo suppression, more half-duplex.
 #define AEC_NEAREND_MARGIN            6.0f
 
@@ -247,102 +259,109 @@ static const char *NVS_KEY_BLUETOOTH_MAC = "last_bda";
 
 // Optional fixed trim on the call-audio path to the DAC, in dB. Negative. This is
 // the cheapest echo reduction available: every dB off the speaker is a dB off the
-// echo, at zero CPU cost. 0.0 disables it. Note that lowering this changes your
-// real coupling, so re-measure AEC_ECHO_COUPLING_DB (step 2) after touching it.
+// echo, at zero CPU cost. 0.0 disables it. Applied in every ECHO_MODE. With the gate,
+// lowering this changes the real coupling, so AEC_ECHO_COUPLING_DB has to move with it.
 #define AEC_SPEAKER_ATTENUATION_DB    -2.0f
 
-// Once-per-second tuning log described above. Set to 0 for production.
-#define AEC_GATE_LOG_ENABLED          0
-#define AEC_GATE_LOG_PERIOD_MS        1000
-
 /* * ============================================================================
- * Calibration assistant
+ * SpeexDSP echo cancellation (ECHO_MODE_SPEEX)
  * ============================================================================
  *
- * Set AEC_CAL_ENABLED to 1 and drive the car normally with a call in progress.
- * Every AEC_CAL_PERIOD_MS the microphone task MEASURES your real acoustic
- * coupling and prints the value to type into AEC_ECHO_COUPLING_DB, plus a verdict
- * on whether the gate is currently in its useful range.
+ * An adaptive filter learns the path from the speaker to the microphone and
+ * subtracts the predicted echo from every microphone frame; SpeexDSP's
+ * preprocessor then suppresses what is left and the road noise. Nothing to tune:
+ * it re-learns continuously, so head unit volume, caller loudness and codec
+ * changes need no setting. Design and measurements: AEC-PLAN.md.
  *
- * How the measurement works, and why it can be trusted:
+ * THE REFERENCE. The canceller needs exactly what the DAC played, sample-aligned
+ * with the microphone. speakerSentCallback() (the TX channel's on_sent interrupt)
+ * copies each call-audio descriptor as it finishes playing into referenceRing,
+ * including the silence of an underrun. TX (I2S0) and RX (I2S1) run from the same
+ * PLL at the same rate, so once aligned the two never drift. At call start, and
+ * after a codec change, the mic task empties the RX queue and starts reading the
+ * ring AEC_REFERENCE_LEAD_SAMPLES behind its newest sample, so the reference always
+ * leads the echo it caused. An RX queue overflow drops one 120-sample mic frame;
+ * micOverflowCallback() counts it and the same amount of reference is skipped.
  *
- * The microphone envelope contains echo + your voice + road noise. Your voice and
- * road noise can only ever ADD to it, never subtract - so across many frames of
- * far-end speech, the MINIMUM of (mic / far) is the cleanest available estimate of
- * pure echo coupling. That minimum is what gets reported. You do not have to stay
- * silent for it to work, though a quiet stretch makes it converge faster.
+ * PER FRAME (microphoneTask): high-pass and low-pass as before, to int16 WITHOUT
+ * MICROPHONE_GAIN (so clipping cannot make the echo non-linear), then
+ * speex_echo_cancellation(), speex_preprocess_run(), then MICROPHONE_GAIN. Frames
+ * are 120 samples at both rates, so no buffering or delay is added.
  *
- * Frames are only counted when the far end is solidly mid-utterance
- * (AEC_CAL_MIN_FAR_LEVEL, plus a run-length requirement). Frames at the tail of a
- * far-end utterance are excluded deliberately: the far envelope decays over
- * AEC_FAR_RELEASE_MS while the microphone envelope falls in AEC_MIC_ENVELOPE_MS,
- * so the ratio dives toward zero there and would drag the minimum far below the
- * true coupling.
- *
- * The verdict is based on headroom = (configured threshold) - (measured coupling):
- *
- *   headroom < AEC_CAL_HEADROOM_LOW_DB   the gate's near-end threshold sits BELOW
- *                                        your actual echo, so the echo itself
- *                                        keeps opening the gate -> echo leaks
- *   headroom in the band                 IN RANGE
- *   headroom > AEC_CAL_HEADROOM_HIGH_DB  the threshold is so far above the echo
- *                                        that your own voice struggles to clear
- *                                        it -> you get chopped when you talk
+ * MEMORY. The states are created by the mic task when call audio starts and
+ * destroyed when it ends (~58 KB at either rate, measured by sim/speexcheck), so
+ * music keeps all its RAM. Creation is skipped, and the call carries on without
+ * cancellation, if the heap could not spare that and keep AEC_HEAP_RESERVE_BYTES.
  */
-#define AEC_CAL_ENABLED               0
 
-// How often to report. Long enough to see several far-end utterances.
-#define AEC_CAL_PERIOD_MS             5000
+// Echo path the filter covers, in ms: DAC + head unit + speaker + cabin + mic.
+#define AEC_TAIL_MS                   120
 
-// Only measure coupling on solid far-end speech, not on the edges of it.
-#define AEC_CAL_MIN_FAR_LEVEL         (AEC_FAR_ACTIVE_LEVEL * 2.0f)
+// Reference ring: 1024 samples (64 ms at 16 kHz). A power of two, so a free-running
+// index wraps with a mask. The mic task reads AEC_REFERENCE_LEAD_SAMPLES behind
+// the newest sample, which keeps a frame of slack for interrupt timing.
+#define AEC_REFERENCE_RING_SAMPLES    1024
+#define AEC_REFERENCE_LEAD_SAMPLES    120
 
-// Consecutive far-active frames required before a frame counts, so the
-// measurement lands inside an utterance rather than at its onset - the echo of a
-// given far-end frame does not reach the microphone for 20-50 ms.
-#define AEC_CAL_MIN_RUN_FRAMES        8
+// Heap the canceller takes (measured 57.5 KB at 16 kHz, less at 8 kHz), what must
+// stay free after it for Bluedroid, and its largest single allocation (~15 KB).
+#define AEC_STATE_BYTES               (60 * 1024)
+#define AEC_HEAP_RESERVE_BYTES        (20 * 1024)
+#define AEC_LARGEST_ALLOCATION_BYTES  (16 * 1024)
 
-// Both envelopes must be on a PLATEAU - changing by less than this fraction from
-// the previous frame - before a frame counts. This is what makes the measurement
-// immune to the 20-50 ms lag between the two: during a sustained vowel both
-// envelopes are flat, so it no longer matters that one leads the other. Without
-// it the ratio dips at every syllable onset, because the far envelope jumps on a
-// 2 ms attack while the echo of that jump has not arrived at the mic yet.
-#define AEC_CAL_PLATEAU_TOLERANCE     0.15f
+// Mean square of a reference frame above which the far end counts as talking, for
+// the DIAG aec line's echo reduction estimate only (about -40 dBFS).
+#define AEC_FAR_ACTIVE_MEAN_SQUARE    (300.0 * 300.0)
 
-// The far end must also not be in its RELEASE tail. The plateau test alone does
-// not catch this: the far envelope decays with AEC_FAR_RELEASE_MS, which is only
-// about 4% per frame and passes as "flat", while the microphone has already gone
-// silent - giving absurd readings around -40 dB. A frame only counts if the
-// instantaneous far level is still holding the envelope up.
-#define AEC_CAL_STEADY_RATIO          0.8f
 
-// Minimum qualifying frames before a measurement is reported at all.
-#define AEC_CAL_MIN_FRAMES            40
+/* * ============================================================================
+ * Call-time diagnostics (resource budget for the echo canceller)
+ * ============================================================================
+ *
+ * Measures what a call leaves free on the board, so the SpeexDSP echo canceller
+ * (AEC-PLAN.md, step 0) can be sized from numbers rather than estimates. During a
+ * call a low-priority task prints, once per DIAG_LOG_PERIOD_MS:
+ *
+ *   DIAG mic 16k 133 frames avg 412 max 980 of 7500 us (5%/13%) | uplink fetches 133 skipped 0 | heap free 98K largest 61K min 85K | mic stack free 3120 B
+ *
+ *   frames   microphone frames processed in the window (133 a second at 16 kHz)
+ *   avg/max  microphoneTask time from the end of the I2S read to the frame being
+ *            queued, against the frame period (the budget); max includes time the
+ *            task was preempted
+ *   uplink   times Bluedroid fetched uplink audio, and pokes held back because it
+ *            had stopped (see UPLINK_UNANSWERED_POKE_LIMIT); ~133 and 0 in a call
+ *   heap     free 8-bit heap now, largest single block, lowest free since boot
+ *   stack    microphoneTask stack never used since boot (6144 B allocated)
+ *
+ * With ECHO_MODE_SPEEX it follows each of those with the echo canceller's line
+ * (see logEchoCanceller()):
+ *
+ *   DIAG aec erle 31 dB over 96 far frames | ref short 0 resync 0 | mic overflow 0 | speex allocs 23
+ *
+ * and once per DIAG_CPU_PERIOD_MS each core's idle share over that window and the
+ * busiest tasks, each as a share of one core:
+ *
+ *   DIAG cpu 10s idle c0 52% c1 91% | BTC_TASK 21% c0, btController 18% c0, ...
+ *
+ * followed by every task's stack never used since it started, in bytes, tightest first:
+ *
+ *   DIAG stack free B: BTC_TASK 1180, hciT 1520, BTU_TASK 4310, microphoneTask 4372, ...
+ *
+ * At boot it prints the heap once, after Bluetooth and the tasks are up.
+ *
+ * microphoneTask only adds to three counters; all formatting and UART output happens
+ * in diagnosticsTask, so the log cannot stall microphone processing. The CPU line
+ * needs CONFIG_FREERTOS_USE_TRACE_FACILITY and CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS
+ * (sdkconfig.defaults). Set to 0 for daily use.
+ */
+#define DIAG_LOG_ENABLED              1
+#define DIAG_LOG_PERIOD_MS            1000
+#define DIAG_CPU_PERIOD_MS            10000
 
-// Coupling is reported as the MEDIAN of the per-frame mic/far ratio, accumulated
-// into a 1 dB histogram. A median rather than a minimum because the echo is a
-// convolution, not a scaled copy: its level relative to the far end fluctuates
-// naturally, and a minimum simply chases the low tail of that fluctuation. A
-// median is also robust to the driver talking during the measurement, since
-// near-end speech only pushes ratios upward.
-#define AEC_CAL_HIST_MIN_DB           (-40)
-#define AEC_CAL_HIST_MAX_DB           (40)
-#define AEC_CAL_HIST_BINS             (AEC_CAL_HIST_MAX_DB - AEC_CAL_HIST_MIN_DB + 1)
-
-// Fraction of qualifying far-end frames allowed to exceed the gate's near-end
-// threshold before the verdict calls it a leak. This is measured directly rather
-// than modelled: it IS how often the echo will prise the gate open.
-#define AEC_CAL_MAX_LEAK_PERCENT      15
-
-// The healthy headroom band, and the point the recommendation aims at.
-#define AEC_CAL_HEADROOM_LOW_DB       3.0f
-#define AEC_CAL_HEADROOM_HIGH_DB      12.0f
-#define AEC_CAL_TARGET_HEADROOM_DB    6.0f
-
-// AEC_FAR_ACTIVE_LEVEL should sit this far above the quietest far-end level seen,
-// or it will latch on line noise and mute you for the whole call.
-#define AEC_CAL_FAR_IDLE_RATIO        3.0f
+// Room for every task in the system (Bluedroid, controller, IPC, timers, idle, ours).
+#define DIAG_MAX_TASKS                32
+// Number of busiest tasks named on the CPU line.
+#define DIAG_TOP_TASK_COUNT           6
 
 // --- Global Hardware and OS Handles ---
 static i2s_chan_handle_t txChannel = NULL;
@@ -371,6 +390,13 @@ static volatile bool enableHfpStereoMode = false;
 static volatile bool isMicHardwareEnabled = false; 
 static volatile bool isCallActiveOrRinging = false;
 
+// Times Bluedroid has called bluetoothHandsFreeSendCallback(), whatever it returned.
+// Written only by the Bluedroid task, read by microphoneTask (poke back-off) and the
+// diagnostics. A single aligned 32-bit word, so reads need no lock.
+static volatile uint32_t uplinkFetchCount = 0;
+// Pokes microphoneTask skipped while backing off. Written only by microphoneTask.
+static volatile uint32_t uplinkSkippedPokeCount = 0;
+
 // Dynamic filter coefficients based on current sample rate
 static float activeLowPassAlpha = 0.0f;
 static float activeHighPassAlpha = 0.0f;
@@ -397,11 +423,6 @@ static float gateDuckGainLinear    = 1.0f;
 static float gateEchoThresholdGain = 1.0f;   // AEC_ECHO_COUPLING_DB + AEC_NEAREND_MARGIN
 static float speakerAttenuationLinear = 1.0f;
 
-// Number of microphone frames between tuning log lines.
-static uint32_t gateLogPeriodFrames = 0;
-// Number of microphone frames between calibration reports.
-static uint32_t gateCalPeriodFrames = 0;
-
 // NEW: which DMA profile the Tx channel is currently built with
 typedef enum {
     TX_PROFILE_MUSIC = 0,
@@ -409,6 +430,52 @@ typedef enum {
 } TransmitDmaProfile;
 
 static TransmitDmaProfile currentTransmitProfile = TX_PROFILE_MUSIC;
+
+// Rate the I2S channels are clocked at, set by updateI2sSampleRate(). Read by the
+// diagnostics to work out the microphone frame budget.
+static volatile uint32_t activeSampleRate = 0;
+
+#if AEC_SPEEX_ENABLED
+// What the DAC played during a call (right channel = call audio), written by
+// speakerSentCallback() and read by microphoneTask. referenceWriteIndex counts every
+// sample ever written and only grows; the slot is the index masked to the ring. It
+// is published with release order after the samples, and read with acquire order,
+// because the interrupt and the mic task can run on different cores.
+static int16_t referenceRing[AEC_REFERENCE_RING_SAMPLES];
+static volatile uint32_t referenceWriteIndex = 0;
+
+// RX queue overflows since boot (each drops one 120-sample mic frame). Interrupt-written.
+static volatile uint32_t micOverflowCount = 0;
+
+// Alignment events since boot, for the DIAG aec line. Written only by microphoneTask.
+static volatile uint32_t referenceShortSampleCount = 0;   // reference samples padded with zeros
+static volatile uint32_t referenceResyncCount = 0;        // read position reset to the lead
+#endif
+
+#if DIAG_LOG_ENABLED
+// Microphone frame timing for the current log window. Written by microphoneTask,
+// read and cleared by diagnosticsTask, both under diagMutex.
+typedef struct {
+    uint32_t frameCount;
+    uint64_t totalMicroseconds;
+    uint32_t maxMicroseconds;
+    // Echo canceller, frames with the far end talking only: energy at the mic and
+    // left after cancellation (before residual suppression), for the ERLE estimate.
+    uint32_t echoFarFrames;
+    uint64_t echoMicEnergy;
+    uint64_t echoResidualEnergy;
+} MicFrameTiming;
+
+static SemaphoreHandle_t diagMutex = NULL;
+static MicFrameTiming micFrameTiming = {0};
+
+// Run-time counters of every task at the start of the CPU window, and the total
+// run time then. Static rather than on diagnosticsTask's stack: ~1.3 KB each.
+static TaskStatus_t cpuTaskSnapshot[DIAG_MAX_TASKS];
+static TaskStatus_t cpuTaskCurrent[DIAG_MAX_TASKS];
+static UBaseType_t cpuTaskSnapshotCount = 0;
+static configRUN_TIME_COUNTER_TYPE cpuSnapshotTotalTime = 0;
+#endif
 
 /* * ============================================================================
  * DSP Coefficient Calculations
@@ -470,20 +537,12 @@ void calculateFilterAlphas(uint32_t sampleRate) {
     gateEchoThresholdGain    = powf(10.0f, (AEC_ECHO_COUPLING_DB + AEC_NEAREND_MARGIN) / 20.0f);
     speakerAttenuationLinear = powf(10.0f, AEC_SPEAKER_ATTENUATION_DB / 20.0f);
 
-    gateLogPeriodFrames = (uint32_t)((AEC_GATE_LOG_PERIOD_MS * 0.001f) / frameSeconds);
-    if (gateLogPeriodFrames == 0) {
-        gateLogPeriodFrames = 1;
-    }
-
-    gateCalPeriodFrames = (uint32_t)((AEC_CAL_PERIOD_MS * 0.001f) / frameSeconds);
-    if (gateCalPeriodFrames == 0) {
-        gateCalPeriodFrames = 1;
-    }
-
     ESP_LOGI(TAG, "--- DSP Updated | Fs: %lu Hz | HP Alpha: %.4f | LP Alpha: %.4f ---", 
              sampleRate, activeHighPassAlpha, activeLowPassAlpha);
+#if AEC_GATE_ENABLED
     ESP_LOGI(TAG, "--- Gate | frame %.2f ms | duck %.1f dB | near-end threshold %.3f x far ---",
              frameSeconds * 1000.0f, (float)AEC_DUCK_DEPTH_DB, gateEchoThresholdGain);
+#endif
 }
 
 /* * ============================================================================
@@ -545,6 +604,43 @@ bool getBluetoothAddressFromNvs(esp_bd_addr_t bluetoothAddress) {
  * ============================================================================
  */
 
+#if AEC_SPEEX_ENABLED
+/**
+ * @brief TX on_sent interrupt: copies the call audio of the descriptor the DAC just
+ *        finished playing into referenceRing.
+ * * Registered on the call-profile TX channel only. The descriptor holds 60 stereo
+ * frames; the right channel is the call audio in both stereo modes. With
+ * auto_clear (after the callback) an underrun's descriptor is silence, so the ring
+ * holds what was really played. Copy only: no float, no logging, nothing that blocks.
+ * * @return false: no task is woken.
+ */
+static bool IRAM_ATTR speakerSentCallback(i2s_chan_handle_t channel, i2s_event_data_t *event, void *userContext) {
+    const int16_t *stereoSamples = (const int16_t *)event->dma_buf;
+    uint32_t frameCount = (uint32_t)(event->size / (2 * sizeof(int16_t)));
+    uint32_t writeIndex = referenceWriteIndex;
+
+    for (uint32_t frame = 0; frame < frameCount; frame++) {
+        uint32_t rightChannelIndex = frame * 2 + 1;
+        uint32_t ringSlot = writeIndex & (AEC_REFERENCE_RING_SAMPLES - 1);
+        referenceRing[ringSlot] = stereoSamples[rightChannelIndex];
+        writeIndex++;
+    }
+
+    __atomic_store_n(&referenceWriteIndex, writeIndex, __ATOMIC_RELEASE);
+    return false;
+}
+
+/**
+ * @brief RX on_recv_q_ovf interrupt: the mic task fell behind and the oldest mic frame
+ *        was dropped. Counted, so microphoneTask skips the matching reference.
+ * * @return false: no task is woken.
+ */
+static bool IRAM_ATTR micOverflowCallback(i2s_chan_handle_t channel, i2s_event_data_t *event, void *userContext) {
+    micOverflowCount++;
+    return false;
+}
+#endif
+
 /**
  * @brief NEW: Builds the I2S Tx (speaker) channel with a given DMA geometry.
  * * Factored out of initializeI2sTransmitChannel() so the channel can be rebuilt with
@@ -553,7 +649,8 @@ bool getBluetoothAddressFromNvs(esp_bd_addr_t bluetoothAddress) {
  * touches the clock - so a rebuild is the only way to change it.
  */
 static void createTransmitChannel(uint32_t sampleRate, uint32_t descriptorCount,
-                                  uint32_t framesPerDescriptor, uint32_t preloadDescriptors) {
+                                  uint32_t framesPerDescriptor, uint32_t preloadDescriptors,
+                                  bool isReferenceCaptured) {
     i2s_chan_config_t transmitConfiguration = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
     transmitConfiguration.dma_desc_num = descriptorCount;
     transmitConfiguration.dma_frame_num = framesPerDescriptor;
@@ -573,6 +670,17 @@ static void createTransmitChannel(uint32_t sampleRate, uint32_t descriptorCount,
     };
     transmitStandardConfiguration.clk_cfg.clk_src = I2S_CLK_SRC_DEFAULT;
     i2s_channel_init_std_mode(txChannel, &transmitStandardConfiguration);
+
+#if AEC_SPEEX_ENABLED
+    // The echo canceller's reference: callbacks must be registered before the channel
+    // is enabled. Music never needs it.
+    if (isReferenceCaptured) {
+        i2s_event_callbacks_t transmitCallbacks = { .on_sent = speakerSentCallback };
+        i2s_channel_register_event_callback(txChannel, &transmitCallbacks, NULL);
+    }
+#else
+    (void)isReferenceCaptured;
+#endif
 
     // Prime the DMA queue with silence while the channel is still in the READY state.
     // i2s_channel_preload_data() only works before the clock starts, which is exactly the
@@ -602,11 +710,11 @@ static void switchTransmitProfile(TransmitDmaProfile profile, uint32_t sampleRat
     }
 
     if (profile == TX_PROFILE_CALL) {
-        createTransmitChannel(sampleRate, CALL_TX_DESC_COUNT, CALL_TX_FRAMES_PER_DESC, CALL_TX_PRELOAD_DESC);
+        createTransmitChannel(sampleRate, CALL_TX_DESC_COUNT, CALL_TX_FRAMES_PER_DESC, CALL_TX_PRELOAD_DESC, true);
         ESP_LOGI(TAG, "--- Tx DMA -> CALL profile (%d x %d frames) ---",
                  CALL_TX_DESC_COUNT, CALL_TX_FRAMES_PER_DESC);
     } else {
-        createTransmitChannel(sampleRate, MUSIC_TX_DESC_COUNT, MUSIC_TX_FRAMES_PER_DESC, 0);
+        createTransmitChannel(sampleRate, MUSIC_TX_DESC_COUNT, MUSIC_TX_FRAMES_PER_DESC, 0, false);
         ESP_LOGI(TAG, "--- Tx DMA -> MUSIC profile (%d x %d frames) ---",
                  MUSIC_TX_DESC_COUNT, (int)MUSIC_TX_FRAMES_PER_DESC);
     }
@@ -641,6 +749,7 @@ void updateI2sSampleRate(uint32_t targetSampleRate) {
     xSemaphoreTake(rxMutex, portMAX_DELAY);
     
     calculateFilterAlphas(targetSampleRate);
+    activeSampleRate = targetSampleRate;
 
     // FIX: Only disable the mic if it's currently running. 
     // This prevents the "i2s_channel_disable: the channel has not been enabled yet" error.
@@ -774,10 +883,12 @@ void bluetoothHandsFreeReceiveCallback(const uint8_t *audioBuffer, uint32_t buff
     uint32_t stereoBufferSize = numberOfSamples * 2 * sizeof(int16_t);
     int16_t stereoBuffer[MAX_HFP_SAMPLES * 2]; // FIX: Fixed-size allocation
 
+#if AEC_GATE_ENABLED
     // Running sum of |sample| for the voice-switched gate. This is measured on what we
     // are about to hand the DAC - i.e. after any speaker attenuation - because that, not
     // the raw SCO payload, is what physically generates the echo.
     uint32_t farEndLevelAccumulator = 0;
+#endif
 
     for (uint32_t index = 0; index < numberOfSamples; index++) {
         uint32_t leftChannelIndex = index * 2;
@@ -785,14 +896,14 @@ void bluetoothHandsFreeReceiveCallback(const uint8_t *audioBuffer, uint32_t buff
         
         int16_t currentSample = pcm16Data[index];
 
-#if AEC_GATE_ENABLED
-        // Optional fixed trim on the speaker path (AEC_SPEAKER_ATTENUATION_DB). Skipped
-        // entirely when set to 0 dB so the default build is bit-identical to before.
+        // Optional fixed trim on the speaker path (AEC_SPEAKER_ATTENUATION_DB), in every
+        // echo mode. Skipped entirely when set to 0 dB, so the samples pass through untouched.
         if (speakerAttenuationLinear < 0.999f) {
             float attenuated = (float)currentSample * speakerAttenuationLinear;
             currentSample = (int16_t)attenuated;
         }
 
+#if AEC_GATE_ENABLED
         int32_t absoluteSample = (currentSample < 0) ? -(int32_t)currentSample
                                                      :  (int32_t)currentSample;
         farEndLevelAccumulator += (uint32_t)absoluteSample;
@@ -838,6 +949,10 @@ void bluetoothHandsFreeReceiveCallback(const uint8_t *audioBuffer, uint32_t buff
  * @return The actual number of bytes written to the output buffer.
  */
 uint32_t bluetoothHandsFreeSendCallback(uint8_t *outputBuffer, uint32_t bufferSize) {
+    // Counted before any early return: being called at all is what shows the SCO
+    // link is still taking uplink audio (see UPLINK_UNANSWERED_POKE_LIMIT).
+    uplinkFetchCount++;
+
     if (microphoneStreamBuffer == NULL || !isAudioPathOpen) { 
         return 0; 
     }
@@ -978,6 +1093,437 @@ void bluetoothHandsFreeClientCallback(esp_hf_client_cb_event_t event, esp_hf_cli
     }
 }
 
+#if DIAG_LOG_ENABLED
+/* * ============================================================================
+ * Call-time diagnostics
+ * ============================================================================
+ */
+
+/**
+ * @brief Adds one microphone frame's processing time to the current log window.
+ * * Called by microphoneTask once per frame. The mutex is held for three additions
+ * only, so the diagnostics task can never delay the next frame noticeably.
+ * * @param elapsedMicroseconds Time from the end of the I2S read to the frame being queued.
+ */
+static void recordMicFrameTime(uint32_t elapsedMicroseconds) {
+    xSemaphoreTake(diagMutex, portMAX_DELAY);
+    micFrameTiming.frameCount++;
+    micFrameTiming.totalMicroseconds += elapsedMicroseconds;
+    if (elapsedMicroseconds > micFrameTiming.maxMicroseconds) {
+        micFrameTiming.maxMicroseconds = elapsedMicroseconds;
+    }
+    xSemaphoreGive(diagMutex);
+}
+
+#if AEC_SPEEX_ENABLED
+/**
+ * @brief Adds one cancelled frame to the echo reduction estimate, if the far end was
+ *        talking in it (reference mean square above AEC_FAR_ACTIVE_MEAN_SQUARE).
+ * * Mic and residual energies are summed over such frames; the DIAG aec line shows
+ * their ratio as ERLE. Near-end speech in those frames lowers the figure, so it is a
+ * floor, not an exact measure.
+ */
+static void recordEchoFrame(const int16_t *micFrame, const int16_t *referenceFrame,
+                            const int16_t *residualFrame, uint32_t sampleCount) {
+    uint64_t referenceEnergy = 0;
+    uint64_t micEnergy = 0;
+    uint64_t residualEnergy = 0;
+    for (uint32_t index = 0; index < sampleCount; index++) {
+        int32_t referenceSample = referenceFrame[index];
+        int32_t micSample = micFrame[index];
+        int32_t residualSample = residualFrame[index];
+        referenceEnergy += (uint64_t)(referenceSample * referenceSample);
+        micEnergy += (uint64_t)(micSample * micSample);
+        residualEnergy += (uint64_t)(residualSample * residualSample);
+    }
+
+    double referenceMeanSquare = (double)referenceEnergy / (double)sampleCount;
+    bool isFarEndTalking = (referenceMeanSquare > AEC_FAR_ACTIVE_MEAN_SQUARE);
+    if (!isFarEndTalking) {
+        return;
+    }
+
+    xSemaphoreTake(diagMutex, portMAX_DELAY);
+    micFrameTiming.echoFarFrames++;
+    micFrameTiming.echoMicEnergy += micEnergy;
+    micFrameTiming.echoResidualEnergy += residualEnergy;
+    xSemaphoreGive(diagMutex);
+}
+#endif
+
+/**
+ * @brief Returns the frame timing gathered since the last call and starts a new window.
+ * * Example: after one second of a 16 kHz call, { frameCount 133, totalMicroseconds
+ * 54796, maxMicroseconds 980 }.
+ */
+static MicFrameTiming takeMicFrameTiming(void) {
+    MicFrameTiming windowTiming;
+    xSemaphoreTake(diagMutex, portMAX_DELAY);
+    windowTiming = micFrameTiming;
+    memset(&micFrameTiming, 0, sizeof(micFrameTiming));
+    xSemaphoreGive(diagMutex);
+    return windowTiming;
+}
+
+/**
+ * @brief Logs the free heap, largest free block and lowest free heap since boot.
+ * * @param when Short label for the moment measured, e.g. "after init".
+ */
+static void logHeapUsage(const char *when) {
+    size_t freeBytes = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+    size_t largestBlockBytes = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+    size_t minimumFreeBytes = heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT);
+
+    ESP_LOGI(TAG, "DIAG heap %s: free %uK largest %uK min %uK",
+             when,
+             (unsigned)(freeBytes / 1024),
+             (unsigned)(largestBlockBytes / 1024),
+             (unsigned)(minimumFreeBytes / 1024));
+}
+
+// Uplink counters at the last log line; only diagnosticsTask touches these.
+static uint32_t uplinkFetchCountAtLastLog = 0;
+static uint32_t uplinkSkippedPokeCountAtLastLog = 0;
+
+/**
+ * @brief Returns how many uplink fetches and skipped pokes happened since the last
+ *        call, and starts a new window.
+ * * Example, one second of a healthy 16 kHz call: fetches ~133, skipped 0. While the
+ * SCO link is closing: fetches 0, skipped climbing.
+ * * @param fetchesOut Times Bluedroid called bluetoothHandsFreeSendCallback().
+ * @param skippedOut Pokes microphoneTask held back (see UPLINK_UNANSWERED_POKE_LIMIT).
+ */
+static void takeUplinkCounts(uint32_t *fetchesOut, uint32_t *skippedOut) {
+    uint32_t fetchCountNow = uplinkFetchCount;
+    uint32_t skippedCountNow = uplinkSkippedPokeCount;
+    *fetchesOut = fetchCountNow - uplinkFetchCountAtLastLog;
+    *skippedOut = skippedCountNow - uplinkSkippedPokeCountAtLastLog;
+    uplinkFetchCountAtLastLog = fetchCountNow;
+    uplinkSkippedPokeCountAtLastLog = skippedCountNow;
+}
+
+/**
+ * @brief Logs the once-a-second call budget line: microphone frame time against the
+ *        frame period, uplink fetches and skipped pokes, the heap, and the microphone
+ *        task's unused stack.
+ */
+static MicFrameTiming logCallBudget(void) {
+    MicFrameTiming windowTiming = takeMicFrameTiming();
+    uint32_t uplinkFetches = 0;
+    uint32_t uplinkSkippedPokes = 0;
+    takeUplinkCounts(&uplinkFetches, &uplinkSkippedPokes);
+
+    // Frame period in microseconds: 120 samples are 7500 us at 16 kHz, 15000 us at 8 kHz.
+    uint32_t sampleRate = activeSampleRate;
+    uint32_t frameBudgetMicroseconds = 0;
+    if (sampleRate > 0) {
+        uint64_t frameSampleMicroseconds = (uint64_t)DMA_FRAME_SIZE_SAMPLES * 1000000ULL;
+        frameBudgetMicroseconds = (uint32_t)(frameSampleMicroseconds / sampleRate);
+    }
+
+    uint32_t averageMicroseconds = 0;
+    if (windowTiming.frameCount > 0) {
+        averageMicroseconds = (uint32_t)(windowTiming.totalMicroseconds / windowTiming.frameCount);
+    }
+
+    uint32_t averagePercent = 0;
+    uint32_t maxPercent = 0;
+    if (frameBudgetMicroseconds > 0) {
+        uint32_t averageScaled = averageMicroseconds * 100;
+        uint32_t maxScaled = windowTiming.maxMicroseconds * 100;
+        averagePercent = averageScaled / frameBudgetMicroseconds;
+        maxPercent = maxScaled / frameBudgetMicroseconds;
+    }
+
+    size_t freeBytes = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+    size_t largestBlockBytes = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+    size_t minimumFreeBytes = heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT);
+
+    // On ESP-IDF the high water mark is in bytes, not words.
+    unsigned micStackFreeBytes = 0;
+    if (micTaskHandle != NULL) {
+        micStackFreeBytes = (unsigned)uxTaskGetStackHighWaterMark(micTaskHandle);
+    }
+
+    ESP_LOGI(TAG, "DIAG mic %luk %lu frames avg %lu max %lu of %lu us (%lu%%/%lu%%) | "
+                  "uplink fetches %lu skipped %lu | "
+                  "heap free %uK largest %uK min %uK | mic stack free %u B",
+             (unsigned long)(sampleRate / 1000),
+             (unsigned long)windowTiming.frameCount,
+             (unsigned long)averageMicroseconds,
+             (unsigned long)windowTiming.maxMicroseconds,
+             (unsigned long)frameBudgetMicroseconds,
+             (unsigned long)averagePercent,
+             (unsigned long)maxPercent,
+             (unsigned long)uplinkFetches,
+             (unsigned long)uplinkSkippedPokes,
+             (unsigned)(freeBytes / 1024),
+             (unsigned)(largestBlockBytes / 1024),
+             (unsigned)(minimumFreeBytes / 1024),
+             micStackFreeBytes);
+    return windowTiming;
+}
+
+#if AEC_SPEEX_ENABLED
+// Alignment counters at the last DIAG aec line; only diagnosticsTask touches these.
+static uint32_t referenceShortAtLastLog = 0;
+static uint32_t referenceResyncAtLastLog = 0;
+static uint32_t micOverflowAtLastLog = 0;
+
+/**
+ * @brief Starts the alignment counters' window afresh (call start).
+ */
+static void resetEchoCounters(void) {
+    referenceShortAtLastLog = referenceShortSampleCount;
+    referenceResyncAtLastLog = referenceResyncCount;
+    micOverflowAtLastLog = micOverflowCount;
+}
+
+/**
+ * @brief Logs the once-a-second echo canceller line, from the window logCallBudget()
+ *        just took. Example:
+ *   DIAG aec erle 31 dB over 96 far frames | ref short 0 resync 0 | mic overflow 0 | speex allocs 23
+ * * erle      echo reduction by the canceller alone, while the far end talks ("--" if
+ *             it did not); residual suppression removes more after it
+ * * ref short reference samples that had not arrived yet (padded with silence)
+ * * resync    times the reference was re-aligned because the mic task fell behind
+ * * overflow  mic frames dropped by the RX DMA queue (the reference skips them too)
+ * * allocs    SpeexDSP allocations alive: about 20 in a call, 0 between calls
+ * * @param windowTiming The window logCallBudget() took.
+ */
+static void logEchoCanceller(const MicFrameTiming *windowTiming) {
+    uint32_t shortNow = referenceShortSampleCount;
+    uint32_t resyncNow = referenceResyncCount;
+    uint32_t overflowNow = micOverflowCount;
+    uint32_t shortInWindow = shortNow - referenceShortAtLastLog;
+    uint32_t resyncInWindow = resyncNow - referenceResyncAtLastLog;
+    uint32_t overflowInWindow = overflowNow - micOverflowAtLastLog;
+    referenceShortAtLastLog = shortNow;
+    referenceResyncAtLastLog = resyncNow;
+    micOverflowAtLastLog = overflowNow;
+
+    char erleText[16];
+    bool hasFarFrames = (windowTiming->echoFarFrames > 0 && windowTiming->echoMicEnergy > 0);
+    if (hasFarFrames) {
+        double residualEnergy = (windowTiming->echoResidualEnergy > 0) ? (double)windowTiming->echoResidualEnergy : 1.0;
+        double energyRatio = (double)windowTiming->echoMicEnergy / residualEnergy;
+        double erleDb = 10.0 * log10(energyRatio);
+        snprintf(erleText, sizeof(erleText), "%d dB", (int)lround(erleDb));
+    } else {
+        snprintf(erleText, sizeof(erleText), "--");
+    }
+
+    ESP_LOGI(TAG, "DIAG aec erle %s over %lu far frames | ref short %lu resync %lu | mic overflow %lu | speex allocs %d",
+             erleText,
+             (unsigned long)windowTiming->echoFarFrames,
+             (unsigned long)shortInWindow,
+             (unsigned long)resyncInWindow,
+             (unsigned long)overflowInWindow,
+             speexdspLiveAllocations());
+}
+#endif
+
+/**
+ * @brief Records every task's run-time counter as the start of a CPU window.
+ */
+static void takeCpuSnapshot(void) {
+    cpuTaskSnapshotCount = uxTaskGetSystemState(cpuTaskSnapshot, DIAG_MAX_TASKS, &cpuSnapshotTotalTime);
+    if (cpuTaskSnapshotCount == 0) {
+        ESP_LOGW(TAG, "DIAG cpu: more than %d tasks, raise DIAG_MAX_TASKS", DIAG_MAX_TASKS);
+    }
+}
+
+/**
+ * @brief Run time a task used since the snapshot, or all of it for a task started since.
+ * * @param currentTask The task's status now.
+ * @return Counter ticks used in this window.
+ */
+static configRUN_TIME_COUNTER_TYPE taskRunTimeSinceSnapshot(const TaskStatus_t *currentTask) {
+    for (UBaseType_t index = 0; index < cpuTaskSnapshotCount; index++) {
+        bool isSameTask = (cpuTaskSnapshot[index].xHandle == currentTask->xHandle);
+        if (isSameTask) {
+            return currentTask->ulRunTimeCounter - cpuTaskSnapshot[index].ulRunTimeCounter;
+        }
+    }
+    return currentTask->ulRunTimeCounter;
+}
+
+/**
+ * @brief Logs every task's stack that has never been used since it started, tightest
+ *        first, as one line printed with the CPU line.
+ * * Shows which stacks (Bluetooth's in particular) could give RAM back, and which are
+ * close to overflowing. On ESP-IDF the figure is in bytes. Example:
+ *   DIAG stack free B: BTC_TASK 1180, BTU_TASK 4310, microphoneTask 4372, ...
+ * * @param taskCount Number of valid entries in cpuTaskCurrent.
+ */
+static void logTaskStacks(UBaseType_t taskCount) {
+    char stacksText[448];
+    size_t textLength = 0;
+    stacksText[0] = '\0';
+
+    bool isListed[DIAG_MAX_TASKS] = { false };
+    for (UBaseType_t rank = 0; rank < taskCount; rank++) {
+        int tightestIndex = -1;
+        for (UBaseType_t index = 0; index < taskCount; index++) {
+            if (isListed[index]) {
+                continue;
+            }
+            bool isTighter = (tightestIndex < 0 ||
+                              cpuTaskCurrent[index].usStackHighWaterMark <
+                              cpuTaskCurrent[tightestIndex].usStackHighWaterMark);
+            if (isTighter) {
+                tightestIndex = (int)index;
+            }
+        }
+        isListed[tightestIndex] = true;
+
+        size_t roomLeft = sizeof(stacksText) - textLength;
+        int written = snprintf(stacksText + textLength, roomLeft, "%s%s %lu",
+                               (rank == 0) ? "" : ", ",
+                               cpuTaskCurrent[tightestIndex].pcTaskName,
+                               (unsigned long)cpuTaskCurrent[tightestIndex].usStackHighWaterMark);
+        if (written < 0 || (size_t)written >= roomLeft) {
+            break;
+        }
+        textLength += (size_t)written;
+    }
+
+    ESP_LOGI(TAG, "DIAG stack free B: %s", stacksText);
+}
+
+/**
+ * @brief Logs each core's idle share and the busiest tasks since the last snapshot,
+ *        then starts a new window.
+ * * Shares are of one core: FreeRTOS's total run time is the time elapsed, not
+ * elapsed x cores, so a task using all of core 0 reads 100%. Example:
+ *   DIAG cpu 10s idle c0 52% c1 91% | BTC_TASK 21% c0, btController 18% c0
+ * * @param windowMilliseconds Length of the window, for the label.
+ */
+static void logCpuUsage(uint32_t windowMilliseconds) {
+    configRUN_TIME_COUNTER_TYPE totalTimeNow = 0;
+    UBaseType_t currentCount = uxTaskGetSystemState(cpuTaskCurrent, DIAG_MAX_TASKS, &totalTimeNow);
+    configRUN_TIME_COUNTER_TYPE totalTimeDelta = totalTimeNow - cpuSnapshotTotalTime;
+
+    if (currentCount == 0 || totalTimeDelta == 0) {
+        takeCpuSnapshot();
+        return;
+    }
+
+    TaskHandle_t idleTaskCore0 = xTaskGetIdleTaskHandleForCore(0);
+    TaskHandle_t idleTaskCore1 = xTaskGetIdleTaskHandleForCore(1);
+    uint32_t idlePercentCore0 = 0;
+    uint32_t idlePercentCore1 = 0;
+
+    // Per-task share of one core this window; idle tasks are reported apart.
+    uint32_t taskPercent[DIAG_MAX_TASKS];
+    for (UBaseType_t index = 0; index < currentCount; index++) {
+        configRUN_TIME_COUNTER_TYPE taskDelta = taskRunTimeSinceSnapshot(&cpuTaskCurrent[index]);
+        uint64_t taskDeltaScaled = (uint64_t)taskDelta * 100ULL;
+        uint32_t percent = (uint32_t)(taskDeltaScaled / (uint64_t)totalTimeDelta);
+
+        bool isIdleCore0 = (cpuTaskCurrent[index].xHandle == idleTaskCore0);
+        bool isIdleCore1 = (cpuTaskCurrent[index].xHandle == idleTaskCore1);
+        if (isIdleCore0) {
+            idlePercentCore0 = percent;
+            percent = 0;
+        } else if (isIdleCore1) {
+            idlePercentCore1 = percent;
+            percent = 0;
+        }
+        taskPercent[index] = percent;
+    }
+
+    // Name the busiest tasks, highest first, skipping any under 1%.
+    char topTasksText[192];
+    size_t textLength = 0;
+    topTasksText[0] = '\0';
+    for (int rank = 0; rank < DIAG_TOP_TASK_COUNT; rank++) {
+        int busiestIndex = -1;
+        for (UBaseType_t index = 0; index < currentCount; index++) {
+            bool isBusier = (busiestIndex < 0 || taskPercent[index] > taskPercent[busiestIndex]);
+            if (taskPercent[index] > 0 && isBusier) {
+                busiestIndex = (int)index;
+            }
+        }
+        if (busiestIndex < 0) {
+            break;
+        }
+
+        BaseType_t coreId = xTaskGetCoreID(cpuTaskCurrent[busiestIndex].xHandle);
+        char coreLabel = (coreId == tskNO_AFFINITY) ? '*' : (char)('0' + coreId);
+        size_t roomLeft = sizeof(topTasksText) - textLength;
+        int written = snprintf(topTasksText + textLength, roomLeft, "%s%s %lu%% c%c",
+                               (rank == 0) ? "" : ", ",
+                               cpuTaskCurrent[busiestIndex].pcTaskName,
+                               (unsigned long)taskPercent[busiestIndex],
+                               coreLabel);
+        if (written < 0 || (size_t)written >= roomLeft) {
+            break;
+        }
+        textLength += (size_t)written;
+        taskPercent[busiestIndex] = 0;
+    }
+
+    ESP_LOGI(TAG, "DIAG cpu %lus idle c0 %lu%% c1 %lu%% | %s",
+             (unsigned long)(windowMilliseconds / 1000),
+             (unsigned long)idlePercentCore0,
+             (unsigned long)idlePercentCore1,
+             topTasksText);
+    logTaskStacks(currentCount);
+
+    memcpy(cpuTaskSnapshot, cpuTaskCurrent, sizeof(TaskStatus_t) * currentCount);
+    cpuTaskSnapshotCount = currentCount;
+    cpuSnapshotTotalTime = totalTimeNow;
+}
+
+/**
+ * @brief Low-priority task that prints the call budget lines while a call is active.
+ * * Wakes every DIAG_LOG_PERIOD_MS. At the start of a call it discards timing from
+ * before the call and takes a CPU snapshot; during the call it logs the budget line
+ * every period and the CPU line every DIAG_CPU_PERIOD_MS. Silent between calls.
+ * * @param taskParameters FreeRTOS task parameters (unused).
+ */
+static void diagnosticsTask(void *taskParameters) {
+    bool wasCallActive = false;
+    uint32_t millisecondsSinceCpuLog = 0;
+
+    while (true) {
+        vTaskDelay(pdMS_TO_TICKS(DIAG_LOG_PERIOD_MS));
+
+        bool isCallActive = isAudioPathOpen;
+        bool isCallStarting = (isCallActive && !wasCallActive);
+
+        if (isCallStarting) {
+            uint32_t discardedFetches = 0;
+            uint32_t discardedSkippedPokes = 0;
+            takeMicFrameTiming();
+            takeUplinkCounts(&discardedFetches, &discardedSkippedPokes);
+#if AEC_SPEEX_ENABLED
+            resetEchoCounters();
+#endif
+            takeCpuSnapshot();
+            millisecondsSinceCpuLog = 0;
+            logHeapUsage("call start");
+        } else if (isCallActive) {
+            MicFrameTiming windowTiming = logCallBudget();
+#if AEC_SPEEX_ENABLED
+            logEchoCanceller(&windowTiming);
+#else
+            (void)windowTiming;
+#endif
+
+            millisecondsSinceCpuLog += DIAG_LOG_PERIOD_MS;
+            if (millisecondsSinceCpuLog >= DIAG_CPU_PERIOD_MS) {
+                logCpuUsage(millisecondsSinceCpuLog);
+                millisecondsSinceCpuLog = 0;
+            }
+        }
+
+        wasCallActive = isCallActive;
+    }
+}
+#endif  /* DIAG_LOG_ENABLED */
+
 /* * ============================================================================
  * Background Tasks
  * ============================================================================
@@ -1083,6 +1629,242 @@ void audioOutputTask(void *taskParameters) {
     }
 }
 
+// Poke back-off state, owned by microphoneTask.
+typedef struct {
+    uint32_t fetchCountAtLastPoke;   // uplinkFetchCount when the last frame was handled
+    uint32_t unansweredPokeCount;    // frames in a row with no fetch since
+} UplinkPokeState;
+
+/**
+ * @brief Starts the back-off state afresh, as if the last poke had been answered.
+ * * Called between calls, so a new call always starts poking every frame.
+ */
+static void resetUplinkPokeState(UplinkPokeState *pokeState) {
+    pokeState->fetchCountAtLastPoke = uplinkFetchCount;
+    pokeState->unansweredPokeCount = 0;
+}
+
+/**
+ * @brief Tells Bluedroid uplink audio is ready, unless it has stopped fetching.
+ * * Every frame while Bluedroid keeps calling bluetoothHandsFreeSendCallback(). After
+ * UPLINK_UNANSWERED_POKE_LIMIT frames with no call, every
+ * UPLINK_BACKOFF_POKE_INTERVAL-th frame only, until a call is seen again.
+ * Example at 16 kHz: link closes at frame 0; frames 1-8 still poke, frames 9-23
+ * skip, frame 24 pokes, frames 25-39 skip, and so on.
+ * * @param pokeState microphoneTask's back-off state.
+ */
+static void pokeUplink(UplinkPokeState *pokeState) {
+    uint32_t fetchCountNow = uplinkFetchCount;
+    bool wasFetchedSinceLastPoke = (fetchCountNow != pokeState->fetchCountAtLastPoke);
+    pokeState->fetchCountAtLastPoke = fetchCountNow;
+
+    if (wasFetchedSinceLastPoke) {
+        pokeState->unansweredPokeCount = 0;
+    } else {
+        pokeState->unansweredPokeCount++;
+    }
+
+    bool isBackingOff = (pokeState->unansweredPokeCount >= UPLINK_UNANSWERED_POKE_LIMIT);
+    uint32_t framesIntoBackoff = pokeState->unansweredPokeCount - UPLINK_UNANSWERED_POKE_LIMIT;
+    bool isProbeFrame = ((framesIntoBackoff % UPLINK_BACKOFF_POKE_INTERVAL) == 0);
+
+    if (isBackingOff && !isProbeFrame) {
+        uplinkSkippedPokeCount++;
+        return;
+    }
+    esp_hf_client_outgoing_data_ready();
+}
+
+/**
+ * @brief Clamps a sample into int16 range in the float domain, NaN to 0.
+ * * Converting a NaN or an out-of-range float to an integer is undefined behaviour,
+ * and on Xtensa it yields a value no integer-side clamp recognises: one bad sample
+ * becomes a constant the far end hears as dead silence. The compound test is false
+ * for NaN as well as for out-of-range values, so both land in the recovery branch.
+ * Example: 40000.0 -> 32767.0, -1e9 -> -32768.0, NaN -> 0.0, 123.4 -> 123.4.
+ */
+static float clampToSampleRange(float value) {
+    bool isInRange = (value >= -32768.0f && value <= 32767.0f);
+    if (isInRange) {
+        return value;
+    }
+    if (value > 0.0f) {
+        return 32767.0f;
+    }
+    if (value < 0.0f) {
+        return -32768.0f;
+    }
+    return 0.0f;
+}
+
+/**
+ * @brief Reads mic frames until the RX DMA queue is empty (at most 20), so the next
+ *        read is a frame captured from now on.
+ * * Used at call start and, with the echo canceller, before re-aligning the reference
+ * after a codec change.
+ * * @param scratchBuffer Somewhere to read into, one frame long.
+ */
+static void drainMicQueue(int32_t *scratchBuffer, size_t scratchBytes) {
+    size_t bytesRead = 0;
+    int drainLimit = 20;
+
+    xSemaphoreTake(rxMutex, portMAX_DELAY);
+    while (drainLimit > 0 &&
+           i2s_channel_read(rxChannel, scratchBuffer, scratchBytes, &bytesRead, 0) == ESP_OK &&
+           bytesRead > 0) {
+        drainLimit--;
+    }
+    xSemaphoreGive(rxMutex);
+}
+
+#if AEC_SPEEX_ENABLED
+// The mic task's echo canceller. Both states are NULL when it is not running (no
+// call, or the heap could not spare it), and the frames then pass through unchanged.
+typedef struct {
+    SpeexEchoState *echoState;
+    SpeexPreprocessState *preprocessState;
+    uint32_t sampleRate;            // rate it was made for (or last tried); 0 = none
+    uint32_t referenceReadIndex;    // next referenceRing sample, same count as referenceWriteIndex
+    uint32_t overflowCountSeen;     // micOverflowCount already accounted for
+} EchoCanceller;
+
+/**
+ * @brief Destroys the canceller's states, if any. Safe to call when none exist.
+ */
+static void destroyEchoCanceller(EchoCanceller *canceller) {
+    if (canceller->preprocessState != NULL) {
+        speex_preprocess_state_destroy(canceller->preprocessState);
+        canceller->preprocessState = NULL;
+    }
+    if (canceller->echoState != NULL) {
+        speex_echo_state_destroy(canceller->echoState);
+        canceller->echoState = NULL;
+    }
+    canceller->sampleRate = 0;
+}
+
+/**
+ * @brief Creates the echo canceller and preprocessor for a call rate.
+ * * Checks the heap first: SpeexDSP does not check its own allocations, so a failed
+ * one would crash rather than return NULL. On a heap too small it logs once and
+ * leaves the states NULL; the call goes on without cancellation.
+ * Example log: "--- AEC on | 16000 Hz | 120 ms tail | 57 KB | heap left 31K ---"
+ * * @param sampleRate 16000 (mSBC) or 8000 (CVSD).
+ */
+static void createEchoCanceller(EchoCanceller *canceller, uint32_t sampleRate) {
+    destroyEchoCanceller(canceller);
+    canceller->sampleRate = sampleRate;
+
+    // Call rates only: a call that ends while this runs leaves the music rate behind.
+    bool isCallSampleRate = (sampleRate == SAMPLE_RATE_8K || sampleRate == SAMPLE_RATE_16K);
+    if (!isCallSampleRate) {
+        return;
+    }
+
+    size_t freeBytes = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+    size_t largestBlockBytes = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+    size_t requiredBytes = AEC_STATE_BYTES + AEC_HEAP_RESERVE_BYTES;
+    bool isHeapEnough = (freeBytes >= requiredBytes && largestBlockBytes >= AEC_LARGEST_ALLOCATION_BYTES);
+    if (!isHeapEnough) {
+        ESP_LOGW(TAG, "--- AEC off: heap free %uK largest %uK, needs %uK and a %uK block ---",
+                 (unsigned)(freeBytes / 1024), (unsigned)(largestBlockBytes / 1024),
+                 (unsigned)(requiredBytes / 1024), (unsigned)(AEC_LARGEST_ALLOCATION_BYTES / 1024));
+        return;
+    }
+
+    int frameSamples = (int)DMA_FRAME_SIZE_SAMPLES;
+    int tailSamples = (int)((sampleRate * AEC_TAIL_MS) / 1000);
+    int speexSampleRate = (int)sampleRate;
+    size_t bytesBefore = speexdspAllocatedBytes();
+
+    canceller->echoState = speex_echo_state_init(frameSamples, tailSamples);
+    speex_echo_ctl(canceller->echoState, SPEEX_ECHO_SET_SAMPLING_RATE, &speexSampleRate);
+    canceller->preprocessState = speex_preprocess_state_init(frameSamples, speexSampleRate);
+    speex_preprocess_ctl(canceller->preprocessState, SPEEX_PREPROCESS_SET_ECHO_STATE, canceller->echoState);
+
+    size_t stateBytes = speexdspAllocatedBytes() - bytesBefore;
+    ESP_LOGI(TAG, "--- AEC on | %lu Hz | %d ms tail | %uK | heap left %uK ---",
+             (unsigned long)sampleRate, AEC_TAIL_MS, (unsigned)(stateBytes / 1024),
+             (unsigned)(heap_caps_get_free_size(MALLOC_CAP_8BIT) / 1024));
+}
+
+/**
+ * @brief Aligns the reference with the next mic frame: reads start
+ *        AEC_REFERENCE_LEAD_SAMPLES behind the newest played sample.
+ * * Call right after drainMicQueue(), so the next mic frame is captured from now on
+ * and the reference leads it. Earlier overflows are forgotten.
+ */
+static void syncEchoReference(EchoCanceller *canceller) {
+    uint32_t writeIndex = __atomic_load_n(&referenceWriteIndex, __ATOMIC_ACQUIRE);
+    canceller->referenceReadIndex = writeIndex - AEC_REFERENCE_LEAD_SAMPLES;
+    canceller->overflowCountSeen = micOverflowCount;
+}
+
+/**
+ * @brief Takes the reference samples that belong to the mic frame being processed.
+ * * Skips one mic frame of reference per RX overflow. If the ring has not yet got
+ * a sample, it is padded with 0 but still counted, so the alignment holds. If the
+ * reader has fallen so far behind that the interrupt is overwriting what it would
+ * read, it re-aligns at the lead (the canceller then re-converges).
+ * * @param referenceFrame Filled with sampleCount samples.
+ */
+static void takeEchoReference(EchoCanceller *canceller, int16_t *referenceFrame, uint32_t sampleCount) {
+    uint32_t overflowCountNow = micOverflowCount;
+    uint32_t newOverflows = overflowCountNow - canceller->overflowCountSeen;
+    canceller->overflowCountSeen = overflowCountNow;
+    uint32_t droppedMicSamples = newOverflows * DMA_FRAME_SIZE_SAMPLES;
+    canceller->referenceReadIndex += droppedMicSamples;
+
+    uint32_t writeIndex = __atomic_load_n(&referenceWriteIndex, __ATOMIC_ACQUIRE);
+    int32_t availableSamples = (int32_t)(writeIndex - canceller->referenceReadIndex);
+    int32_t overwriteMargin = AEC_REFERENCE_RING_SAMPLES - (int32_t)(2 * DMA_FRAME_SIZE_SAMPLES);
+    if (availableSamples > overwriteMargin) {
+        canceller->referenceReadIndex = writeIndex - AEC_REFERENCE_LEAD_SAMPLES;
+        referenceResyncCount++;
+    }
+
+    for (uint32_t index = 0; index < sampleCount; index++) {
+        int32_t samplesAhead = (int32_t)(writeIndex - canceller->referenceReadIndex);
+        bool isWritten = (samplesAhead > 0);
+        if (isWritten) {
+            uint32_t ringSlot = canceller->referenceReadIndex & (AEC_REFERENCE_RING_SAMPLES - 1);
+            referenceFrame[index] = referenceRing[ringSlot];
+        } else {
+            referenceFrame[index] = 0;
+            referenceShortSampleCount++;
+        }
+        canceller->referenceReadIndex++;
+    }
+}
+
+/**
+ * @brief Removes the speaker's echo from one mic frame.
+ * * micFrame and outputFrame are int16 before MICROPHONE_GAIN. Without states (no call
+ * yet, heap too small) or with a frame of another size, the mic passes through; the
+ * reference is consumed either way so alignment holds.
+ * * @param sampleCount Samples in the frame; DMA_FRAME_SIZE_SAMPLES normally.
+ */
+static void cancelEcho(EchoCanceller *canceller, const int16_t *micFrame, int16_t *outputFrame, uint32_t sampleCount) {
+    static int16_t referenceFrame[DMA_FRAME_SIZE_SAMPLES];
+    takeEchoReference(canceller, referenceFrame, sampleCount);
+
+    bool isCancellerRunning = (canceller->echoState != NULL && canceller->preprocessState != NULL);
+    bool isWholeFrame = (sampleCount == DMA_FRAME_SIZE_SAMPLES);
+    if (!isCancellerRunning || !isWholeFrame) {
+        memcpy(outputFrame, micFrame, sampleCount * sizeof(int16_t));
+        return;
+    }
+
+    speex_echo_cancellation(canceller->echoState, micFrame, referenceFrame, outputFrame);
+
+#if DIAG_LOG_ENABLED
+    recordEchoFrame(micFrame, referenceFrame, outputFrame, sampleCount);
+#endif
+
+    speex_preprocess_run(canceller->preprocessState, outputFrame);
+}
+#endif  /* AEC_SPEEX_ENABLED */
+
 /**
  * @brief Dedicated CPU thread that reads, processes, and queues Microphone data.
  * * 1. CPU Sleep: If no call is active, sleeps indefinitely (0% CPU) via ulTaskNotifyTake.
@@ -1103,6 +1885,16 @@ void microphoneTask(void *taskParameters) {
     float previousHighPassOutput = 0.0f;
     int32_t previousHighPassInput = 0;
 
+    UplinkPokeState uplinkPokeState = {0};
+
+#if AEC_SPEEX_ENABLED
+    // Mic frame before MICROPHONE_GAIN and the canceller's output, static to keep
+    // them off the task stack (this task is their only user).
+    EchoCanceller echoCanceller = {0};
+    static int16_t echoMicFrame[DMA_FRAME_SIZE_SAMPLES];
+    static int16_t echoOutputFrame[DMA_FRAME_SIZE_SAMPLES];
+#endif
+
 #if AEC_GATE_ENABLED
     // Conditioned samples are held in float between the two passes: the gate decision
     // needs the level of the WHOLE frame before any sample can be scaled, so the
@@ -1114,23 +1906,6 @@ void microphoneTask(void *taskParameters) {
     float microphoneEnvelope = 0.0f;
     float gateGain = 1.0f;          // where the glide is heading this frame
     float previousGateGain = 1.0f;  // where it ended last frame, for per-sample interpolation
-    uint32_t gateFrameCounter = 0;
-    uint32_t gateDuckedFrames = 0;
-
-#if AEC_CAL_ENABLED
-    // Calibration accumulators. All reset at the end of every reporting window so
-    // each report describes the last AEC_CAL_PERIOD_MS, not the whole call.
-    uint16_t calRatioHistogram[AEC_CAL_HIST_BINS];   // 1 dB bins of mic/far, 162 bytes
-    uint32_t calQualifyingFrames = 0;     // frames that met every measurement condition
-    uint32_t calLeakFrames = 0;           // qualifying frames that cleared the gate threshold
-    float    calFarQuietestLevel = 0.0f;  // lowest far-end envelope seen this window
-    uint32_t calFarActiveFrames = 0;
-    uint32_t calFarActiveDucked = 0;
-    uint32_t calFrameCounter = 0;
-    uint32_t calFarActiveRun = 0;         // consecutive frames the far end has been active
-    float    calPreviousFarEnvelope = 0.0f;
-    float    calPreviousMicEnvelope = 0.0f;
-#endif
 #endif
 
     while (true) {
@@ -1139,6 +1914,7 @@ void microphoneTask(void *taskParameters) {
             lowPassFilterState = 0.0f;
             previousHighPassInput = 0;
             previousHighPassOutput = 0.0f;
+            resetUplinkPokeState(&uplinkPokeState);
 
 #if AEC_GATE_ENABLED
             // Reset the gate to fully OPEN between calls. Waking up mid-duck would mute
@@ -1148,21 +1924,11 @@ void microphoneTask(void *taskParameters) {
             microphoneEnvelope = 0.0f;
             gateGain = 1.0f;
             previousGateGain = 1.0f;
-            gateFrameCounter = 0;
-            gateDuckedFrames = 0;
             farEndPeakLevel = 0.0f;
-#if AEC_CAL_ENABLED
-            memset(calRatioHistogram, 0, sizeof(calRatioHistogram));
-            calQualifyingFrames = 0;
-            calLeakFrames = 0;
-            calFarQuietestLevel = 1.0e9f;   // sentinel: first real frame replaces it
-            calFarActiveFrames = 0;
-            calFarActiveDucked = 0;
-            calFrameCounter = 0;
-            calFarActiveRun = 0;
-            calPreviousFarEnvelope = 0.0f;
-            calPreviousMicEnvelope = 0.0f;
 #endif
+#if AEC_SPEEX_ENABLED
+            // Its memory goes back to the heap, for music, until the next call.
+            destroyEchoCanceller(&echoCanceller);
 #endif
 
             bool isStreamBufferValid = (microphoneStreamBuffer != NULL);
@@ -1178,14 +1944,17 @@ void microphoneTask(void *taskParameters) {
             vTaskDelay(pdMS_TO_TICKS(HFP_MIC_STARTUP_DELAY_MS));
 
             // ABSOLUTE DMA DRAIN
-            size_t dummyBytes;
-            int drainLimit = 20; // FIX: Prevent infinite loops
-            
-            xSemaphoreTake(rxMutex, portMAX_DELAY);
-            while (i2s_channel_read(rxChannel, rawHardwareData, sizeof(rawHardwareData), &dummyBytes, 0) == ESP_OK && dummyBytes > 0 && drainLimit > 0) {
-                drainLimit--; // FIX: Decrement limit
+            drainMicQueue(rawHardwareData, sizeof(rawHardwareData));
+
+#if AEC_SPEEX_ENABLED
+            // After the drain, so the reference is aligned with the next mic frame. Only
+            // if the call is still up: a notification left pending by a mid-call codec
+            // change also wakes this task once the call has ended, at the music rate.
+            if (isAudioPathOpen) {
+                createEchoCanceller(&echoCanceller, activeSampleRate);
+                syncEchoReference(&echoCanceller);
             }
-            xSemaphoreGive(rxMutex);
+#endif
 
             // Ensure the software stream buffer is completely fresh before starting
             if (microphoneStreamBuffer != NULL) {
@@ -1195,6 +1964,18 @@ void microphoneTask(void *taskParameters) {
             // Proceed directly into the active read loop now that the pipeline is clean
             continue; 
         }
+
+#if AEC_SPEEX_ENABLED
+        // A codec change mid-call (mSBC <-> CVSD) reclocks both channels and rebuilds
+        // the TX one: start the canceller again at the new rate and re-align.
+        uint32_t sampleRateNow = activeSampleRate;
+        bool isSampleRateChanged = (echoCanceller.sampleRate != sampleRateNow);
+        if (isSampleRateChanged && isAudioPathOpen) {
+            drainMicQueue(rawHardwareData, sizeof(rawHardwareData));
+            createEchoCanceller(&echoCanceller, sampleRateNow);
+            syncEchoReference(&echoCanceller);
+        }
+#endif
 
         xSemaphoreTake(rxMutex, portMAX_DELAY);
         esp_err_t readResult = i2s_channel_read(rxChannel, rawHardwareData, sizeof(rawHardwareData), &bytesReadFromHardware, pdMS_TO_TICKS(100));
@@ -1209,13 +1990,17 @@ void microphoneTask(void *taskParameters) {
         bool hasBytes = (bytesReadFromHardware > 0);
 
         if (isReadSuccessful && hasBytes) {
-            uint32_t numberOfSamples = bytesReadFromHardware / 4; 
+#if DIAG_LOG_ENABLED
+            int64_t frameStartMicroseconds = esp_timer_get_time();
+#endif
+            uint32_t numberOfSamples = bytesReadFromHardware / 4;
 
 #if AEC_GATE_ENABLED
             float microphoneLevelAccumulator = 0.0f;
 #endif
 
-            // --- Pass 1: microphone conditioning: high-pass, low-pass, gain, clip ---
+            // --- Pass 1: microphone conditioning: high-pass, low-pass, then gain and clip
+            // (with the echo canceller, gain comes after it, in pass 2) ---
             for (uint32_t index = 0; index < numberOfSamples; index++) {
 
                 int32_t rawSampleData = rawHardwareData[index];
@@ -1241,30 +2026,37 @@ void microphoneTask(void *taskParameters) {
                 float lowPassResult = lowPassComponentOne + lowPassComponentTwo;
                 lowPassFilterState = lowPassResult;
 
-                float amplifiedResult = lowPassResult * MICROPHONE_GAIN;
-
-                // Clamp in the FLOAT domain, before the conversion. Converting a NaN or an
-                // out-of-range float to int32_t is undefined behaviour, and on Xtensa it
-                // produces a value the integer-side clamps cannot recognise - one bad
-                // sample becomes a constant, which the far end hears as dead silence
-                // rather than as a glitch. The compound test below is false for NaN as
-                // well as for out-of-range values, so both land in the recovery branch,
-                // and NaN (neither > 0 nor < 0) resolves to zero.
-                if (!(amplifiedResult >= -32768.0f && amplifiedResult <= 32767.0f)) {
-                    amplifiedResult = (amplifiedResult > 0.0f) ?  32767.0f
-                                    : (amplifiedResult < 0.0f) ? -32768.0f
-                                    : 0.0f;
-                }
+#if AEC_SPEEX_ENABLED
+                // The canceller gets the mic before MICROPHONE_GAIN: clipping here would
+                // make the echo non-linear, and a linear echo is what it can remove.
+                float clampedMicSample = clampToSampleRange(lowPassResult);
+                echoMicFrame[index] = (int16_t)clampedMicSample;
+#else
+                float amplifiedSample = lowPassResult * MICROPHONE_GAIN;
+                // Clamp in the FLOAT domain, before the conversion (see clampToSampleRange).
+                float amplifiedResult = clampToSampleRange(amplifiedSample);
+#endif
 
 #if AEC_GATE_ENABLED
                 // Defer the int16 conversion to pass 2 - the gain to apply is not known
                 // until the whole frame's level has been measured.
                 conditionedFrame[index] = amplifiedResult;
                 microphoneLevelAccumulator += fabsf(amplifiedResult);
-#else
+#elif !AEC_SPEEX_ENABLED
                 processedVoiceBuffer[index] = (int16_t)amplifiedResult;
 #endif
             }
+
+#if AEC_SPEEX_ENABLED
+            /* ---- Pass 2: echo cancellation, residual suppression, then gain ---- */
+            cancelEcho(&echoCanceller, echoMicFrame, echoOutputFrame, numberOfSamples);
+
+            for (uint32_t index = 0; index < numberOfSamples; index++) {
+                float amplifiedSample = (float)echoOutputFrame[index] * MICROPHONE_GAIN;
+                float clampedSample = clampToSampleRange(amplifiedSample);
+                processedVoiceBuffer[index] = (int16_t)clampedSample;
+            }
+#endif
 
 #if AEC_GATE_ENABLED
             /* ---- Pass 2: voice-switched gate ----
@@ -1322,167 +2114,12 @@ void microphoneTask(void *taskParameters) {
             }
 
             previousGateGain = gateGain;
-
-#if AEC_CAL_ENABLED
-            /* ---- Calibration assistant ---- */
-
-            // Track how long the far end has been continuously active, so the coupling
-            // measurement can be restricted to the middle of an utterance.
-            if (isFarEndTalking) {
-                calFarActiveRun++;
-                calFarActiveFrames++;
-                if (targetGain < 1.0f) {
-                    calFarActiveDucked++;
-                }
-            } else {
-                calFarActiveRun = 0;
-            }
-
-            // Lowest far-end envelope this window - used to check that
-            // AEC_FAR_ACTIVE_LEVEL sits safely above the idle line level.
-            if (farEndEnvelope < calFarQuietestLevel) {
-                calFarQuietestLevel = farEndEnvelope;
-            }
-
-            // A frame qualifies for the coupling measurement only if the far end is
-            // loud, has been talking for a while, and is NOT in its decay tail. The
-            // decay test is the important one: the far envelope falls over
-            // AEC_FAR_RELEASE_MS but the mic envelope falls over AEC_MIC_ENVELOPE_MS,
-            // so at the end of every utterance the ratio collapses toward zero and
-            // would drag the minimum well below the true coupling.
-            bool isFarLoudEnough = (farEndEnvelope > AEC_CAL_MIN_FAR_LEVEL);
-            bool isFarSustained  = (calFarActiveRun > AEC_CAL_MIN_RUN_FRAMES);
-            bool isFarNotDecaying = (farEndFrameLevel > AEC_CAL_STEADY_RATIO * farEndEnvelope);
-
-            // Plateau test on BOTH envelopes - see AEC_CAL_PLATEAU_TOLERANCE.
-            bool isFarOnPlateau = (calPreviousFarEnvelope > 0.0f) &&
-                (fabsf(farEndEnvelope - calPreviousFarEnvelope)
-                     <= AEC_CAL_PLATEAU_TOLERANCE * calPreviousFarEnvelope);
-            bool isMicOnPlateau = (calPreviousMicEnvelope > 0.0f) &&
-                (fabsf(microphoneEnvelope - calPreviousMicEnvelope)
-                     <= AEC_CAL_PLATEAU_TOLERANCE * calPreviousMicEnvelope);
-
-            calPreviousFarEnvelope = farEndEnvelope;
-            calPreviousMicEnvelope = microphoneEnvelope;
-
-            if (isFarLoudEnough && isFarSustained && isFarNotDecaying &&
-                isFarOnPlateau && isMicOnPlateau && microphoneEnvelope > 0.0f) {
-
-                float couplingDb = 20.0f * log10f(microphoneEnvelope / farEndEnvelope);
-
-                int bin = (int)lroundf(couplingDb) - AEC_CAL_HIST_MIN_DB;
-                if (bin < 0) bin = 0;
-                if (bin >= AEC_CAL_HIST_BINS) bin = AEC_CAL_HIST_BINS - 1;
-                if (calRatioHistogram[bin] < 0xFFFF) {
-                    calRatioHistogram[bin]++;
-                }
-
-                // Did the echo alone clear the gate's near-end threshold on this
-                // frame? If so the gate opened on its own echo. Counted directly.
-                if (microphoneEnvelope > nearEndThreshold) {
-                    calLeakFrames++;
-                }
-                calQualifyingFrames++;
-            }
-
-            calFrameCounter++;
-            if (calFrameCounter >= gateCalPeriodFrames) {
-                if (calQualifyingFrames >= AEC_CAL_MIN_FRAMES) {
-                    // Median of the histogram.
-                    uint32_t half = calQualifyingFrames / 2;
-                    uint32_t running = 0;
-                    int medianBin = 0;
-                    for (int b = 0; b < AEC_CAL_HIST_BINS; b++) {
-                        running += calRatioHistogram[b];
-                        if (running >= half) { medianBin = b; break; }
-                    }
-                    float measuredCouplingDb = (float)(medianBin + AEC_CAL_HIST_MIN_DB);
-                    unsigned long leakPercent = (100UL * calLeakFrames) / calQualifyingFrames;
-
-                    float configuredThresholdDb = AEC_ECHO_COUPLING_DB + AEC_NEAREND_MARGIN;
-                    float headroomDb = configuredThresholdDb - measuredCouplingDb;
-
-                    // Aim the recommendation at the middle of the healthy band. With
-                    // AEC_NEAREND_MARGIN at its default of 6.0 this reduces to
-                    // "set AEC_ECHO_COUPLING_DB to the measured coupling".
-                    float recommendedCouplingDb = measuredCouplingDb
-                                                + AEC_CAL_TARGET_HEADROOM_DB
-                                                - AEC_NEAREND_MARGIN;
-
-                    if (leakPercent > AEC_CAL_MAX_LEAK_PERCENT) {
-                        ESP_LOGW(TAG, "GATE CAL  coupling %+.0f dB | headroom %+.1f dB | leak %lu%% | "
-                                      "ECHO LEAKING -> set AEC_ECHO_COUPLING_DB to %+.0f",
-                                 measuredCouplingDb, headroomDb, leakPercent, recommendedCouplingDb);
-                    } else if (headroomDb > AEC_CAL_HEADROOM_HIGH_DB) {
-                        ESP_LOGW(TAG, "GATE CAL  coupling %+.0f dB | headroom %+.1f dB | leak %lu%% | "
-                                      "OVER-DUCKING -> set AEC_ECHO_COUPLING_DB to %+.0f",
-                                 measuredCouplingDb, headroomDb, leakPercent, recommendedCouplingDb);
-                    } else {
-                        ESP_LOGI(TAG, "GATE CAL  coupling %+.0f dB | headroom %+.1f dB | leak %lu%% | "
-                                      "*** IN RANGE *** (headroom band %.0f to %.0f dB, leak under %d%%)",
-                                 measuredCouplingDb, headroomDb, leakPercent,
-                                 (float)AEC_CAL_HEADROOM_LOW_DB, (float)AEC_CAL_HEADROOM_HIGH_DB,
-                                 (int)AEC_CAL_MAX_LEAK_PERCENT);
-                    }
-                } else {
-                    ESP_LOGI(TAG, "GATE CAL  not enough steady far-end speech to measure "
-                                  "(%lu/%d qualifying frames) - keep the call going",
-                             (unsigned long)calQualifyingFrames, (int)AEC_CAL_MIN_FRAMES);
-                }
-
-                // Far-end activity threshold sanity check, reported every window
-                // because it is the constant that silently mutes the whole call if
-                // it latches onto line noise.
-                if (calFarQuietestLevel > 1.0e8f) {
-                    calFarQuietestLevel = 0.0f;   // no frames seen this window
-                }
-                float farIdleHeadroom = (calFarQuietestLevel > 1.0f)
-                                      ? (AEC_FAR_ACTIVE_LEVEL / calFarQuietestLevel)
-                                      : 999.0f;
-                unsigned long duckPercent = calFarActiveFrames
-                                          ? (100UL * calFarActiveDucked) / calFarActiveFrames
-                                          : 0UL;
-
-                if (farIdleHeadroom < AEC_CAL_FAR_IDLE_RATIO) {
-                    ESP_LOGW(TAG, "GATE CAL  far idle %.0f vs threshold %.0f (%.1fx) | "
-                                  "THRESHOLD TOO LOW -> raise AEC_FAR_ACTIVE_LEVEL to %.0f | duck %lu%%",
-                             calFarQuietestLevel, (float)AEC_FAR_ACTIVE_LEVEL, farIdleHeadroom,
-                             calFarQuietestLevel * AEC_CAL_FAR_IDLE_RATIO, duckPercent);
-                } else {
-                    ESP_LOGI(TAG, "GATE CAL  far idle %.0f vs threshold %.0f (%.1fx) OK | duck %lu%% of far-active",
-                             calFarQuietestLevel, (float)AEC_FAR_ACTIVE_LEVEL, farIdleHeadroom, duckPercent);
-                }
-
-                calFrameCounter = 0;
-                calQualifyingFrames = 0;
-                calLeakFrames = 0;
-                memset(calRatioHistogram, 0, sizeof(calRatioHistogram));
-                calFarActiveFrames = 0;
-                calFarActiveDucked = 0;
-                calFarQuietestLevel = 1.0e9f;
-            }
-#endif  /* AEC_CAL_ENABLED */
-
-#if AEC_GATE_LOG_ENABLED
-            gateFrameCounter++;
-            if (targetGain < 1.0f) {
-                gateDuckedFrames++;
-            }
-            if (gateFrameCounter >= gateLogPeriodFrames) {
-                float reportedGainDb = 20.0f * log10f((gateGain > 1e-6f) ? gateGain : 1e-6f);
-                ESP_LOGI(TAG, "GATE far=%.0f mic=%.0f echoRef=%.0f gain=%.1fdB duck=%lu%%",
-                         farEndEnvelope, microphoneEnvelope, nearEndThreshold, reportedGainDb,
-                         (unsigned long)((100UL * gateDuckedFrames) / gateFrameCounter));
-                gateFrameCounter = 0;
-                gateDuckedFrames = 0;
-            }
-#endif
 #endif  /* AEC_GATE_ENABLED */
 
             uint32_t bufferPayloadSizeBytes = numberOfSamples * sizeof(int16_t);
 
             // NEW: hold the uplink backlog at a fixed low water mark instead of waiting
-            // for the 2 KB stream buffer to fill. Whatever sits in this buffer is pure
+            // for the stream buffer to fill. Whatever sits in this buffer is pure
             // added mouth-to-ear delay on the near-end talker, and the original code let
             // any startup backlog persist for the entire call. Dropping the OLDEST whole
             // frames keeps sample alignment intact and always favours fresh audio.
@@ -1508,8 +2145,15 @@ void microphoneTask(void *taskParameters) {
             }
 
             // Always poke the stack, even if we had to drop this frame. Skipping this is
-            // what stalled the pipeline permanently.
-            esp_hf_client_outgoing_data_ready();
+            // what stalled the pipeline permanently. The only exception is the back-off
+            // once Bluedroid has stopped fetching (see UPLINK_UNANSWERED_POKE_LIMIT).
+            pokeUplink(&uplinkPokeState);
+
+#if DIAG_LOG_ENABLED
+            int64_t frameEndMicroseconds = esp_timer_get_time();
+            int64_t frameElapsedMicroseconds = frameEndMicroseconds - frameStartMicroseconds;
+            recordMicFrameTime((uint32_t)frameElapsedMicroseconds);
+#endif
         }
     }
 }
@@ -1539,7 +2183,7 @@ void microphoneTask(void *taskParameters) {
  * is momentarily busy. Configures pins 23, 26, and 25.
  */
 void initializeI2sTransmitChannel(void) {
-    createTransmitChannel(SAMPLE_RATE_44K, MUSIC_TX_DESC_COUNT, MUSIC_TX_FRAMES_PER_DESC, 0);
+    createTransmitChannel(SAMPLE_RATE_44K, MUSIC_TX_DESC_COUNT, MUSIC_TX_FRAMES_PER_DESC, 0, false);
     currentTransmitProfile = TX_PROFILE_MUSIC;
 }
 
@@ -1577,6 +2221,13 @@ void initializeI2sReceiveChannel(void) {
     };
     receiveStandardConfiguration.clk_cfg.clk_src = I2S_CLK_SRC_DEFAULT; // FIX: Use Default PLL to allow dynamic clock switching
     i2s_channel_init_std_mode(rxChannel, &receiveStandardConfiguration);
+
+#if AEC_SPEEX_ENABLED
+    // An overflow drops a mic frame; the echo canceller has to know, to stay aligned.
+    // Registered once: the RX channel is reclocked, never rebuilt.
+    i2s_event_callbacks_t receiveCallbacks = { .on_recv_q_ovf = micOverflowCallback };
+    i2s_channel_register_event_callback(rxChannel, &receiveCallbacks, NULL);
+#endif
 }
 
 /**
@@ -1585,6 +2236,14 @@ void initializeI2sReceiveChannel(void) {
  * A2DP and HFP callbacks, and makes the device discoverable for pairing.
  */
 void initializeBluetoothStack(void) {
+    // Hand the controller's BLE-only RAM back to the heap. This device is Classic
+    // only, and the release has to happen before esp_bt_controller_init(); after it,
+    // the memory is reserved for good. The DIAG heap line shows what it gained.
+    esp_err_t bleReleaseResult = esp_bt_controller_mem_release(ESP_BT_MODE_BLE);
+    if (bleReleaseResult != ESP_OK) {
+        ESP_LOGW(TAG, "--- BLE controller memory not released (error %d) ---", (int)bleReleaseResult);
+    }
+
     esp_bt_controller_config_t bluetoothControllerConfiguration = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
     esp_bt_controller_init(&bluetoothControllerConfiguration);
     esp_bt_controller_enable(ESP_BT_MODE_CLASSIC_BT);
@@ -1650,6 +2309,14 @@ void app_main(void) {
         abort();
     }
 
+#if DIAG_LOG_ENABLED
+    diagMutex = xSemaphoreCreateMutex();
+    if (diagMutex == NULL) {
+        ESP_LOGE(TAG, "--- FATAL: Failed to allocate the diagnostics mutex, halting ---");
+        abort();
+    }
+#endif
+
     initializeTouchPanel();
 
     initializeI2sTransmitChannel();
@@ -1662,9 +2329,17 @@ void app_main(void) {
     // Start Tasks
     // NEW: microphoneTask stack raised from 4096 - it now carries an extra float frame
     // buffer and runs the echo canceller's float maths.
-    xTaskCreatePinnedToCore(touchPanelTask, "touchPanelTask", 2048, NULL, 5, NULL, 1);
+    // touchPanelTask and audioOutputTask are sized from the DIAG stack readings
+    // (2026-10-19): they used ~0.4 KB and ~1.7 KB, so each keeps over 1 KB spare.
+    xTaskCreatePinnedToCore(touchPanelTask, "touchPanelTask", 1536, NULL, 5, NULL, 1);
     xTaskCreatePinnedToCore(microphoneTask, "microphoneTask", 6144, NULL, 10, &micTaskHandle, 1);
-    xTaskCreatePinnedToCore(audioOutputTask, "audioOutputTask", 4096, NULL, 15, NULL, 1);
+    xTaskCreatePinnedToCore(audioOutputTask, "audioOutputTask", 3072, NULL, 15, NULL, 1);
+
+#if DIAG_LOG_ENABLED
+    // Lowest priority of ours, so its UART output only runs when the audio tasks are idle.
+    xTaskCreatePinnedToCore(diagnosticsTask, "diagnosticsTask", 4096, NULL, 2, NULL, 1);
+    logHeapUsage("after init");
+#endif
 
     esp_bd_addr_t lastConnectedAddress;
     bool hasSavedDevice = getBluetoothAddressFromNvs(lastConnectedAddress);

@@ -2,8 +2,8 @@
 # sdkconfig.defaults - HRV-HandsFree-Audio
 #
 # Derived by diffing the project's sdkconfig against a stock ESP-IDF v6.0.1
-# esp32 configuration, then minimising: these 32 symbols are the complete set
-# that cannot be derived from the others. Everything else in sdkconfig follows
+# esp32 configuration, then minimising: these 32 symbols (plus the Diagnostics
+# block, added later) are the complete set that cannot be derived from the others. Everything else in sdkconfig follows
 # from these, so it does not belong here.
 #
 # Verified: kconfgen with this file reproduces all 1697 non-hardware symbols of
@@ -16,6 +16,11 @@
 
 # --- Target ---------------------------------------------------------------
 CONFIG_IDF_TARGET="esp32"
+
+# --- Flash ------------------------------------------------------------------
+# The LOLIN32 has 4 MB. With the 2 MB default the bootloader warns at every boot
+# and the image is limited to the smaller size.
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
 
 # --- Partition table ------------------------------------------------------
 # Bluedroid with Classic BT, A2DP and HFP does not fit a default-size app.
@@ -47,9 +52,26 @@ CONFIG_BT_CLASSIC_ENABLED=y
 CONFIG_BT_A2DP_ENABLE=y
 CONFIG_BT_HFP_ENABLE=y
 CONFIG_BT_HFP_AUDIO_DATA_PATH_HCI=y
-CONFIG_BT_SPP_ENABLED=y
-CONFIG_BT_BTC_TASK_STACK_SIZE=4096
-CONFIG_BT_BTU_TASK_STACK_SIZE=8092
+# Profiles IDF enables by default that this device never uses, off to save RAM
+# and flash: SPP, the HFP Audio Gateway role (this is the hands-free side),
+# OBEX client and AVRCP cover art (only play/pause/skip passthrough is sent).
+# CONFIG_BT_SPP_ENABLED is not set
+# CONFIG_BT_HFP_AG_ENABLE is not set
+# CONFIG_BT_AVRCP_CT_COVER_ART_ENABLED is not set
+# CONFIG_BT_GOEPC_ENABLED is not set
+# Host ACL links, matched to the controller's CONFIG_BTDM_CTRL_BR_EDR_MAX_ACL_CONN.
+CONFIG_BT_ACL_CONNECTIONS=2
+# Bluedroid task stacks, sized from the DIAG stack readings (2026-10-19, music
+# and mSBC calls): BTU used ~2.4 KB of 8092 before MAX_HFP_SAMPLES was cut,
+# BTC ~1.6 KB of 4096. Both keep at least 1.4 KB spare.
+CONFIG_BT_BTC_TASK_STACK_SIZE=3072
+CONFIG_BT_BTU_TASK_STACK_SIZE=6144
+
+# --- System task stacks ---------------------------------------------------
+# From the same readings: esp_timer used almost none of 3584, the FreeRTOS
+# timer task ~370 B of 2048.
+CONFIG_ESP_TIMER_TASK_STACK_SIZE=2048
+CONFIG_FREERTOS_TIMER_TASK_STACK_DEPTH=1536
 
 # --- Load-bearing, currently matching the IDF 6.0.1 default ---------------
 # Redundant today. Pinned deliberately: if a future IDF flips either of these,
@@ -57,6 +79,12 @@ CONFIG_BT_BTU_TASK_STACK_SIZE=8092
 # config change. WBS is what gives you mSBC 16 kHz calls instead of CVSD 8 kHz.
 CONFIG_BT_HFP_CLIENT_ENABLE=y
 CONFIG_BT_HFP_WBS_ENABLE=y
+
+# --- Diagnostics ------------------------------------------------------------
+# Per-task run-time counters for main.c's DIAG cpu line (uxTaskGetSystemState).
+# Small fixed cost; can go once the echo canceller is sized (AEC-PLAN.md).
+CONFIG_FREERTOS_USE_TRACE_FACILITY=y
+CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y
 
 # ==========================================================================
 # INHERITED FROM AN OLDER IDF - review before keeping

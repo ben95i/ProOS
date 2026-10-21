@@ -9,7 +9,7 @@ apt-get --yes update
 
 ## Install Packages
 apt-get install -y --no-upgrade --ignore-missing unzip wget \
- rsync curl screen scrub ethtool aptitude sudo sshpass htop \
+ rsync curl screen tmux scrub ethtool aptitude sudo sshpass htop \
  libdbus-1-dev libdbus-glib-1-dev bc git locales neofetch \
  apt-transport-https nmap bpytop binutils iperf3 
 
@@ -64,6 +64,11 @@ chmod +x /home/ben/.profile
 cp /tmp/config/sysctl.conf /etc/
 chmod 644 /etc/sysctl.conf
 chown root:root /etc/sysctl.conf
+
+## tmux Configuration
+cp /tmp/config/tmux.conf /etc/
+chmod 644 /etc/tmux.conf
+chown root:root /etc/tmux.conf
 
 ## Logrotate Fix for LXCs
 cp /tmp/config/logrotate.service /lib/systemd/system/
