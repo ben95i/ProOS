@@ -162,6 +162,7 @@ The camera runs only while someone is watching: the pipeline is built when the f
 
 - **Shared media:** the factory is `shared=TRUE`, so every client reuses the same capture and encode. A second viewer costs only network output.
 - **Session reaping:** a GLib timer runs `gst_rtsp_session_pool_cleanup()` every 10 s, so a client that vanished without TEARDOWN (crash, Wi-Fi drop) times out and stops holding the camera. Sessions expire after gst-rtsp-server's default 60 s timeout.
+- **Frame stall watchdog:** every 2 s a main loop timer checks that frames are still reaching the payloader. If they have stopped for 10 s while the camera is streaming, it logs what each thread is waiting on and exits, and systemd restarts the service 5 s later. All RTSP clients share one request thread, so a pipeline that stalls and then blocks on teardown otherwise leaves every client unanswered with nothing logged (seen once for 25 minutes). A lone client that sends DESCRIBE and then waits over 10 s without PLAY also trips it, because the pipeline holds frames back until PLAY.
 - **Transports:** both RTP over TCP (interleaved) and UDP are accepted. All known consumers use TCP.
 - **Startup:** stdout is line-buffered for journald; options are parsed; the required elements (`libcamerasrc` with `sensor-config`, `v4l2h264enc`, `rtph264pay`) are checked so a missing or old package fails immediately; the server socket is bound with `gst_rtsp_server_create_source()`, which reports bind errors such as "Address already in use".
 - **Shutdown:** SIGTERM, SIGINT or SIGHUP quits the main loop and frees everything. Each handler removes itself, so a second identical signal kills the process immediately.
@@ -178,6 +179,7 @@ Log lines (journal of `rpi-rtspcam.service`), all prefixed ` rtspcam:  `:
 | `light mode: night (greyscale)` / `light mode: day (no correction)` | Each mode change from the control API |
 | `light mode: night applied` / `light mode: day applied` | The camera probe sent the controls (one frame skipped) |
 | `error from <element>: <message>` + debug line | Any pipeline error, logged by a bus sync handler |
+| `no frames for 10 s, pipeline stalled; exiting to restart` + one `thread <name> waiting in <function>` line per thread | The frame stall watchdog fired |
 
 Pipeline errors are caught by `onBusSyncMessage()`, a sync handler on the media pipeline's bus. It only logs and passes every message on, so gst-rtsp-server's own bus watch still handles the error (the client gets a failure, the media is unprepared).
 
@@ -187,7 +189,7 @@ Pipeline errors are caught by `onBusSyncMessage()`, a sync handler on the media 
 
 | Section | Main pieces | Role |
 | --- | --- | --- |
-| Fixed settings | `LISTEN_ADDRESS`, `SESSION_CLEANUP_SECONDS`, option limits, SEI constants, light mode file, control server settings | Every fixed value, named |
+| Fixed settings | `LISTEN_ADDRESS`, `SESSION_CLEANUP_SECONDS`, `FRAME_STALL_LIMIT_SECONDS`, option limits, SEI constants, light mode file, control server settings | Every fixed value, named |
 | Configuration | `Config`, `NumericOption`, `NUMERIC_OPTIONS`, `RequiredElement`, `REQUIRED_ELEMENTS`, `LightModeControl`, `LIGHT_MODE_CONTROLS` | Option defaults and the tables that drive parsing, checks and night mode |
 | Logging | `logLine()`, `logInfo()`, `logError()`, `errorMessageOrFallback()` | Prefixed printf-style lines; errors to stderr |
 | Argument parsing | `parseArguments()`, `parseOptionValue()`, `validateCombinedOptions()`, `parseRangedLong()`, `parseSensorMode()`, `findNumericOption()`, `isValidMountPath()`, `isSupportedRotation()`, `isInRange()`, `isEven()`, `printUsage()` | Table-driven validation of every option |
@@ -197,7 +199,7 @@ Pipeline errors are caught by `onBusSyncMessage()`, a sync handler on the media 
 | Night mode | `lightModeText()`, `lightModeDescription()`, `readNightModeFromFile()`, `saveLightModeFile()`, `controlValueForMode()`, `applyLightModeControls()`, `LightModeController`, `onCameraFrame()`, `trackCamera()` | Day/night picture switching |
 | Control HTTP server | `HttpStatus`, `readRequestHead()`, `hasCompleteRequestHead()`, `handleRequestLine()`, `handleRequestTarget()`, `handleModeQuery()`, `parseRequestedState()`, `buildReplyBody()`, `sendHttpReply()`, `ControlServer`, `onControlConnectionAccepted()`, `onControlJob()`, `handleControlConnection()`, `createControlServer()`, `destroyControlServer()` | Loopback API used by `ldrcmd.sh` |
 | Pipeline | `buildPipelineDescription()` | The launch string |
-| Runtime callbacks | `onBusSyncMessage()`, `attachBusErrorLogger()`, `onMediaConfigure()`, `onMediaStateChanged()`, `onClientConnected()`, `copyClientAddress()`, `onClientClosed()`, `freeClientAddress()`, `onSessionCleanup()`, `onShutdownSignal()` | Logging, rotation hook-up, session reaping, shutdown |
+| Runtime callbacks | `onBusSyncMessage()`, `attachBusErrorLogger()`, `onFrameDelivered()`, `trackFrameFlow()`, `onCameraReleased()`, `readThreadFile()`, `logThreadStates()`, `onFrameStallCheck()`, `onMediaConfigure()`, `onMediaStateChanged()`, `onClientConnected()`, `copyClientAddress()`, `onClientClosed()`, `freeClientAddress()`, `onSessionCleanup()`, `onShutdownSignal()` | Logging, rotation hook-up, stall watchdog, session reaping, shutdown |
 | Server | `ServerResources`, `createRtspServer()`, `startRtspServer()`, `releaseServerResources()`, `logStartupSummary()`, `logStreamUrls()`, `isUsableIpv4Interface()`, `logStreamUrl()`, `removeSourceIfPresent()` | Server, shared factory, mount point, cleanup, URL printout |
 
 Conventions to keep when editing:
@@ -301,6 +303,7 @@ Hard limits of this hardware: no 90° rotation of pixels, no zero-copy dmabuf im
 | `light mode: night` logged but never `applied` | No frames flowing (no client, or the pipeline stalled) | Expected with no viewer: the next pipeline starts in the right mode |
 | Stream stays magenta at night | Mode change not reaching rtspcam | `curl 127.0.0.1:8556/mode` should say `night`; journal should show `light mode: night`; force it with `curl "127.0.0.1:8556/mode?state=night"` |
 | `cannot listen on 127.0.0.1:8556 (control)` | Port in use | `sudo ss -ltnp \| grep 8556`; pick another with `-c` and update `RTSPCAM_CONTROL_PORT` in `ldrcmd.sh` |
+| `no frames for 10 s, pipeline stalled` | Camera, ISP or encoder stopped delivering frames | The `thread … waiting in …` lines after it show where each thread was stuck; repeats point at the ribbon cable, power or a libcamera update |
 | Clients connect, then `camera released` immediately | Client-side failure (e.g. VLC without its live555 RTSP module) | Test locally: `ffprobe -rtsp_transport tcp rtsp://127.0.0.1:8554/cam` |
 
 Useful checks:

@@ -25,8 +25,6 @@ mkdir -p /mnt/Regions
 mkdir -p /mnt/Games
 mkdir -p /mnt/MP3s
 mkdir -p /mnt/External
-cp "$SCRIPT_DIR/fstab" /etc/fstab
-chmod 664 /etc/fstab
 
 ## Network shares: autofs mounts the files server's shares on access
 apt-get install -y --no-upgrade --ignore-missing autofs cifs-utils sshfs sshpass
@@ -56,7 +54,6 @@ cp "$SCRIPT_DIR/share-watchdog.service" /etc/systemd/system/share-watchdog.servi
 chmod 644 /etc/systemd/system/share-watchdog.service
 chown root:root /etc/systemd/system/share-watchdog.service
 systemctl daemon-reload
-# Enabled only: the old fstab automounts stay live until the reboot
 systemctl enable autofs.service
 systemctl enable share-watchdog.service
 

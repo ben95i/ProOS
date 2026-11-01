@@ -1277,3 +1277,93 @@ EXPORT int speex_echo_ctl(SpeexEchoState *st, int request, void *ptr)
    }
    return 0;
 }
+
+/* ===========================================================================
+ * Local addition (HandsFreeAudio, not in SpeexDSP 1.2.1): save and restore the
+ * learned filter, declared in ../include/speexdsp_echo_filter.h. Everything above
+ * this block is the release file unchanged (README.md).
+ *
+ * Saved: the background and foreground filter weights, the adaptation flag and
+ * progress, and the leak estimate. Marking the restored state as adapted makes it
+ * use its filtered echo and the normal learning rate from the first frame, instead
+ * of the start-up rate that would pull the restored weights about.
+ * =========================================================================== */
+#include "speexdsp_echo_filter.h"
+
+typedef struct {
+   spx_int32_t magic;
+   spx_int32_t frameSize;
+   spx_int32_t blockCount;       /* M */
+   spx_int32_t windowSize;       /* N */
+   spx_int32_t micChannels;      /* C */
+   spx_int32_t speakerChannels;  /* K */
+   spx_int32_t samplingRate;
+   spx_int32_t adapted;
+   spx_word32_t sumAdapt;
+   spx_word16_t leakEstimate;
+} EchoFilterHeader;
+
+#define ECHO_FILTER_MAGIC 0x45434631   /* "ECF1" */
+
+static size_t echoFilterWeightCount(const SpeexEchoState *st)
+{
+   size_t weightCount = (size_t)st->C * st->K * st->M * st->window_size;
+   return weightCount;
+}
+
+size_t speexEchoFilterBytes(const SpeexEchoState *st)
+{
+   size_t weightCount = echoFilterWeightCount(st);
+   size_t backgroundBytes = weightCount * sizeof(spx_word32_t);
+   size_t foregroundBytes = weightCount * sizeof(spx_word16_t);
+   return sizeof(EchoFilterHeader) + backgroundBytes + foregroundBytes;
+}
+
+void speexEchoSaveFilter(const SpeexEchoState *st, void *buffer)
+{
+   EchoFilterHeader header;
+   size_t weightCount = echoFilterWeightCount(st);
+   unsigned char *cursor = (unsigned char *)buffer;
+
+   header.magic = ECHO_FILTER_MAGIC;
+   header.frameSize = st->frame_size;
+   header.blockCount = st->M;
+   header.windowSize = st->window_size;
+   header.micChannels = st->C;
+   header.speakerChannels = st->K;
+   header.samplingRate = st->sampling_rate;
+   header.adapted = st->adapted;
+   header.sumAdapt = st->sum_adapt;
+   header.leakEstimate = st->leak_estimate;
+
+   memcpy(cursor, &header, sizeof(header));
+   cursor += sizeof(header);
+   memcpy(cursor, st->W, weightCount * sizeof(spx_word32_t));
+   cursor += weightCount * sizeof(spx_word32_t);
+   memcpy(cursor, st->foreground, weightCount * sizeof(spx_word16_t));
+}
+
+bool speexEchoLoadFilter(SpeexEchoState *st, const void *buffer, size_t bufferBytes)
+{
+   EchoFilterHeader header;
+   size_t weightCount = echoFilterWeightCount(st);
+   const unsigned char *cursor = (const unsigned char *)buffer;
+
+   if (buffer == NULL || bufferBytes != speexEchoFilterBytes(st))
+      return false;
+   memcpy(&header, cursor, sizeof(header));
+   if (header.magic != ECHO_FILTER_MAGIC || header.frameSize != st->frame_size ||
+       header.blockCount != st->M || header.windowSize != st->window_size ||
+       header.micChannels != st->C || header.speakerChannels != st->K ||
+       header.samplingRate != st->sampling_rate)
+      return false;
+
+   cursor += sizeof(header);
+   memcpy(st->W, cursor, weightCount * sizeof(spx_word32_t));
+   cursor += weightCount * sizeof(spx_word32_t);
+   memcpy(st->foreground, cursor, weightCount * sizeof(spx_word16_t));
+   st->adapted = header.adapted;
+   st->sum_adapt = header.sumAdapt;
+   st->leak_estimate = header.leakEstimate;
+   return true;
+}

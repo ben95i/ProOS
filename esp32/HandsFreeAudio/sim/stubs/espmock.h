@@ -12,13 +12,35 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <pthread.h>
 
 /* ===================== time base ===================== */
-/* All simulated time is real time multiplied by simSpeedup. */
-extern double simSpeedup;
+/* Virtual time, independent of the host's speed and load (see the scheduler in
+   espmock.c): it moves only when every simulated thread is blocked, so the code
+   between two blocking calls takes no virtual time. */
 uint64_t simNowUs(void);
 int64_t  esp_timer_get_time(void);          /* virtual microseconds since start */
-void     simSleepUs(uint64_t us); /* sleep for `us` virtual microseconds */
+void     simSleepUs(uint64_t us);           /* sleep `us` virtual microseconds; 0 yields */
+/* Starts a simulated thread. It is ready, not running: it first runs when the
+   caller blocks. Every thread that calls a blocking mock must be started this way
+   (main() already is). */
+pthread_t simThreadCreate(void *(*entry)(void *), void *argument, const char *name);
+/* For the mocks' blocking calls: wait until simWakeObject(object) or the virtual
+   deadline (UINT64_MAX for none), then re-check the condition being waited for.
+   label ("mutex", "i2s read" ...) names the wait in the state dump. */
+void     simWaitObject(const void *object, uint64_t deadlineUs, const char *label);
+void     simWakeObject(const void *object);
+/* CPU cost model. Without it, code between two blocking calls takes no virtual time.
+   simSpendCpuUs(us) charges `us` virtual microseconds of work to the calling thread:
+   it sleeps that long, so the other threads run meanwhile, as they do on the ESP32's
+   other core or by preemption. It does nothing while simCpuCostEnabled is false (sim.c
+   sets it from the command line), so a run without the cost model is unchanged. What
+   is charged, and where, is in sim.c. */
+extern bool simCpuCostEnabled;
+void     simSpendCpuUs(uint64_t us);
+/* Called at the end of the state dump that a stuck run prints (deadlock, a thread
+   stuck on a mutex, a spinning thread, or Ctrl+C), to name the firmware's handles. */
+extern void (*simDumpHook)(void);
 
 /* ===================== errors / log ===================== */
 typedef int esp_err_t;
@@ -40,7 +62,7 @@ void mockDumpMessages(void);
 void mockResetMessages(void);
 extern int  mockLogVerbose;
 
-/* Set by the simulator to make every blocking mock return, so the run can end. */
+/* Set by the simulator when a run ends; sim.c's threads stop on it. */
 extern volatile int mockShutdown;
 
 /* ===================== FreeRTOS ===================== */
@@ -67,7 +89,8 @@ void       xTaskNotifyGive(TaskHandle_t task);
 
 /* Task statistics for main.c's diagnostics. Run time is the host thread's CPU time
    in microseconds and the total is real elapsed microseconds, so a task's share is
-   of one host core. There are no idle tasks, so idle reads 0%. */
+   of the host's run time (only one simulated thread runs at a time). There are no
+   idle tasks, so idle reads 0%. */
 typedef uint32_t UBaseType_t;
 #define configRUN_TIME_COUNTER_TYPE uint32_t
 #define tskNO_AFFINITY ((BaseType_t)0x7FFFFFFF)
@@ -160,8 +183,8 @@ typedef struct {
 
 /* Event callbacks. The simulated I2S clock (sim.c's hardware thread) calls on_sent
    for every descriptor it plays (zeros on an underrun, as auto_clear does),
-   on_send_q_ovf on a speaker underrun and on_recv_q_ovf when the mic queue drops a
-   descriptor. */
+   on_send_q_ovf on a speaker underrun, on_recv for every mic descriptor it fills and
+   on_recv_q_ovf when the mic queue drops one. */
 #define IRAM_ATTR
 typedef struct { void *dma_buf; size_t size; } i2s_event_data_t;
 typedef bool (*i2s_isr_callback_t)(i2s_chan_handle_t handle, i2s_event_data_t *event, void *user_ctx);
@@ -332,4 +355,7 @@ esp_err_t esp_hf_client_outgoing_data_ready(void);
 extern esp_hf_client_cb_t               mockHfCb;
 extern esp_hf_client_incoming_data_cb_t mockHfRecvCb;
 extern esp_hf_client_outgoing_data_cb_t mockHfSendCb;
-extern volatile long mockOutgoingReadyPending;   /* posted to the BT task queue */
+/* esp_hf_client_outgoing_data_ready() calls not yet handled, as if posted to the BT
+   task's queue. Each call also wakes whatever waits on &mockOutgoingReadyPending
+   (sim.c's phone thread, which handles them as Bluedroid does). */
+extern volatile long mockOutgoingReadyPending;

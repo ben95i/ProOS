@@ -8,7 +8,7 @@ The echo canceller and preprocessor from Xiph.Org's SpeexDSP, built as an ESP-ID
 - SHA-256 `8c777343e4a6399569c72abc38a95b24db56882c83dbdb6c6424a5f4aeb54d3d`, matching Xiph's `SHA256SUMS.txt`
 - Vendored 2026-10-19
 
-Only the files the echo canceller, the preprocessor and the KISS FFT need are kept, **unchanged**: the resampler, jitter buffer, `smallft` FFT, platform-specific headers (ARM, Blackfin, TI), tests and build system are left out. To check a file against the release, compare its SHA-256 with the table below.
+Only the files the echo canceller, the preprocessor and the KISS FFT need are kept, **unchanged** except for one block appended to `mdf.c` (below): the resampler, jitter buffer, `smallft` FFT, platform-specific headers (ARM, Blackfin, TI), tests and build system are left out. To check a file against the release, compare its SHA-256 with the table below.
 
 | File | SHA-256 |
 | --- | --- |
@@ -24,7 +24,7 @@ Only the files the echo canceller, the preprocessor and the KISS FFT need are ke
 | `libspeexdsp/kiss_fftr.c` | `13b7ec32c17b927e0978195ce9eeb09e9791b236fcee94b807fd0086d14cb25e` |
 | `libspeexdsp/kiss_fftr.h` | `2f6ef60fa5900508d8aa0d303a27cae6c1f17a6620a4e174d51f0ff8adc18bf2` |
 | `libspeexdsp/math_approx.h` | `a024693b0d29dc4e904021a1b442908c1fa726b18f5d31b0935e38646f2701ff` |
-| `libspeexdsp/mdf.c` | `a096297873dfd0a07509028d2cdd02d12edf8f1d03319fcecedda003d18d22a8` |
+| `libspeexdsp/mdf.c` (its first 1279 lines; `head -n 1279 mdf.c \| sha256sum`) | `a096297873dfd0a07509028d2cdd02d12edf8f1d03319fcecedda003d18d22a8` |
 | `libspeexdsp/os_support.h` | `5ab9c979e8ac1f72c7441d24e39e7840828dd9356aac49a31eabeddb808bf1d3` |
 | `libspeexdsp/preprocess.c` | `f2579e284dc4ec49e2252901966fa4a93e62245969617e740affe8fda5051a7a` |
 | `libspeexdsp/pseudofloat.h` | `0bd544dbed0096e02da2fd800d673bafb19bd97f56e268b98402ad641726daae` |
@@ -41,6 +41,8 @@ Only the files the echo canceller, the preprocessor and the KISS FFT need are ke
 | `include/speex/speexdsp_config_types.h` | Replaces the file SpeexDSP's `configure` generates: `spx_int16_t` … from `stdint.h` |
 | `libspeexdsp/os_support_custom.h` | Routes `speex_alloc` / `speex_free` to `speexdsp_alloc.c` |
 | `include/speexdsp_alloc.h`, `speexdsp_alloc.c` | Swappable allocator (default `calloc` / `free`) with live-allocation, byte and failure counters |
+| `libspeexdsp/mdf.c`, from line 1280 | Appended block, marked "Local addition": `speexEchoFilterBytes()`, `speexEchoSaveFilter()`, `speexEchoLoadFilter()` copy the learned filter (both filters' weights, the adaptation flag and progress, the leak estimate) out of an echo state and into a new one of the same shape and rate. In `mdf.c` because the state's fields are private to it |
+| `include/speexdsp_echo_filter.h` | Declarations for the appended block |
 | `README.md` | This file |
 
 No `config.h` is used (`HAVE_CONFIG_H` stays undefined); every setting is a compile definition in `CMakeLists.txt`, repeated in `../../sim/Makefile` for the PC build.

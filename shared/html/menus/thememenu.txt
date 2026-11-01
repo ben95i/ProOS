@@ -4,7 +4,7 @@
 #0d3d23|Forest
 #455197|Azure
 #1f2051|Navy
-#233237|Slate
+#A796D1|Plum
 #FF6A00|Orange
 #92C7D9|Powder
 #473299|Gem

@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
 #include <math.h>
@@ -26,6 +27,7 @@
 #include "speex/speex_echo.h"
 #include "speex/speex_preprocess.h"
 #include "speexdsp_alloc.h"
+#include "speexdsp_echo_filter.h"
 
 // --- Constants ---
 static const char *TAG = "Honda_HR-V";
@@ -439,6 +441,9 @@ static volatile uint32_t speakerUnderrunCount = 0;
 // Call samples the phone sent at full scale (+32767 or -32768): clipped before they
 // reached us. Written only by the Bluedroid task.
 static volatile uint32_t speakerFullScaleSampleCount = 0;
+// Call samples the DAC queue had no room for within CALL_TX_WRITE_TIMEOUT_MS, so they
+// were never played. Written only by the Bluedroid task.
+static volatile uint32_t speakerRefusedSampleCount = 0;
 // Mic samples clipped by MICROPHONE_GAIN on the way to the phone. Written only by
 // microphoneTask.
 static volatile uint32_t micClippedSampleCount = 0;
@@ -492,6 +497,27 @@ static volatile uint32_t referenceWriteIndex = 0;
 
 // RX queue overflows since boot (each drops one 120-sample mic frame). Interrupt-written.
 static volatile uint32_t micOverflowCount = 0;
+
+// When the newest speaker descriptor and the newest mic descriptor finished, so the
+// reference can be aligned with a mic frame to the sample, the same way every call
+// (see syncEchoReference()). Each is written by its own interrupt only. The 64-bit
+// time is not one atomic store, so sequence is odd while a stamp is being written and
+// a reader retries until it sees the same even value before and after.
+typedef struct {
+    volatile uint32_t sequence;
+    volatile uint32_t count;       // speaker: referenceWriteIndex; mic: frames completed since boot
+    volatile int64_t timeUs;
+} DmaStamp;
+static DmaStamp speakerStamp = {0};
+static DmaStamp micStamp = {0};
+
+// The canceller's learned filter, kept between calls so the next call at the same rate
+// starts where the last one left off instead of from zero (~10 s of the far end
+// talking, car test 2026-10-22). Saved when the states are destroyed, loaded and
+// freed when they are created again, so it never takes heap during a call. Owned by
+// microphoneTask; NULL when nothing is saved.
+static void *savedEchoFilter = NULL;
+static size_t savedEchoFilterBytes = 0;
 
 // Alignment events since boot, for the DIAG aec line. Written only by microphoneTask.
 static volatile uint32_t referenceShortSampleCount = 0;   // reference samples padded with zeros
@@ -660,6 +686,8 @@ bool getBluetoothAddressFromNvs(esp_bd_addr_t bluetoothAddress) {
  * holds what was really played. Copy only: no float, no logging, nothing that blocks.
  * * @return false: no task is woken.
  */
+static inline void IRAM_ATTR writeDmaStamp(DmaStamp *stamp, uint32_t count);
+
 static bool IRAM_ATTR speakerSentCallback(i2s_chan_handle_t channel, i2s_event_data_t *event, void *userContext) {
     const int16_t *stereoSamples = (const int16_t *)event->dma_buf;
     uint32_t frameCount = (uint32_t)(event->size / (2 * sizeof(int16_t)));
@@ -673,6 +701,55 @@ static bool IRAM_ATTR speakerSentCallback(i2s_chan_handle_t channel, i2s_event_d
     }
 
     __atomic_store_n(&referenceWriteIndex, writeIndex, __ATOMIC_RELEASE);
+    writeDmaStamp(&speakerStamp, writeIndex);
+    return false;
+}
+
+/**
+ * @brief Records a DMA event's count and time in a stamp; interrupts only, one writer
+ *        per stamp. esp_timer_get_time() is in IRAM (CONFIG_ESP_TIMER_IN_IRAM).
+ */
+static inline void IRAM_ATTR writeDmaStamp(DmaStamp *stamp, uint32_t count) {
+    int64_t nowUs = esp_timer_get_time();
+    uint32_t sequence = stamp->sequence;
+    uint32_t writingSequence = sequence + 1;   // odd: being written
+    uint32_t writtenSequence = sequence + 2;   // even: complete
+    __atomic_store_n(&stamp->sequence, writingSequence, __ATOMIC_SEQ_CST);
+    stamp->count = count;
+    stamp->timeUs = nowUs;
+    __atomic_store_n(&stamp->sequence, writtenSequence, __ATOMIC_SEQ_CST);
+}
+
+/**
+ * @brief Reads a stamp the interrupt may be writing at the same moment.
+ * * @return false if it was never written, or kept changing while being read.
+ */
+static bool readDmaStamp(const DmaStamp *stamp, uint32_t *count, int64_t *timeUs) {
+    for (int attempt = 0; attempt < 8; attempt++) {
+        uint32_t sequenceBefore = __atomic_load_n(&stamp->sequence, __ATOMIC_SEQ_CST);
+        uint32_t countRead = stamp->count;
+        int64_t timeRead = stamp->timeUs;
+        uint32_t sequenceAfter = __atomic_load_n(&stamp->sequence, __ATOMIC_SEQ_CST);
+        bool isComplete = ((sequenceBefore & 1u) == 0);
+        bool isUnchanged = (sequenceBefore == sequenceAfter);
+        if (isComplete && isUnchanged) {
+            *count = countRead;
+            *timeUs = timeRead;
+            bool wasEverWritten = (sequenceBefore != 0);
+            return wasEverWritten;
+        }
+    }
+    return false;
+}
+
+/**
+ * @brief RX on_recv interrupt: a mic frame (one 120-sample descriptor) has finished.
+ *        Stamps its end, which syncEchoReference() aligns the reference to.
+ * * @return false: no task is woken.
+ */
+static bool IRAM_ATTR micReceivedCallback(i2s_chan_handle_t channel, i2s_event_data_t *event, void *userContext) {
+    uint32_t framesCompleted = micStamp.count + 1;
+    writeDmaStamp(&micStamp, framesCompleted);
     return false;
 }
 
@@ -1067,6 +1144,14 @@ void bluetoothHandsFreeReceiveCallback(const uint8_t *audioBuffer, uint32_t buff
     i2s_channel_write(txChannel, (void*)stereoBuffer, stereoBufferSize, &bytesWritten,
                       pdMS_TO_TICKS(CALL_TX_WRITE_TIMEOUT_MS));
     xSemaphoreGive(txMutex);
+
+    // One stereo frame per call sample, so refused frames are refused call samples.
+    bool isWriteShort = (bytesWritten < stereoBufferSize);
+    if (isWriteShort) {
+        uint32_t refusedBytes = stereoBufferSize - (uint32_t)bytesWritten;
+        uint32_t refusedSamples = refusedBytes / (2 * sizeof(int16_t));
+        speakerRefusedSampleCount += refusedSamples;
+    }
 }
 
 /**
@@ -1440,40 +1525,57 @@ static MicFrameTiming logCallBudget(void) {
 
 #if AEC_SPEEX_ENABLED
 // Alignment counters at the last DIAG aec line; only diagnosticsTask touches these.
+static uint32_t referenceWriteIndexAtLastLog = 0;
 static uint32_t referenceShortAtLastLog = 0;
 static uint32_t referenceResyncAtLastLog = 0;
+static uint32_t speakerRefusedAtLastLog = 0;
 static uint32_t micOverflowAtLastLog = 0;
 
 /**
  * @brief Starts the alignment counters' window afresh (call start).
  */
 static void resetEchoCounters(void) {
+    referenceWriteIndexAtLastLog = __atomic_load_n(&referenceWriteIndex, __ATOMIC_ACQUIRE);
     referenceShortAtLastLog = referenceShortSampleCount;
     referenceResyncAtLastLog = referenceResyncCount;
+    speakerRefusedAtLastLog = speakerRefusedSampleCount;
     micOverflowAtLastLog = micOverflowCount;
 }
 
 /**
  * @brief Logs the once-a-second echo canceller line, from the window logCallBudget()
  *        just took. Example:
- *   DIAG aec erle 31 dB over 96 far frames | ref short 0 resync 0 | mic overflow 0 | speex allocs 23
+ *   DIAG aec erle 12 dB over 96 far frames | ref in 16000 short 0 resync 0 | dac refused 0 | mic overflow 0 | speex allocs 61
  * * erle      echo reduction by the canceller alone, while the far end talks ("--" if
  *             it did not); residual suppression removes more after it
- * * ref short reference samples that had not arrived yet (padded with silence)
- * * resync    times the reference was re-aligned because the mic task fell behind
+ * * ref in    reference samples the speaker interrupt delivered: about the call's
+ *             sample rate (16000 or 8000 a second); half of it means the DAC played
+ *             at half rate or the interrupt missed every other descriptor
+ * * ref short reference samples that had not arrived yet (padded with silence): 0
+ *             once a call is under way, since a short frame now re-aligns
+ * * resync    times the reference was re-aligned, because the mic task fell far behind
+ *             or the reader got ahead of the speaker: a few at most in a call
+ * * refused   call samples the DAC queue had no room for, so never played: 0 normally,
+ *             about half the downlink if the DAC ran at half rate
  * * overflow  mic frames dropped by the RX DMA queue (the reference skips them too)
- * * allocs    SpeexDSP allocations alive: about 20 in a call, 0 between calls
+ * * allocs    SpeexDSP allocations alive: 61 in a 16 kHz call, 0 between calls
  * * @param windowTiming The window logCallBudget() took.
  */
 static void logEchoCanceller(const MicFrameTiming *windowTiming) {
+    uint32_t writeIndexNow = __atomic_load_n(&referenceWriteIndex, __ATOMIC_ACQUIRE);
     uint32_t shortNow = referenceShortSampleCount;
     uint32_t resyncNow = referenceResyncCount;
+    uint32_t refusedNow = speakerRefusedSampleCount;
     uint32_t overflowNow = micOverflowCount;
+    uint32_t receivedInWindow = writeIndexNow - referenceWriteIndexAtLastLog;
     uint32_t shortInWindow = shortNow - referenceShortAtLastLog;
     uint32_t resyncInWindow = resyncNow - referenceResyncAtLastLog;
+    uint32_t refusedInWindow = refusedNow - speakerRefusedAtLastLog;
     uint32_t overflowInWindow = overflowNow - micOverflowAtLastLog;
+    referenceWriteIndexAtLastLog = writeIndexNow;
     referenceShortAtLastLog = shortNow;
     referenceResyncAtLastLog = resyncNow;
+    speakerRefusedAtLastLog = refusedNow;
     micOverflowAtLastLog = overflowNow;
 
     char erleText[16];
@@ -1487,11 +1589,14 @@ static void logEchoCanceller(const MicFrameTiming *windowTiming) {
         snprintf(erleText, sizeof(erleText), "--");
     }
 
-    ESP_LOGI(TAG, "DIAG aec erle %s over %lu far frames | ref short %lu resync %lu | mic overflow %lu | speex allocs %d",
+    ESP_LOGI(TAG, "DIAG aec erle %s over %lu far frames | ref in %lu short %lu resync %lu | "
+                  "dac refused %lu | mic overflow %lu | speex allocs %d",
              erleText,
              (unsigned long)windowTiming->echoFarFrames,
+             (unsigned long)receivedInWindow,
              (unsigned long)shortInWindow,
              (unsigned long)resyncInWindow,
+             (unsigned long)refusedInWindow,
              (unsigned long)overflowInWindow,
              speexdspLiveAllocations());
 }
@@ -1946,12 +2051,16 @@ typedef struct {
 /**
  * @brief Destroys the canceller's states, if any. Safe to call when none exist.
  */
+static void saveEchoFilter(const SpeexEchoState *echoState);
+
 static void destroyEchoCanceller(EchoCanceller *canceller) {
+    // The preprocessor first: its 14 KB back makes room for the saved filter.
     if (canceller->preprocessState != NULL) {
         speex_preprocess_state_destroy(canceller->preprocessState);
         canceller->preprocessState = NULL;
     }
     if (canceller->echoState != NULL) {
+        saveEchoFilter(canceller->echoState);
         speex_echo_state_destroy(canceller->echoState);
         canceller->echoState = NULL;
     }
@@ -1959,11 +2068,48 @@ static void destroyEchoCanceller(EchoCanceller *canceller) {
 }
 
 /**
+ * @brief Copies the echo state's learned filter into savedEchoFilter (about 23 KB at
+ *        16 kHz), for the next call at the same rate. Without the heap for it, logs
+ *        and keeps nothing: the next call then learns from zero.
+ */
+static void saveEchoFilter(const SpeexEchoState *echoState) {
+    size_t filterBytes = speexEchoFilterBytes(echoState);
+    bool hasBufferOfSize = (savedEchoFilter != NULL && savedEchoFilterBytes == filterBytes);
+    if (!hasBufferOfSize) {
+        free(savedEchoFilter);
+        savedEchoFilter = malloc(filterBytes);
+        savedEchoFilterBytes = (savedEchoFilter != NULL) ? filterBytes : 0;
+    }
+    if (savedEchoFilter == NULL) {
+        ESP_LOGW(TAG, "--- AEC filter not kept: no %uK block ---", (unsigned)(filterBytes / 1024));
+        return;
+    }
+    speexEchoSaveFilter(echoState, savedEchoFilter);
+}
+
+/**
+ * @brief Loads savedEchoFilter into a new echo state if it was saved at the same rate
+ *        and shape, then frees it either way (it is saved again when the call ends).
+ * * @return true if the state starts with the last call's filter.
+ */
+static bool restoreEchoFilter(SpeexEchoState *echoState) {
+    if (savedEchoFilter == NULL) {
+        return false;
+    }
+    bool isLoaded = speexEchoLoadFilter(echoState, savedEchoFilter, savedEchoFilterBytes);
+    free(savedEchoFilter);
+    savedEchoFilter = NULL;
+    savedEchoFilterBytes = 0;
+    return isLoaded;
+}
+
+/**
  * @brief Creates the echo canceller and preprocessor for a call rate.
  * * Checks the heap first: SpeexDSP does not check its own allocations, so a failed
  * one would crash rather than return NULL. On a heap too small it logs once and
  * leaves the states NULL; the call goes on without cancellation.
- * Example log: "--- AEC on | 16000 Hz | 120 ms tail | 57 KB | heap left 31K ---"
+ * Starts from the last call's filter when one was saved at this rate.
+ * Example log: "--- AEC on | 16000 Hz | 120 ms tail | 57K | heap left 29K | filter from last call ---"
  * * @param sampleRate 16000 (mSBC) or 8000 (CVSD).
  */
 static void createEchoCanceller(EchoCanceller *canceller, uint32_t sampleRate) {
@@ -1976,9 +2122,14 @@ static void createEchoCanceller(EchoCanceller *canceller, uint32_t sampleRate) {
         return;
     }
 
+    // A saved filter is freed during the creation, so its bytes count as coming back.
     size_t freeBytes = heap_caps_get_free_size(MALLOC_CAP_8BIT);
     size_t largestBlockBytes = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
     size_t requiredBytes = AEC_STATE_BYTES + AEC_HEAP_RESERVE_BYTES;
+    bool isFilterReturning = (savedEchoFilterBytes < requiredBytes);
+    if (isFilterReturning) {
+        requiredBytes = requiredBytes - savedEchoFilterBytes;
+    }
     bool isHeapEnough = (freeBytes >= requiredBytes && largestBlockBytes >= AEC_LARGEST_ALLOCATION_BYTES);
     if (!isHeapEnough) {
         ESP_LOGW(TAG, "--- AEC off: heap free %uK largest %uK, needs %uK and a %uK block ---",
@@ -1994,33 +2145,124 @@ static void createEchoCanceller(EchoCanceller *canceller, uint32_t sampleRate) {
 
     canceller->echoState = speex_echo_state_init(frameSamples, tailSamples);
     speex_echo_ctl(canceller->echoState, SPEEX_ECHO_SET_SAMPLING_RATE, &speexSampleRate);
+    // After the rate is set (the filter only loads into a state of its own rate), and
+    // before the preprocessor, so the saved filter's heap is back for it.
+    bool isFilterRestored = restoreEchoFilter(canceller->echoState);
     canceller->preprocessState = speex_preprocess_state_init(frameSamples, speexSampleRate);
     speex_preprocess_ctl(canceller->preprocessState, SPEEX_PREPROCESS_SET_ECHO_STATE, canceller->echoState);
 
     size_t stateBytes = speexdspAllocatedBytes() - bytesBefore;
-    ESP_LOGI(TAG, "--- AEC on | %lu Hz | %d ms tail | %uK | heap left %uK ---",
+    ESP_LOGI(TAG, "--- AEC on | %lu Hz | %d ms tail | %uK | heap left %uK | %s ---",
              (unsigned long)sampleRate, AEC_TAIL_MS, (unsigned)(stateBytes / 1024),
-             (unsigned)(heap_caps_get_free_size(MALLOC_CAP_8BIT) / 1024));
+             (unsigned)(heap_caps_get_free_size(MALLOC_CAP_8BIT) / 1024),
+             isFilterRestored ? "filter from last call" : "learning from zero");
+}
+
+// A speaker stamp further than this from the mic frame's end is not from this call's
+// playback (the speaker has not started yet), so the alignment falls back to the
+// newest sample written.
+#define AEC_STAMP_MAX_GAP_US   20000
+
+/**
+ * @brief Waits for the next mic frame and throws it away, so that micStamp marks the
+ *        end of the frame just before the next one the mic task reads.
+ * * Call right after drainMicQueue(). Retries if more than one frame completed in the
+ * meantime (one was already queued), since the stamp would then be a frame late.
+ * * @param frameEndUs Set to the end of the frame thrown away.
+ * @return false if no clean frame came (the caller then aligns without the stamp).
+ */
+static bool waitForFreshMicFrame(int32_t *scratchBuffer, size_t scratchBytes, int64_t *frameEndUs) {
+    for (int attempt = 0; attempt < 3; attempt++) {
+        uint32_t framesBefore = 0;
+        int64_t ignoredTimeUs = 0;
+        readDmaStamp(&micStamp, &framesBefore, &ignoredTimeUs);
+
+        size_t bytesRead = 0;
+        xSemaphoreTake(rxMutex, portMAX_DELAY);
+        esp_err_t readResult = i2s_channel_read(rxChannel, scratchBuffer, scratchBytes, &bytesRead, pdMS_TO_TICKS(100));
+        xSemaphoreGive(rxMutex);
+
+        uint32_t framesAfter = 0;
+        int64_t endUs = 0;
+        bool hasStamp = readDmaStamp(&micStamp, &framesAfter, &endUs);
+        bool isOneNewFrame = (readResult == ESP_OK && bytesRead > 0 && hasStamp &&
+                              framesAfter == framesBefore + 1);
+        if (isOneNewFrame) {
+            *frameEndUs = endUs;
+            return true;
+        }
+        drainMicQueue(scratchBuffer, scratchBytes);
+    }
+    return false;
 }
 
 /**
- * @brief Aligns the reference with the next mic frame: reads start
- *        AEC_REFERENCE_LEAD_SAMPLES behind the newest played sample.
- * * Call right after drainMicQueue(), so the next mic frame is captured from now on
- * and the reference leads it. Earlier overflows are forgotten.
+ * @brief Aligns the reference with the next mic frame, the same way every call, so a
+ *        filter saved from one call fits the next.
+ * * Waits for one mic frame to end (waitForFreshMicFrame()) and works out, from the
+ * speaker's newest stamp, which reference sample was playing at that moment:
+ * stamp index + time since the stamp x sample rate. Reads then start
+ * AEC_REFERENCE_LEAD_SAMPLES before it. The newest written sample alone, as before,
+ * is up to one speaker descriptor behind what is playing and taken at an arbitrary
+ * point in a mic frame, so the echo's delay came out up to ~11 ms different from call
+ * to call; the canceller learns any delay, but a saved filter would not fit.
+ * Without usable stamps it falls back to the newest written sample. Earlier
+ * overflows are forgotten.
+ * * Example: mic frame ended at 1000000 us, speaker stamp index 52800 at 998750 us, 16 kHz:
+ *   playing 52800 + 1250 us x 16 = 52820, reads start at 52700.
  */
-static void syncEchoReference(EchoCanceller *canceller) {
-    uint32_t writeIndex = __atomic_load_n(&referenceWriteIndex, __ATOMIC_ACQUIRE);
-    canceller->referenceReadIndex = writeIndex - AEC_REFERENCE_LEAD_SAMPLES;
+static void syncEchoReference(EchoCanceller *canceller, int32_t *scratchBuffer, size_t scratchBytes) {
+    int64_t frameEndUs = 0;
+    bool hasFrameEnd = waitForFreshMicFrame(scratchBuffer, scratchBytes, &frameEndUs);
+
+    // Read after the wait, so the fallback is the newest written sample too.
+    uint32_t alignedIndex = __atomic_load_n(&referenceWriteIndex, __ATOMIC_ACQUIRE);
+    uint32_t speakerIndex = 0;
+    int64_t speakerTimeUs = 0;
+    bool hasSpeakerStamp = readDmaStamp(&speakerStamp, &speakerIndex, &speakerTimeUs);
+    if (hasFrameEnd && hasSpeakerStamp) {
+        int64_t frameEndAfterStampUs = frameEndUs - speakerTimeUs;
+        bool isStampCurrent = (frameEndAfterStampUs > -AEC_STAMP_MAX_GAP_US &&
+                               frameEndAfterStampUs < AEC_STAMP_MAX_GAP_US);
+        if (isStampCurrent) {
+            int64_t samplesScaled = frameEndAfterStampUs * (int64_t)canceller->sampleRate;
+            int32_t samplesSinceStamp = (int32_t)(samplesScaled / 1000000);
+            alignedIndex = speakerIndex + (uint32_t)samplesSinceStamp;
+        }
+    }
+
+    canceller->referenceReadIndex = alignedIndex - AEC_REFERENCE_LEAD_SAMPLES;
     canceller->overflowCountSeen = micOverflowCount;
 }
 
 /**
+ * @brief Starts the canceller at a call rate and aligns its reference with the next
+ *        mic frame: creates it (with the last call's filter, if saved at this rate),
+ *        then drains the mic queue, then aligns (which waits for one mic frame).
+ * * In that order because creating the states (57 KB allocated and initialised at
+ * 16 kHz) takes long enough for mic frames to queue again. Drained before the
+ * creation, those frames were captured before the alignment but processed after it,
+ * back to back, which left the reference reader ahead of the speaker for the whole
+ * call: in the car (2026-10-22) one call got 60 zeros in every 120 reference samples.
+ * * @param scratchBuffer Room for one mic read, for the drain.
+ */
+static void startEchoCanceller(EchoCanceller *canceller, uint32_t sampleRate,
+                               int32_t *scratchBuffer, size_t scratchBytes) {
+    createEchoCanceller(canceller, sampleRate);
+    drainMicQueue(scratchBuffer, scratchBytes);
+    syncEchoReference(canceller, scratchBuffer, scratchBytes);
+}
+
+/**
  * @brief Takes the reference samples that belong to the mic frame being processed.
- * * Skips one mic frame of reference per RX overflow. If the ring has not yet got
- * a sample, it is padded with 0 but still counted, so the alignment holds. If the
- * reader has fallen so far behind that the interrupt is overwriting what it would
- * read, it re-aligns at the lead (the canceller then re-converges).
+ * * Skips one mic frame of reference per RX overflow. Re-aligns at the lead (counted
+ * as a resync; the canceller then re-converges) if the reader is out of step either
+ * way: so far behind that the interrupt is overwriting what it would read, or ahead,
+ * with fewer samples played than the frame needs. Ahead is never right, since a
+ * frame's reference has been played by the time the frame is captured, and left
+ * alone it lasts the whole call (the frame gets zeros for the missing part each
+ * time). A sample still missing after that, only possible right at call start, is
+ * padded with 0 but counted, so the alignment holds.
  * * @param referenceFrame Filled with sampleCount samples.
  */
 static void takeEchoReference(EchoCanceller *canceller, int16_t *referenceFrame, uint32_t sampleCount) {
@@ -2033,7 +2275,9 @@ static void takeEchoReference(EchoCanceller *canceller, int16_t *referenceFrame,
     uint32_t writeIndex = __atomic_load_n(&referenceWriteIndex, __ATOMIC_ACQUIRE);
     int32_t availableSamples = (int32_t)(writeIndex - canceller->referenceReadIndex);
     int32_t overwriteMargin = AEC_REFERENCE_RING_SAMPLES - (int32_t)(2 * DMA_FRAME_SIZE_SAMPLES);
-    if (availableSamples > overwriteMargin) {
+    bool isFarBehind = (availableSamples > overwriteMargin);
+    bool isAhead = (availableSamples < (int32_t)sampleCount);
+    if (isFarBehind || isAhead) {
         canceller->referenceReadIndex = writeIndex - AEC_REFERENCE_LEAD_SAMPLES;
         referenceResyncCount++;
     }
@@ -2159,17 +2403,18 @@ void microphoneTask(void *taskParameters) {
             // which threw away a quarter second of the near end's first words.
             vTaskDelay(pdMS_TO_TICKS(HFP_MIC_STARTUP_DELAY_MS));
 
-            // ABSOLUTE DMA DRAIN
-            drainMicQueue(rawHardwareData, sizeof(rawHardwareData));
-
+            // ABSOLUTE DMA DRAIN. With the canceller, startEchoCanceller() drains between
+            // creating it and aligning its reference. Only if the call is still up: a
+            // notification left pending by a mid-call codec change also wakes this task
+            // once the call has ended, at the music rate.
 #if AEC_SPEEX_ENABLED
-            // After the drain, so the reference is aligned with the next mic frame. Only
-            // if the call is still up: a notification left pending by a mid-call codec
-            // change also wakes this task once the call has ended, at the music rate.
             if (isAudioPathOpen) {
-                createEchoCanceller(&echoCanceller, activeSampleRate);
-                syncEchoReference(&echoCanceller);
+                startEchoCanceller(&echoCanceller, activeSampleRate, rawHardwareData, sizeof(rawHardwareData));
+            } else {
+                drainMicQueue(rawHardwareData, sizeof(rawHardwareData));
             }
+#else
+            drainMicQueue(rawHardwareData, sizeof(rawHardwareData));
 #endif
 
             // Ensure the software stream buffer is completely fresh before starting
@@ -2187,9 +2432,7 @@ void microphoneTask(void *taskParameters) {
         uint32_t sampleRateNow = activeSampleRate;
         bool isSampleRateChanged = (echoCanceller.sampleRate != sampleRateNow);
         if (isSampleRateChanged && isAudioPathOpen) {
-            drainMicQueue(rawHardwareData, sizeof(rawHardwareData));
-            createEchoCanceller(&echoCanceller, sampleRateNow);
-            syncEchoReference(&echoCanceller);
+            startEchoCanceller(&echoCanceller, sampleRateNow, rawHardwareData, sizeof(rawHardwareData));
         }
 #endif
 
@@ -2449,8 +2692,10 @@ void initializeI2sReceiveChannel(void) {
 
 #if AEC_SPEEX_ENABLED
     // An overflow drops a mic frame; the echo canceller has to know, to stay aligned.
-    // Registered once: the RX channel is reclocked, never rebuilt.
-    i2s_event_callbacks_t receiveCallbacks = { .on_recv_q_ovf = micOverflowCallback };
+    // Each frame's end is stamped, to align the reference with it. Registered once:
+    // the RX channel is reclocked, never rebuilt.
+    i2s_event_callbacks_t receiveCallbacks = { .on_recv = micReceivedCallback,
+                                               .on_recv_q_ovf = micOverflowCallback };
     i2s_channel_register_event_callback(rxChannel, &receiveCallbacks, NULL);
 #endif
 }
@@ -2556,9 +2801,9 @@ void app_main(void) {
     // NEW: microphoneTask stack raised from 4096 - it now carries an extra float frame
     // buffer and runs the echo canceller's float maths.
     // audioOutputTask is sized from the DIAG stack readings (2026-10-19): it used ~1.7 KB.
-    // touchPanelTask stays at 2048: the readings were taken without a pad press, and a
-    // press (ESP_LOGI plus the AVRCP / HFP call) overflowed 1536 and restarted the board.
-    xTaskCreatePinnedToCore(touchPanelTask, "touchPanelTask", 2048, NULL, 5, NULL, 1);
+    // touchPanelTask: a pad press (ESP_LOGI plus the AVRCP / HFP call) overflowed 1536
+    // and restarted the board, and at 2048 the car test (2026-10-21) left only 320 B.
+    xTaskCreatePinnedToCore(touchPanelTask, "touchPanelTask", 3072, NULL, 5, NULL, 1);
     xTaskCreatePinnedToCore(microphoneTask, "microphoneTask", 6144, NULL, 10, &micTaskHandle, 1);
     xTaskCreatePinnedToCore(audioOutputTask, "audioOutputTask", 3072, NULL, 15, NULL, 1);
 

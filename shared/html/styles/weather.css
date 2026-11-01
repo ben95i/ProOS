@@ -15,14 +15,9 @@
   outline: none;
   position: relative;
   height: 60px;
-  width: 55px;
-}
-
-.weather-icon-container .right-nav-spinner {
-  top: 50%;
-  left: 50%;
-  margin-top: -15px; /* Pull up by half the spinner's 30px height */
-  margin-left: -15px; /* Pull left by half the spinner's 30px width */
+  /* the widest weather icon (1.25em) and the gap the anchor's padding makes,
+     so the bar does not move when the weather changes */
+  width: calc(var(--nav-icon-size) * 1.25 - -1 * var(--nav-icon-gap));
 }
 
 .weather-icon-container i {

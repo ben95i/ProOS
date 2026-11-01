@@ -25,6 +25,8 @@ export const BEDROOM_CONFIG = {
   icon: 'fad fa-bed',
   voltarget: BEDROOM_AMP_TARGET,
   volmax: 192,
+  // the temperature window reads the hub's temperature~humidity
+  climate: { target: BEDROOM_TARGET, cmd: 'roomth', fields: [0, 1] },
   template: bedroomGridTemplate
 };
 

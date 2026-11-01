@@ -96,18 +96,20 @@
 /* The add button reports on itself the same way a row does, over the read and
    the write the edit lock takes before the window can open. It has no favicon
    holder to hang the ring on, so the button itself is the positioning
-   context; 36px rings the 24px icon with the clearance the rows use. */
+   context; the ring is 12px wider than the nav icon, the clearance the rows
+   use. */
 #btn-add-bookmark {
   position: relative;
 }
 
 #btn-add-bookmark .bookmark-spinner {
-  width: 36px;
-  height: 36px;
+  --add-ring-size: calc(var(--nav-icon-size) - -12px);
+  width: var(--add-ring-size);
+  height: var(--add-ring-size);
   top: 50%;
   left: 50%;
-  margin-left: -18px;
-  margin-top: -18px;
+  margin-left: calc(var(--add-ring-size) / -2);
+  margin-top: calc(var(--add-ring-size) / -2);
   opacity: 0;
   visibility: hidden;
 }
@@ -225,7 +227,7 @@
    ring -- the border, the rotation, the centring on 50% / 50%, the pass
    through of the press -- comes from .bookmark-spinner above and the shared
    spinner rule in main.css; only the size is set here. 36px rings the space
-   the 24px magnifier left, the same clearance the add button uses. */
+   the magnifier left, with the clearance the rows use. */
 .editFav__button--busy .bookmark-spinner {
   width: 36px;
   height: 36px;

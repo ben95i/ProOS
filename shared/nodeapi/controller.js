@@ -17,6 +17,7 @@ const PROCESS_TIMEOUT = 3000; // in (ms)
 const MAX_PING_WAIT = "0.5";  // in (sec)
 const NET_RANGE = "192.168.1.0/24";
 const IP_ADRS = {
+    lrthermo1: "192.168.1.3",
     lrxmit: "192.168.1.12",
     desk: "192.168.1.14",
     brpi: "192.168.1.15",
@@ -88,11 +89,13 @@ function processProgramError(error, separator = ' : ') {
 }
 
 // Collects the devices of one room and works out whether the room counts as
-// on: it does when any device in it is.
+// on: it does when any device in it is. An indicator device (the thermostat)
+// is listed before the rest and left out of that.
 class RoomManager {
     constructor() {
         this.roomState = null;
         this.devices = [];
+        this.indicatorDevices = [];
     }
     addDevice(name, value) {
         let _status = null;
@@ -104,13 +107,27 @@ class RoomManager {
             status: _status
         });
     }
+    // A device that names its own row: the page draws name with indicator
+    // (grnind, ylwind, blkind or redind) as given, instead of from its status.
+    // addIndicatorDevice('AC On', '2', 'grnind')
+    addIndicatorDevice(name, value, indicator) {
+        let _status = null;
+        if (indicator === 'grnind' || indicator === 'ylwind') _status = true;
+        else if (indicator === 'blkind') _status = false;
+        this.indicatorDevices.push({
+            name: name,
+            value: value,
+            status: _status,
+            indicator: indicator
+        });
+    }
     updateRoomState() {
         this.roomState = this.devices.some(device => device.status === true);
     }
     getData() {
         return {
             roomState: this.roomState,
-            devices: this.devices
+            devices: this.indicatorDevices.concat(this.devices)
         };
     }
 }
@@ -152,6 +169,25 @@ async function callPicoText(target, arg1, arg2 = '') {
     if (arg1 === "") return "callPicoText: argument cannot be empty";
     const response = await commonAPIRequest(`http://${target}:4000/api?${arg1},,${arg2}~`);
     return response.trimEnd();
+}
+
+// Sends one command from a Pico code table (command -> [Pico command, Pico
+// value, reader]) to the Pico at target. A null value is taken from the
+// website (the "_set" commands): it is sent as the Pico reads it, a whole
+// number of up to 4 digits ("0128" -> "128"), and refused here when it is not
+// one, so an empty value never reaches the Pico as 0. Ranges within that are
+// checked by the Pico itself. caller names the room in an error.
+// sendPicoCode(["3", null, callPico], IP_ADRS.bthrlight1, '128', 'bthrXmit')
+async function sendPicoCode(codes, target, arg2, caller) {
+    const [command, fixedValue, reader] = codes;
+    let value = fixedValue;
+    if (value === null) {
+        if (!isNumeric(arg2)) return `${caller}: non-numeric value`;
+        const number = Number(arg2);
+        if (number < 0 || number > 9999) return `${caller}: out-of-range value`;
+        value = String(number);
+    }
+    return await reader(target, command, value);
 }
 
 // another Automate device, which answers on port 80
@@ -361,10 +397,84 @@ const LR_COM_CODES = {
     subdwn_fast:   "17005"
 };
 
+// Living room thermostat (SmartThermo, Pico W) commands, in the same form as
+// BTHR_PICO_CODES: command -> [Pico command, Pico value, reader]. The log and
+// the full status answer several lines, so callPicoText() reads them.
+//
+// The setpoint is "lr-thermo1_target", not "_setpoint": executeMain() splits a
+// command at its first "_set", which "_setpoint" would already hold.
+const LR_THERMO_PICO_CODES = {
+    "lr-thermo1":               ["11", "0",  callPico],     // mode~fan~setpoint~temperature~humidity~sensor~W1~Y1~G~running
+    "lr-thermo1_temp":          ["2",  "0",  callPico],     // °F, one decimal, or NA
+    "lr-thermo1_humidity":      ["2",  "1",  callPico],     // %, one decimal, or NA
+    "lr-thermo1_sensor":        ["2",  "2",  callPico],     // 0 ok, 1 starting, 2 startup lockout, 3 stale, 4 failed
+    "lr-thermo1_relays":        ["2",  "3",  callPico],     // W1~Y1~G, 1 closed
+    "lr-thermo1_running":       ["2",  "4",  callPico],     // 0 idle, 1 heating, 2 cooling, 3 fan only
+    "lr-thermo1_config":        ["8",  "0",  callPico],     // mode~fan~setpoint
+    "lr-thermo1_target":        ["8",  "3",  callPico],
+    "lr-thermo1_target_set":    ["3",  null, callPico],     // 50-80 °F
+    "lr-thermo1_mode":          ["8",  "4",  callPico],
+    "lr-thermo1_mode_set":      ["4",  null, callPico],     // 0 off, 1 heat, 2 cool
+    "lr-thermo1_fan":           ["8",  "5",  callPico],
+    "lr-thermo1_fan_set":       ["5",  null, callPico],     // 0 auto, 1 on
+    "lr-thermo1_color":         ["8",  "7",  callPico],
+    "lr-thermo1_color_set":     ["7",  null, callPico],     // 0-14, the display's text colour
+    "lr-thermo1_backlight":     ["8",  "6",  callPico],
+    "lr-thermo1_backlight_set": ["6",  null, callPico],     // 0-255, the display's resting level
+    "lr-thermo1_reset":         ["12", "1",  callPico],     // off, fan auto, 70 °F, white text
+    "lr-thermo1_log":           ["9",  "0",  callPicoText],
+    "lr-thermo1_log_set":       ["9",  null, callPicoText], // newest 1-60 lines
+    "lr-thermo1_status":        ["10", "0",  callPicoText]
+};
+
+// The thermostat's row in the room status, by what the HVAC is doing (the
+// last field of its one-line status): running -> [label, indicator]
+const LR_THERMO_STATUS_ROWS = {
+    "0": ["Heat / AC Off", "blkind"],
+    "1": ["Heat On",       "grnind"],
+    "2": ["AC On",         "grnind"],
+    "3": ["Fan On",        "ylwind"]
+};
+
+// The sensor states (the sixth field of the thermostat's one-line status) that
+// are a fault: 2 startup lockout, 3 stale, 4 failed. Starting (1) is the first
+// 60 s after boot, so it is not one.
+const LR_THERMO_SENSOR_FAULTS = ["2", "3", "4"];
+const LR_THERMO_FAULT_LABEL = "Thermostat Fault";
+const LR_THERMO_ERROR_LABEL = "Thermostat Error";
+
+// The thermostat's one-line status as its one room status row: what the HVAC
+// is doing, or in its place a red fault while the sensor has one, or a red
+// error when the reply is not a status (the Pico offline or refusing).
+// "1~0~70~69.4~41.0~0~1~0~0~1" -> { label: 'Heat On', indicator: 'grnind', value: '1' }
+// "1~0~70~NA~NA~4~1~0~0~1"     -> { label: 'Thermostat Fault', indicator: 'redind', value: '4' }
+function lrThermoStatusRow(reading) {
+    // mode~fan~setpoint~temperature~humidity~sensor~W1~Y1~G~running
+    const fields = String(reading).split('~');
+    const running = fields[fields.length - 1];
+    const row = LR_THERMO_STATUS_ROWS[running];
+    if (fields.length === 10 && row) {
+        const sensor = fields[5];
+        if (LR_THERMO_SENSOR_FAULTS.includes(sensor)) {
+            return { label: LR_THERMO_FAULT_LABEL, indicator: "redind", value: sensor };
+        }
+        return { label: row[0], indicator: row[1], value: running };
+    }
+    if (String(reading).startsWith("commonAPIRequest exception")) {
+        return { label: "Thermostat Offline", indicator: "redind", value: reading };
+    }
+    return { label: LR_THERMO_ERROR_LABEL, indicator: "redind", value: reading };
+}
+
+// lrXmit('hifistateon') -> sends the stereo on code; lrXmit('lr-thermo1_target_set', '71')
 async function lrXmit(arg1, arg2 = '') {
     const code = LR_COM_CODES[arg1];
     if (code) {
         return await lrComCall(code);
+    }
+    const thermoCodes = LR_THERMO_PICO_CODES[arg1];
+    if (thermoCodes) {
+        return await sendPicoCode(thermoCodes, IP_ADRS.lrthermo1, arg2, "lrXmit");
     }
     switch (arg1) {
         case "wl1_dual":      return await lrmLamp1Status();
@@ -426,39 +536,33 @@ const BTHR_PICO_CODES = {
 };
 
 // bthrXmit('bthr-light1on') -> fades the light on; bthrXmit('bthr-light1_set', '128')
-//
-// A "_set" command takes its value from the website. It is sent as the Pico
-// reads it, a whole number of up to 4 digits ("0128" -> "128"), and refused
-// here when it is not one, so an empty value never reaches the Pico as 0.
-// Ranges within that are checked by the Pico itself.
+// A "_set" value is checked by sendPicoCode().
 async function bthrXmit(arg1, arg2 = '') {
     const codes = BTHR_PICO_CODES[arg1];
     if (!codes) return "bthrXmit: invalid command";
-    const [command, fixedValue, reader] = codes;
-    let value = fixedValue;
-    if (value === null) {
-        if (!isNumeric(arg2)) return "bthrXmit: non-numeric value";
-        const number = Number(arg2);
-        if (number < 0 || number > 9999) return "bthrXmit: out-of-range value";
-        value = String(number);
-    }
-    return await reader(IP_ADRS.bthrlight1, command, value);
+    return await sendPicoCode(codes, IP_ADRS.bthrlight1, arg2, "bthrXmit");
 }
 
 //// room status ////
 
 // Reads every living room device at once and answers { roomState, devices }.
+// The thermostat is listed first and does not make the room count as on, since
+// heating or cooling is not something left on in the room, and lroff leaves
+// it alone.
 async function livingRoomStatus() {
     const lrRoom = new RoomManager();
-    const [lamp, desktop, stereo] = await Promise.all([
+    const [thermostat, lamp, desktop, stereo] = await Promise.all([
+        lrXmit("lr-thermo1"),
         lrmLamp1Status(),
         lrXmit("wkststate"),
         lrXmit("hifistate")
     ]);
     // the lamp answers both of its channels as "lamp~backlight"
     const [lampMain, lampBacklight] = splitByDelimiter(lamp, '~');
+    const thermoRow = lrThermoStatusRow(thermostat);
+    lrRoom.addIndicatorDevice(thermoRow.label, thermoRow.value, thermoRow.indicator);
     lrRoom.addDevice('Floor Lamp', lampMain);
-    lrRoom.addDevice('Lamp Backlight', lampBacklight);
+    lrRoom.addDevice('Backlight', lampBacklight);
     lrRoom.addDevice('Desktop PC', desktop);
     lrRoom.addDevice('Stereo System', stereo);
     lrRoom.updateRoomState();
@@ -497,7 +601,7 @@ async function bedroomStatus() {
 async function bathroomStatus() {
     const bthrRoom = new RoomManager();
     const light = await bthrXmit("bthr-light1_state");
-    bthrRoom.addDevice('Bathroom Light', light);
+    bthrRoom.addDevice('Accent Light', light);
     bthrRoom.updateRoomState();
     return bthrRoom.getData();
 }

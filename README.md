@@ -9,7 +9,7 @@ The system has three layers. At the centre is one Proxmox server, which routes t
 - **Automate web app.** One page that drives the apartment room by room: lamps and dimmers, ceiling lights, TVs, PCs (wake-on-LAN, sleep, power relays), the stereo amps' power, inputs, volume and subwoofers, the motorised bed and its LED strip, and the bathroom's motion-sensing light. Also live room status, scenes (room, lights, all on / off), temperature and humidity, weather, network host status, bookmarks, encrypted shared lists, photo and video upload, and a live doorway camera.
 - **LED pixels.** Pis drive LED walls, grids and strips through Fadecandy or WS2812 directly, with C++ effects (text scroll, spectrum, maze, noise, orbits and more), video playback on the pixels, shuffle, and per-host brightness, kept in sync from one control.
 - **Raspberry Pi modules.** A shared Pi base plus one small module per Pi: AirPlay and Bluetooth audio receivers, LED hosts, IR and motion-recording cameras with cloud upload, and the bedroom hub's serial bridge. Each Pi runs a read-only root filesystem so it survives losing power, recovers its own Wi-Fi, falls back to a setup hotspot, and compiles its C/C++ programs on install.
-- **Microcontroller firmware.** Pico W lamp and light controllers with their own HTTP API, and Arduino/AVR boards for the bedroom hub, bed motor, switched outlets, the integrated amp and an IR remote hub.
+- **Microcontroller firmware.** Pico W lamp and light controllers and an HVAC thermostat (SmartThermo) with their own HTTP API, and Arduino/AVR boards for the bedroom hub, bed motor, switched outlets, the integrated amp and an IR remote hub.
 - **Home server.** A Proxmox host running the services as containers and VMs: the router, SMB file shares (including one for vintage clients), an AFP server for classic Macs, Jellyfin with automatic MP3 mirroring, a UniFi controller, and a sandboxed desktop with a VPN kill switch. ZFS mirrored storage with automatic snapshots, rsync backups to encrypted external pools, encrypted on-demand storage regions, UPS monitoring, and backups of every VM and container, all triggered from the website.
 - **One-command deployment.** `login.sh` deploys any host from this repo over SSH, with one passphrase prompt per terminal session for all keys.
 
@@ -34,7 +34,7 @@ One Proxmox server (`pve`) runs the network's services as LXC containers and KVM
   │  ZFS: rpool (boot) · tank/datastore (data, mirrored) · scratch SSD · ext. backups │
   └──────────────────────────────────────────────────────────────────────────────────┘
        Pis: brpi · ledwall · ledgrid · ledstrip · doorway · homepi · btpi · lrpi
-       Microcontrollers: BathroomLight, LivingRoomLamp (Pico W) · Bedroom hub, amp, IR hub (AVR)
+       Microcontrollers: BathroomLight, LivingRoomLamp, SmartThermo (Pico W) · Bedroom hub, amp, IR hub (AVR)
 ```
 
 ## Folder map
@@ -76,6 +76,7 @@ DNS domain `home`, LAN 192.168.1.0/24, gateway and DNS the router at 192.168.1.1
 | `btpi` · `lrpi` | Pi | | Audio receivers: AirPlay (shairport-sync) and Bluetooth (BlueALSA) into a stereo; `btpi` adds Bluetooth to a vintage stereo, `lrpi` (formerly `stereo`) is the living room's, branded "Living Room" |
 | `desk` | PC | .14 | Living room desktop, pinged by `wkststate` |
 | `lrmlamp1` · `bthrlight1` | Pico W | .18 · .21 | Living room lamp, bathroom light (firmware in `automate/devices/`) |
+| `lrthermo1` | Pico W | .3 | SmartThermo, the living room's HVAC thermostat (firmware in `automate/devices/SmartThermo/`) |
 | `wkst` | Workstation | | This machine: mounts the `files` shares under `/mnt/*` with autofs (`auto.files`), detached while `files` is down by `share-watchdog.sh` (so this repo, `/mnt/Data/Projects/ProOS`, is the Data share) |
 
 The Automate status menu (`shared/html/menus/statsmenu.txt`) and the LED host list (`menus/mainmenu.txt`) are the living lists of hosts the website talks to.
@@ -175,6 +176,7 @@ C/C++ sources are compiled on the Pi at install time. `build()` compiles only wh
 | --- | --- | --- | --- |
 | `automate/devices/BathroomLight/` | Pico W | HTTP :4000 | Bathroom light + C4002 mmWave sensor; API reference `.md` alongside |
 | `automate/devices/LivingRoomLamp/` | Pico W | HTTP :4000 | Living room lamp (switched lamp + dimmable LED, rotary encoder); derived from BathroomLight |
+| `automate/devices/SmartThermo/` | Pico W | HTTP :4000 | HVAC thermostat (furnace + central AC): W1 / Y1 / G relays, DHT22, ST7735R TFT display, every interlock and lockout from the HVAC control reference, watchdog; API reference `.md` alongside; derived from BathroomLight |
 | `automate/devices/InfraredRemoteHub/` | Arduino | serial | Sends IR codes to the stereo's preamp, DAC and sub amp |
 | `brpi/BedroomHub/` | AVR | brpi `/dev/ttyAMA0` | Bedroom hub #1: relays, temperature/humidity (DHT), two external serial ports |
 | `brpi/BedroomHubExt/` | ATmega328P | hub serial #2 | WS2812 bed strip, switched outlets, bed motor (EAGLE board files alongside) |

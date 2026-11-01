@@ -99,6 +99,17 @@ static constexpr const char *UNKNOWN_HOST_TEXT = "<pi-address>";
 // so a crashed viewer doesn't keep the camera and encoder running.
 static constexpr guint SESSION_CLEANUP_SECONDS = 10;
 
+// How often the frame stall watchdog runs, and how long frames may stop while
+// the camera is streaming before rtspcam exits for systemd to restart it.
+static constexpr guint FRAME_STALL_CHECK_SECONDS = 2;
+static constexpr guint FRAME_STALL_LIMIT_SECONDS = 10;
+
+// Where the kernel lists this process's threads, and the files read for each
+// when logging a stall: its name and what it is waiting on.
+static constexpr const char *THREAD_LIST_DIRECTORY = "/proc/self/task";
+static constexpr const char *THREAD_NAME_FILE = "comm";
+static constexpr const char *THREAD_WAIT_FILE = "wchan";
+
 // Limits of the Pi's H.264 hardware encoder at level 4.
 static constexpr long MIN_FRAME_DIMENSION = 16;
 static constexpr long MAX_FRAME_DIMENSION = 1920;
@@ -1414,9 +1425,106 @@ static void attachBusErrorLogger(GstElement *mediaBin)
     gst_object_unref(pipeline);
 }
 
+// Frames that have reached the payloader, compared between stall checks; only
+// a change matters, so wrapping around is harmless. 32 bits so the Pi's
+// 32-bit build needs no libatomic.
+static std::atomic<guint> deliveredFrameCount{0};
+
+// True from a pipeline's first frame until that pipeline releases the camera.
+static std::atomic<bool> isCameraDeliveringFrames{false};
+
+// Payloader input probe: counts one frame for the stall watchdog.
+static GstPadProbeReturn onFrameDelivered(GstPad *, GstPadProbeInfo *, gpointer)
+{
+    deliveredFrameCount.fetch_add(1);
+    isCameraDeliveringFrames.store(true);
+    return GST_PAD_PROBE_OK;
+}
+
+// Adds the frame counting probe to a newly configured pipeline's payloader.
+static void trackFrameFlow(GstElement *mediaBin)
+{
+    GstElement *payloader = findElementInBin(mediaBin, PAYLOADER_NAME);
+    if (payloader == nullptr) {
+        logError("payloader not found; frame stalls will not be detected");
+        return;
+    }
+    addBufferProbe(payloader, SINK_PAD_NAME, onFrameDelivered, nullptr, nullptr);
+    gst_object_unref(payloader);
+}
+
+// The camera was released, so frames are no longer expected.
+static void onCameraReleased(GstRTSPMedia *, gpointer)
+{
+    isCameraDeliveringFrames.store(false);
+}
+
+// Returns the stripped text of one file of a thread's /proc folder, or "?" if
+// it can't be read. The caller frees it with g_free().
+static gchar *readThreadFile(const char *threadId, const char *fileName)
+{
+    gchar *filePath = g_build_filename(THREAD_LIST_DIRECTORY, threadId, fileName, nullptr);
+    gchar *fileText = nullptr;
+    gboolean isFileRead = g_file_get_contents(filePath, &fileText, nullptr, nullptr);
+    g_free(filePath);
+    if (!isFileRead) {
+        return g_strdup(UNKNOWN_TEXT);
+    }
+    return g_strstrip(fileText);
+}
+
+// Logs every thread's name and the kernel function it is waiting in, so a
+// stall leaves a record of what was stuck before the restart clears it, e.g.
+// "  thread camera:src waiting in vb2_core_dqbuf".
+static void logThreadStates()
+{
+    GDir *threadList = g_dir_open(THREAD_LIST_DIRECTORY, 0, nullptr);
+    if (threadList == nullptr) {
+        return;
+    }
+    const gchar *threadId = g_dir_read_name(threadList);
+    while (threadId != nullptr) {
+        gchar *threadName = readThreadFile(threadId, THREAD_NAME_FILE);
+        gchar *waitFunction = readThreadFile(threadId, THREAD_WAIT_FILE);
+        logError("  thread %s waiting in %s", threadName, waitFunction);
+        g_free(threadName);
+        g_free(waitFunction);
+        threadId = g_dir_read_name(threadList);
+    }
+    g_dir_close(threadList);
+}
+
+// Periodic timer on the main loop, which keeps running when a pipeline stalls.
+// When frames have stopped while the camera should be delivering them, logs
+// what each thread is waiting on and exits at once for systemd to restart the
+// service: a clean shutdown could block on the stalled pipeline too.
+static gboolean onFrameStallCheck(gpointer)
+{
+    static guint lastFrameCount = 0;
+    static guint stalledSeconds = 0;
+
+    guint currentFrameCount = deliveredFrameCount.load();
+    bool hasNewFrames = currentFrameCount != lastFrameCount;
+    lastFrameCount = currentFrameCount;
+    bool isFrameExpected = isCameraDeliveringFrames.load();
+    if (hasNewFrames || !isFrameExpected) {
+        stalledSeconds = 0;
+        return G_SOURCE_CONTINUE;
+    }
+
+    stalledSeconds += FRAME_STALL_CHECK_SECONDS;
+    if (stalledSeconds < FRAME_STALL_LIMIT_SECONDS) {
+        return G_SOURCE_CONTINUE;
+    }
+    logError("no frames for %u s, pipeline stalled; exiting to restart", stalledSeconds);
+    logThreadStates();
+    _exit(EXIT_FAILURE);
+}
+
 // Called once per new media pipeline: hands the camera to night mode, adds
 // the orientation tagger when rotating (seiMemoryData is nullptr otherwise),
-// attaches the error logger and logs when the camera starts and stops.
+// starts counting frames, attaches the error logger and logs when the camera
+// starts and stops.
 static void onMediaConfigure(GstRTSPMediaFactory *, GstRTSPMedia *media, gpointer seiMemoryData)
 {
     GstElement *mediaBin = gst_rtsp_media_get_element(media);
@@ -1426,6 +1534,7 @@ static void onMediaConfigure(GstRTSPMediaFactory *, GstRTSPMedia *media, gpointe
         if (isRotating) {
             attachOrientationTagger(mediaBin, GST_MEMORY_CAST(seiMemoryData));
         }
+        trackFrameFlow(mediaBin);
         attachBusErrorLogger(mediaBin);
         gst_object_unref(mediaBin);
     }
@@ -1433,6 +1542,7 @@ static void onMediaConfigure(GstRTSPMediaFactory *, GstRTSPMedia *media, gpointe
                      const_cast<char *>(CAMERA_STREAMING_MESSAGE));
     g_signal_connect(media, "unprepared", G_CALLBACK(onMediaStateChanged),
                      const_cast<char *>(CAMERA_RELEASED_MESSAGE));
+    g_signal_connect(media, "unprepared", G_CALLBACK(onCameraReleased), nullptr);
 }
 
 // Logs a client disconnecting; the user data is its IP address.
@@ -1701,6 +1811,7 @@ int main(int argc, char *argv[])
     mainLoop = g_main_loop_new(nullptr, FALSE);
     guint sessionCleanupSourceId =
         g_timeout_add_seconds(SESSION_CLEANUP_SECONDS, onSessionCleanup, serverResources.rtspServer);
+    guint frameStallCheckSourceId = g_timeout_add_seconds(FRAME_STALL_CHECK_SECONDS, onFrameStallCheck, nullptr);
     constexpr gsize shutdownSignalCount = G_N_ELEMENTS(SHUTDOWN_SIGNALS);
     guint signalSourceIds[shutdownSignalCount];
     for (gsize signalIndex = 0; signalIndex < shutdownSignalCount; ++signalIndex) {
@@ -1714,6 +1825,7 @@ int main(int argc, char *argv[])
 
     logInfo("shutting down");
     removeSourceIfPresent(sessionCleanupSourceId);
+    removeSourceIfPresent(frameStallCheckSourceId);
     for (guint signalSourceId : signalSourceIds) {
         removeSourceIfPresent(signalSourceId);
     }

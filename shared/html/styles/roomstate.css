@@ -14,9 +14,8 @@
  */
 
 .roomstatus-svgs {
-  width: 45px;
-  height: 45px;
-  margin-bottom: 2px;
+  width: var(--nav-status-size);
+  height: var(--nav-status-size);
   display: block;
   overflow: visible;
 }
@@ -33,9 +32,11 @@
   transition: opacity 0.5s ease, visibility 0.5s ease, stroke-dashoffset 0s; 
 }
 
+/* the dot and the gap around it, so it is spaced as the icons beside it are.
+   The svg's ring is wider than the dot and overhangs a small gap. */
 #status_anchor {
   position: relative;
-  width: 50px;
+  width: calc(var(--nav-icon-size) - -1 * var(--nav-icon-gap));
   height: 60px;
   display: inline-flex !important;
   align-items: center;
@@ -58,19 +59,19 @@
 }
 
 /* Refresh spinner, drawn while a status request is in flight. It rides the
-   same circle the countdown ring does: the 50-unit viewBox is drawn at 45px,
-   so the r=23 path is a 41.4px centre-line and its 5-unit stroke is 4.5px.
-   A border ring is measured outside-in, so the box is 41.4 + 4.5 = 45.9px.
+   same circle the countdown ring does: of the 50-unit viewBox, the r=23 path
+   is a 46-unit centre-line and its stroke 5 units. A border ring is measured
+   outside-in, so the box is 46 + 5 = 51 units, 1.02 of the svg.
    Centred with margins rather than a transform, because the shared rotation
    keyframes animate transform and would otherwise throw the centring away. */
 .roomstatus-spinner {
-  width: 45.9px;
-  height: 45.9px;
+  --status-ring-size: calc(var(--nav-status-size) * 1.02);
+  width: var(--status-ring-size);
+  height: var(--status-ring-size);
   top: 50%;
   left: 50%;
-  margin-left: -22.95px;
-  /* half the box, plus the 1px the svg sits above centre from its margin */
-  margin-top: -23.95px;
+  margin-left: calc(var(--status-ring-size) / -2);
+  margin-top: calc(var(--status-ring-size) / -2);
   z-index: 1;
   /* These two asked for 4.5px in the old single stylesheet and never got it:
      the shared spinner rule (.btn-spinner, .right-nav-spinner,

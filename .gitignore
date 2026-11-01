@@ -28,3 +28,5 @@ pve/network
 *.pdf*
 *._*
 .DS_Store
+automate/devices/SmartThermo/test/build
+automate/devices/SmartThermo/test/output

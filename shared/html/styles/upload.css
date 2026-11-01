@@ -9,13 +9,13 @@
  *  the theme colour and the same gradient without being redefined here.
  *
  *  Nothing in this sheet sets a font size except the percentage line. The
- *  site's size comes from `* { font-size: 24px }` in main.css, which lands
+ *  site's size comes from the `*` rule in main.css, which lands
  *  on every element directly rather than being inherited -- so a size set on
  *  this window would reach the window and nothing inside it, and the rows
  *  would keep the default while the title moved. Leaving it alone is what
  *  keeps the whole window at one size.
  *
- *  The row height below is sized for that 24px text.
+ *  The row height below is sized for that text.
  */
 
 /* The height the file panel is measured in: five of these is the height of

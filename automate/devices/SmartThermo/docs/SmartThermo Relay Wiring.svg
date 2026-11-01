@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1300 860" width="1300" height="860" font-family="Helvetica, Arial, sans-serif" font-size="13" fill="#222">
+  <title>SmartThermo relay wiring</title>
+  <defs>
+    <!-- used pin -->
+    <g id="pin">
+      <circle cx="0" cy="0" r="11" fill="#fff" stroke="#222" stroke-width="4"/>
+    </g>
+    <!-- pin left unconnected -->
+    <g id="pin-unused">
+      <circle cx="0" cy="0" r="11" fill="#fff" stroke="#bbb" stroke-width="2.5" stroke-dasharray="4 3"/>
+    </g>
+    <!-- flyback diode across the coil pins; origin = midpoint, cathode (bar) on the left = +5 V -->
+    <g id="diode" stroke="#222" stroke-width="2">
+      <polygon points="10,-9 10,9 -10,0" fill="#222"/>
+      <line x1="-10" y1="-9" x2="-10" y2="9"/>
+    </g>
+  </defs>
+
+  <rect x="0" y="0" width="1300" height="860" fill="#fff"/>
+
+  <text x="40" y="44" font-size="22" font-weight="bold">SmartThermo relay wiring, bottom view</text>
+  <text x="40" y="68" fill="#555">Three V23079 relays as seen from the solder side, with the shortest point-to-point runs for the contacts and the interlock</text>
+
+  <!-- ===================== Relay bodies ===================== -->
+  <g fill="none" stroke="#222" stroke-width="1.5">
+    <rect x="120" y="180" width="222" height="370"/>
+    <rect x="550" y="180" width="222" height="370"/>
+    <rect x="980" y="180" width="222" height="370"/>
+  </g>
+  <text x="231" y="150" text-anchor="middle" font-size="16" font-weight="bold" fill="#2e7d32">K3 · G fan</text>
+  <text x="661" y="150" text-anchor="middle" font-size="16" font-weight="bold" fill="#1565c0">K2 · Y1 cool</text>
+  <text x="1091" y="150" text-anchor="middle" font-size="16" font-weight="bold" fill="#c25e00">K1 · W1 heat</text>
+  <text x="231" y="170" text-anchor="middle" font-size="11" fill="#555">left pole = a (G) · right pole = b</text>
+  <text x="661" y="170" text-anchor="middle" font-size="11" fill="#555">left pole = b · right pole = a (Y1)</text>
+  <text x="1091" y="170" text-anchor="middle" font-size="11" fill="#555">left pole = b · right pole = a (W1)</text>
+
+  <!-- ===================== Wires (drawn under the pins) ===================== -->
+  <g fill="none" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+    <!-- R: wall wire into K3 left COM, jumper to K3 right COM, on to K2 left COM -->
+    <polyline points="80,295 170,295 295,295 600,295" stroke="#d32f2f"/>
+    <!-- A: K3 right NO -> K1 left COM (over the top of K2) -->
+    <polyline points="295,240 295,205 960,205 960,295 1030,295" stroke="#7b1fa2"/>
+    <!-- B: K1 left NC -> K2 right COM -->
+    <polyline points="1030,350 880,350 880,295 725,295" stroke="#00897b"/>
+    <!-- C: K2 left NC -> K1 right COM (under K1's left pins) -->
+    <polyline points="600,350 600,420 1092,420 1092,295 1155,295" stroke="#ef6c00"/>
+    <!-- field outputs -->
+    <polyline points="170,240 80,240" stroke="#2e7d32"/>
+    <polyline points="725,240 800,240" stroke="#c9a400"/>
+    <polyline points="1155,240 1235,240" stroke="#9e9e9e"/>
+  </g>
+
+  <!-- coil pins: flyback diode and leads -->
+  <g stroke="#222" stroke-width="2.5" fill="none">
+    <line x1="170" y1="510" x2="222" y2="510"/>
+    <line x1="242" y1="510" x2="295" y2="510"/>
+    <line x1="600" y1="510" x2="652" y2="510"/>
+    <line x1="672" y1="510" x2="725" y2="510"/>
+    <line x1="1030" y1="510" x2="1082" y2="510"/>
+    <line x1="1102" y1="510" x2="1155" y2="510"/>
+  </g>
+  <g stroke="#555" stroke-width="3" fill="none" stroke-dasharray="7 4">
+    <line x1="170" y1="510" x2="170" y2="595"/>
+    <line x1="295" y1="510" x2="295" y2="595"/>
+    <line x1="600" y1="510" x2="600" y2="595"/>
+    <line x1="725" y1="510" x2="725" y2="595"/>
+    <line x1="1030" y1="510" x2="1030" y2="595"/>
+    <line x1="1155" y1="510" x2="1155" y2="595"/>
+  </g>
+  <use href="#diode" xlink:href="#diode" x="232" y="510"/>
+  <use href="#diode" xlink:href="#diode" x="662" y="510"/>
+  <use href="#diode" xlink:href="#diode" x="1092" y="510"/>
+  <text x="232" y="537" text-anchor="middle" font-size="11">D3 1N4148</text>
+  <text x="662" y="537" text-anchor="middle" font-size="11">D2 1N4148</text>
+  <text x="1092" y="537" text-anchor="middle" font-size="11">D1 1N4148</text>
+
+  <!-- ===================== Pins ===================== -->
+  <!-- K3 -->
+  <use href="#pin" xlink:href="#pin" x="170" y="240"/>
+  <use href="#pin" xlink:href="#pin" x="170" y="295"/>
+  <use href="#pin-unused" xlink:href="#pin-unused" x="170" y="350"/>
+  <use href="#pin" xlink:href="#pin" x="295" y="240"/>
+  <use href="#pin" xlink:href="#pin" x="295" y="295"/>
+  <use href="#pin-unused" xlink:href="#pin-unused" x="295" y="350"/>
+  <use href="#pin" xlink:href="#pin" x="170" y="510"/>
+  <use href="#pin" xlink:href="#pin" x="295" y="510"/>
+  <!-- K2 -->
+  <use href="#pin-unused" xlink:href="#pin-unused" x="600" y="240"/>
+  <use href="#pin" xlink:href="#pin" x="600" y="295"/>
+  <use href="#pin" xlink:href="#pin" x="600" y="350"/>
+  <use href="#pin" xlink:href="#pin" x="725" y="240"/>
+  <use href="#pin" xlink:href="#pin" x="725" y="295"/>
+  <use href="#pin-unused" xlink:href="#pin-unused" x="725" y="350"/>
+  <use href="#pin" xlink:href="#pin" x="600" y="510"/>
+  <use href="#pin" xlink:href="#pin" x="725" y="510"/>
+  <!-- K1 -->
+  <use href="#pin-unused" xlink:href="#pin-unused" x="1030" y="240"/>
+  <use href="#pin" xlink:href="#pin" x="1030" y="295"/>
+  <use href="#pin" xlink:href="#pin" x="1030" y="350"/>
+  <use href="#pin" xlink:href="#pin" x="1155" y="240"/>
+  <use href="#pin" xlink:href="#pin" x="1155" y="295"/>
+  <use href="#pin-unused" xlink:href="#pin-unused" x="1155" y="350"/>
+  <use href="#pin" xlink:href="#pin" x="1030" y="510"/>
+  <use href="#pin" xlink:href="#pin" x="1155" y="510"/>
+
+  <!-- pin names, above and right of each pin -->
+  <g font-size="11" fill="#444">
+    <text x="184" y="226">NO</text><text x="184" y="281">COM</text><text x="184" y="336">NC</text>
+    <text x="309" y="226">NO</text><text x="309" y="281">COM</text><text x="309" y="336">NC</text>
+    <text x="614" y="226">NO</text><text x="614" y="281">COM</text><text x="614" y="336">NC</text>
+    <text x="739" y="226">NO</text><text x="739" y="281">COM</text><text x="739" y="336">NC</text>
+    <text x="1044" y="226">NO</text><text x="1044" y="281">COM</text><text x="1044" y="336">NC</text>
+    <text x="1169" y="226">NO</text><text x="1169" y="281">COM</text><text x="1169" y="336">NC</text>
+  </g>
+
+  <!-- coil lead labels -->
+  <g font-size="12" text-anchor="middle">
+    <text x="170" y="612" font-weight="bold">+5 V</text>
+    <text x="295" y="612">Q3 collector</text>
+    <text x="600" y="612" font-weight="bold">+5 V</text>
+    <text x="725" y="612">Q2 collector</text>
+    <text x="1030" y="612" font-weight="bold">+5 V</text>
+    <text x="1155" y="612">Q1 collector</text>
+  </g>
+
+  <!-- field wire tags -->
+  <g font-size="14" font-weight="bold">
+    <text x="72" y="245" text-anchor="end" fill="#2e7d32">G</text>
+    <text x="72" y="300" text-anchor="end" fill="#d32f2f">R</text>
+    <text x="808" y="245" fill="#9a7d00">Y1</text>
+    <text x="1243" y="245" fill="#757575">W1</text>
+  </g>
+  <g font-size="10" fill="#555">
+    <text x="72" y="259" text-anchor="end">green</text>
+    <text x="72" y="314" text-anchor="end">red, from wall</text>
+    <text x="808" y="259">yellow</text>
+    <text x="1243" y="259">white</text>
+  </g>
+
+  <!-- ===================== Wire list ===================== -->
+  <line x1="40" y1="645" x2="1260" y2="645" stroke="#ccc" stroke-width="1"/>
+  <text x="40" y="672" font-size="15" font-weight="bold">Wire list</text>
+
+  <g font-size="12">
+    <rect x="40" y="686" width="26" height="6" fill="#d32f2f"/>
+    <text x="78" y="694"><tspan font-weight="bold">R</tspan>: wall R → K3 left COM → K3 right COM → K2 left COM (one straight run)</text>
+    <rect x="40" y="708" width="26" height="6" fill="#7b1fa2"/>
+    <text x="78" y="716"><tspan font-weight="bold">A</tspan>: K3 right NO → K1 left COM (passes over K2's NO row; G must close before Y1 can get R)</text>
+    <rect x="40" y="730" width="26" height="6" fill="#00897b"/>
+    <text x="78" y="738"><tspan font-weight="bold">B</tspan>: K1 left NC → K2 right COM (opens while heat is on)</text>
+    <rect x="40" y="752" width="26" height="6" fill="#ef6c00"/>
+    <text x="78" y="760"><tspan font-weight="bold">C</tspan>: K2 left NC → K1 right COM (under K1's left pins, between its two columns; opens while cooling)</text>
+    <text x="78" y="782"><tspan font-weight="bold">Outputs</tspan>: K3 left NO → G · K2 right NO → Y1 · K1 right NO → W1</text>
+  </g>
+  <text x="40" y="812" font-size="12" fill="#555">Y1 path: R → K3 b (NO) → A → K1 b (NC) → B → K2 a (NO) → Y1.   W1 path: R → K2 b (NC) → C → K1 a (NO) → W1.   G path: R → K3 a (NO) → G.</text>
+  <text x="40" y="832" font-size="12" fill="#555">Dashed pins stay unconnected. No two runs cross. Order K3 · K2 · K1 keeps R straight and short; A and C are the only runs longer than one gap.</text>
+</svg>

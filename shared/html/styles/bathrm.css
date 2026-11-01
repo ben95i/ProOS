@@ -94,7 +94,7 @@
   margin-bottom: 8px;
 }
 
-/* the * rule in main.css puts 24px on every element, so both are set here */
+/* the * rule in main.css sets the size on every element, so both are set here */
 .bthr__label,
 .bthr__value {
   font-size: 18px;

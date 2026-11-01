@@ -18,7 +18,7 @@ There is no build step, test suite or linter in the repo; `html/` is served as w
 
 Automate is a one-page home automation site that runs the apartment's lights, audio, PCs, LEDs and doorway camera from a phone or browser. It is plain JavaScript ES modules with no framework: `index.html` loads `main.js`, which draws the whole page from template literals and imports one module per feature and one per room.
 
-The modules import in one direction only, so none of them can call back up: `error.js` (the message popup and error reports) at the bottom, `utils.js` above it, `volctrl.js` (the amp rooms' volume controls) and `dropdowns.js` above it, the room modules (`livingrm.js`, `bedrm.js`, `bathrm.js`) and the Server window (`server.js`) above that, and `main.js` on top. What `dropdowns.js` needs from the page (the rooms, the LED text scroller, the browser settings, the bookmarks and weather menus) is handed to it once by `configureMenus()` in `main.js`.
+The modules import in one direction only, so none of them can call back up: `error.js` (the message popup and error reports) at the bottom, `utils.js` above it, `volctrl.js` (the amp rooms' volume controls) and `dropdowns.js` above it, the room modules (`livingrm.js`, `bedrm.js`, `bathrm.js`), the Server window (`server.js`) and the temperature window (`thermo.js`) above that, and `main.js` on top. What `dropdowns.js` needs from the page (the rooms, the LED text scroller, the browser settings, the bookmarks and weather menus) is handed to it once by `configureMenus()` in `main.js`.
 
 One codebase serves three device models. `main.js` reads the model from the page's `<title>` at load and draws only that model's markup; markup for the other models never reaches the page.
 
@@ -76,11 +76,13 @@ The server page is a top bar over three outlined button groups: Pixels and APT i
 
 ### Top bar
 
+Every icon in the bar is the size of the status light's dot: `--nav-status-size` on `.topnav` (`styles/main.css`) sets the light, and `--nav-icon-size` is worked out from it, so the bar's sizes are changed there alone and do not follow the site's font size. `--nav-icon-gap`, on the same rule, is the space between two icons.
+
 | Item | What it does |
 | --- | --- |
 | Main menu (list icon) | About window, Colors (theme colour picker), stars animation switch. The Pi models get About, Colors, stars, System (log window) and Home. |
 | Bookmarks (star) | Bookmarks menu with search, add, edit and drag re-order, kept in a file under its own edit lock |
-| Room status light | Polls `<room>status` every 10 s with a countdown ring; hatched once the readings go stale after 50 s idle, red on an error. Tapped, it lists each device with a green, black or red dot. |
+| Room status light | Polls `<room>status` every 10 s with a countdown ring; hatched once the readings go stale after 50 s idle, red on an error. Tapped, it lists each device with a green, black or red dot (yellow for the thermostat running its fan only). |
 | Room selector (centre) | The current room's icon and name; opens a menu of the other rooms |
 | Weather | The weather widget and its menu; reads the `weather` command once a minute |
 | Stats (network icon) | Runs the `status` command, which probes every host in the `statsmenu` file, and shows a green or black dot per host |
@@ -98,10 +100,21 @@ Effects, Off, Pause and the text scroller send through `sendLeds()` in `dropdown
 | Row | Buttons |
 | --- | --- |
 | 1 | **Room** on / off (`<room>on`, `<room>off` for the room on screen) · **Lights** on / off (`lightson`, `lightsoff`) · **Power** all on / off (`allon`, `alloff`) |
-| 2 | **YouTube** (link) · **Temperature / humidity** (thermometers from `roomth`, refresh) · **Media** (link) |
+| 2 | **YouTube** (link) · **Temperature / humidity** (the temperature and thermostat window, below) · **Media** (link) |
 | 3 | **Doorway** (live camera window, full screen) · **Server** (log window + server options) · **Lists** (lists window) |
 
 The Server log window arms one command at a time from three option panels (main, backup, regions) and sends it with the send button; password commands go through a password prompt first. The panels cover AFP, CIFS, Xana, UniFi, the router and network, backups and snapshots, archive and RAM disk regions, uploads and clearing the log. All of it lives in `server.js` and `styles/server.css`: the log window and panel templates, the armed command, the password prompt, the guest Wi-Fi window, the Pi models' options panel and Wi-Fi setup, and the upload button. `main.js` draws its two templates and opens and closes the log window through `showLogWindow()` and `closeLogWindow()`, because closing it also closes the camera window.
+
+### Temperature and thermostat window
+
+The temperature / humidity button opens `temp__prompt` (`thermo.js`, `styles/thermo.css`): two panels drawn as `.btn-group`s, flat with the bathroom settings' thin grey edge, over a row of three buttons (75 px tall, the bathroom settings' height, with its 22 px icons), in a window 500 px tall: the thermometers and the Up / Down buttons stretch to take the height the rest leaves (the fill's gradient is sized to its tube with container units), with every space in the window, between and inside the panels, one `--thermo-gap`.
+
+- **Humidity/Temperature**: two thermometers, humidity on the left, and the room they read ("Source: Bedroom"). The room is the one on screen when its config has a `climate` (the living room reads the thermostat's one-line status, the bedroom `roomth`), or else the living room (`climateRoomConfig()` in `main.js`); it is asked again on every refresh, and picking another room refreshes an open window (`refreshThermoWindow()`). A missing reading, or the thermostat's `NA`, shows `--`.
+- **Thermostat**: the setpoint on a dot-matrix display ("72°" in 7 px black dots on the light theme colour, drawn from a 5 × 7 glyph table), the mode's and the blower's boxes, and Up / Down. The mode's icon is a flame lit orange while heating, a snowflake lit blue while cooling, or red over "Fault" while the sensor has one; the blower's is green and turning while G is closed, with the fan mode under it. Pressing the mode's box opens the **Mode** menu (Heat, Cool, Off) and the blower's the **Fan** menu (Auto, On): static rows, and the menu opens only after a fresh status read (the Refresh icon turns meanwhile), its dot set on the choice in force only: green while it runs (the furnace for Heat, the AC for Cool, the blower for Auto or On), yellow while it is idle, and always yellow for Off; a choice is sent, then the status read back. The boxes are drawn by `dropdownButtonTemplate()` and flattened in `thermo.css`. A setpoint press shows at once and is sent through `requestThrottle` at most every 600 ms, the last always; a press still waiting is sent when the window closes. With no status read the display shows `--°` and Up / Down are off.
+- **Buttons**: Close, Refresh (its icon turns while the window reads) and Settings (a cog).
+- **Settings**: stands in the panels' place, and opens on the status each time. On top, a Thermostat Setup title, then under it the bordered **Display** panel, on the grey behind the colour prompt's swatches: 8 of the thermostat's 15 text colours (White, Red, Orange, Yellow, Green, Cyan, Blue, Magenta) as a row of swatches in the colour prompt's style (`.color-swatch`), the one set on the display larger (read from `lr-thermo1_color` on opening and on Refresh; none is larger while another colour is set through the API). A swatch is marked at once and sent, then the read-out on show is read again; a refused colour is reported and the swatches go back to what the thermostat kept. The last circle in the row is **Brightness**: it reads the level (its icon turns), then opens a 0–255 slider under it for the display's resting level (`lr-thermo1_backlight`), sent through the queue at most every 250 ms while dragged, the release value always; a failed read is reported and the slider stays shut. Under the panel, a log box (its title over the text on plain black, long lines wrapped) showing `lr-thermo1_status` or `lr-thermo1_log`, the log opening on its newest line. The title is a button, STATUS or SYSTEM LOGS in capitals, whose menu of one row switches to the other. Under the box, Close, Back (to the panels) and Refresh in the same row and at the same height as the main buttons.
+
+One window-open read is `lr-thermo1` (and `roomth` when the bedroom is the source). Every thermostat request joins one queue (`picoRequestQueue()`), and a failure is reported through `error.js`: offline as Not connected, a refusal (a setpoint out of range, cool while the sensor has failed) as an exception.
 
 ### Room group
 
@@ -109,13 +122,13 @@ The third group's legend shows the current room's icon and name, and its grid is
 
 ## Rooms and devices
 
-Each room is a module of its own that exports its config (`LIVING_ROOM_CONFIG` in `livingrm.js`, `BEDROOM_CONFIG` in `bedrm.js`, `BATHROOM_CONFIG` in `bathrm.js`): a key, a name, an icon, a volume target and a grid template. The module also holds the room's button listeners, its menus and its windows, and `main.js` only collects the three configs into `ROOM_CONFIGS`. The key names the room's API commands: `<key>status`, `<key>on`, `<key>off`, and device commands go through `<key>xmit`.
+Each room is a module of its own that exports its config (`LIVING_ROOM_CONFIG` in `livingrm.js`, `BEDROOM_CONFIG` in `bedrm.js`, `BATHROOM_CONFIG` in `bathrm.js`): a key, a name, an icon, a volume target, a grid template and `climate`, where the temperature window reads the room's temperature and humidity (`{ target, cmd, fields }`: a command and the places of the two in its `~` reply), or null for a room with no sensor. The module also holds the room's button listeners, its menus and its windows, and `main.js` only collects the three configs into `ROOM_CONFIGS`. The key names the room's API commands: `<key>status`, `<key>on`, `<key>off`, and device commands go through `<key>xmit`.
 
-The grids are built from `dropdownButtonTemplate()` and `gridButtonTemplate()` in `utils.js` and `powerButtonTemplate()` in `dropdowns.js`. The Pixels and APT groups and the text scroller in `main.js`, and the Server window's option panels in `server.js`, are built from the same two; both take an optional `buttonClass` (`svropt_button`, `button__sml`), and a button may have an icon, a label or both. The windows' own buttons (log, camera, bathroom settings, Pixels, bed, colour prompt, About, upload, lists, password and Wi-Fi prompts) are drawn with `gridButtonTemplate()` too. Three kinds stay written out: the temperature / humidity grid button (two icons), and the temperature window's and bookmark edit window's buttons, whose icon class sits on the button itself; every one of them has an id. The volume buttons, their handlers, the subwoofer mode and the volume popup are shared by the two rooms with an amp and live in `volctrl.js` (`volumeButtonsTemplate`, `volumeButtonListeners`, `sendVolume`, `showVolumePopup`).
+The grids are built from `dropdownButtonTemplate()` and `gridButtonTemplate()` in `utils.js` and `powerButtonTemplate()` in `dropdowns.js`. The Pixels and APT groups and the text scroller in `main.js`, and the Server window's option panels in `server.js`, are built from the same two; both take an optional `buttonClass` (`svropt_button`, `button__sml`), and a button may have an icon, a label or both. The windows' own buttons (log, camera, bathroom settings, temperature, Pixels, bed, colour prompt, About, upload, lists, password and Wi-Fi prompts) are drawn with `gridButtonTemplate()` too. Two kinds stay written out: the temperature / humidity grid button (two icons), and the bookmark edit window's buttons, whose icon class sits on the button itself; every one of them has an id. The volume buttons, their handlers, the subwoofer mode and the volume popup are shared by the two rooms with an amp and live in `volctrl.js` (`volumeButtonsTemplate`, `volumeButtonListeners`, `sendVolume`, `showVolumePopup`).
 
 | Room | Key | Volume target | Room status reads |
 | --- | --- | --- | --- |
-| Living Room | `lr` | LEDwall (`lrxmit`), 0–100 | Main Lamp, Backlight, Desktop PC, Stereo System |
+| Living Room | `lr` | LEDwall (`lrxmit`), 0–100 | the thermostat, Main Lamp, Backlight, Desktop PC, Stereo System |
 | Bedroom | `br` | `brpi`, 0–192 shown as % | Desk Lamp, Bed Lights, RetroPi TV, Vintage Macs, Bedroom TV, Bedroom PC, Audio System |
 | Bathroom | `bthr` | none | Bathroom Light |
 
@@ -177,11 +190,11 @@ The bathroom's one device is the BathroomLight, a Pico W on 192.168.1.21:4000 (`
 | Presence hold (presence keeps the light on) | Switch | 0 / 1 | `bthr-light1_presence_set_<n>` |
 | Off delay | Slider on a cube curve (about 1 s steps at the short end) | 6 s – 1 h | `bthr-light1_timeout_set_<n>` |
 
-The Log and Sensor buttons turn the window into a log box twice as wide (680 px), filled from `bthr-light1_log` or `bthr-light1_sensor`, with Back, Refresh (reads the same read-out again) and Close under it. Every request from the window waits for the one before it (`bthrRequest()`), because the Pico serves one request at a time.
+The Log and Sensor buttons turn the window into a log box twice as wide (680 px), filled from `bthr-light1_log` or `bthr-light1_sensor`, with Back, Refresh (reads the same read-out again) and Close under it. Every request from the window waits for the one before it (`bthrRequest()`, a `picoRequestQueue()`), because the Pico serves one request at a time.
 
 ### API commands
 
-`bthrXmit()` in `controller.js` maps each command to a Pico call `http://192.168.1.21:4000/api?<cmd>,,<value>~`. The log and status replies keep their line breaks; the rest are single values. A `_set` value has to be a whole number from 0 to 9999, checked inside `bthrXmit()` itself, or the answer is `bthrXmit: invalid value` and nothing is sent; ranges within that are the Pico's to check.
+`bthrXmit()` in `controller.js` maps each command to a Pico call `http://192.168.1.21:4000/api?<cmd>,,<value>~`. The log and status replies keep their line breaks; the rest are single values. A `_set` value has to be a whole number from 0 to 9999, checked by `sendPicoCode()` before anything is sent, or the answer is `bthrXmit: non-numeric value` or `bthrXmit: out-of-range value`; ranges within that are the Pico's to check.
 
 | Website command | Pico call | Reply |
 | --- | --- | --- |
@@ -231,14 +244,14 @@ Every query value has to match `[A-Za-z0-9_.#%@&-]*`, or the route answers 400 w
 
 ### Commands
 
-Device addresses are in one table at the top of `controller.js`, `IP_ADRS`: `lrxmit` 192.168.1.12 (the LEDwall), `desk` .14, `brpi` .15, `brpc` .17 (with its MAC for wake-on-LAN), `lrmlamp1` .18 and `bthrlight1` .21.
+Device addresses are in one table at the top of `controller.js`, `IP_ADRS`: `lrthermo1` 192.168.1.3 (the SmartThermo), `lrxmit` .12 (the LEDwall), `desk` .14, `brpi` .15, `brpc` .17 (with its MAC for wake-on-LAN), `lrmlamp1` .18 and `bthrlight1` .21.
 
 `executeMain(baseWWW, arg, var)` switches on `arg`. For the three `…xmit` commands `var` is split at `_set`, so `wl1_dual_set_120` reaches the room as `wl1_dual_set` and `120`.
 
 | `arg` | `var` | What it does |
 | --- | --- | --- |
 | `lrxmit` · `brxmit` · `bthrxmit` | a device command | `lrXmit()`, `brXmit()`, `bthrXmit()`: one device of that room |
-| `lrstatus` · `brstatus` · `bthrstatus` | | Reads the room's devices together: `{ roomState, devices: [{ name, value, status }] }`; the room is on when any device is |
+| `lrstatus` · `brstatus` · `bthrstatus` | | Reads the room's devices together: `{ roomState, devices: [{ name, value, status }] }`; the room is on when any device is. A device with its own `indicator` (the thermostat) is drawn with it and does not count towards `roomState` |
 | `lron` · `lroff` · `bron` · `broff` · `bthron` · `bthroff` | | The room's scene, fired without waiting; answers `OK` |
 | `allon` · `alloff` | | The living room and bedroom scenes together |
 | `lightson` · `lightsoff` | | Both lamps, the dresser lamp and the bed lights; off also stops the LED pixels |
@@ -252,6 +265,24 @@ Device addresses are in one table at the top of `controller.js`, `IP_ADRS`: `lrx
 | `server` | a command name | Appends "`<name>` sent." to `ram/sysout.txt` and drops an empty `ram/<name>.txt` trigger file for the host's shell side to act on; `netscan` runs here instead and writes its table into the log |
 
 **Living room (`lrXmit`).** The stereo commands are codes sent to the LEDwall at 192.168.1.12 (`extcom`): power (`hifistate`, `…on`, `…off`), inputs (`usb`, `aux`, `phono`, `coax`, `opt`, `autodac`, `curinput`), volume (`volup`, `voldwn`, `volupc`, `voldwnc`, `volmute`, `voldisplay`), `vlimit`, `togglehpf`, `curhpfvollim` and the subwoofers (`subup`, `subdwn`, `submute`, `subup_fast`, `subdwn_fast`). The living room lamp is a Pico at 192.168.1.18 (`lrmlamp1`; `lrmLamp1Status()`, `lrmLamp1On()`, `lrmLamp1Off()`): `wl1_dual` reads both channels as `lamp~backlight`, `wl1_dualon` / `off` and `wl1_led1…` / `wl1_led2…` switch them, `wl1_dual_set_<n>` dims. `wkststate` pings the desktop (192.168.1.14), and its `on` / `off` press the PC power relay only when the ping says the state would change.
+
+**Living room thermostat.** The SmartThermo, a Pico W on 192.168.1.3:4000 (`lrthermo1`), is reached through `lrxmit` from the `LR_THERMO_PICO_CODES` table, sent and checked as the bathroom light's are (`sendPicoCode()`); its commands are in `../automate/devices/SmartThermo/docs/SmartThermo API Command Reference.md`. The setpoint is `lr-thermo1_target`, because a name holding `_set` would be split there. A refused value (out of range, or cool while the sensor has failed) answers `commonAPIRequest: invalid response`. The thermostat is not part of any scene. In the living room status it is the first row, read from `lr-thermo1` and named by what the HVAC is doing (`lrThermoStatusRow()`): AC On or Heat On (green), Fan On (yellow, fan only), Heat / AC Off (black), or in their place Thermostat Fault, Thermostat Offline or Thermostat Error (red). A sensor fault (startup lockout, stale or failed, sensor states 2–4) shows as Thermostat Fault, and a reply that is not a status as Thermostat Error. The row carries its own `indicator`, which `roomstate.js` draws in place of one worked out from `status`, and it never turns the room's light on.
+
+| Website command | Pico call | Reply |
+| --- | --- | --- |
+| `lr-thermo1` | 11, 0 | `mode~fan~setpoint~temperature~humidity~sensor~W1~Y1~G~running` |
+| `lr-thermo1_temp` · `_humidity` | 2, 0 · 2, 1 | °F · %, one decimal, or `NA` |
+| `lr-thermo1_sensor` | 2, 2 | 0 ok, 1 starting, 2 startup lockout, 3 stale, 4 failed |
+| `lr-thermo1_relays` | 2, 3 | `W1~Y1~G`, 1 closed |
+| `lr-thermo1_running` | 2, 4 | 0 idle, 1 heating, 2 cooling, 3 fan only |
+| `lr-thermo1_config` | 8, 0 | `mode~fan~setpoint` |
+| `lr-thermo1_target` · `_mode` · `_fan` | 8, 3 · 4 · 5 | One setting |
+| `lr-thermo1_target_set_<n>` · `_mode_set_<n>` · `_fan_set_<n>` | 3 · 4 · 5, n | The new value: setpoint 50–80 °F, mode 0 off · 1 heat · 2 cool, fan 0 auto · 1 on |
+| `lr-thermo1_color` · `_backlight` | 8, 7 · 6 | The display's text colour · its resting backlight level |
+| `lr-thermo1_color_set_<n>` · `_backlight_set_<n>` | 7 · 6, n | The new value: colour 0–14 (saved, list in the API reference), backlight 0–255 as it looks, not PWM duty (not saved, 180 after every start) |
+| `lr-thermo1_reset` | 12, 1 | `0~0~70` (off, fan auto, 70 °F; also white text) |
+| `lr-thermo1_log` · `_log_set_<n>` | 9, 0 · 9, n | Rolling log, all or newest n lines |
+| `lr-thermo1_status` | 10, 0 | Full status text, with every current error |
 
 **Bedroom (`brXmit`).** Codes go to the Bedroom Pi at 192.168.1.15 (`hwcom`). A status code answers three digits, one per device, where 9 means on; each command names the digit it reads (`brlamp1` 0, `brmacs` 1, `retropi` 2). Also `brtv`, the bed (`bed_adj_up` / `dwn` / `stop`, `bed_leds`, `bed_leds_rb` / `cy` / `sw` / `off` / `pause`, `bed_leds_set_<n>`, `bed_leds_hex_set_<hex>`) and `roomth` (temperature~humidity). `brpc` pings 192.168.1.17, `brpcon` sends wake-on-LAN and `brpcoff` asks the PC to sleep.
 
@@ -268,6 +299,7 @@ Each feature larger than a room button is a class in its own module, and anythin
 | `livingrm.js` · `bedrm.js` · `bathrm.js` | (functions) | One room each: config, grid template, listeners, menus and windows |
 | `server.js` | (functions) | Server log window, option panels, armed command and send, password prompt, Wi-Fi windows, upload button |
 | `pixels.js` | (functions) | Pixels window: per-host brightness sliders and links for the LED hosts in the `mainmenu` file |
+| `thermo.js` | (functions) | Temperature and thermostat window: thermometers, the thermostat's setpoint display, its mode and blower boxes with their Mode and Fan menus, and its Settings view of status, text colour, backlight and log (`openThermoWindow`, `closeThermoWindow`) |
 | `mainmenu.js` | `MainMenu` | Main menus, theme colour (live while picking, kept on close), light-theme switch, About window |
 | `roomstate.js` | `RoomStateManager` | Room status light, 10 s refresh, device dropdown |
 | `colorprompt.js` | `ColorPrompt` | Colour window: saturation / value map, hue slider, palette swatches with names, hex box; `openColorPrompt()` opens it for a device |
@@ -288,6 +320,7 @@ Each feature larger than a room button is a class in its own module, and anythin
 | --- | --- |
 | Timing | `refreshInterval()` 10 s, `timeoutInterval()` 50 s, `sleep`, `requestThrottle` (with `cancel()`), `trackPromise`, `singleFlight`, `awaitQuiet` |
 | API | `sendCmd(action, arg, var, options)` → parsed JSON, or null with the failure reported (`{ quiet: true }` logs it to the console only); `loadMenu(url)` |
+| Pico | `picoRequestQueue(target)` (one request at a time per Pico), `picoReplyError(reply, xmitPrefix, offlineText)` and its `PICO_REFUSED`, `PICO_NO_REPLY`, `PICO_CMD_ERROR` |
 | Files | `fileURL`, `readFile`, `writeFile` (retried after 250 and 750 ms on a dropped connection or 502–504), `savePOST`, `sendFileBeacon`, `reportFileFailure(what)` (reports why the last file request failed) |
 | Text | `splitMenuData`, `cleanString`, `splitByDelimiter`, `isNumeric`, `parsePalette`, `menuRow`, `indicator` |
 | DOM | `html` tag, `makeElement`, `svgElement`, `promptWindow`, `onButtons`, `setSpinner`, `classDisplay`, `setDisplayById` |
@@ -320,7 +353,7 @@ CSS is one sheet per component under `styles/`, and the order of the `<link>` ta
 1. `main.css`: fonts (JosefinSans), the palette, buttons, prompts, popups, spinners. Must load first. `error.css` (the message popup and its error forms) comes straight after it.
 2. `dropdowns.css`, then `livingrm.css`, `bedrm.css`, `bathrm.css`, then `server.css`: the dropdown menus and their rows, each room's own rules (subwoofer mode, bed window, bathroom settings), and the Server window (log size, options panels, password and Wi-Fi prompts). Cut out of `main.css` and kept directly after it, in this order, so they meet every later sheet as they did before.
 3. `groups.css`: the outlined Pixels, APT and room groups, and the landscape layout.
-4. `stars.css`, `roomstate.css`, `weather.css`, `switch.css`, `upload.css`, `camera.css`, `colorprompt.css`, `pixels.css`, `bookmarks.css`.
+4. `stars.css`, `roomstate.css`, `weather.css`, `switch.css`, `upload.css`, `camera.css`, `colorprompt.css`, `pixels.css`, `thermo.css` (after `groups.css`, whose `.btn-group` it resizes), `bookmarks.css`.
 5. `lists.css`: last, since it holds the drag-handle and search-row rules the bookmarks menu also uses.
 
 **Colour.** Everything derives from one `--main-color` set by the theme picker; `:root` mixes it with white, black and transparency into the rest of the palette (`--main-trans-35` for button faces, `--main-black-30` to `-50` for the walls). When the colour's BT.601 brightness passes 135 (`MainMenu.LIGHT_LUMA`), the page takes `.theme-light` and button text turns black.
@@ -336,7 +369,7 @@ The CSS rules to keep (`calc()`, `:hover`, translucency, the palette) are in `..
 Where new work goes (code style rules, including buttons, listeners and helpers, are in `../CODESTYLE.md`):
 
 - A room's template, listeners, menus and windows live in its own module and sheet; code two rooms share goes in `utils.js` (the volume controls in `volctrl.js`), and anything that draws or opens a menu in `dropdowns.js`. A new room exports its config and is added to `ROOM_CONFIGS` in `main.js`. A feature that stands on its own is a class in its own module with its own sheet.
-- Imports go downwards only (`main.js` → rooms and `server.js` → `dropdowns.js` → `volctrl.js` → `utils.js` → `error.js`); a lower module that needs something from the page takes it as a parameter or through `configureMenus()`.
+- Imports go downwards only (`main.js` → rooms, `server.js` and `thermo.js` → `dropdowns.js` → `volctrl.js` → `utils.js` → `error.js`); a lower module that needs something from the page takes it as a parameter or through `configureMenus()`.
 - Read and write state files through the site's file API, never a separate store.
 - Report failures through `error.js` (`reportError` around a request, `reportFileFailure` after a failed `readFile` / `writeFile`), never a hand-written popup; `showPopup` is for notices.
 - A new API command is a case in `executeMain()`, or an entry in a room's code table; a service with its own route registers it from its own module, as `upload.js` and `camstream.js` do. Query values must fit the API's character set, so free text goes as URL-safe base64.

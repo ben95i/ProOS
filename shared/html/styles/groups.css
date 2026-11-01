@@ -125,7 +125,7 @@
   user-select: none;
 }
 
-/* the * rule in main.css puts 24px on every element, the label's icon and
+/* the * rule in main.css sets the size on every element, the label's icon and
    its text span included, so both are set here. "> *", not " *": a
    selector ending in a bare * is tried against every element on the page
    with a walk up through all its ancestors; with ">" the walk is one step. */

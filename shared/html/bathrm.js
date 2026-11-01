@@ -6,8 +6,8 @@
 // closeBathroomSettings() when the page is taken down.
 
 import { registerListeners, gridButtonTemplate, dropdownButtonTemplate,
-  sendCmd, cleanString, isNumeric, menuRow, promptWindow,
-  onButtons } from './utils.js';
+  cleanString, isNumeric, menuRow, promptWindow, onButtons, picoReplyError,
+  picoRequestQueue, PICO_REFUSED, PICO_CMD_ERROR } from './utils.js';
 import { openDeviceMenu, inputMenuRows, removeDropdowns } from './dropdowns.js';
 import ToggleSwitch from './switch.js';
 
@@ -20,6 +20,8 @@ export const BATHROOM_CONFIG = {
   icon: 'fad fa-bath',
   voltarget: null,
   volmax: null,
+  // no sensor here, so the temperature window shows the living room's
+  climate: null,
   template: bathroomGridTemplate
 };
 
@@ -72,48 +74,20 @@ registerListeners({
 const BTHR_TARGET = 'bthrxmit';
 const BTHR_DEVICE = 'bthr-light1';
 
-// what bthrReplyError() answers for each kind of failure
+// what bthrReplyError() answers for a light that did not answer; the other
+// failures are picoReplyError()'s (utils.js)
 const BTHR_OFFLINE = 'Light offline';
-const BTHR_REFUSED = 'Value out of range';
-const BTHR_NO_REPLY = 'No reply from server';
-const BTHR_CMD_ERROR = 'Command error';
-
-// checked in this order: the first two are both "commonAPIRequest" replies
-const BTHR_OFFLINE_PREFIX = 'commonAPIRequest exception';
-const BTHR_REFUSED_PREFIX = 'commonAPIRequest: invalid response';
-const BTHR_ERROR_PREFIXES = ['bthrXmit:', 'commonAPIRequest', 'executeMain:'];
+const BTHR_XMIT_PREFIX = 'bthrXmit:';
 
 // '' for a reply that is not an error, or a short line saying what went wrong
 function bthrReplyError(reply) {
-  if (reply === null || reply === undefined) {
-    return BTHR_NO_REPLY; // sendCmd() could not reach the API at all
-  }
-  const text = String(reply);
-  if (text.startsWith(BTHR_OFFLINE_PREFIX)) {
-    return BTHR_OFFLINE;
-  }
-  if (text.startsWith(BTHR_REFUSED_PREFIX)) {
-    return BTHR_REFUSED;
-  }
-  for (const prefix of BTHR_ERROR_PREFIXES) {
-    if (text.startsWith(prefix)) {
-      return BTHR_CMD_ERROR;
-    }
-  }
-  return '';
+  return picoReplyError(reply, BTHR_XMIT_PREFIX, BTHR_OFFLINE);
 }
 
 // The light serves one request at a time, so the Settings window's requests
 // join one queue and reach it one after another rather than all at once.
-// sendCmd() never rejects (it answers null), so nothing breaks the chain.
-let bthrQueue = Promise.resolve();
-
-// Queues one command for the light and answers a promise of its reply.
-function bthrRequest(command) {
-  const running = bthrQueue.then(() => sendCmd('main', BTHR_TARGET, command));
-  bthrQueue = running.catch(() => null);
-  return running;
-}
+// bthrRequest(command) answers a promise of the reply.
+const bthrRequest = picoRequestQueue(BTHR_TARGET);
 
 // The light modes, in the shape inputMenuRows() takes: code is what
 // bthr-light1_mode answers with while that mode is the one in force.
@@ -721,14 +695,14 @@ async function bthrSaveSetting(settingsWindow, setting, value) {
     answer = cleanString(String(reply));
   }
   if (error === '' && isNumeric(answer) !== true) {
-    error = BTHR_CMD_ERROR;
+    error = PICO_CMD_ERROR;
   }
   const newest = sequence === settingsWindow.saveSeq[setting.key];
   if (error !== '') {
     if (newest) {
       bthrShowValue(settingsWindow, setting, settingsWindow.values[setting.key]);
     }
-    if (error === BTHR_REFUSED) {
+    if (error === PICO_REFUSED) {
       await bthrLoadConfig(settingsWindow);
       // the window was closed while the re-read was in the air: a message
       // now would start a timer on a window that is no longer there

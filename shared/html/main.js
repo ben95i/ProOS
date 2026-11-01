@@ -11,8 +11,7 @@
 // utils.js.
 
 import { classDisplay, cleanString, base64URLSafeEncode, sendCmd,
-  timeoutInterval, html, promptWindow, onButtons,
-  setSpinner, setDisplayById, menuRow, registerListeners,
+  timeoutInterval, setSpinner, setDisplayById, menuRow, registerListeners,
   dispatchRegisteredListener, gridButtonTemplate,
   dropdownButtonTemplate } from './utils.js';
 import { clearVolumePopupTimer } from './volctrl.js';
@@ -24,6 +23,8 @@ import { LIVING_ROOM_CONFIG } from './livingrm.js';
 import { BEDROOM_CONFIG } from './bedrm.js';
 import { BATHROOM_CONFIG, closeBathroomSettings } from './bathrm.js';
 import { openPixelsWindow, closePixelsWindow } from './pixels.js';
+import { openThermoWindow, refreshThermoWindow,
+  closeThermoWindow } from './thermo.js';
 import { serverOptionsTemplate, logFormTemplate, showLogWindow,
   closeLogWindow } from './server.js';
 import RoomStateManager from './roomstate.js';
@@ -54,6 +55,7 @@ window.App = {
   cameraView: null,
   colorPrompt: null,
   bathroomSettings: null,
+  thermoWindow: null,
   pixelsWindow: null,
   mainMenu: null,
   activeSwitches: [],
@@ -126,7 +128,7 @@ function buildPageHTML(model) {
     '<canvas id="star-canvas" data-app-injected></canvas>',
     topNavTemplate(select),
     navDropdownsTemplate(select),
-    '<p data-app-injected></p>',
+    '<p class="pg-top" data-app-injected></p>',
     mainGridTemplate(select),
     serverOptionsTemplate(select),
     textScrollTemplate(select),
@@ -253,10 +255,12 @@ function closePageMenus() {
   }
 }
 
-// a row of the room menu was picked: draw that room and read its devices
+// a row of the room menu was picked: draw that room, read its devices, and
+// read an open temperature window again for its climate
 function pickRoom(roomKey) {
   selectRoom(roomKey);
   refreshRoomState();
+  refreshThermoWindow();
 }
 
 // dropdowns.js sits below this module and cannot import from it, so what its
@@ -467,6 +471,17 @@ function temperatureButtonTemplate() {
   </button>`;
 }
 
+// The room whose temperature and humidity the temperature window shows: the
+// room on screen when it has a sensor of its own (its config's climate), or
+// else the living room.
+function climateRoomConfig() {
+  const roomConfig = ROOM_CONFIGS[App.currentRoom];
+  if (roomConfig && roomConfig.climate) {
+    return roomConfig;
+  }
+  return LIVING_ROOM_CONFIG;
+}
+
 // server-only APT group, between Pixels and the room group in the main grid
 function roomControlsTemplate() {
   return `
@@ -539,7 +554,7 @@ registerListeners({
   'btn-power-off':      () => sendCmd('main', 'alloff'),
   'btn-room-on':        () => sendCmd('main', `${App.currentRoom}on`),
   'btn-room-off':       () => sendCmd('main', `${App.currentRoom}off`),
-  'btn-show-temphumid': () => showTempHumidity(),
+  'btn-show-temphumid': () => openThermoWindow(climateRoomConfig),
   'btn-menu-lightmenu': () => openDropdown('lightmenu'),
   'btn-cmd-lightson':   () => sendCmd('main', 'lightson'),
   'btn-cmd-lightsoff':  () => sendCmd('main', 'lightsoff'),
@@ -750,107 +765,6 @@ function showBookmarks() {
   App.bookmarks.toggle();
 }
 
-/// Temperature & Humidity ///
-
-// thermometer limits
-const TEMP_MIN = 25;
-const TEMP_MAX = 100;
-const HUMIDITY_MIN = 5;
-const HUMIDITY_MAX = 100;
-
-// the temperature window's two buttons
-const TEMP_CLOSE_BUTTON_ID = 'temp__btn-close';
-const TEMP_REFRESH_BUTTON_ID = 'temp__btn-refresh';
-
-function showTempHumidity() {
-  const _winid = "temp__prompt";
-  if (document.getElementById(_winid)) return;
-  // banner text, thermometer grid, buttons row
-  const tempprompt = promptWindow(_winid, html`
-    <div id="temp_top_text">Temperature/Humidity</div>
-    <div id="temp_therm_grid">
-      <div class="thermometer">
-        <div class="temperature" id="thermo__1" data-value="--&#176;"></div>
-      </div>
-      <div class="thermometer">
-        <div class="temperature" id="thermo__2" data-value="--%"></div>
-      </div>
-    </div>
-    <div>
-      <button class="button temp__btn fad fa-times-octagon" type="button"
-        id="${TEMP_CLOSE_BUTTON_ID}"></button>
-      <button class="button temp__btn fad fa-sync" type="button"
-        id="${TEMP_REFRESH_BUTTON_ID}"></button>
-    </div>
-  `);
-  getTemperatureData();
-  onButtons(tempprompt, (button) => {
-    if (button.id === TEMP_CLOSE_BUTTON_ID) {
-      tempprompt.remove();
-    }
-    if (button.id === TEMP_REFRESH_BUTTON_ID) {
-      getTemperatureData();
-    }
-  });
-}
-
-// the API answers "72~41" -- temperature then humidity
-function getTemperatureData() {
-  sendCmd("main", "brxmit", "roomth")
-    .then((data) => {
-      const resp_arr = cleanString(data).split("~");
-      const temp_elm = document.getElementById("thermo__1");
-      const humd_elm = document.getElementById("thermo__2");
-      if (resp_arr.length == 2) {
-        pushTempDataToThermos(resp_arr, temp_elm, humd_elm);
-      } else {
-        pushTempErrorThermos(temp_elm, humd_elm);
-      }
-    })
-    .catch(() => {
-      pushTempErrorThermos(
-        document.getElementById("thermo__1"),
-        document.getElementById("thermo__2")
-      );
-    });
-}
-
-// how much of the tube one reading fills, as a percentage of its own range
-function thermometerFill(value, minValue, maxValue) {
-  let held = value;
-  if (held >= maxValue) { held = maxValue; }
-  if (held <= minValue) { held = minValue; }
-  const aboveFloor = held - minValue;
-  const fullRange = maxValue - minValue;
-  return (aboveFloor / fullRange) * 100;
-}
-
-function pushTempDataToThermos(resp_arr, temp_elm, humd_elm) {
-  if (!(temp_elm && humd_elm)) {
-    return;
-  }
-  if (resp_arr.length != 2) {
-    pushTempErrorThermos(temp_elm, humd_elm);
-    return;
-  }
-  const tvalue = resp_arr[0];
-  const hvalue = resp_arr[1];
-  temp_elm.dataset.value = `${tvalue}\u00B0F`;
-  temp_elm.style.height = `${thermometerFill(tvalue, TEMP_MIN, TEMP_MAX)}%`;
-  humd_elm.dataset.value = `${hvalue}%`;
-  humd_elm.style.height = `${thermometerFill(hvalue, HUMIDITY_MIN, HUMIDITY_MAX)}%`;
-}
-
-function pushTempErrorThermos(temp_elm, humd_elm) {
-  if (!(temp_elm && humd_elm)) {
-    return;
-  }
-  temp_elm.style.height = "0%";
-  temp_elm.dataset.value = "--";
-  humd_elm.style.height = "0%";
-  humd_elm.dataset.value = "--";
-}
-
 function showStatusMenu() {
   const _menu = 'statsmenu';
   const iconId = 'navstats-icon';
@@ -939,6 +853,7 @@ function destroyPageServices() {
     App.colorPrompt = null;
   }
   closeBathroomSettings();
+  closeThermoWindow();
   closePixelsWindow();
   if (App.bookmarks) {
     App.bookmarks.close();

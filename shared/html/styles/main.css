@@ -38,7 +38,7 @@
 
 * {
   font-family: 'JosefinSans', system-ui;
-  font-size: 24px;
+  font-size: 22px;
   box-sizing: border-box;
   -moz-box-sizing: border-box;
   -webkit-box-sizing: border-box;
@@ -59,6 +59,7 @@
   --green-ind: #30c93f;
   --orange-ind: #ff4900;
   --yellow-ind: #ffd000;
+  --cool-ind: #4ea6ff;
   --main-40-white: color-mix(in srgb, var(--main-color) 40%, #fff);
   --main-75-white: color-mix(in srgb, var(--main-color) 75%, #fff);
   --main-white-50: color-mix(in srgb, var(--main-color), #fff 50%);
@@ -97,8 +98,17 @@ body {
  *  Page Body Style
  */
 
+/* a <p>'s default margin is 1em, so these are set in px to keep the page's
+   spacing apart from the font size */
+.pg-top {
+  margin-top: 24px;
+  margin-bottom: 24px;
+}
+
 .pg-bottom {
-  padding-bottom: 100px; 
+  margin-top: 24px;
+  margin-bottom: 24px;
+  padding-bottom: 100px;
 }
 
 .dynamic-menus {
@@ -168,8 +178,8 @@ input.chkbox {
   margin-top: 8px;
   /* the button groups (groups.css) size their outlines round this, so it
      can be changed here alone */
-  width: 150px;
-  height: 105px;
+  width: 140px;
+  height: 100px;
   /* typography */
   user-select: none;
   -webkit-user-select: none;
@@ -255,6 +265,14 @@ input.chkbox {
  */
 
 .topnav {
+  /* The status light (roomstate.css) is drawn at --nav-status-size, and every
+     icon in the bar is the size of its dot: r=17 in a 50-unit viewBox
+     (roomstate.js), so 34/50 of the light. Change the size here alone. */
+  --nav-status-size: 38px;
+  --nav-icon-size: calc(var(--nav-status-size) * 34 / 50);
+  /* The space between two icons. 16px leaves the longest room name room
+     beside them at the 442px the button groups need. */
+  --nav-icon-gap: 20px;
   display: flex;             /* Transforms the container into a flexbox */
   align-items: center;       /* Vertically centers all the icons/links inside */
   margin: 5px;
@@ -268,12 +286,18 @@ input.chkbox {
 
 .topnav i { /* Tint nav icons */
   color: var(--main-40-white);
+  font-size: var(--nav-icon-size);
 }
 
 .topnav a {
+  /* centred by flex rather than a line-height, which would tie the icons'
+     height in the bar to the font size */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
   height: 60px;
-  padding: 0px 12px 0px 12px;
-  line-height: 2.5;
+  padding: 0px calc(var(--nav-icon-gap) / 2) 0px calc(var(--nav-icon-gap) / 2);
   text-align: center;
   text-decoration: none;
   color: #fff; /* nav font color */
@@ -343,8 +367,13 @@ input.chkbox {
   overflow: hidden;
 }
 
-#room_anchor i {  /* the icon keeps its size; only the name gives way */
+/* the icon keeps its size; only the name gives way. The room icons are not
+   all the same width, so they share a box (Font Awesome's fa-fw width) and
+   the name stays put between rooms. */
+#room_anchor i {
   flex: 0 0 auto;
+  width: 1.25em;
+  text-align: center;
 }
 
 /* long names clip to an ellipsis rather than overrunning the nav icons */
@@ -473,11 +502,9 @@ input.chkbox {
    to themselves they sit a few pixels apart down the menu; this is the same
    thing Font Awesome's own fa-fw does. The child combinator keeps it off
    anything the rows hold besides their icon -- the stars row's switch, above
-   all. The room selector's icon in the nav takes the same box, so it matches
-   the rows of the menu it opens. */
+   all. */
 #mainmenu a > i,
-#main-room-dropdown a > i,
-#current-room-icon {
+#main-room-dropdown a > i {
   flex-shrink: 0;
   width: 26px;
   font-size: 22px;
@@ -525,11 +552,6 @@ input.chkbox {
 html.theme-light .button:not(.red_btn_menu) {
   color: #000;
   text-shadow: 0 2px 2px rgba(0, 0, 0, 0.5);
-}
-
-/* the reading on the thermometer, in a theme-coloured bubble */
-html.theme-light .thermometer .temperature:before {
-  color: #000;
 }
 
 /*
@@ -657,90 +679,6 @@ html.theme-light .thermometer .temperature:before {
 }
 
 /*
- *  Temperature Prompt Style
- */
-
- #temp__prompt {
-  margin-left: -125px;
-  top: 20%;
-  left: 50%;
-  padding: 15px; 
-  color: #fff;
-}
-
-#temp_therm_grid {
-  display: inline-flex;
-  flex-wrap: wrap;
-  flex-direction: column;
-  align-content: space-around;
-  width: 210px;
-  height: 290px;
-  margin-top: 15px;
-}
-
-.temp__btn {
-  width: 100px;
-  height: 60px;
-}
-
-.thermometer {
-  width: 25px;
-  background: #0f0f0f;
-  height: 240px;
-  position: relative;
-  border: 9px solid var(--nav-menus-color);
-  border-radius: 20px;
-  z-index: 1;
-}
-
-.thermometer:after {
-  position: absolute;
-  content: "";
-  border-radius: 50%;
-  transform: translateX(-50%);
-  width: 45px;
-  height: 45px;
-  background-color: #659df1;
-  bottom: -40px;
-  border: 9px solid var(--nav-menus-color);
-  z-index: -3;
-  left: 50%;
-}
-
-.thermometer .temperature {
-  height: 0px;
-  bottom: 0px;
-  position: absolute;
-  background: linear-gradient(#e83535, #659df1) no-repeat bottom;
-  width: 100%;
-  border-radius: 20px;
-  background-size: 100% 240px;
-  transition: all 0.2s ease-in-out;
-}
-
-.thermometer .temperature:before {
-  min-width: 40px;
-  position: absolute;
-  z-index: 2;
-  padding: 5px 10px;
-  border-radius: 5px;
-  font-size: 1.25em;
-  line-height: 1;
-  transform: translate(-50%, 50%);
-  background: var(--main-color);
-  opacity: 85%;
-  color: #fff;
-}
-
-.thermometer #thermo__1:before {
-  content: attr(data-value);
-}
-
-.thermometer #thermo__2:before {
-  content: attr(data-value);
-}
-
-/*
  *  Animations
  */
 
@@ -753,11 +691,14 @@ html.theme-light .thermometer .temperature:before {
   left: 50%;
 }
 
+/* the size of the icon it stands in for, centred on the icon's anchor */
 .right-nav-spinner {
-  width: 30px;
-  height: 30px;
-  margin-left: -27px;
-  margin-top: 12px;
+  width: var(--nav-icon-size);
+  height: var(--nav-icon-size);
+  top: 50%;
+  left: 50%;
+  margin-left: calc(var(--nav-icon-size) / -2);
+  margin-top: calc(var(--nav-icon-size) / -2);
 }
 
 .btn-spinner, .right-nav-spinner, .roomstatus-spinner, .bookmark-spinner {

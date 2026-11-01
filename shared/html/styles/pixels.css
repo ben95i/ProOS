@@ -69,7 +69,7 @@
   margin-bottom: 8px;
 }
 
-/* the * rule in main.css puts 24px on every element, so each is set here */
+/* the * rule in main.css sets the size on every element, so each is set here */
 .pixels__label,
 .pixels__status {
   font-size: 18px;

@@ -1,3 +1,4 @@
+#define _GNU_SOURCE   /* sched_setaffinity, sched_getcpu */
 #include "espmock.h"
 #include <pthread.h>
 #include <time.h>
@@ -5,8 +6,9 @@
 #include <errno.h>
 #include <math.h>
 #include <sched.h>
+#include <unistd.h>
+#include <signal.h>
 
-double simSpeedup = 20.0;
 int    mockLogVerbose = 0;
 long   mockWarnCount = 0, mockErrCount = 0;
 long   mockScanModeChanges = 0;
@@ -20,23 +22,452 @@ static uint64_t realNowUs(void) {
     return (uint64_t)(t.tv_sec - simStart.tv_sec) * 1000000ull + (t.tv_nsec - simStart.tv_nsec) / 1000;
 }
 
-__attribute__((constructor)) static void simInit(void) { clock_gettime(CLOCK_MONOTONIC, &simStart); }
+/* ===================== virtual-time scheduler ===================== */
+/*
+ * Every simulated thread (the firmware's tasks, sim.c's hardware, phone, A2DP and
+ * talker threads, and main) is a pthread, but only the one holding the run token
+ * executes; the rest wait on their own condition variable. A thread gives the token
+ * up only when it blocks: a sleep, or a wait on an object (semaphore, notification,
+ * ring buffer, I2S queue). The token then goes to the next ready thread, in the order
+ * they became ready. When none is ready, virtual time jumps to the earliest deadline
+ * and every thread due then becomes ready, in creation order.
+ *
+ * So virtual time never depends on how fast the host runs, and code between two
+ * blocking calls takes no virtual time at all. A run is the same on any machine and
+ * under any load, and repeats exactly.
+ */
+#define SIM_MAX_THREADS    32
+#define SIM_NO_DEADLINE    UINT64_MAX
+#define SIM_WATCHDOG_REAL_SECONDS 20   /* real seconds without a switch: a thread is spinning */
+#define SIM_MUTEX_WAIT_LIMIT_US   10000000ull   /* the firmware holds its mutexes for ms, never 10 s */
+#define SIM_VIRTUAL_LIMIT_US      900000000ull  /* no scenario runs 15 simulated minutes */
 
-int64_t esp_timer_get_time(void) { return (int64_t)((double)realNowUs() * simSpeedup); }
+typedef enum { SIM_READY, SIM_RUNNING, SIM_SLEEPING, SIM_WAITING, SIM_DONE } SimThreadState;
 
-uint64_t simNowUs(void) { return (uint64_t)((double)realNowUs() * simSpeedup); }
+typedef struct SimThread {
+    int             index;          /* creation order, for deterministic wake order */
+    char            name[24];
+    SimThreadState  state;
+    uint64_t        wakeAtUs;       /* SIM_SLEEPING / SIM_WAITING: deadline, or SIM_NO_DEADLINE */
+    const void     *waitObject;     /* SIM_WAITING: simWakeObject(waitObject) readies it early */
+    const char     *waitLabel;      /* SIM_WAITING: what it waits for, for the state dump */
+    uint64_t        waitStartUs;    /* SIM_WAITING: when the wait began */
+    uint64_t        waitSequence;   /* SIM_WAITING: order the waits began, for hand-overs */
+    const void     *handOffObject;  /* a semaphore given straight to this thread (see xSemaphoreGive) */
+    pthread_t       thread;
+    pthread_cond_t  turn;           /* signalled when the thread is given the run token */
+    void         *(*entry)(void *);
+    void           *argument;
+    struct SimThread *nextReady;
+} SimThread;
+
+static pthread_mutex_t schedulerLock = PTHREAD_MUTEX_INITIALIZER;
+static SimThread *simThreads[SIM_MAX_THREADS];
+static int        simThreadCount = 0;
+static SimThread *runningThread = NULL;
+static SimThread *readyHead = NULL, *readyTail = NULL;
+static uint64_t   virtualNowUs = 0;
+static volatile unsigned long switchCount = 0;
+static __thread SimThread *selfThread = NULL;
+static volatile sig_atomic_t dumpRequested = 0;
+static uint64_t   nextWaitSequence = 0;
+void (*simDumpHook)(void) = NULL;
+
+/**
+ * @brief Puts a thread at the back of the ready queue. Caller holds schedulerLock.
+ */
+static void makeReadyLocked(SimThread *thread) {
+    thread->state = SIM_READY;
+    thread->wakeAtUs = SIM_NO_DEADLINE;
+    thread->waitObject = NULL;
+    thread->waitLabel = NULL;
+    thread->nextReady = NULL;
+    if (readyTail != NULL) {
+        readyTail->nextReady = thread;
+    } else {
+        readyHead = thread;
+    }
+    readyTail = thread;
+}
+
+/**
+ * @brief Takes the thread at the front of the ready queue, or NULL. Caller holds
+ *        schedulerLock.
+ */
+static SimThread *takeReadyLocked(void) {
+    SimThread *thread = readyHead;
+    if (thread != NULL) {
+        readyHead = thread->nextReady;
+        if (readyHead == NULL) {
+            readyTail = NULL;
+        }
+        thread->nextReady = NULL;
+    }
+    return thread;
+}
+
+static void checkForStuckThreadsLocked(void);
+static void dumpThreadsAndExit(const char *reason);
+
+/**
+ * @brief Moves virtual time to the earliest deadline and readies every thread due by
+ *        then, in creation order. Caller holds schedulerLock.
+ * * @return false when no thread has a deadline: every thread waits forever.
+ */
+static bool advanceTimeLocked(void) {
+    uint64_t earliestUs = SIM_NO_DEADLINE;
+    for (int index = 0; index < simThreadCount; index++) {
+        SimThread *thread = simThreads[index];
+        bool isBlocked = (thread->state == SIM_SLEEPING || thread->state == SIM_WAITING);
+        if (isBlocked && thread->wakeAtUs < earliestUs) {
+            earliestUs = thread->wakeAtUs;
+        }
+    }
+    if (earliestUs == SIM_NO_DEADLINE) {
+        return false;
+    }
+    if (earliestUs > virtualNowUs) {
+        virtualNowUs = earliestUs;
+        checkForStuckThreadsLocked();
+    }
+    for (int index = 0; index < simThreadCount; index++) {
+        SimThread *thread = simThreads[index];
+        bool isBlocked = (thread->state == SIM_SLEEPING || thread->state == SIM_WAITING);
+        if (isBlocked && thread->wakeAtUs <= virtualNowUs) {
+            makeReadyLocked(thread);
+        }
+    }
+    return true;
+}
+
+/**
+ * @brief Prints why the run stopped and every thread's state, then sim.c's list of the
+ *        firmware's handles (so an object address can be named), and exits.
+ *   sim: main has waited 10.0 s for a mutex, at 41.250 s virtual
+ *     main                 waiting  mutex 0x55d0c2a0 since 31.250 s, no deadline
+ *     sim hardware         sleeping until 41.250 s
+ *     txMutex 0x55d0c2a0 | rxMutex 0x55d0c2c0 | ...
+ * * Safe to call without schedulerLock only from the watchdog, when no thread is
+ *   switching (the figures are then read as they are).
+ */
+static void dumpThreadsAndExit(const char *reason) {
+    fprintf(stderr, "sim: %s, at %.3f s virtual\n", reason, virtualNowUs / 1e6);
+    for (int index = 0; index < simThreadCount; index++) {
+        SimThread *thread = simThreads[index];
+        char deadlineText[40];
+        if (thread->wakeAtUs == SIM_NO_DEADLINE) {
+            snprintf(deadlineText, sizeof(deadlineText), "no deadline");
+        } else {
+            snprintf(deadlineText, sizeof(deadlineText), "until %.3f s", thread->wakeAtUs / 1e6);
+        }
+        switch (thread->state) {
+        case SIM_RUNNING:  fprintf(stderr, "  %-20s running\n", thread->name); break;
+        case SIM_READY:    fprintf(stderr, "  %-20s ready\n", thread->name); break;
+        case SIM_SLEEPING: fprintf(stderr, "  %-20s sleeping %s\n", thread->name, deadlineText); break;
+        case SIM_WAITING:  fprintf(stderr, "  %-20s waiting  %s %p since %.3f s, %s\n", thread->name,
+                                   thread->waitLabel ? thread->waitLabel : "?", thread->waitObject,
+                                   thread->waitStartUs / 1e6, deadlineText); break;
+        case SIM_DONE:     fprintf(stderr, "  %-20s finished\n", thread->name); break;
+        }
+    }
+    if (simDumpHook != NULL) {
+        simDumpHook();
+    }
+    fflush(stdout);
+    fflush(stderr);
+    _exit(3);
+}
+
+/**
+ * @brief Stops a run that can no longer finish: a thread stuck on a mutex (time still
+ *        moves, because the other threads keep sleeping and waking), or a run far
+ *        longer than any scenario. Called after every time jump. Caller holds
+ *        schedulerLock.
+ */
+static void checkForStuckThreadsLocked(void) {
+    for (int index = 0; index < simThreadCount; index++) {
+        SimThread *thread = simThreads[index];
+        bool isWaitingOnMutex = (thread->state == SIM_WAITING && thread->waitLabel != NULL &&
+                                 strcmp(thread->waitLabel, "mutex") == 0);
+        if (!isWaitingOnMutex) {
+            continue;
+        }
+        uint64_t waitedUs = virtualNowUs - thread->waitStartUs;
+        if (waitedUs > SIM_MUTEX_WAIT_LIMIT_US) {
+            char reason[96];
+            snprintf(reason, sizeof(reason), "%s has waited %.1f s for a mutex", thread->name, waitedUs / 1e6);
+            dumpThreadsAndExit(reason);
+        }
+    }
+    if (virtualNowUs > SIM_VIRTUAL_LIMIT_US) {
+        dumpThreadsAndExit("the run passed 15 simulated minutes, longer than any scenario");
+    }
+}
+
+/**
+ * @brief Hands the run token to the next ready thread (advancing time if none is) and,
+ *        unless the caller has finished, waits until the token comes back to it.
+ * * The caller has already set its own state (ready, sleeping, waiting or done).
+ *   Caller holds schedulerLock; it still does on return.
+ */
+static void switchAwayLocked(SimThread *self) {
+    SimThread *next = takeReadyLocked();
+    while (next == NULL) {
+        bool hasDeadline = advanceTimeLocked();
+        if (!hasDeadline) {
+            dumpThreadsAndExit("deadlock: every thread waits with no deadline");
+        }
+        next = takeReadyLocked();
+    }
+    switchCount++;
+    next->state = SIM_RUNNING;
+    runningThread = next;
+    if (next == self) {
+        return;
+    }
+    pthread_cond_signal(&next->turn);
+    if (self->state == SIM_DONE) {
+        return;
+    }
+    while (runningThread != self) {
+        pthread_cond_wait(&self->turn, &schedulerLock);
+    }
+}
+
+/**
+ * @brief The calling thread's scheduler entry; aborts for a thread the scheduler never
+ *        created (it could not take part in virtual time).
+ */
+static SimThread *currentSimThread(void) {
+    SimThread *self = selfThread;
+    if (self == NULL) {
+        fprintf(stderr, "sim: a thread not created by simThreadCreate() called a blocking mock\n");
+        abort();
+    }
+    return self;
+}
+
+/**
+ * @brief Runs a scheduled thread: waits for its first turn, runs its entry, then gives
+ *        the token away for good.
+ */
+static void *simThreadTrampoline(void *parameter) {
+    SimThread *self = (SimThread *)parameter;
+    selfThread = self;
+    pthread_mutex_lock(&schedulerLock);
+    while (runningThread != self) {
+        pthread_cond_wait(&self->turn, &schedulerLock);
+    }
+    pthread_mutex_unlock(&schedulerLock);
+
+    self->entry(self->argument);
+
+    pthread_mutex_lock(&schedulerLock);
+    self->state = SIM_DONE;
+    switchAwayLocked(self);
+    pthread_mutex_unlock(&schedulerLock);
+    return NULL;
+}
+
+/**
+ * @brief Registers a thread record in creation order. Caller holds schedulerLock.
+ */
+static SimThread *registerThreadLocked(const char *name) {
+    if (simThreadCount >= SIM_MAX_THREADS) {
+        fprintf(stderr, "sim: more than %d threads\n", SIM_MAX_THREADS);
+        abort();
+    }
+    SimThread *thread = calloc(1, sizeof(*thread));
+    thread->index = simThreadCount;
+    snprintf(thread->name, sizeof(thread->name), "%s", name);
+    thread->wakeAtUs = SIM_NO_DEADLINE;
+    pthread_cond_init(&thread->turn, NULL);
+    simThreads[simThreadCount] = thread;
+    simThreadCount++;
+    return thread;
+}
+
+pthread_t simThreadCreate(void *(*entry)(void *), void *argument, const char *name) {
+    pthread_mutex_lock(&schedulerLock);
+    SimThread *thread = registerThreadLocked(name);
+    thread->entry = entry;
+    thread->argument = argument;
+    makeReadyLocked(thread);
+    /* Created under the lock, so its id is stored before it can be read. The new
+       thread only waits for its turn, so it never needs the lock to start. */
+    pthread_create(&thread->thread, NULL, simThreadTrampoline, thread);
+    pthread_t threadId = thread->thread;
+    pthread_mutex_unlock(&schedulerLock);
+    return threadId;
+}
+
+/**
+ * @brief Ctrl+C: asks the watchdog for the state dump (printing from a signal handler
+ *        is not safe).
+ */
+static void requestDumpOnSignal(int signalNumber) {
+    (void)signalNumber;
+    dumpRequested = 1;
+}
+
+/**
+ * @brief Dumps every thread's state and exits if no switch happened for
+ *        SIM_WATCHDOG_REAL_SECONDS (a loop that never blocks stops virtual time, so
+ *        nothing else could notice), or when Ctrl+C asks for it.
+ */
+static void *watchdogThread(void *parameter) {
+    (void)parameter;
+    unsigned long lastSwitchCount = switchCount;
+    int quietSeconds = 0;
+    while (true) {
+        sleep(1);
+        if (dumpRequested) {
+            dumpThreadsAndExit("stopped with Ctrl+C");
+        }
+        unsigned long switchCountNow = switchCount;
+        if (switchCountNow != lastSwitchCount) {
+            lastSwitchCount = switchCountNow;
+            quietSeconds = 0;
+            continue;
+        }
+        quietSeconds++;
+        if (quietSeconds >= SIM_WATCHDOG_REAL_SECONDS) {
+            SimThread *stuck = runningThread;
+            char reason[128];
+            snprintf(reason, sizeof(reason), "%s has run %d real seconds without blocking (a loop with no blocking call)",
+                     stuck ? stuck->name : "?", quietSeconds);
+            dumpThreadsAndExit(reason);
+        }
+    }
+    return NULL;
+}
+
+/* main() is the first scheduled thread, holding the run token from the start. The
+   process is pinned to one CPU first (every thread inherits it): only one simulated
+   thread runs at a time anyway, and a hand-over on the same core is far quicker than
+   waking a thread on another one. */
+__attribute__((constructor)) static void simInit(void) {
+    clock_gettime(CLOCK_MONOTONIC, &simStart);
+    int currentCpu = sched_getcpu();
+    if (currentCpu >= 0) {
+        cpu_set_t oneCpu;
+        CPU_ZERO(&oneCpu);
+        CPU_SET(currentCpu, &oneCpu);
+        sched_setaffinity(0, sizeof(oneCpu), &oneCpu);
+    }
+    pthread_mutex_lock(&schedulerLock);
+    SimThread *mainThread = registerThreadLocked("main");
+    mainThread->thread = pthread_self();
+    mainThread->state = SIM_RUNNING;
+    runningThread = mainThread;
+    selfThread = mainThread;
+    pthread_mutex_unlock(&schedulerLock);
+
+    signal(SIGINT, requestDumpOnSignal);
+    pthread_t watchdog;
+    pthread_create(&watchdog, NULL, watchdogThread, NULL);
+    pthread_detach(watchdog);
+}
+
+uint64_t simNowUs(void) { return __atomic_load_n(&virtualNowUs, __ATOMIC_RELAXED); }
+
+int64_t esp_timer_get_time(void) { return (int64_t)simNowUs(); }
 
 void simSleepUs(uint64_t us) {
-    /* nanosleep granularity is ~50 us, which at high speedups is a large fraction of a
-       simulated frame. Spin for short waits so the simulated timing stays faithful. */
-    /* Spinning here starves the other simulated tasks on a small core count, which
-       showed up as the firmware appearing to write only 10% of its downlink audio.
-       Sleep properly; keep the speedup low enough that nanosleep granularity is small
-       relative to a 7.5 ms SCO frame. */
-    double realUs = (double)us / simSpeedup;
-    if (realUs < 1.0) { sched_yield(); return; }
-    struct timespec t = { (time_t)(realUs / 1e6), (long)(fmod(realUs, 1e6) * 1000.0) };
-    nanosleep(&t, NULL);
+    pthread_mutex_lock(&schedulerLock);
+    SimThread *self = currentSimThread();
+    if (us == 0) {
+        makeReadyLocked(self);          /* a yield: run again after the threads already ready */
+    } else {
+        self->state = SIM_SLEEPING;
+        self->wakeAtUs = virtualNowUs + us;
+        self->waitObject = NULL;
+    }
+    switchAwayLocked(self);
+    pthread_mutex_unlock(&schedulerLock);
+}
+
+void simWaitObject(const void *object, uint64_t deadlineUs, const char *label) {
+    pthread_mutex_lock(&schedulerLock);
+    SimThread *self = currentSimThread();
+    bool isPastDeadline = (deadlineUs <= virtualNowUs);
+    if (!isPastDeadline) {
+        self->state = SIM_WAITING;
+        self->wakeAtUs = deadlineUs;
+        self->waitObject = object;
+        self->waitLabel = label;
+        self->waitStartUs = virtualNowUs;
+        self->waitSequence = nextWaitSequence;
+        nextWaitSequence++;
+        switchAwayLocked(self);
+    }
+    pthread_mutex_unlock(&schedulerLock);
+}
+
+bool simCpuCostEnabled = true;
+
+/**
+ * @brief Charges `us` virtual microseconds of work to the calling thread (see
+ *        espmock.h). Does nothing for 0 or with the cost model off, so it never adds
+ *        a switch that a run without it would not have.
+ *   simSpendCpuUs(4300);   // one mic frame's echo cancelling at 16 kHz
+ */
+void simSpendCpuUs(uint64_t us) {
+    bool isCharged = (simCpuCostEnabled && us > 0);
+    if (!isCharged) {
+        return;
+    }
+    simSleepUs(us);
+}
+
+void simWakeObject(const void *object) {
+    pthread_mutex_lock(&schedulerLock);
+    for (int index = 0; index < simThreadCount; index++) {
+        SimThread *thread = simThreads[index];
+        bool isWaitingOnObject = (thread->state == SIM_WAITING && thread->waitObject == object);
+        if (isWaitingOnObject) {
+            makeReadyLocked(thread);
+        }
+    }
+    pthread_mutex_unlock(&schedulerLock);
+}
+
+/**
+ * @brief Readies only the thread that has waited longest on object and returns it, or
+ *        NULL if none waits.
+ */
+static SimThread *wakeLongestWaiter(const void *object) {
+    pthread_mutex_lock(&schedulerLock);
+    SimThread *longestWaiter = NULL;
+    for (int index = 0; index < simThreadCount; index++) {
+        SimThread *thread = simThreads[index];
+        bool isWaitingOnObject = (thread->state == SIM_WAITING && thread->waitObject == object);
+        if (!isWaitingOnObject) {
+            continue;
+        }
+        bool hasWaitedLonger = (longestWaiter == NULL || thread->waitSequence < longestWaiter->waitSequence);
+        if (hasWaitedLonger) {
+            longestWaiter = thread;
+        }
+    }
+    if (longestWaiter != NULL) {
+        makeReadyLocked(longestWaiter);
+    }
+    pthread_mutex_unlock(&schedulerLock);
+    return longestWaiter;
+}
+
+/**
+ * @brief The virtual deadline for a FreeRTOS wait of `ticks` (1 tick = 1 ms here);
+ *        portMAX_DELAY waits forever.
+ */
+static uint64_t deadlineAfterTicks(TickType_t ticks) {
+    if (ticks == portMAX_DELAY) {
+        return SIM_NO_DEADLINE;
+    }
+    uint64_t waitUs = (uint64_t)ticks * 1000ull;
+    uint64_t deadlineUs = simNowUs() + waitUs;
+    return deadlineUs;
 }
 
 #define MSG_SLOTS 32
@@ -76,9 +507,7 @@ struct MockTask {
     pthread_t thread;
     TaskFunction_t fn;
     void *arg;
-    pthread_mutex_t m;
-    pthread_cond_t cv;
-    volatile uint32_t notifyValue;
+    uint32_t notifyValue;
     char name[24];
     uint32_t stackBytes;
     int core;
@@ -87,12 +516,10 @@ struct MockTask {
 #define MAX_TASKS 16
 static struct MockTask *taskList[MAX_TASKS];
 static int taskCount = 0;
-static pthread_mutex_t taskListMutex = PTHREAD_MUTEX_INITIALIZER;
 volatile int mockShutdown = 0;
 
 /* The task running on this thread. Set by the thread itself, so it is valid from the
-   task's first instruction; looking the thread up by pthread_t instead could miss
-   while pthread_create() has not yet stored the id, losing the first notification. */
+   task's first instruction. */
 static __thread struct MockTask *threadTask = NULL;
 
 static void *taskTrampoline(void *p) {
@@ -106,35 +533,27 @@ static struct MockTask *currentTask(void) { return threadTask; }
 
 BaseType_t xTaskCreatePinnedToCore(TaskFunction_t fn, const char *name, uint32_t stack,
                                    void *arg, uint32_t prio, TaskHandle_t *out, int core) {
-    (void)prio;
+    (void)prio;   /* the scheduler runs ready threads in order, not by priority */
+    if (taskCount >= MAX_TASKS) {
+        fprintf(stderr, "mock: more than %d tasks\n", MAX_TASKS);
+        return pdFALSE;
+    }
     struct MockTask *t = calloc(1, sizeof(*t));
     if (!t) return pdFALSE;
     t->fn = fn; t->arg = arg;
     t->stackBytes = stack; t->core = core;
     snprintf(t->name, sizeof(t->name), "%s", name);
-    pthread_mutex_init(&t->m, NULL);
-    pthread_cond_init(&t->cv, NULL);
-    pthread_mutex_lock(&taskListMutex);
-    if (taskCount >= MAX_TASKS) {
-        pthread_mutex_unlock(&taskListMutex);
-        fprintf(stderr, "mock: more than %d tasks\n", MAX_TASKS);
-        free(t);
-        return pdFALSE;
-    }
     if (out) *out = t;
-    /* Listed only once the thread exists, so uxTaskGetSystemState never reads an
-       unset thread id. The new thread does not take taskListMutex. */
-    pthread_create(&t->thread, NULL, taskTrampoline, t);
     taskList[taskCount++] = t;
-    pthread_mutex_unlock(&taskListMutex);
+    /* Ready, not running: it first runs when this thread next blocks. */
+    t->thread = simThreadCreate(taskTrampoline, t, name);
     return pdPASS;
 }
 
 UBaseType_t uxTaskGetSystemState(TaskStatus_t *statusArray, UBaseType_t arraySize,
                                  configRUN_TIME_COUNTER_TYPE *totalRunTime) {
-    pthread_mutex_lock(&taskListMutex);
     UBaseType_t count = (UBaseType_t)taskCount;
-    if (count > arraySize) { pthread_mutex_unlock(&taskListMutex); return 0; }
+    if (count > arraySize) return 0;
     for (UBaseType_t i = 0; i < count; i++) {
         struct MockTask *t = taskList[i];
         clockid_t threadClock;
@@ -145,7 +564,6 @@ UBaseType_t uxTaskGetSystemState(TaskStatus_t *statusArray, UBaseType_t arraySiz
         statusArray[i].usStackHighWaterMark = t->stackBytes;
         statusArray[i].ulRunTimeCounter = (uint32_t)((uint64_t)cpuTime.tv_sec * 1000000ull + (uint64_t)cpuTime.tv_nsec / 1000);
     }
-    pthread_mutex_unlock(&taskListMutex);
     if (totalRunTime) *totalRunTime = (uint32_t)realNowUs();
     return count;
 }
@@ -159,61 +577,69 @@ void vTaskDelay(TickType_t ticks) { simSleepUs((uint64_t)ticks * 1000ull); }
 uint32_t ulTaskNotifyTake(BaseType_t clearOnExit, TickType_t wait) {
     struct MockTask *t = currentTask();
     if (!t) { simSleepUs(1000); return 0; }
-    pthread_mutex_lock(&t->m);
-    while (t->notifyValue == 0 && !mockShutdown) {
-        struct timespec ts;
-        clock_gettime(CLOCK_REALTIME, &ts);
-        ts.tv_nsec += 5000000; if (ts.tv_nsec >= 1000000000) { ts.tv_sec++; ts.tv_nsec -= 1000000000; }
-        pthread_cond_timedwait(&t->cv, &t->m, &ts);
-        if (wait != portMAX_DELAY) break;
+    uint64_t deadline = deadlineAfterTicks(wait);
+    while (t->notifyValue == 0) {
+        if (simNowUs() >= deadline) break;
+        simWaitObject(t, deadline, "notification");
     }
     uint32_t v = t->notifyValue;
     t->notifyValue = clearOnExit ? 0 : (v ? v - 1 : 0);
-    pthread_mutex_unlock(&t->m);
     return v;
 }
 
 void xTaskNotifyGive(TaskHandle_t t) {
     if (!t) return;
-    pthread_mutex_lock(&t->m);
     t->notifyValue++;
-    pthread_cond_broadcast(&t->cv);
-    pthread_mutex_unlock(&t->m);
+    simWakeObject(t);
 }
 
-struct MockSem { pthread_mutex_t m; pthread_cond_t cv; int count; int isMutex; };
+/* Only one simulated thread runs at a time and it switches only inside a blocking
+   mock, so the counts below need no host lock.
+
+   A give with a thread waiting hands the semaphore straight to the longest waiter
+   instead of raising the count. Without that, a task that gives a mutex and takes it
+   again before its next block (microphoneTask does, once per frame) would keep it
+   forever: the woken waiter only runs once the giver blocks, and by then the count is
+   back to 0. On the ESP32 the waiter gets it at once, from the other core or by
+   preempting. */
+struct MockSem { int count; int isMutex; };
 
 SemaphoreHandle_t xSemaphoreCreateMutex(void) {
     struct MockSem *s = calloc(1, sizeof(*s));
-    pthread_mutex_init(&s->m, NULL); pthread_cond_init(&s->cv, NULL);
     s->count = 1; s->isMutex = 1; return s;
 }
 SemaphoreHandle_t xSemaphoreCreateBinary(void) {
     struct MockSem *s = calloc(1, sizeof(*s));
-    pthread_mutex_init(&s->m, NULL); pthread_cond_init(&s->cv, NULL);
     s->count = 0; return s;
 }
 BaseType_t xSemaphoreTake(SemaphoreHandle_t s, TickType_t wait) {
     if (!s) return pdFALSE;
-    pthread_mutex_lock(&s->m);
-    uint64_t deadline = simNowUs() + (wait == portMAX_DELAY ? 0 : (uint64_t)wait * 1000ull);
-    while (s->count == 0) {
-        if (mockShutdown) { pthread_mutex_unlock(&s->m); return pdFALSE; }
-        if (wait != portMAX_DELAY && simNowUs() >= deadline) { pthread_mutex_unlock(&s->m); return pdFALSE; }
-        struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts);
-        ts.tv_nsec += 2000000; if (ts.tv_nsec >= 1000000000) { ts.tv_sec++; ts.tv_nsec -= 1000000000; }
-        pthread_cond_timedwait(&s->cv, &s->m, &ts);
+    SimThread *self = currentSimThread();
+    uint64_t deadline = deadlineAfterTicks(wait);
+    for (;;) {
+        bool wasHandedOver = (self->handOffObject == s);   /* checked first, so it is never left set */
+        if (wasHandedOver) {
+            self->handOffObject = NULL;
+            return pdTRUE;
+        }
+        if (s->count > 0) {
+            s->count--;
+            return pdTRUE;
+        }
+        if (simNowUs() >= deadline) return pdFALSE;
+        simWaitObject(s, deadline, s->isMutex ? "mutex" : "semaphore");
     }
-    s->count--;
-    pthread_mutex_unlock(&s->m);
-    return pdTRUE;
 }
 BaseType_t xSemaphoreGive(SemaphoreHandle_t s) {
     if (!s) return pdFALSE;
-    pthread_mutex_lock(&s->m);
-    if (!s->isMutex || s->count == 0) s->count++;
-    pthread_cond_signal(&s->cv);
-    pthread_mutex_unlock(&s->m);
+    bool isAvailableToGive = (!s->isMutex || s->count == 0);
+    if (!isAvailableToGive) return pdTRUE;
+    SimThread *waiter = wakeLongestWaiter(s);
+    if (waiter != NULL) {
+        waiter->handOffObject = s;   /* its xSemaphoreTake() returns pdTRUE; the count stays 0 */
+    } else {
+        s->count++;
+    }
     return pdTRUE;
 }
 
@@ -277,10 +703,11 @@ BaseType_t xRingbufferSend(RingbufHandle_t r, const void *d, size_t n, TickType_
     for (size_t i = 0; i < n; i++) { r->buf[r->head] = ((const uint8_t *)d)[i]; r->head = (r->head + 1) % r->cap; }
     r->used += n;
     pthread_mutex_unlock(&r->m);
+    simWakeObject(r);
     return pdTRUE;
 }
 void *xRingbufferReceive(RingbufHandle_t r, size_t *outSize, TickType_t w) {
-    uint64_t deadline = simNowUs() + (uint64_t)w * 1000ull;
+    uint64_t deadline = deadlineAfterTicks(w);
     for (;;) {
         pthread_mutex_lock(&r->m);
         if (r->used > 0) {
@@ -292,8 +719,8 @@ void *xRingbufferReceive(RingbufHandle_t r, size_t *outSize, TickType_t w) {
             return r->scratch;
         }
         pthread_mutex_unlock(&r->m);
-        if (mockShutdown || simNowUs() >= deadline) { *outSize = 0; return NULL; }
-        simSleepUs(500);
+        if (simNowUs() >= deadline) { *outSize = 0; return NULL; }
+        simWaitObject(r, deadline, "ring buffer");
     }
 }
 void vRingbufferReturnItem(RingbufHandle_t r, void *item) { (void)r; (void)item; }
@@ -391,6 +818,7 @@ esp_err_t i2s_channel_disable(i2s_chan_handle_t c) {
     if (!c->enabled) { pthread_mutex_unlock(&c->m); mockLog('E', "i2s", "disable on a channel that has not been enabled"); return ESP_ERR_INVALID_STATE; }
     c->enabled = false;
     pthread_mutex_unlock(&c->m);
+    simWakeObject(c);
     return ESP_OK;
 }
 
@@ -402,6 +830,7 @@ esp_err_t i2s_del_channel(i2s_chan_handle_t c) {
     for (uint32_t i = 0; i < c->descNum; i++) { free(c->desc[i]); c->desc[i] = NULL; }
     free(c->staging); c->staging = NULL;
     pthread_mutex_unlock(&c->m);
+    simWakeObject(c);
     mockI2sLiveChannels--;
     if (mockTxChan == c) mockTxChan = NULL;
     if (mockRxChan == c) mockRxChan = NULL;
@@ -438,7 +867,7 @@ esp_err_t i2s_channel_write(i2s_chan_handle_t c, const void *src, size_t n, size
     if (!c->enabled) { mockWrDisabled++; return ESP_ERR_INVALID_ARG; }
     const uint8_t *p = (const uint8_t *)src;
     size_t done = 0;
-    uint64_t deadline = simNowUs() + (uint64_t)wait * 1000ull;
+    uint64_t deadline = deadlineAfterTicks(wait);
 
     while (done < n) {
         pthread_mutex_lock(&c->m);
@@ -459,8 +888,8 @@ esp_err_t i2s_channel_write(i2s_chan_handle_t c, const void *src, size_t n, size
                 /* every descriptor in flight: block until the hardware frees one */
                 c->stagingFill -= take; done -= take;
                 pthread_mutex_unlock(&c->m);
-                if (simNowUs() >= deadline || mockShutdown) break;
-                simSleepUs(200);
+                if (simNowUs() >= deadline) break;
+                simWaitObject(c, deadline, "i2s write");   /* until the hardware frees one */
                 continue;
             }
         }
@@ -472,10 +901,16 @@ esp_err_t i2s_channel_write(i2s_chan_handle_t c, const void *src, size_t n, size
     return ESP_OK;
 }
 
+#define MOCK_FAILED_READ_US 100
 esp_err_t i2s_channel_read(i2s_chan_handle_t c, void *dst, size_t n, size_t *readOut, TickType_t wait) {
     if (readOut) *readOut = 0;
-    if (!c || !c->alive || !c->enabled) return ESP_ERR_INVALID_ARG;
-    uint64_t deadline = simNowUs() + (uint64_t)wait * 1000ull;
+    if (!c || !c->alive || !c->enabled) {
+        /* Returns at once, as the driver does. Costs a little virtual time, so a task
+           retrying it in a loop still lets the rest of the simulation run. */
+        simSleepUs(MOCK_FAILED_READ_US);
+        return ESP_ERR_INVALID_ARG;
+    }
+    uint64_t deadline = deadlineAfterTicks(wait);
     for (;;) {
         pthread_mutex_lock(&c->m);
         if (c->readyCount > 0) {
@@ -489,9 +924,8 @@ esp_err_t i2s_channel_read(i2s_chan_handle_t c, void *dst, size_t n, size_t *rea
             return ESP_OK;
         }
         pthread_mutex_unlock(&c->m);
-        if (mockShutdown) return ESP_ERR_TIMEOUT;
         if (simNowUs() >= deadline) return ESP_ERR_TIMEOUT;
-        simSleepUs(200);
+        simWaitObject(c, deadline, "i2s read");   /* until the hardware adds a descriptor */
     }
 }
 
@@ -526,6 +960,7 @@ int mockI2sTxPop(i2s_chan_handle_t c, uint8_t *out) {
     c->readyCount--;
     int nb = c->descBytes;
     pthread_mutex_unlock(&c->m);
+    simWakeObject(c);   /* a descriptor is free for a blocked write */
     if (onSent) {
         i2s_event_data_t event = { out, (size_t)nb };
         onSent(c, &event, context);
@@ -546,9 +981,16 @@ int mockI2sRxPush(i2s_chan_handle_t c, const uint8_t *in) {
     c->descLen[slot] = c->descBytes;
     c->readyCount++;
     int nb = c->descBytes;
+    i2s_isr_callback_t onReceive = c->callbacks.on_recv;
     i2s_isr_callback_t onOverflow = c->callbacks.on_recv_q_ovf;
     void *context = c->callbackContext;
+    void *filledDescriptor = c->desc[slot];
     pthread_mutex_unlock(&c->m);
+    simWakeObject(c);   /* a descriptor is ready for a blocked read */
+    if (onReceive) {    /* the driver reports every filled descriptor */
+        i2s_event_data_t event = { filledDescriptor, (size_t)nb };
+        onReceive(c, &event, context);
+    }
     if (isOverflow && onOverflow) {
         i2s_event_data_t event = { NULL, 0 };
         onOverflow(c, &event, context);
@@ -618,4 +1060,8 @@ esp_err_t esp_hf_client_init(void) { return ESP_OK; }
 esp_err_t esp_hf_client_reject_call(void) { return ESP_OK; }
 esp_err_t esp_hf_client_start_voice_recognition(void) { return ESP_OK; }
 esp_err_t esp_hf_client_stop_voice_recognition(void) { return ESP_OK; }
-esp_err_t esp_hf_client_outgoing_data_ready(void) { __sync_fetch_and_add(&mockOutgoingReadyPending, 1); return ESP_OK; }
+esp_err_t esp_hf_client_outgoing_data_ready(void) {
+    __sync_fetch_and_add(&mockOutgoingReadyPending, 1);
+    simWakeObject((const void *)&mockOutgoingReadyPending);   /* the phone thread, as Bluedroid's task */
+    return ESP_OK;
+}

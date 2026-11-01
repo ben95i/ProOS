@@ -178,7 +178,8 @@ export default class RoomStateManager {
   }
 
   // The rows of the status dropdown, built from the reading currently held:
-  // roomstatus|grnind|Desk Lamp
+  // roomstatus|grnind|Desk Lamp. A device that carries its own indicator (the
+  // thermostat: { name: 'Fan On', indicator: 'ylwind' }) is drawn with it.
   statusMenuData() {
     if (this.roomState === null) {
       return menuRow(STATUS_MENU, 'noind', 'Error checking devices.');
@@ -186,7 +187,9 @@ export default class RoomStateManager {
     let menuData = '';
     for (const device of this.devices) {
       let ind = 'redind';
-      if (device.status === false) {
+      if (device.indicator) {
+        ind = device.indicator;
+      } else if (device.status === false) {
         ind = 'blkind';
       } else if (device.status === true) {
         ind = 'grnind';

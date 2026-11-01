@@ -1,6 +1,6 @@
 # Plan: replace the voice-switched gate with SpeexDSP echo cancellation
 
-Status (2026-10-19): steps 2 and 4 are in the code (reference tap, SpeexDSP in the mic task, `ECHO_MODE` switch, `DIAG aec` line), waiting for simulator and board results; memory comes from the heap for now (the A2DP-buffer arena is deferred until the heap readings show it is needed). Earlier: steps 0 and 0b measured on the board. Sizing settled: fixed-point SpeexDSP, 120 ms tail, memory from the A2DP buffer plus ~20 KB of heap. Step 1 done in code (SpeexDSP vendored, built, not called; host check `make -C sim speexcheck`); next, its build on the board and the check's figures, then step 2. Target board: Wemos LOLIN32 (ESP32-D0WDQ6, 2 × 240 MHz, 520 KB SRAM, no PSRAM, 4 MB flash).
+Status (2026-10-22): steps 2 and 4 are in the code and work in the car (first real-world test below): the far end hears no echo, and every other feature works. Memory comes from the heap for now. Open: the half-filled reference (cause found, see "Second car test"), the tight heap, a CVSD call, then step 7. Target board: Wemos LOLIN32 (ESP32-D0WDQ6, 2 × 240 MHz, 520 KB SRAM, no PSRAM, 4 MB flash).
 
 ## Goal
 
@@ -138,6 +138,75 @@ N is twice the frame (240 at 16 kHz), M the number of filter blocks; sizes from 
 
 `speex_alloc` keeps a live-allocation counter, so a leak shows in the log and in the simulator.
 
+**Simulator on the virtual clock (2026-10-22).** The simulator no longer runs on real sleeps (see CLAUDE.md), so these figures don't depend on the PC and repeat exactly; they replace the earlier simulator tables as the baseline. Scenarios 1 and 2 now really run at ±60 ppm (the phone interval was being rounded to whole microseconds before).
+
+| Scenario | Suppression | Worst uplink gap | Notes |
+| --- | --- | --- | --- |
+| 1: 180 s call, +60 ppm | 19.7 dB | 7 ms | 0 empty fetches, one 200 ms silent window |
+| 2: 180 s call, −60 ppm | 19.8 dB | 14 ms | as 1 |
+| 3: short calls between music | 11.0 dB | 7 ms | 40 re-buffer warnings, as before (music restarting) |
+| 4: codec swap every 4 s | 7.9 dB | 7 ms | no silent windows |
+| 5: abrupt SCO loss | 3.6 dB | 7 ms | 76% uplink, as designed (the link is gone 0.7 s of each 3.2 s) |
+| 9: DAC accounting | — | — | 100.0% of the DAC's bytes written, 0 partial writes |
+| 10: far end only, 60 s | 17.6 dB | 7 ms | |
+
+## First calls in the car (2026-10-21)
+
+Six mSBC calls (Siri, four short calls of 1–7 s, one 3 min call), with music, touch pads, mic mute and a hang-up from a pad. The far end heard no echo, and nothing crashed.
+
+| Reading | Value | Verdict |
+| --- | --- | --- |
+| `--- AEC on` | every call: 16 kHz, 120 ms tail, 57 KB, heap left 30 KB | as planned |
+| Mic frame time | average 4.3 ms, worst 5.7 ms of 7.5 ms (76%) | fits; the canceller costs ~4.2 ms a frame, 10× the estimate in "CPU plan" |
+| Core 1 | `microphoneTask` 58%, idle 39–41%; core 0 58% idle | fits, but no room for a longer tail |
+| Heap in a call | 30 KB free, 29 KB largest, 25 KB lowest | stable over 3 min, but tight: the A2DP-buffer arena would give back ~40 KB |
+| ERLE, canceller alone | 5–15 dB per second of far speech, up to 18 dB; residual suppression does the rest | lower than the simulator; real double talk and the car's echo path |
+| Mic overflow, resync | 0 (6 overflows once, at the start of a 1 s call) | good |
+| Ref short | 0 on four calls; 3060 in the first second of the 1 s call; **8160–8220 every second on the 7 s call at 46 s** | see below |
+| SpeexDSP allocations | 61 live in a call | the "about 20" in `logEchoCanceller()`'s comment is wrong; freeing at call end not seen (the log stops while the last call ends) |
+| Speaker underruns | 130–194 in the first second of three calls, 0–1 afterwards | the start of a call, before the phone's audio arrives |
+| Uplink fetches | 274 a second, 137 of them empty, skipped 0 | the frame now takes 4.3 ms, so Bluedroid's own fetch arrives before the frame is ready, and the poke's fetch then takes it: all 137 frames still go out. Was 133 / 0 before the canceller |
+| `invalid air mode` at call end | 1–2 lines instead of 100+ | back-off works |
+| Stacks | `touchPanelTask` **320 B** free of 2048; `microphoneTask` 3468, `BTC_TASK` 1300, `audioOutputTask` 1316 | `touchPanelTask` needs more |
+
+**The half-filled reference.** On the 7 s call at 46 s, every mic frame of 120 samples found only 60 reference samples, for the whole call: the speaker's `on_sent` interrupt delivered one 60-frame descriptor per mic frame instead of two. Either the DAC ran at 8 kHz during that call (descriptors finish every 7.5 ms instead of 3.75 ms) or the interrupt was serviced only every other descriptor. The canceller then compares the mic against a reference with gaps, and its ERLE there was 5–8 dB. It did not repeat on the next call. To tell the two causes apart, the `DIAG aec` line now shows `ref in` (reference samples received each second) and `dac refused` (call samples the DAC queue had no room for). If it happens again: `ref in` ~8000 with `dac refused` ~8000 means the DAC ran at 8 kHz; `ref in` ~8000 with `dac refused` 0 means missed interrupts. `touchPanelTask` went to 3072 B.
+
+## Second car test, with `ref in` and `dac refused` (2026-10-22)
+
+Two long mSBC calls (85 s and 72 s), a 2 s call, Siri, and every touch pad. The caller heard less echo on the second long call.
+
+| Reading | Call 1 (60–145 s) | Call 2 (146–218 s) |
+| --- | --- | --- |
+| `ref in` a second | 16260–17040 (full rate) | 16320–17160 (full rate) |
+| `ref short` a second | **8100–8520, the whole call** | 0 |
+| `dac refused`, mic overflow, resync | 0 | 0 |
+| ERLE, canceller alone | mean 5.7 dB, never 15 dB | mean 6.8 dB, 15 dB or more in 7 s |
+
+**Cause of the half-filled reference.** `ref in` is full rate and `dac refused` is 0, so the speaker and its interrupt are fine; both earlier explanations are ruled out. The reader is ahead of the writer: every 120-sample mic frame finds 60 reference samples and gets 60 zeros, and that state holds itself for the whole call. At call start (and on a codec change) `microphoneTask` drains the mic queue, then creates the canceller, then aligns the reference. Creating the canceller (57 KB allocated and initialised) takes long enough for mic frames to queue again; they were captured before the alignment but are processed after it, back to back, so the reader runs ahead of the speaker. Whether one frame or none queued depends on timing, which is why some calls have it and some don't. Fix (in the code, 2026-10-22, not yet tested on the board): `startEchoCanceller()` creates, then drains, then aligns, and `takeEchoReference()` re-aligns whenever a frame comes up short, so no other cause can keep a call misaligned either.
+
+Other readings: frame time 4.4 ms average, 5.7 ms worst of 7.5 ms; core 1 38–39% idle; heap in a call 29 KB free, 24 KB lowest (during Siri); `touchPanelTask` 2664 B free of 3072 (read before the pads were pressed; no reading after); 646 mic samples clipped in call 2 (0.06%); `invalid air mode` at call end 1–2 lines, or 9 when the next call or Siri ended the link (the back-off lets 8 unanswered pokes through first).
+
+## Third car test, after the alignment fix (2026-10-22)
+
+Two mSBC calls: 29 s (the first 8 s ringing, so ringback tone, not speech) and 94 s. The caller again heard more echo on the first call.
+
+The alignment fix works. Both calls had `ref short`, `resync`, `dac refused` and mic overflow at 0 every second, and `ref in` at full rate.
+
+The difference between the calls is convergence, not alignment. In both calls the canceller needed about 10 s of the far end talking before its ERLE passed 15 dB. Before that it read 3–7 dB.
+
+| | Call 1 | Call 2 |
+| --- | --- | --- |
+| Seconds of far speech | 16 | 38 |
+| ERLE, first 10 s of far speech | 3–7 dB | 3–7 dB (one 12) |
+| ERLE afterwards | 11–23 dB | 12–21 dB, with dips |
+| Seconds at 15 dB or more | 6 | 14 |
+
+Most of a short first call falls inside that learning time; a longer call spends most of its time converged. Every call learns from zero, because the states are destroyed at call end.
+
+Options:
+- **Chosen, in the code 2026-10-22, not yet tested on the board:** keep what was learned between calls, with the reference alignment made the same every call (timestamped DMA interrupts) so the saved filter fits. The canceller's filter is `W` (15 KB) plus `foreground` (7.5 KB) at 16 kHz, 120 ms tail. A 22.5 KB copy kept between calls would start every call after the first one already converged. It needs a small save and restore added to the vendored `mdf.c` (the state is private there). Keeping the whole 57 KB of states through music instead would leave too little heap, since music still takes ~19 KB on top at its peak.
+- Stronger residual echo suppression while it learns. The preprocessor's defaults are −40 dB (`ECHO_SUPPRESS`) and −15 dB (`ECHO_SUPPRESS_ACTIVE`, while the near end talks). Deeper settings hide more echo during the first seconds at no memory cost, but clip more of the near end during double talk.
+
 ## CPU plan
 
 Measured: core 1 is 98% idle during a call, and the gate's mic processing takes 47 µs of each 7500 µs frame. Speex's ~11 FFTs per frame and its filter updates are estimated at 15–35% of core 1 in float, similar in fixed point. There is room, so no FFT or frame-size optimisation is planned. Step 6 measures the real figure with the same `DIAG mic` line.
@@ -162,7 +231,7 @@ Each step builds and is checked on its own; the gate stays in charge until step 
 
 - **Build SpeexDSP for the host**: add the same sources to `sim/Makefile` with the same defines; route `speex_alloc` to `calloc` with a counter, and report leaks at the end of each scenario.
 - **Mock the new IDF calls** in `stubs/espmock.h` / `.c`: `i2s_event_callbacks_t`, `i2s_event_data_t`, `i2s_channel_register_event_callback()`, `auto_clear_after_cb` / `auto_clear_before_cb` in `i2s_chan_config_t`, `IRAM_ATTR`, `heap_caps_*`, `esp_cpu_get_cycle_count()`, `uxTaskGetStackHighWaterMark()`. `mockI2sTxPop()` calls `on_sent` with the descriptor it played (zeros on an underrun), and `mockI2sRxPush()` calls `on_recv_q_ovf` when it drops one.
-- **A realistic car echo.** Today's model is a 140-tap (9 ms) impulse with an 11 ms delay, far easier than a real cabin. Replace it with a bulk delay of 20–80 ms (per scenario), ~64 taps of early reflections, and a reverberant tail from two or three feedback comb filters (60–80 ms decay). That keeps the cost per sample low enough to run at speedup 10–20, unlike a 1600-tap convolution. Keep the mild amplifier non-linearity and add road noise at a realistic level.
+- **A realistic car echo.** Today's model is a 140-tap (9 ms) impulse with an 11 ms delay, far easier than a real cabin. Replace it with a bulk delay of 20–80 ms (per scenario), ~64 taps of early reflections, and a reverberant tail from two or three feedback comb filters (60–80 ms decay). That keeps the cost per sample low enough for a quick `make test`, unlike a 1600-tap convolution. Keep the mild amplifier non-linearity and add road noise at a realistic level.
 - **Level changes**: a head-unit volume step of ±6 dB mid-call, and a different caller loudness on each call. These are the conditions that break the gate.
 - **New metrics**:
   - ERLE: echo power at the mic against echo power left in the uplink, over far-end-only stretches, as now, but also over time.

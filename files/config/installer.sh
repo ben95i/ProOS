@@ -22,9 +22,6 @@ apt-get install -y --no-upgrade --ignore-missing unzip wget \
  libdbus-glib-1-dev locales mailutils wsdd2 cron-daemon-common \
  htop avahi-daemon
 
-## NeoFetch Alias
-ln -sf /usr/bin/fastfetch /usr/bin/neofetch
-
 ## Set Locale
 if [ ! -e "/etc/locales.generated" ]; then
   dpkg-reconfigure locales
@@ -82,15 +79,6 @@ cp /tmp/config/logrotate.service /lib/systemd/system/
 chmod 644 /lib/systemd/system/logrotate.service
 chown root:root /lib/systemd/system/logrotate.service
 
-## Startup Configuration
-cp /tmp/config/rc-local.service /etc/systemd/system/
-chmod 644 /etc/systemd/system/rc-local.service
-chown root:root /etc/systemd/system/rc-local.service
-cp /tmp/config/rc.local /etc/
-chmod +x /etc/rc.local
-chown root:root /etc/rc.local
-systemctl enable rc-local
-
 ## Main Cron Timer
 cp /tmp/config/rootcron.sh /etc/cron.d/rootcron
 chmod 644 /etc/cron.d/rootcron
@@ -111,22 +99,11 @@ cp /tmp/config/smb.conf /etc/samba
 chmod 644 /etc/samba/smb.conf
 chown root:root /etc/samba/smb.conf
 
-## Disable Start on Boot
-systemctl disable nmbd smbd avahi-daemon
-
-## Reload Services
+## Services
 systemctl daemon-reload
-
-## Restart Services
-systemctl restart cron
+systemctl enable cron nmbd smbd wsdd2 avahi-daemon
 
 ## Clean-up
-rm -f /opt/drives.txt
-rm -f /etc/sudoers.d/www-perms
-rm -f /etc/systemd/system/file-monitor.service
-rm -f /usr/bin/runapi
-rm -f /usr/bin/apicmds
-rm -f /usr/bin/file_monitor
-rm -f /usr/bin/savebookmarks
 rm -rf /tmp/config
+rm -f /etc/systemd/system/rc-local.service
 exit

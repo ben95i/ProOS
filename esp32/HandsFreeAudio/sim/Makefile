@@ -3,14 +3,18 @@
 # linked with the same fixed-point SpeexDSP the firmware builds (../components/speexdsp).
 #   make                build ./build/sim
 #   make test           build, then run every scenario and the SpeexDSP check
-#   make run S=4        build, then run one scenario (SPEED=20 by default)
+#   make run S=4        build, then run one scenario (add V=1 for the firmware log)
 #   make speexcheck     build and run ./build/speexcheck: SpeexDSP memory, ERLE, leaks
 #   make clean          delete ./build
+#   COST=0              with test or run: without the CPU cost model (sim.c)
+#   MAIN_DIR=<folder>   build against <folder>/main.c instead of ../main/main.c, for a
+#                       throwaway experiment; add -B when switching, or the old binary stays
 
 # CFLAGS can be overridden (make CFLAGS="-O0 -g"); SIM_FLAGS and SPEEX_FLAGS are always applied.
 CFLAGS    ?= -O2 -g
+MAIN_DIR  ?= ../main
 SIM_FLAGS := -std=gnu11 -pthread -Wall -Wno-unused-function -Wno-unused-but-set-variable \
-             -Istubs -I../main
+             -Istubs -I$(MAIN_DIR)
 LDLIBS    := -lm
 # ESP-IDF's export.sh puts its ULP toolchain's bare `ld` ahead of the system one on
 # PATH, and gcc then links with it ("unrecognised emulation mode: elf_x86_64"). -B
@@ -28,14 +32,14 @@ SPEEX_SOURCES := $(addprefix $(SPEEX_DIR)/libspeexdsp/,mdf.c preprocess.c filter
 SPEEX_HEADERS := $(wildcard $(SPEEX_DIR)/include/*.h $(SPEEX_DIR)/include/speex/*.h \
                    $(SPEEX_DIR)/libspeexdsp/*.h)
 
-SPEED     ?= 20
 SCENARIOS := 1 2 3 4 5 9 10
+SIM_ARGS  := $(if $(filter 0,$(COST)),nocost)
 BUILD_DIR := build
 SIM_BIN   := $(BUILD_DIR)/sim
 CHECK_BIN := $(BUILD_DIR)/speexcheck
 SPEEX_OBJECTS := $(addprefix $(BUILD_DIR)/speexdsp/,$(notdir $(SPEEX_SOURCES:.c=.o)))
 SOURCES   := sim.c stubs/espmock.c
-HEADERS   := ../main/main.c $(wildcard stubs/*.h stubs/*/*.h)
+HEADERS   := $(MAIN_DIR)/main.c $(wildcard stubs/*.h stubs/*/*.h)
 
 vpath %.c $(SPEEX_DIR)/libspeexdsp $(SPEEX_DIR)
 
@@ -58,14 +62,14 @@ $(CHECK_BIN): speexcheck.c $(SPEEX_OBJECTS) $(SPEEX_HEADERS)
 test: $(SIM_BIN) $(CHECK_BIN)
 	@for scenario in $(SCENARIOS); do \
 		echo "=== scenario $$scenario ==="; \
-		./$(SIM_BIN) $$scenario $(SPEED) || exit 1; \
+		./$(SIM_BIN) $$scenario $(SIM_ARGS) || exit 1; \
 	done
 	@echo "=== SpeexDSP check ==="
 	@./$(CHECK_BIN)
 
 run: $(SIM_BIN)
 	@test -n "$(S)" || { echo "usage: make run S=<scenario>"; exit 2; }
-	./$(SIM_BIN) $(S) $(SPEED)
+	./$(SIM_BIN) $(S) $(if $(V),verbose) $(SIM_ARGS)
 
 speexcheck: $(CHECK_BIN)
 	./$(CHECK_BIN)

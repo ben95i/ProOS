@@ -16,13 +16,18 @@ import { showPowerMenu, powerButtonTemplate, openDeviceMenu, showInputMenu,
 const LIVING_ROOM_TARGET = 'lrxmit';
 
 // What main.js needs to know about the room. key names its API commands
-// (lrstatus, lron, lroff); the stereo amp counts its volume 0-100.
+// (lrstatus, lron, lroff); the stereo amp counts its volume 0-100. climate
+// is where the temperature window reads the room's temperature and
+// humidity: a command and the places of the two in its "~" reply.
 export const LIVING_ROOM_CONFIG = {
   key: 'lr',
   name: 'Living Room',
   icon: 'fad fa-couch',
   voltarget: LIVING_ROOM_TARGET,
   volmax: 100,
+  // the temperature window reads the thermostat's one-line status
+  // (mode~fan~setpoint~temperature~humidity~…) for the room's climate
+  climate: { target: LIVING_ROOM_TARGET, cmd: 'lr-thermo1', fields: [3, 4] },
   template: livingRoomGridTemplate
 };
 

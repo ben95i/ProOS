@@ -80,6 +80,60 @@ export async function loadMenu(url) {
   }
 }
 
+//// Pico controllers ////
+//
+// A Pico W controller (the bathroom light, the living room thermostat) serves
+// one request at a time, and an error comes back from it as an ordinary
+// string with HTTP 200, so the text is what says whether a reply is one.
+
+// what picoReplyError() answers for each kind of failure; a device that is
+// offline is named by its own module ('Light offline')
+export const PICO_REFUSED = 'Value out of range';
+export const PICO_NO_REPLY = 'No reply from server';
+export const PICO_CMD_ERROR = 'Command error';
+
+// checked in this order: the first two are both "commonAPIRequest" replies
+const PICO_OFFLINE_PREFIX = 'commonAPIRequest exception';
+const PICO_REFUSED_PREFIX = 'commonAPIRequest: invalid response';
+const PICO_ERROR_PREFIXES = ['commonAPIRequest', 'executeMain:'];
+
+// '' for a reply that is not an error, or a short line saying what went
+// wrong. xmitPrefix is the room's own error prefix, and offlineText what to
+// say for a device that did not answer.
+// picoReplyError('commonAPIRequest exception: …', 'bthrXmit:', 'Light offline') -> 'Light offline'
+export function picoReplyError(reply, xmitPrefix, offlineText) {
+  if (reply === null || reply === undefined) {
+    return PICO_NO_REPLY; // sendCmd() could not reach the API at all
+  }
+  const text = String(reply);
+  if (text.startsWith(PICO_OFFLINE_PREFIX)) {
+    return offlineText;
+  }
+  if (text.startsWith(PICO_REFUSED_PREFIX)) {
+    return PICO_REFUSED;
+  }
+  const errorPrefixes = [xmitPrefix].concat(PICO_ERROR_PREFIXES);
+  for (const prefix of errorPrefixes) {
+    if (text.startsWith(prefix)) {
+      return PICO_CMD_ERROR;
+    }
+  }
+  return '';
+}
+
+// One queue per Pico: each command waits for the reply before it, so the
+// commands reach the Pico one after another rather than all at once.
+// sendCmd() never rejects (it answers null), so nothing breaks the chain.
+// const bthrRequest = picoRequestQueue('bthrxmit'); bthrRequest('bthr-light1_config')
+export function picoRequestQueue(target) {
+  let queue = Promise.resolve();
+  return (command) => {
+    const running = queue.then(() => sendCmd('main', target, command));
+    queue = running.catch(() => null);
+    return running;
+  };
+}
+
 //// file transfer ////
 
 // read / write URL for one file on the device: fileURL('read', 'lists.save')
@@ -436,7 +490,9 @@ export function setSpinner(textId, spinnerId, on, spinnerClass = 'btn-spinner') 
     text.style.visibility = 'hidden';
     spinner.classList.add(spinnerClass);
   } else {
-    text.style.visibility = 'visible';
+    // cleared rather than set to visible, so a hidden window panel around
+    // the button keeps it hidden
+    text.style.visibility = '';
     spinner.classList.remove(spinnerClass);
   }
 }
@@ -496,14 +552,14 @@ export function gridButtonTemplate(config) {
 
 // One button of a button grid together with the dropdown that opens under it.
 // config: buttonId, menuId, and optionally
-//   icon, label         as gridButtonTemplate() takes them
+//   icon, iconId, label as gridButtonTemplate() takes them
 //   textId + spinnerId  the label and the spinner that takes its place while
 //                       the device is being asked for its state
 //   buttonClass         a class the button carries besides "button"
 //   menuClass           "ind-button" (the default) or "dd-button"
 //   menuContent         rows the menu holds from the start
 export function dropdownButtonTemplate(config) {
-  const labelMarkup = buttonLabelMarkup(config.icon, config.label);
+  const labelMarkup = buttonLabelMarkup(config.icon, config.label, config.iconId);
   const buttonClass = buttonClassNames(config.buttonClass);
   let menuClass = 'ind-button';
   if (config.menuClass) {

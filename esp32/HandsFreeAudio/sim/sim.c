@@ -4,23 +4,113 @@
  * Compiles ../main/main.c unmodified against the mocks in stubs/ (FreeRTOS tasks as
  * pthreads, I2S with a DMA descriptor model, Bluedroid callbacks, NVS) and drives it
  * with a simulated I2S clock, a car-cabin echo model, a phone (Audio Gateway) and two
- * talkers. Time runs simSpeedup times faster than real time.
+ * talkers. Time is virtual (the scheduler in stubs/espmock.c): it runs as fast as the
+ * host allows, and a run gives the same result on any machine under any load.
  *
  * Build and run from this folder (see the Makefile):
  *   make            builds ./build/sim
  *   make test       runs every scenario
- *   ./build/sim <scenario> [speedup] [verbose]
+ *   ./build/sim <scenario> [verbose] [nocost]
  *     scenario  1 2 3 4 5 9 10 (listed in printUsage below)
- *     speedup   simulated seconds per real second, default 20
- *     verbose   any third argument prints every firmware log line to stderr
+ *     verbose   prints every firmware log line to stderr
+ *     nocost    turns the CPU cost model off (below)
  */
 #define _GNU_SOURCE
 #include "espmock.h"
 #include <pthread.h>
 #include <math.h>
+#include "speex/speex_echo.h"
+#include "speex/speex_preprocess.h"
+#include "speexdsp_alloc.h"
+
+/* ============================================================
+ * CPU cost model: virtual time for the firmware's costly work
+ * ============================================================
+ * On the virtual clock, code between two blocking calls takes no time. On the board,
+ * the mic task's frame takes ~4.3 ms of its 7.5 ms period and creating the echo
+ * canceller takes several ms, and timing bugs hide in that time (mic frames queue
+ * while the canceller is created). With the cost model on (the default; "nocost" on
+ * the command line turns it off), the SpeexDSP calls main.c makes are charged virtual
+ * time through simSpendCpuUs(): main.c's calls are renamed below to wrappers that call
+ * the real function, then charge it. main.c itself stays unmodified.
+ *
+ * Board figures. Override with make CFLAGS="-O2 -g -DSIM_COST_MIC_FRAME_US_16K=..." */
+#ifndef SIM_COST_MIC_FRAME_US_16K
+/* One whole mic frame at 16 kHz, filters to uplink poke: DIAG mic average 4.3-4.4 ms
+   in the car (2026-10-21 and 22), nearly all of it the canceller and preprocessor.
+   Charged in one piece after speex_echo_cancellation(), since the split between the
+   two isn't measured. Scaled by the sample rate, so 8 kHz (CVSD, half the filter
+   length) is an estimate of half: no CVSD call has been measured. */
+#define SIM_COST_MIC_FRAME_US_16K   4300
+#endif
+#ifndef SIM_COST_CREATE_US_PER_KB
+/* Creating the canceller and preprocessor, per KB they allocate: ~4.9 ms for the
+   57.5 KB of a 16 kHz canceller. Not measured on the board yet, only known to be "a
+   few ms"; esp_timer_get_time() around createEchoCanceller() would measure it. */
+#define SIM_COST_CREATE_US_PER_KB   85
+#endif
+#define SIM_COST_REFERENCE_RATE     16000
+
+static SpeexEchoState *costedEchoStateInit(int frameSize, int filterLength);
+static SpeexPreprocessState *costedPreprocessStateInit(int frameSize, int samplingRate);
+static void costedEchoCancellation(SpeexEchoState *state, const spx_int16_t *micFrame,
+                                   const spx_int16_t *referenceFrame, spx_int16_t *outputFrame);
+#define speex_echo_state_init        costedEchoStateInit
+#define speex_preprocess_state_init  costedPreprocessStateInit
+#define speex_echo_cancellation      costedEchoCancellation
 
 /* The firmware under test, compiled unmodified. */
 #include "main.c"
+
+#undef speex_echo_state_init
+#undef speex_preprocess_state_init
+#undef speex_echo_cancellation
+
+/**
+ * @brief Charges the creation of a SpeexDSP state: SIM_COST_CREATE_US_PER_KB for each
+ *        KB allocated since allocatedBytesBefore (speexdspAllocatedBytes()).
+ */
+static void chargeStateCreation(size_t allocatedBytesBefore) {
+    size_t allocatedBytesAfter = speexdspAllocatedBytes();
+    size_t stateBytes = allocatedBytesAfter - allocatedBytesBefore;
+    uint64_t costTimesKilobyteUs = (uint64_t)stateBytes * SIM_COST_CREATE_US_PER_KB;
+    uint64_t costUs = costTimesKilobyteUs / 1024u;
+    simSpendCpuUs(costUs);
+}
+
+/**
+ * @brief speex_echo_state_init() for main.c, then the time creating it costs.
+ */
+static SpeexEchoState *costedEchoStateInit(int frameSize, int filterLength) {
+    size_t allocatedBytesBefore = speexdspAllocatedBytes();
+    SpeexEchoState *state = speex_echo_state_init(frameSize, filterLength);
+    chargeStateCreation(allocatedBytesBefore);
+    return state;
+}
+
+/**
+ * @brief speex_preprocess_state_init() for main.c, then the time creating it costs.
+ */
+static SpeexPreprocessState *costedPreprocessStateInit(int frameSize, int samplingRate) {
+    size_t allocatedBytesBefore = speexdspAllocatedBytes();
+    SpeexPreprocessState *state = speex_preprocess_state_init(frameSize, samplingRate);
+    chargeStateCreation(allocatedBytesBefore);
+    return state;
+}
+
+/**
+ * @brief speex_echo_cancellation() for main.c, then one whole mic frame's time at the
+ *        canceller's rate: SIM_COST_MIC_FRAME_US_16K at 16 kHz, half that at 8 kHz.
+ */
+static void costedEchoCancellation(SpeexEchoState *state, const spx_int16_t *micFrame,
+                                   const spx_int16_t *referenceFrame, spx_int16_t *outputFrame) {
+    speex_echo_cancellation(state, micFrame, referenceFrame, outputFrame);
+    int sampleRate = SIM_COST_REFERENCE_RATE;
+    speex_echo_ctl(state, SPEEX_ECHO_GET_SAMPLING_RATE, &sampleRate);
+    uint64_t costTimesRateUs = (uint64_t)SIM_COST_MIC_FRAME_US_16K * (uint64_t)sampleRate;
+    uint64_t frameCostUs = costTimesRateUs / SIM_COST_REFERENCE_RATE;
+    simSpendCpuUs(frameCostUs);
+}
 
 
 /* ============================================================
@@ -60,7 +150,7 @@ static float speech(float amp, int active, float *s1, float *s2, long n) {
  * Instrumentation
  * ============================================================ */
 typedef struct {
-    long   uplinkFrames, uplinkZeroReturns;
+    long   uplinkFrames, uplinkFetches, uplinkZeroReturns;
     double uplinkEnergy;      long uplinkSamples;
     double micEchoEnergy;     long micSamples;   /* echo present at the microphone */
     long   deadWindows, worstDeadRunMs;
@@ -70,6 +160,9 @@ typedef struct {
     long   downlinkFrames;
     double txQueueMaxMs, txQueueSumMs; long txQueueSamples;
     long   callCount;
+    long   callsWithShortReference;      /* calls where a mic frame found too little reference */
+    double worstShortReferencePerSecond; /* of those calls, the most zero-padded samples a second */
+    long   referenceResyncs;
 } Stats;
 static Stats st;
 
@@ -169,72 +262,153 @@ static void *hardwareThread(void *arg) {
 }
 
 /* ============================================================
- * Simulated phone (Audio Gateway). Single-threaded, like the BTC task:
- * a blocking I2S write inside the receive callback really does delay the
- * outgoing-data fetch, exactly as it would on the device.
+ * Simulated phone (Audio Gateway) and Bluedroid's SCO send path. Single-threaded,
+ * like Bluedroid's BTU task: a blocking I2S write inside the receive callback really
+ * does delay the handling of uplink pokes, exactly as it would on the device.
+ *
+ * Uplink, as ESP-IDF's Bluedroid does it (bta_hf_client_sco_event(), CI data event):
+ * each esp_hf_client_outgoing_data_ready() makes it fetch whole frames from the
+ * firmware until a fetch comes back short, queueing each for the air, so a poke that
+ * finds one frame queued costs two fetches, the second one empty. The air then
+ * carries one frame from that queue every 7.5 ms.
  * ============================================================ */
 static volatile int scoActive = 0, scoWideband = 1;
 static double btPpm = 0.0;
 
+#define SCO_SEND_QUEUE_LIMIT    30   /* BTM_SCO_XMIT_QUEUE_THRS: a frame beyond it is dropped */
+#define SCO_SEND_QUEUE_HIGH_WM  20   /* BTM_SCO_XMIT_QUEUE_HIGH_WM: a write at this depth ends the fetches */
+#define SCO_FRAME_BYTES_MAX     240  /* 120 samples, an mSBC frame */
+
+static uint8_t  scoSendQueue[SCO_SEND_QUEUE_LIMIT][SCO_FRAME_BYTES_MAX];
+static uint32_t scoSendQueueBytes[SCO_SEND_QUEUE_LIMIT];
+static int      scoSendQueueHead = 0, scoSendQueueCount = 0;
+
+/**
+ * @brief Handles one uplink poke as Bluedroid does: fetches frameBytes at a time from
+ *        the firmware's send callback until a fetch comes back short (counted as an
+ *        empty fetch), queueing each whole frame for the air. A queue at the high
+ *        water mark also ends the fetches, as BTM_WriteScoData()'s BTM_NO_RESOURCES
+ *        does.
+ * * @param frameBytes 240 for mSBC, 120 for CVSD (one 7.5 ms air frame).
+ */
+static void handleUplinkPoke(uint32_t frameBytes) {
+    static uint8_t fetchBuffer[SCO_FRAME_BYTES_MAX];
+    while (true) {
+        uint32_t fetchedBytes = mockHfSendCb(fetchBuffer, frameBytes);
+        st.uplinkFetches++;
+        bool isWholeFrame = (fetchedBytes == frameBytes);
+        if (!isWholeFrame) {
+            st.uplinkZeroReturns++;
+            return;
+        }
+        bool isAtHighWater = (scoSendQueueCount >= SCO_SEND_QUEUE_HIGH_WM);
+        bool isQueueFull = (scoSendQueueCount >= SCO_SEND_QUEUE_LIMIT);
+        if (!isQueueFull) {
+            int slotPosition = scoSendQueueHead + scoSendQueueCount;
+            int slot = slotPosition % SCO_SEND_QUEUE_LIMIT;
+            memcpy(scoSendQueue[slot], fetchBuffer, fetchedBytes);
+            scoSendQueueBytes[slot] = fetchedBytes;
+            scoSendQueueCount++;
+        }
+        if (isAtHighWater) {
+            return;
+        }
+    }
+}
+
+/**
+ * @brief Handles every uplink poke posted so far, including those the send callback
+ *        posts itself while it is being fetched from. Without SCO audio, Bluedroid
+ *        fetches nothing for a poke ("invalid air mode"), so the pokes are dropped.
+ */
+static void handlePendingUplinkPokes(uint32_t frameBytes) {
+    while (__sync_fetch_and_add(&mockOutgoingReadyPending, 0) > 0) {
+        __sync_fetch_and_sub(&mockOutgoingReadyPending, 1);
+        bool canFetch = (scoActive && mockHfSendCb != NULL);
+        if (canFetch) {
+            handleUplinkPoke(frameBytes);
+        }
+    }
+}
+
+/**
+ * @brief One air interval's uplink: sends the oldest queued frame to the phone and
+ *        measures it, or counts an interval with nothing to send.
+ */
+static void sendUplinkAirFrame(void) {
+    if (scoSendQueueCount == 0) {
+        st.uplinkStarvedIntervals++;
+        return;
+    }
+    int slot = scoSendQueueHead;
+    uint32_t frameBytes = scoSendQueueBytes[slot];
+    int16_t *frameSamples = (int16_t *)scoSendQueue[slot];
+    scoSendQueueHead = (scoSendQueueHead + 1) % SCO_SEND_QUEUE_LIMIT;
+    scoSendQueueCount--;
+
+    st.uplinkFrames++;
+    uint64_t t = simNowUs();
+    if (lastUplinkUs) {
+        long gap = (long)((t - lastUplinkUs) / 1000);
+        if (gap > st.uplinkGapWorstMs) st.uplinkGapWorstMs = gap;
+    }
+    lastUplinkUs = t;
+    for (uint32_t i = 0; i < frameBytes / 2; i++) {
+        double v = frameSamples[i];
+        st.uplinkEnergy += v * v; st.uplinkSamples++;
+        windowEnergy += v * v; windowSamples++;
+        if (farTalking && !nearTalking) { st.farOnlyUplinkEnergy += v * v; st.farOnlySamples++; }
+    }
+}
+
 static void *phoneThread(void *arg) {
     (void)arg;
     static int16_t downlink[256];
-    static uint8_t uplink[512];
     float f1 = 0, f2 = 0;
     long n = 0;
-    uint64_t next = simNowUs();
+    /* Kept in double: 7500 us at +-60 ppm is 7500.45 / 7499.55 us, and rounding each
+       interval to whole microseconds would lose the drift the scenarios are about. */
+    double nextUs = (double)simNowUs();
 
     while (!mockShutdown) {
-        double interval = 7500.0 * (1.0 + btPpm / 1e6);
-        uint64_t now = simNowUs();
-        if (now < next) { simSleepUs(next - now > 2000 ? 2000 : next - now); continue; }
-        next += (uint64_t)interval;
-        /* Do NOT clamp to now on every overrun - that silently discards accumulated
-           lateness and makes the simulated phone deliver below line rate. Only resync
-           if we have fallen grossly behind. */
-        if (now > next + 100000) next = now;
-
-        if (!scoActive) { simSleepUs(2000); next = simNowUs(); lastUplinkUs = 0;
-                          windowEnergy = 0; windowSamples = 0; windowNearTalking = 0;
-                          windowStartUs = simNowUs(); deadRunMs = 0; continue; }
+        if (!scoActive) {
+            /* The link is gone: its pokes fetch nothing and its queue is flushed. */
+            handlePendingUplinkPokes(0);
+            scoSendQueueHead = 0; scoSendQueueCount = 0;
+            simSleepUs(2000); nextUs = (double)simNowUs(); lastUplinkUs = 0;
+            windowEnergy = 0; windowSamples = 0; windowNearTalking = 0;
+            windowStartUs = simNowUs(); deadRunMs = 0; continue;
+        }
 
         int rate = scoWideband ? 16000 : 8000;
         int frameSamples = rate * 75 / 10000;             /* 7.5 ms: 120 @16k, 60 @8k */
+        uint32_t frameBytes = (uint32_t)frameSamples * 2;
+        handlePendingUplinkPokes(frameBytes);
+
+        double interval = 7500.0 * (1.0 + btPpm / 1e6);
+        uint64_t now = simNowUs();
+        uint64_t dueUs = (uint64_t)nextUs;
+        if (now < dueUs) {
+            /* Until the next air interval, or sooner for a poke. */
+            simWaitObject((const void *)&mockOutgoingReadyPending, dueUs, "next air interval or a poke");
+            continue;
+        }
+        nextUs += interval;
+        /* Do NOT clamp to now on every overrun - that silently discards accumulated
+           lateness and makes the simulated phone deliver below line rate. Only resync
+           if we have fallen grossly behind. */
+        if ((double)now > nextUs + 100000.0) nextUs = (double)now;
+
         for (int i = 0; i < frameSamples; i++) {
             float v = speech(6500.0f, farTalking, &f1, &f2, n++);
             if (v > 32000) v = 32000;
             if (v < -32000) v = -32000;
             downlink[i] = (int16_t)v;
         }
-        if (mockHfRecvCb) { mockHfRecvCb((const uint8_t *)downlink, (uint32_t)frameSamples * 2); st.downlinkFrames++; }
+        if (mockHfRecvCb) { mockHfRecvCb((const uint8_t *)downlink, frameBytes); st.downlinkFrames++; }
 
-        /* An eSCO link carries exactly one frame per interval no matter how many
-           times the application says data is ready, so pull at most one. */
-        long pend = __sync_fetch_and_add(&mockOutgoingReadyPending, 0);
-        if (pend > 4) __sync_fetch_and_sub(&mockOutgoingReadyPending, pend - 4);
-        if (pend > 0 && mockHfSendCb) {
-            __sync_fetch_and_sub(&mockOutgoingReadyPending, 1);
-            uint32_t got = mockHfSendCb(uplink, (uint32_t)frameSamples * 2);
-            if (got == 0) st.uplinkZeroReturns++;
-            else {
-                st.uplinkFrames++;
-                uint64_t t = simNowUs();
-                if (lastUplinkUs) {
-                    long gap = (long)((t - lastUplinkUs) / 1000);
-                    if (gap > st.uplinkGapWorstMs) st.uplinkGapWorstMs = gap;
-                }
-                lastUplinkUs = t;
-                int16_t *sp = (int16_t *)uplink;
-                for (uint32_t i = 0; i < got / 2; i++) {
-                    double v = sp[i];
-                    st.uplinkEnergy += v * v; st.uplinkSamples++;
-                    windowEnergy += v * v; windowSamples++;
-                    if (farTalking && !nearTalking) { st.farOnlyUplinkEnergy += v * v; st.farOnlySamples++; }
-                }
-            }
-        } else if (pend == 0) {
-            st.uplinkStarvedIntervals++;
-        }
+        /* An eSCO link carries exactly one frame per interval. */
+        sendUplinkAirFrame();
 
         /* 200 ms "can the caller hear me" windows */
         if (nearTalking && scoActive) windowNearTalking = 1;
@@ -260,6 +434,43 @@ static void *phoneThread(void *arg) {
  * ============================================================ */
 static void hf(esp_hf_client_cb_event_t e, esp_hf_client_cb_param_t p) { if (mockHfCb) mockHfCb(e, &p); }
 
+/* Reference alignment per call, from the firmware's own counters (the DIAG aec line's
+   ref short and resync): in the car, a misaligned call had ~8000 short samples a
+   second for its whole length, and the next call none. */
+static uint32_t callReferenceShortAtStart = 0, callReferenceResyncAtStart = 0;
+static uint64_t callStartUs = 0;
+
+/**
+ * @brief Notes the firmware's reference counters as a call's audio starts.
+ */
+static void beginCallReferenceCount(void) {
+#if AEC_SPEEX_ENABLED
+    callReferenceShortAtStart = referenceShortSampleCount;
+    callReferenceResyncAtStart = referenceResyncCount;
+#endif
+    callStartUs = simNowUs();
+}
+
+/**
+ * @brief Adds the call that is ending to the reference statistics: counts it if any
+ *        mic frame found too little reference, and keeps the worst short rate.
+ */
+static void endCallReferenceCount(void) {
+#if AEC_SPEEX_ENABLED
+    uint32_t shortSamples = referenceShortSampleCount - callReferenceShortAtStart;
+    uint32_t resyncs = referenceResyncCount - callReferenceResyncAtStart;
+    uint64_t callDurationUs = simNowUs() - callStartUs;
+    double callSeconds = (double)callDurationUs / 1e6;
+    st.referenceResyncs += resyncs;
+    bool hadShortReference = (shortSamples > 0 && callSeconds > 0.0);
+    if (hadShortReference) {
+        double shortPerSecond = (double)shortSamples / callSeconds;
+        st.callsWithShortReference++;
+        if (shortPerSecond > st.worstShortReferencePerSecond) st.worstShortReferencePerSecond = shortPerSecond;
+    }
+#endif
+}
+
 static void startCall(int wideband) {
     esp_hf_client_cb_param_t p;
     memset(&p, 0, sizeof(p));
@@ -273,6 +484,7 @@ static void startCall(int wideband) {
     scoWideband = wideband;
     memset(&p, 0, sizeof(p));
     p.audio_stat.state = wideband ? ESP_HF_CLIENT_AUDIO_STATE_CONNECTED_MSBC : ESP_HF_CLIENT_AUDIO_STATE_CONNECTED;
+    beginCallReferenceCount();
     hf(ESP_HF_CLIENT_AUDIO_STATE_EVT, p);
     scoActive = 1;
     st.callCount++;
@@ -280,6 +492,7 @@ static void startCall(int wideband) {
 
 static void endCall(void) {
     esp_hf_client_cb_param_t p;
+    endCallReferenceCount();
     scoActive = 0;
     simSleepUs(20000);
     memset(&p, 0, sizeof(p)); p.audio_stat.state = ESP_HF_CLIENT_AUDIO_STATE_DISCONNECTED;
@@ -318,6 +531,18 @@ static void *talkThread(void *arg) {
     return NULL;
 }
 
+/* Names the firmware's handles at the end of a stuck run's state dump, so the
+   object a thread waits on can be read off. */
+static void printFirmwareHandles(void) {
+    fprintf(stderr, "  txMutex %p | rxMutex %p | preRollSemaphore %p | micTaskHandle %p | "
+                    "a2dpRingBuffer %p | tx channel %p | rx channel %p\n",
+            (void *)txMutex, (void *)rxMutex, (void *)preRollSemaphore, (void *)micTaskHandle,
+            (void *)a2dpRingBuffer, (void *)mockTxChan, (void *)mockRxChan);
+#if DIAG_LOG_ENABLED
+    fprintf(stderr, "  diagMutex %p\n", (void *)diagMutex);
+#endif
+}
+
 /* ============================================================ */
 static void resetStats(void) { memset(&st, 0, sizeof(st)); lastUplinkUs = 0; deadRunMs = 0; mockResetMessages(); mockI2sTxUnderruns = 0; mockI2sRxOverruns = 0; }
 
@@ -336,14 +561,20 @@ static void report(const char *name, double simSeconds) {
            upRms, echoRms, (upRms > 0 && echoRms > 0) ? 20.0 * log10(echoRms / upRms) : 0.0);
     printf("  %-26s downlink %.0f%% of line rate\n", "",
            expectFrames > 0 ? 100.0 * st.downlinkFrames / expectFrames : 0.0);
-    printf("  %-26s uplink empty fetches %ld, starved intervals %ld, silent 200 ms windows while talking %ld\n", "",
-           st.uplinkZeroReturns, st.uplinkStarvedIntervals, st.deadWindows);
+    double fetchesPerSecond = simSeconds > 0 ? st.uplinkFetches / simSeconds : 0.0;
+    double emptyFetchesPerSecond = simSeconds > 0 ? st.uplinkZeroReturns / simSeconds : 0.0;
+    printf("  %-26s uplink fetches %.0f/s, %.0f/s empty; air intervals with no frame %ld; silent 200 ms windows while talking %ld\n", "",
+           fetchesPerSecond, emptyFetchesPerSecond, st.uplinkStarvedIntervals, st.deadWindows);
+#if AEC_SPEEX_ENABLED
+    printf("  %-26s reference short on %ld of %ld calls (worst %.0f samples/s), resyncs %ld\n", "",
+           st.callsWithShortReference, st.callCount, st.worstShortReferencePerSecond, st.referenceResyncs);
+#endif
     mockDumpMessages();
 }
 
 /* Prints the command line and the scenario list. */
 static void printUsage(void) {
-    printf("usage: sim <scenario> [speedup] [verbose]\n"
+    printf("usage: sim <scenario> [verbose] [nocost]\n"
            "  1   180 s call, phone clock +60 ppm\n"
            "  2   180 s call, phone clock -60 ppm\n"
            "  3   40 short calls with music between them\n"
@@ -351,8 +582,9 @@ static void printUsage(void) {
            "  5   40 abrupt SCO losses\n"
            "  9   DAC byte accounting over one 30 s call\n"
            "  10  far-end-only 60 s call (gate suppression alone)\n"
-           "  speedup: simulated seconds per real second, default 20\n"
-           "  verbose: any third argument prints the firmware log to stderr\n");
+           "  verbose: prints the firmware log to stderr\n"
+           "  nocost:  no CPU cost model (the mic frame and canceller creation take no time)\n"
+           "  Time is virtual, so results do not depend on the PC's speed or load.\n");
 }
 
 /* True for a scenario number main() knows how to run. */
@@ -367,16 +599,28 @@ int main(int argc, char **argv) {
         printUsage();
         return 2;
     }
-    if (argc > 2) {
-        double requestedSpeedup = atof(argv[2]);
-        if (requestedSpeedup <= 0.0) {
-            printUsage();
-            return 2;
+    /* "nocost" turns the CPU cost model off. A number after the scenario is the old
+       speedup argument: accepted and ignored, so older command lines still run.
+       Anything else turns on verbose. */
+    for (int index = 2; index < argc; index++) {
+        bool isNoCost = (strcmp(argv[index], "nocost") == 0);
+        if (isNoCost) {
+            simCpuCostEnabled = false;
+            continue;
         }
-        simSpeedup = requestedSpeedup;
+        char *numberEnd = NULL;
+        strtod(argv[index], &numberEnd);
+        bool isNumber = (numberEnd != argv[index] && *numberEnd == '\0');
+        if (!isNumber) mockLogVerbose = 1;
     }
-    if (argc > 3) mockLogVerbose = 1;
     setvbuf(stdout, NULL, _IOLBF, 0);
+    if (simCpuCostEnabled) {
+        printf("  CPU cost model on: mic frame %d us at 16 kHz, canceller creation %d us per KB\n",
+               SIM_COST_MIC_FRAME_US_16K, SIM_COST_CREATE_US_PER_KB);
+    } else {
+        printf("  CPU cost model off\n");
+    }
+    simDumpHook = printFirmwareHandles;
 
     for (int k = 0; k < ECHO_TAPS; k++)
         echoImpulse[k] = (k == 0 ? 0.9f : 0.35f * expf(-(float)k / 25.0f) * frand());
@@ -384,11 +628,10 @@ int main(int argc, char **argv) {
     app_main();                                   /* real firmware init */
     simSleepUs(200000);
 
-    pthread_t hw, ph, a2, tk;
-    pthread_create(&hw, NULL, hardwareThread, NULL);
-    pthread_create(&ph, NULL, phoneThread, NULL);
-    pthread_create(&a2, NULL, a2dpThread, NULL);
-    pthread_create(&tk, NULL, talkThread, NULL);
+    simThreadCreate(hardwareThread, NULL, "sim hardware");
+    simThreadCreate(phoneThread, NULL, "sim phone");
+    simThreadCreate(a2dpThread, NULL, "sim a2dp");
+    simThreadCreate(talkThread, NULL, "sim talkers");
 
     /* bring up A2DP so the speaker path is in music mode, as after a real pairing */
     esp_a2d_cb_param_t ap; memset(&ap, 0, sizeof(ap));
@@ -478,6 +721,7 @@ int main(int argc, char **argv) {
         for (int i = 0; i < 40; i++) {
             startCall(1);
             simSleepUs(2500000); simSeconds += 2.5;
+            endCallReferenceCount();
             scoActive = 0;                                    /* radio just goes away */
             simSleepUs(400000); simSeconds += 0.4;
             esp_hf_client_cb_param_t p; memset(&p, 0, sizeof(p));
@@ -491,7 +735,8 @@ int main(int argc, char **argv) {
     }
 
     printf("  %-26s warnings during run: %ld\n", "", mockWarnCount - warnBefore);
+    /* Ends the process while the other threads wait for their turn; the firmware's
+       tasks never return, so there is nothing to join. */
     mockShutdown = 1;
-    simSleepUs(300000);
     return 0;
 }
