@@ -1,5 +1,7 @@
 pve/vmbkps
 pve/network
+*test/build
+*test/output
 *esp32/*/build
 *auto.creds*
 *sasl_passwd*
@@ -28,5 +30,3 @@ pve/network
 *.pdf*
 *._*
 .DS_Store
-automate/devices/SmartThermo/test/build
-automate/devices/SmartThermo/test/output
