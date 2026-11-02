@@ -1,8 +1,14 @@
+pico/*/build
+pico/*/output
+pico/*/test/build
+pico/*/test/output
+esp32/*/build
+esp32/*/output
+esp32/*/test/build
+esp32/*/test/output
 pve/vmbkps
 pve/network
-*test/build
-*test/output
-*esp32/*/build
+.DS_Store
 *auto.creds*
 *sasl_passwd*
 *authorized_keys*
@@ -29,4 +35,3 @@ pve/network
 *.pub*
 *.pdf*
 *._*
-.DS_Store
