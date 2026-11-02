@@ -1,13 +1,4 @@
-/*
- *  Automate -- colorprompt.css
- *
- *  Colour selection prompt: the saturation / value map, the hue slider,
- *  the preset swatches and the hex box.
- *
- *  Split out of the old single styles.css. Loaded from index.html after
- *  styles/main.css, which holds the globals (palette, buttons, menus) these
- *  rules build on.
- */
+/* Automate: colour prompt: map, hue slider, swatches and hex box. */
 
 /*
  *  Color Selector Style
@@ -68,7 +59,7 @@
 }
 
 #color-map-bg {
-  background-color: #000; 
+  background-color: #000;
   z-index: 1;
 }
 
@@ -145,15 +136,14 @@
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
 }
 
-/* the picked swatch, which is a state and not a hover -- it stays as it was
-   on every device */
+/* the picked swatch */
 .color-swatch.active-swatch {
   transform: scale(1.15);
   border-color: #fff;
   z-index: 2;
 }
 
-/* the same lift on hover, for a device that has a pointer to hover with */
+/* the same lift on hover */
 @media (hover: hover) and (pointer: fine) {
   .color-swatch:hover {
     transform: scale(1.15);
@@ -184,10 +174,8 @@
   border: 1px solid var(--border-color);
   padding: 8px;
   border-radius: 4px;
-  /* Sized by the `size` attribute showColorField() sets, so the box grows
-     with a long colour name instead of cutting it off. The floor is the
-     width the hex used to be pinned to, so a short name does not shrink the
-     row below what it has always looked like. */
+  /* Sized by showColorField()'s size attribute, so a long colour name fits; the
+     floor is the hex's width. */
   width: auto;
   min-width: 110px;
   max-width: 100%;
@@ -197,10 +185,7 @@
   text-align: center;
 }
 
-/* The same box while it is showing a colour's name rather than its hex.
-   Only the forced caps come off: the name keeps the font and the 18px above
-   it, so it reads at exactly the size the hex does, and the monospace is
-   what makes the `size` attribute size the box to the text exactly. */
+/* showing a colour's name: only the forced caps come off; monospace makes size exact */
 #hex-color.color-name-shown {
   text-transform: none;
 }

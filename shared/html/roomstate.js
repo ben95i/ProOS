@@ -1,49 +1,36 @@
-// Automate Website - room status light
-//
-// The traffic light in the title bar and the device list behind it.
-// new RoomStateManager('status_anchor') draws it; showRoomState() reads the
-// room and re-arms itself every refreshInterval() seconds, hideRoomState()
-// stops, destroy() ends the instance.
+// Automate - room status light in the title bar and the device list behind it.
+// new RoomStateManager('status_anchor'); showRoomState() reads the room and re-arms every
+// REFRESH_INTERVAL seconds, hideRoomState() stops, destroy() ends the instance.
 
-import { sendCmd, refreshInterval, svgElement, menuRow } from './utils.js'
+import { sendCmd, REFRESH_INTERVAL, svgElement, menuRow,
+  isBlockDisplayed } from './utils.js'
+import { drawMenu, removeDropdowns } from './dropdowns.js';
 
-// the dropdown this manager draws into, and the host column its rows carry
+// the dropdown this draws into, and the host column its rows carry
 const STATUS_MENU = 'roomstatus';
 const LIGHT_ID = 'trafficLightIcon';
 
 export default class RoomStateManager {
 
+  // draws the light into its container
   constructor(containerId) {
-    this.containerId = containerId;
     this.container = document.getElementById(containerId);
     this.timerID = null;
     this.isRunning = false;
-    // set by destroy(); a response that lands afterwards is dropped instead
-    // of re-arming the refresh on a manager the page has already let go of
+    // set by destroy(); a late response is dropped instead of re-arming the refresh
     this.dead = false;
-    // bumped per request, so a reply for a room that has since been switched
-    // away from cannot repaint the light
+    // bumped per request, so a reply for a room switched away from cannot repaint the light
     this.requestGen = 0;
     this.roomState = null;
     this.devices = [];
     this.roomStateClick = this.roomStateClick.bind(this);
-    this.showRoomState = this.showRoomState.bind(this);
-    this.hideRoomState = this.hideRoomState.bind(this);
-    this.restartRoomState = this.restartRoomState.bind(this);
-    this.stopRoomStateTimer = this.stopRoomStateTimer.bind(this);
     this.buildHTML();
   }
 
-  // Builds the SVG light: the indicator circle, the idle hatch laid over it,
-  // and the countdown ring, plus the refresh spinner beside them.
-  //
-  // The hatch is two lines per cell, not one. A single white line disappeared
-  // against a light indicator and a single dark one would disappear against
-  // black, so the pair puts one of each side by side; the dark line is the
-  // wider of the two, since the colours that were hard to read are the light
-  // ones.
+  // Builds the SVG light: the indicator circle, the idle hatch over it, the countdown
+  // ring, and the refresh spinner beside them. The hatch has a dark and a light line per
+  // cell, so it reads against any indicator colour.
   buildHTML() {
-    if (!this.container) return;
     this.container.innerHTML = '';
     const svg = svgElement("svg", { viewBox: "0 0 50 50", class: "roomstatus-svgs nohide" });
     const hatchPattern = svgElement("pattern", {
@@ -62,7 +49,7 @@ export default class RoomStateManager {
     svg.appendChild(svgElement("circle", {
       id: LIGHT_ID, cx: "25", cy: "25", r: "17", stroke: "none"
     }));
-    // sits after the light, which is what the CSS sibling rule keys on
+    // after the light, which is what the CSS sibling rule keys on
     svg.appendChild(svgElement("circle", {
       id: "statusHatch", cx: "25", cy: "25", r: "17", stroke: "none",
       fill: "url(#statusHatchPattern)"
@@ -72,9 +59,7 @@ export default class RoomStateManager {
       "stroke-linecap": "round", pathLength: "100", cx: "25", cy: "25", r: "23"
     }));
     this.container.appendChild(svg);
-    // Refresh spinner, riding the same circle as the countdown ring while a
-    // request is in flight. Semi-transparent so the light still reads through
-    // it, and click-through so it never steals the tap.
+    // rides the countdown ring's circle while a request is in flight
     const refreshSpinner = document.createElement('span');
     refreshSpinner.id = 'roomStatusRefresh';
     refreshSpinner.className = 'roomstatus-spinner';
@@ -82,47 +67,34 @@ export default class RoomStateManager {
     this.container.addEventListener('click', this.roomStateClick);
   }
 
-  // shows / hides the rotating refresh ring; the countdown ring is put away
-  // first so only one of the two is ever turning
+  // Shows or hides the refresh ring; the countdown ring goes first, so only one turns.
   setRefreshing(on) {
-    if (!this.container) {
-      return;
-    }
     if (on === true) {
       this.container.classList.remove('status-loading');
     }
     this.container.classList.toggle('status-refreshing', on === true);
   }
 
-  // this answer is no longer the current one: torn down, or overtaken by a
-  // newer request (a room switch)
+  // is this answer overtaken: torn down, or a newer request (a room switch)
   stale(gen) {
     return this.dead || gen !== this.requestGen;
   }
 
+  // reads the room's status and paints the light
   async showRoomState() {
     if (this.isRunning || this.dead) return;
-    // A countdown from the previous cycle can still be armed. activityBegin()
-    // calls this on every click, and the timeout below used to be assigned
-    // straight over the old handle without clearing it: the orphan fired
-    // later, set isRunning false and started a second refresh chain.
+    // a countdown from the previous cycle may still be armed
     this.stopRoomStateTimer();
     this.isRunning = true;
     const gen = ++this.requestGen;
     const lightIcon = document.getElementById(LIGHT_ID);
-    // the page was re-rendered underneath this manager: there is nothing left
-    // to paint, and going on would throw
-    if (!lightIcon || !this.container) {
-      this.isRunning = false;
-      return;
-    }
     this.container.classList.remove('status-loading');
     this.setRefreshing(true);
     try {
-      // the status light turns red on a failure, so no popup as well
+      // the light turns red on a failure, so no popup as well
       const resp = await sendCmd('main', App.currentRoom + 'status', '',
         { quiet: true });
-      // isRunning belongs to whoever replaced us, so it is left alone
+      // isRunning belongs to whoever replaced this request
       if (this.stale(gen)) {
         return;
       }
@@ -132,8 +104,7 @@ export default class RoomStateManager {
       lightIcon.classList.remove("status-error", "status-idle");
       if (resp.roomState === null) {
         lightIcon.classList.add("status-error");
-        // an open menu says so as well, rather than sitting on the rows of
-        // the last reading that worked
+        // an open menu says so too, rather than keep the last good rows
         this.refreshStatusMenu();
         this.hideRoomState();
         return;
@@ -147,7 +118,7 @@ export default class RoomStateManager {
         lightIcon.classList.remove("status-on");
         lightIcon.classList.add("status-off");
       }
-      // the dropdown, if open, is showing the reading this one just replaced
+      // an open dropdown is showing the reading this one just replaced
       this.refreshStatusMenu();
       this.armRefresh(gen);
     } catch (err) {
@@ -162,24 +133,22 @@ export default class RoomStateManager {
 
   // starts the countdown ring and books the next read
   armRefresh(gen) {
-    const refreshRate = refreshInterval();
-    this.container.style.setProperty('--spin-duration', `${refreshRate}s`);
+    this.container.style.setProperty('--spin-duration', `${REFRESH_INTERVAL}s`);
     void this.container.offsetWidth; // trigger reflow
     requestAnimationFrame(() => {
       if (this.stale(gen)) {
-        return; // torn down or superseded between frames
+        return;
       }
       this.container.classList.add('status-loading');
       this.timerID = setTimeout(() => {
         this.isRunning = false;
         this.showRoomState();
-      }, refreshRate * 1000);
+      }, REFRESH_INTERVAL * 1000);
     });
   }
 
-  // The rows of the status dropdown, built from the reading currently held:
-  // roomstatus|grnind|Desk Lamp. A device that carries its own indicator (the
-  // thermostat: { name: 'Fan On', indicator: 'ylwind' }) is drawn with it.
+  // The status dropdown's rows from the reading held: roomstatus|grnind|Desk Lamp. A device
+  // with its own indicator ({ name: 'Fan On', indicator: 'ylwind' }) is drawn with it.
   statusMenuData() {
     if (this.roomState === null) {
       return menuRow(STATUS_MENU, 'noind', 'Error checking devices.');
@@ -199,73 +168,49 @@ export default class RoomStateManager {
     return menuData;
   }
 
-  // is the dropdown on screen right now
-  statusMenuOpen() {
-    const _elem = document.getElementById(STATUS_MENU);
-    return !!_elem && _elem.style.display === 'block';
-  }
-
   // draws the rows and shows the menu
   drawStatusMenu() {
-    if (typeof window.drawMenu === 'function') {
-      window.drawMenu(this.statusMenuData(), STATUS_MENU);
-    }
-    // re-fetch in case drawMenu rewrote the DOM
-    const _elem = document.getElementById(STATUS_MENU);
-    if (_elem) _elem.style.display = 'block';
+    drawMenu(this.statusMenuData(), STATUS_MENU);
+    document.getElementById(STATUS_MENU).style.display = 'block';
   }
 
-  // A refresh landing while the menu is open: only the rows are replaced, and
-  // drawMenu() is asked not to scroll. Its scroll step measures a menu that
-  // is position:fixed against the page offset, so re-running it on a menu
-  // already on screen walks the page down a little on every refresh.
+  // Replaces the rows of a menu already open, without drawMenu()'s scroll.
   refreshStatusMenu() {
-    if (!this.statusMenuOpen()) {
+    if (!isBlockDisplayed(STATUS_MENU)) {
       return;
     }
-    if (typeof window.drawMenu === 'function') {
-      window.drawMenu(this.statusMenuData(), STATUS_MENU,
-        { TwoColumns: false, MenuScroll: false });
-    }
+    drawMenu(this.statusMenuData(), STATUS_MENU, { MenuScroll: false });
   }
 
+  // the light pressed: closes the menu, or reads the room and opens it
   async roomStateClick(e) {
-    if (e) {
-      e.stopPropagation();
-      e.preventDefault();
-    }
-    const _elem = document.getElementById(STATUS_MENU);
-    if (_elem && _elem.style.display === 'block') {
-      _elem.style.display = 'none';
+    e.stopPropagation();
+    e.preventDefault();
+    if (isBlockDisplayed(STATUS_MENU)) {
+      document.getElementById(STATUS_MENU).style.display = 'none';
       return;
     }
-    if (typeof window.removeDropdowns === 'function') window.removeDropdowns();
+    removeDropdowns();
     this.stopRoomStateTimer();
     await this.showRoomState();
     this.drawStatusMenu();
   }
 
-  // Room switch: drop the pending countdown and re-fetch straight away. The
-  // light is deliberately left alone -- it holds the last room's value until
-  // the new status lands, so switching rooms never flashes the idle dot.
+  // Room switch: re-reads straight away. The light holds the last room's value until
+  // the new status lands, so switching never flashes the idle dot.
   async restartRoomState() {
     this.stopRoomStateTimer();
     await this.showRoomState();
   }
 
+  // stops refreshing, marking the reading as no longer current
   hideRoomState() {
     this.stopRoomStateTimer();
-    if (this.container) {
-      this.container.classList.remove('status-loading');
-    }
+    this.container.classList.remove('status-loading');
     this.setRefreshing(false);
     const lightIcon = document.getElementById(LIGHT_ID);
-    if (!lightIcon) {
-      return;
-    }
-    // An error keeps its own colour and drops the state it replaced.
-    // Otherwise the light holds the last state it read and takes the idle
-    // hatch over it, marking that reading as no longer current.
+    // An error keeps its colour and drops the state it replaced; otherwise the light
+    // holds the last state with the idle hatch over it.
     if (lightIcon.classList.contains("status-error")) {
       lightIcon.classList.remove("status-off", "status-on");
     } else {
@@ -273,23 +218,18 @@ export default class RoomStateManager {
     }
   }
 
-  // The timeout is cleared unconditionally: isRunning is held for the whole
-  // of an in-flight request, so a guard on it used to leave the pending
-  // refresh armed whenever the page was torn down mid-request.
+  // drops the pending refresh, including one armed mid-request
   stopRoomStateTimer() {
     clearTimeout(this.timerID);
     this.timerID = null;
     this.isRunning = false;
   }
 
-  // End of life. Anything still in flight is dropped by the generation check
-  // in showRoomState(), so the refresh chain cannot re-arm itself.
+  // Ends the instance; an answer in flight is dropped by stale().
   destroy() {
     this.dead = true;
     this.stopRoomStateTimer();
     this.requestGen++;
-    if (this.container) {
-      this.container.removeEventListener('click', this.roomStateClick);
-    }
+    this.container.removeEventListener('click', this.roomStateClick);
   }
 }

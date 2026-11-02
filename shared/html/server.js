@@ -1,408 +1,209 @@
-// Automate Website - server window
-//
-// The Server button's log window and the option panels that open over it:
-// the server's three panels (main, backup, regions) and the Pi models' one.
-// A panel button arms one server command and the log window's send button
-// sends it; the commands that need a password ask for it first. The windows
-// the panels open live here too -- the password prompt, the guest Wi-Fi
-// window, the Pi's Wi-Fi setup and the upload picker.
-//
-// main.js draws serverOptionsTemplate() and logFormTemplate() into the page,
-// and opens and closes the log window through showLogWindow() and
-// closeLogWindow(), as it has the camera window to close alongside it.
+// Automate - Server window: the log window and its option panels (the server's main,
+// backup and regions, or a Pi's one). A panel button arms one server command and the
+// send button sends it; password commands ask first. Also the windows the panels open:
+// password prompt, guest Wi-Fi, a Pi's Wi-Fi setup, upload.
 
-import { classDisplay, addClassToElem, base64URLSafeEncode, sendCmd, html,
+import { classDisplay, base64URLSafeEncode, sendCmd, html, fetchAnswer,
   savePOST, fileURL, promptWindow, onButtons, setDisplayById,
-  registerListeners, gridButtonTemplate, dropdownButtonTemplate } from './utils.js';
+  registerListeners, gridButtonTemplate, dropdownButtonTemplate,
+  GoToExtPage } from './utils.js';
 import { removeDropdowns, openDropdown } from './dropdowns.js';
-import { HttpError, reportError } from './error.js';
+import { reportError } from './error.js';
 import Uploader from './upload.js';
 import { SSIDpwd } from './wifi.js';
 
-// the log window, its text box and its send button
 const LOG_WINDOW_ID = 'logForm';
 const LOG_TEXT_BOX_ID = 'logTextBox';
 const SEND_BUTTON_ID = 'sendButton';
-// the class the send button carries while a command is armed
 const SEND_ARMED_CLASS = 'selected_btn';
-// the file the server writes its log to
 const SERVER_LOG_FILE = 'sysout';
-
-// the options window, and the element the server's panels are drawn into
 const OPTIONS_WINDOW_CLASS = 'svropt__prompt';
 const OPTIONS_PANEL_CONTAINER_ID = 'svropt-panel-container';
+// every option panel button's size
+const OPTION_BUTTON_CLASS = 'svropt_button';
 
-// The server command a panel button has armed, or null when none is. The
-// send button transmits it and disarms.
+// the command a panel button has armed, or null
 let pendingServerCommand = null;
 
-// Log reads are numbered, so an older read that lands after a newer one
-// cannot put a stale log back on screen.
+// numbered, so an older log read landing late cannot put a stale log on screen
 let logReadSequence = 0;
 
 //// page templates ////
 
-// every button of an option panel carries the panel's own button size
-const OPTION_BUTTON_CLASS = 'svropt_button';
+// one plain button of an option panel
+function optionButton(buttonId, icon, label, extraClass = '') {
+  return gridButtonTemplate({
+    buttonId: buttonId,
+    icon: icon,
+    label: label,
+    buttonClass: `${OPTION_BUTTON_CLASS} ${extraClass}`.trim()
+  });
+}
 
-// The options window: an empty container the server's panels are drawn into,
-// or the Pi models' one panel. f says which model the page is drawn for.
+// an option panel button with its menu: btn-menu-<name> opening <name>-menu
+function optionMenu(name, icon, label, menuContent) {
+  return dropdownButtonTemplate({
+    buttonId: `btn-menu-${name}`,
+    icon: icon,
+    label: label,
+    buttonClass: OPTION_BUTTON_CLASS,
+    menuId: `${name}-menu`,
+    menuClass: 'dd-button',
+    menuContent: menuContent
+  });
+}
+
+// Start and Stop rows for a service: btn-svr-start<name>, btn-svr-stop<name>
+function startStopRows(name) {
+  return `
+      <a id="btn-svr-start${name}"><i class="fad fa-play"></i> Start</a>
+      <a id="btn-svr-stop${name}"><i class="fad fa-stop"></i> Stop</a>`;
+}
+
+// handlers that open the menus optionMenu() draws
+function menuOpeners(names) {
+  const listeners = {};
+  names.forEach(name => {
+    listeners[`btn-menu-${name}`] = () => openDropdown(`${name}-menu`);
+  });
+  return listeners;
+}
+
+// handlers for btn-svr-<command> buttons, which arm their command
+function commandButtons(commands) {
+  const listeners = {};
+  commands.forEach(command => {
+    listeners[`btn-svr-${command}`] = () => serverAction(command);
+  });
+  return listeners;
+}
+
+// The options window: the container for the server's panels, or a Pi's one panel.
 export function serverOptionsTemplate(f) {
   return `
-<div class="svropt__prompt prompt_win" data-app-injected>
-  ${f.isServer ? `
-  <div id="svropt-panel-container"></div>` : ''}
-  ${f.isPiLike ? piOptionsTemplate() : ''}
+<div class="svropt__prompt prompt_win">
+  ${f.isServer ? '<div id="svropt-panel-container"></div>' : piOptionsTemplate()}
 </div>`;
 }
 
-// the server's main panel: services, network, and the way to the other two
+// the server's main panel
 function svrOptMainTemplate() {
   return `
 <div class="svropt__panel svropt__main">
-  ${dropdownButtonTemplate({
-    buttonId: 'btn-menu-atalk',
-    icon: 'fab fa-apple',
-    label: 'AFP',
-    buttonClass: OPTION_BUTTON_CLASS,
-    menuId: 'atalk-menu',
-    menuClass: 'dd-button',
-    menuContent: `
-      <a id="btn-svr-startatalk"><i class="fad fa-play"></i> Start</a>
-      <a id="btn-svr-stopatalk"><i class="fad fa-stop"></i> Stop</a>`
-  })}
-  ${dropdownButtonTemplate({
-    buttonId: 'btn-menu-legacy',
-    icon: 'fad fa-save',
-    label: 'CIFS',
-    buttonClass: OPTION_BUTTON_CLASS,
-    menuId: 'legacy-menu',
-    menuClass: 'dd-button',
-    menuContent: `
-      <a id="btn-svr-startlegacy"><i class="fad fa-play"></i> Start</a>
-      <a id="btn-svr-stoplegacy"><i class="fad fa-stop"></i> Stop</a>`
-  })}
-  ${dropdownButtonTemplate({
-    buttonId: 'btn-menu-xana',
-    icon: 'fab fa-linux',
-    label: 'Xana',
-    buttonClass: OPTION_BUTTON_CLASS,
-    menuId: 'xana-menu',
-    menuClass: 'dd-button',
-    menuContent: `
-      <a id="btn-svr-startxana"><i class="fad fa-play"></i> Start</a>
-      <a id="btn-svr-stopxana"><i class="fad fa-stop"></i> Stop</a>`
-  })}
-  ${gridButtonTemplate({
-    buttonId: 'btn-open-regions',
-    icon: 'fad fa-th',
-    label: 'Regions',
-    buttonClass: OPTION_BUTTON_CLASS
-  })}
-  ${dropdownButtonTemplate({
-    buttonId: 'btn-menu-system',
-    icon: 'fad fa-microchip',
-    label: 'System',
-    buttonClass: OPTION_BUTTON_CLASS,
-    menuId: 'system-menu',
-    menuClass: 'dd-button',
-    menuContent: `
+  ${optionMenu('atalk', 'fab fa-apple', 'AFP', startStopRows('atalk'))}
+  ${optionMenu('legacy', 'fad fa-save', 'CIFS', startStopRows('legacy'))}
+  ${optionMenu('xana', 'fab fa-linux', 'Xana', startStopRows('xana'))}
+  ${optionButton('btn-open-regions', 'fad fa-th', 'Regions')}
+  ${optionMenu('system', 'fad fa-microchip', 'System', `
       <a id="btn-ext-system"><i class="fad fa-link"></i> Open</a>
-      <a id="btn-svr-syslog"><i class="fad fa-tachometer"></i> Status</a>`
-  })}
-  ${gridButtonTemplate({
-    buttonId: 'btn-open-backup',
-    icon: 'fad fa-sync',
-    label: 'Backup',
-    buttonClass: OPTION_BUTTON_CLASS
-  })}
-  ${dropdownButtonTemplate({
-    buttonId: 'btn-menu-router',
-    icon: 'fad fa-ethernet',
-    label: 'Router',
-    buttonClass: OPTION_BUTTON_CLASS,
-    menuId: 'router-menu',
-    menuClass: 'dd-button',
-    menuContent: `
+      <a id="btn-svr-syslog"><i class="fad fa-tachometer"></i> Status</a>`)}
+  ${optionButton('btn-open-backup', 'fad fa-sync', 'Backup')}
+  ${optionMenu('router', 'fad fa-ethernet', 'Router', `
       <a id="btn-ext-router"><i class="fad fa-link"></i> Open</a>
-      <a id="btn-svr-rebootrouter"><i class="fad fa-redo"></i> Reboot</a>`
-  })}
-  ${dropdownButtonTemplate({
-    buttonId: 'btn-menu-netwrk',
-    icon: 'fad fa-network-wired',
-    label: 'Network',
-    buttonClass: OPTION_BUTTON_CLASS,
-    menuId: 'netwrk-menu',
-    menuClass: 'dd-button',
-    menuContent: `
+      <a id="btn-svr-rebootrouter"><i class="fad fa-redo"></i> Reboot</a>`)}
+  ${optionMenu('netwrk', 'fad fa-network-wired', 'Network', `
       <a id="btn-wifi-prompt"><i class="fad fa-wifi"></i> Access</a>
       <a id="btn-ext-edgeswitch"><i class="fad fa-sitemap"></i> Switch</a>
-      <a id="btn-svr-netscan"><i class="fad fa-chart-network"></i> LAN Scanner</a>`
-  })}
-  ${dropdownButtonTemplate({
-    buttonId: 'btn-menu-unifi',
-    icon: 'fad fa-router',
-    label: 'UniFi',
-    buttonClass: OPTION_BUTTON_CLASS,
-    menuId: 'unifi-menu',
-    menuClass: 'dd-button',
-    menuContent: `
-      <a id="btn-ext-unifi"><i class="fad fa-link"></i> Open</a>
-      <a id="btn-svr-startunifi"><i class="fad fa-play"></i> Start</a>
-      <a id="btn-svr-stopunifi"><i class="fad fa-stop"></i> Stop</a>`
-  })}
-  ${gridButtonTemplate({
-    buttonId: 'btn-close-svr-opt1',
-    icon: 'fad fa-times-octagon',
-    label: 'Close',
-    buttonClass: OPTION_BUTTON_CLASS
-  })}
-  ${gridButtonTemplate({
-    buttonId: 'btn-svr-clearlog',
-    icon: 'fad fa-trash-alt',
-    label: 'Clear',
-    buttonClass: OPTION_BUTTON_CLASS
-  })}
-  ${gridButtonTemplate({
-    buttonId: 'btn-upload',
-    icon: 'fad fa-cloud-upload',
-    label: 'Upload',
-    buttonClass: OPTION_BUTTON_CLASS
-  })}
+      <a id="btn-svr-netscan"><i class="fad fa-chart-network"></i> LAN Scanner</a>`)}
+  ${optionMenu('unifi', 'fad fa-router', 'UniFi', `
+      <a id="btn-ext-unifi"><i class="fad fa-link"></i> Open</a>${startStopRows('unifi')}`)}
+  ${optionButton('btn-close-svr-opt1', 'fad fa-times-octagon', 'Close')}
+  ${optionButton('btn-svr-clearlog', 'fad fa-trash-alt', 'Clear')}
+  ${optionButton('btn-upload', 'fad fa-cloud-upload', 'Upload')}
 </div>`;
 }
 registerListeners({
   'btn-upload':           () => showUpload(),
-  'btn-menu-atalk':       () => openDropdown('atalk-menu'),
-  'btn-svr-startatalk':   () => serverAction('startatalk'),
-  'btn-svr-stopatalk':    () => serverAction('stopatalk'),
-  'btn-menu-legacy':      () => openDropdown('legacy-menu'),
-  'btn-svr-startlegacy':  () => serverAction('startlegacy'),
-  'btn-svr-stoplegacy':   () => serverAction('stoplegacy'),
-  'btn-menu-unifi':       () => openDropdown('unifi-menu'),
+  ...menuOpeners(['atalk', 'legacy', 'unifi', 'xana', 'system', 'netwrk', 'router']),
+  ...commandButtons(['startatalk', 'stopatalk', 'startlegacy', 'stoplegacy', 'startunifi',
+    'stopunifi', 'startxana', 'stopxana', 'syslog', 'netscan', 'clearlog', 'rebootrouter']),
   'btn-ext-unifi':        () => GoToExtPage('unifi:11443/network/ff7gqlig/dashboard'),
-  'btn-svr-startunifi':   () => serverAction('startunifi'),
-  'btn-svr-stopunifi':    () => serverAction('stopunifi'),
-  'btn-menu-xana':        () => openDropdown('xana-menu'),
-  'btn-svr-startxana':    () => serverAction('startxana'),
-  'btn-svr-stopxana':     () => serverAction('stopxana'),
-  'btn-menu-system':      () => openDropdown('system-menu'),
   'btn-ext-system':       () => GoToExtPage('pve:8006'),
   'btn-open-backup':      () => openServerPanel(svrOptBackupTemplate),
   'btn-open-regions':     () => openServerPanel(svrOptRegionsTemplate),
-  'btn-svr-syslog':       () => serverAction('syslog'),
-  'btn-menu-netwrk':      () => openDropdown('netwrk-menu'),
   'btn-wifi-prompt':      () => wifiPrompt(),
   'btn-ext-edgeswitch':   () => GoToExtPage('edgeswitch.home'),
-  'btn-svr-netscan':      () => serverAction('netscan'),
   'btn-close-svr-opt1':   () => closeServerOptions(),
-  'btn-svr-clearlog':     () => serverAction('clearlog'),
-  'btn-menu-router':      () => openDropdown('router-menu'),
-  'btn-ext-router':       () => GoToExtPage('router.home'),
-  'btn-svr-rebootrouter': () => serverAction('rebootrouter')
+  'btn-ext-router':       () => GoToExtPage('router.home')
 });
 
 // the server's backup panel
 function svrOptBackupTemplate() {
   return `
 <div class="svropt__panel svropt__backup">
-  ${gridButtonTemplate({
-    buttonId: 'btn-svr-last_backup_dates',
-    icon: 'fad fa-history',
-    label: 'History',
-    buttonClass: OPTION_BUTTON_CLASS
-  })}
-  ${gridButtonTemplate({
-    buttonId: 'btn-svr-backupchk',
-    label: 'Checksum',
-    buttonClass: OPTION_BUTTON_CLASS
-  })}
-  ${gridButtonTemplate({
-    buttonId: 'btn-svr-pve_vmsbkp',
-    label: 'VMs/LXCs',
-    buttonClass: OPTION_BUTTON_CLASS
-  })}
-  ${gridButtonTemplate({
-    buttonId: 'btn-pwd-unlock',
-    icon: 'fad fa-lock-open',
-    label: 'Unlock',
-    buttonClass: OPTION_BUTTON_CLASS
-  })}
-  ${gridButtonTemplate({
-    buttonId: 'btn-svr-backupstd',
-    label: 'Standard',
-    buttonClass: OPTION_BUTTON_CLASS
-  })}
-  ${gridButtonTemplate({
-    buttonId: 'btn-svr-detach_bkps',
-    icon: 'fad fa-eject',
-    label: 'Eject',
-    buttonClass: OPTION_BUTTON_CLASS
-  })}
-  ${gridButtonTemplate({
-    buttonId: 'btn-close-svr-opt2',
-    icon: 'fad fa-times-octagon',
-    label: 'Close',
-    buttonClass: OPTION_BUTTON_CLASS
-  })}
-  ${gridButtonTemplate({
-    buttonId: 'btn-svr-pve_listsnaps',
-    label: 'Snapshots',
-    buttonClass: OPTION_BUTTON_CLASS
-  })}
-  ${gridButtonTemplate({
-    buttonId: 'btn-open-svr-opt1',
-    icon: 'fad fa-arrow-left',
-    label: 'Back',
-    buttonClass: OPTION_BUTTON_CLASS
-  })}
+  ${optionButton('btn-svr-last_backup_dates', 'fad fa-history', 'History')}
+  ${optionButton('btn-svr-backupchk', '', 'Checksum')}
+  ${optionButton('btn-svr-pve_vmsbkp', '', 'VMs/LXCs')}
+  ${optionButton('btn-pwd-unlock', 'fad fa-lock-open', 'Unlock')}
+  ${optionButton('btn-svr-backupstd', '', 'Standard')}
+  ${optionButton('btn-svr-detach_bkps', 'fad fa-eject', 'Eject')}
+  ${optionButton('btn-close-svr-opt2', 'fad fa-times-octagon', 'Close')}
+  ${optionButton('btn-svr-pve_listsnaps', '', 'Snapshots')}
+  ${optionButton('btn-open-svr-opt1', 'fad fa-arrow-left', 'Back')}
 </div>`;
 }
 registerListeners({
-  'btn-svr-last_backup_dates': () => serverAction('last_backup_dates'),
-  'btn-svr-backupchk':         () => serverAction('backupchk'),
-  'btn-svr-pve_vmsbkp':        () => serverAction('pve_vmsbkp'),
-  'btn-pwd-unlock':            () => getPassword('pwd'),
-  'btn-svr-backupstd':         () => serverAction('backupstd'),
-  'btn-svr-detach_bkps':       () => serverAction('detach_bkps'),
-  'btn-close-svr-opt2':        () => closeServerOptions(),
-  'btn-svr-pve_listsnaps':     () => serverAction('pve_listsnaps'),
-  'btn-open-svr-opt1':         () => openServerPanel(svrOptMainTemplate)
+  ...commandButtons(['last_backup_dates', 'backupchk', 'pve_vmsbkp', 'backupstd', 'detach_bkps', 'pve_listsnaps']),
+  'btn-pwd-unlock':     () => getPassword('pwd'),
+  'btn-close-svr-opt2': () => closeServerOptions(),
+  'btn-open-svr-opt1':  () => openServerPanel(svrOptMainTemplate)
 });
 
 // the server's regions panel: archive, snapshot and RAM disk mounts
 function svrOptRegionsTemplate() {
   return `
 <div class="svropt__panel svropt__regions">
-  ${dropdownButtonTemplate({
-    buttonId: 'btn-menu-archive',
-    label: 'Archive',
-    buttonClass: OPTION_BUTTON_CLASS,
-    menuId: 'archive-menu',
-    menuClass: 'dd-button',
-    menuContent: `
+  ${optionMenu('archive', '', 'Archive', `
       <a id="btn-pwd-fusearch"><i class="fad fa-link"></i> Attach</a>
-      <a id="btn-pwd-fusearch_unmnt"><i class="fad fa-eject"></i> Detach</a>`
-  })}
-  ${dropdownButtonTemplate({
-    buttonId: 'btn-menu-snapshots',
-    label: 'Snapshots',
-    buttonClass: OPTION_BUTTON_CLASS,
-    menuId: 'snapshots-menu',
-    menuClass: 'dd-button',
-    menuContent: `
+      <a id="btn-pwd-fusearch_unmnt"><i class="fad fa-eject"></i> Detach</a>`)}
+  ${optionMenu('snapshots', '', 'Snapshots', `
       <a id="btn-svr-mnt_snap_region"><i class="fad fa-link"></i> Attach</a>
-      <a id="btn-svr-unmnt_snap_region"><i class="fad fa-eject"></i> Detach</a>`
-  })}
-  ${dropdownButtonTemplate({
-    buttonId: 'btn-menu-ramdisk',
-    label: 'RAM Disk',
-    buttonClass: OPTION_BUTTON_CLASS,
-    menuId: 'ramdisk-menu',
-    menuClass: 'dd-button',
-    menuContent: `
+      <a id="btn-svr-unmnt_snap_region"><i class="fad fa-eject"></i> Detach</a>`)}
+  ${optionMenu('ramdisk', '', 'RAM Disk', `
       <a id="btn-svr-mnt_ram_region"><i class="fad fa-link"></i> Attach</a>
-      <a id="btn-svr-unmnt_ram_region"><i class="fad fa-eject"></i> Detach</a>`
-  })}
-  ${gridButtonTemplate({
-    buttonId: 'btn-close-svr-opt3',
-    icon: 'fad fa-times-octagon',
-    label: 'Close',
-    buttonClass: OPTION_BUTTON_CLASS
-  })}
-  ${gridButtonTemplate({
-    buttonId: 'btn-svr-unmnt_all',
-    label: 'Detach All',
-    buttonClass: `${OPTION_BUTTON_CLASS} dark_btn`
-  })}
-  ${gridButtonTemplate({
-    buttonId: 'btn-open-svr-opt2',
-    icon: 'fad fa-arrow-left',
-    label: 'Back',
-    buttonClass: OPTION_BUTTON_CLASS
-  })}
+      <a id="btn-svr-unmnt_ram_region"><i class="fad fa-eject"></i> Detach</a>`)}
+  ${optionButton('btn-close-svr-opt3', 'fad fa-times-octagon', 'Close')}
+  ${optionButton('btn-svr-unmnt_all', '', 'Detach All', 'dark_btn')}
+  ${optionButton('btn-open-svr-opt2', 'fad fa-arrow-left', 'Back')}
 </div>`;
 }
 registerListeners({
-  'btn-menu-archive':          () => openDropdown('archive-menu'),
-  'btn-pwd-fusearch':          () => getPassword('fusearch'),
-  'btn-pwd-fusearch_unmnt':    () => serverAction('unmnt_arch_region'),
-  'btn-menu-snapshots':        () => openDropdown('snapshots-menu'),
-  'btn-svr-mnt_snap_region':   () => serverAction('mnt_snap_region'),
-  'btn-svr-unmnt_snap_region': () => serverAction('unmnt_snap_region'),
-  'btn-menu-ramdisk':          () => openDropdown('ramdisk-menu'),
-  'btn-svr-mnt_ram_region':    () => serverAction('mnt_ram_region'),
-  'btn-svr-unmnt_ram_region':  () => serverAction('unmnt_ram_region'),
-  'btn-close-svr-opt3':        () => closeServerOptions(),
-  'btn-svr-unmnt_all':         () => serverAction('unmnt_all'),
-  'btn-open-svr-opt2':         () => openServerPanel(svrOptMainTemplate),
-  'btn-svr-mnt_ext_region':    () => serverAction('mnt_ext_region'),
-  'btn-svr-unmnt_ext_region':  () => serverAction('unmnt_ext_region')
+  ...menuOpeners(['archive', 'snapshots', 'ramdisk']),
+  ...commandButtons(['mnt_snap_region', 'unmnt_snap_region', 'mnt_ram_region', 'unmnt_ram_region', 'unmnt_all']),
+  'btn-pwd-fusearch':       () => getPassword('fusearch'),
+  'btn-pwd-fusearch_unmnt': () => serverAction('unmnt_arch_region'),
+  'btn-close-svr-opt3':     () => closeServerOptions(),
+  'btn-open-svr-opt2':      () => openServerPanel(svrOptMainTemplate)
 });
 
 // the Pi models' options panel
 function piOptionsTemplate() {
   return `
 <div class="svropt__panel">
-  ${dropdownButtonTemplate({
-    buttonId: 'btn-menu-piwifi',
-    icon: 'fad fa-wifi',
-    label: 'WiFi',
-    buttonClass: OPTION_BUTTON_CLASS,
-    menuId: 'piwifi-menu',
-    menuClass: 'dd-button',
-    menuContent: `
+  ${optionMenu('piwifi', 'fad fa-wifi', 'WiFi', `
       <a id="btn-show-piwifiprompt"> Setup WiFi</a>
       <a id="btn-svr-client"> Client Mode</a>
       <a id="btn-svr-apd"> Hotspot Mode</a>
-      <a id="btn-svr-wifiscan"> WiFi Scanner</a>`
-  })}
-  ${gridButtonTemplate({
-    buttonId: 'btn-svr-showwpa',
-    label: 'Network',
-    buttonClass: OPTION_BUTTON_CLASS
-  })}
-  ${gridButtonTemplate({
-    buttonId: 'btn-svr-temp',
-    label: 'Temperature',
-    buttonClass: OPTION_BUTTON_CLASS
-  })}
-  ${gridButtonTemplate({
-    buttonId: 'btn-close-svr-opt4',
-    icon: 'fad fa-times-octagon',
-    label: 'Close',
-    buttonClass: OPTION_BUTTON_CLASS
-  })}
-  ${gridButtonTemplate({
-    buttonId: 'btn-svr-pi-clearlog',
-    label: 'Clear Log',
-    buttonClass: OPTION_BUTTON_CLASS
-  })}
-  ${gridButtonTemplate({
-    buttonId: 'btn-svr-resetbt',
-    icon: 'fab fa-bluetooth',
-    label: 'Reset',
-    buttonClass: OPTION_BUTTON_CLASS
-  })}
+      <a id="btn-svr-wifiscan"> WiFi Scanner</a>`)}
+  ${optionButton('btn-svr-showwpa', '', 'Network')}
+  ${optionButton('btn-svr-temp', '', 'Temperature')}
+  ${optionButton('btn-close-svr-opt4', 'fad fa-times-octagon', 'Close')}
+  ${optionButton('btn-svr-pi-clearlog', '', 'Clear Log')}
+  ${optionButton('btn-svr-resetbt', 'fab fa-bluetooth', 'Reset')}
 </div>`;
 }
 registerListeners({
-  'btn-menu-piwifi':       () => openDropdown('piwifi-menu'),
+  ...menuOpeners(['piwifi']),
+  ...commandButtons(['client', 'apd', 'wifiscan', 'showwpa', 'temp', 'resetbt']),
   'btn-show-piwifiprompt': () => showPiWiFiPrompt(),
-  'btn-svr-client':        () => serverAction('client'),
-  'btn-svr-apd':           () => serverAction('apd'),
-  'btn-svr-wifiscan':      () => serverAction('wifiscan'),
-  'btn-svr-showwpa':       () => serverAction('showwpa'),
-  'btn-svr-temp':          () => serverAction('temp'),
   'btn-close-svr-opt4':    () => closeServerOptions(),
-  'btn-svr-pi-clearlog':   () => serverAction('clearlog'),
-  'btn-svr-resetbt':       () => serverAction('resetbt')
+  'btn-svr-pi-clearlog':   () => serverAction('clearlog')
 });
 
-// server log popup window (all models -- Pi opens it via the System menu)
+// the log window (all models; a Pi opens it from its System row)
 export function logFormTemplate() {
   return `
-<div class="log-popup popup-win" id="logForm" data-app-injected>
+<div class="log-popup popup-win" id="logForm">
   <div class="popup-ctn">
     <textarea readonly class="scroll-bar-style" id="logTextBox" spellcheck="false"></textarea>
     <div class="popup-actions">
@@ -432,71 +233,54 @@ export function logFormTemplate() {
 }
 registerListeners({
   'btn-log-open-svr': () => openServerPanel(svrOptMainTemplate),
-  'btn-log-load':     () => loadLog(SERVER_LOG_FILE),
+  'btn-log-load':     () => loadLog(),
   'sendButton':       () => serverSend()
 });
 
 //// log window ////
 
-// Shows the log window and reads the log into it. main.js closes whatever
-// other window is open first.
+// Shows the log window and reads the log into it.
 export function showLogWindow() {
   setDisplayById(LOG_WINDOW_ID, "block");
-  loadLog(SERVER_LOG_FILE);
+  loadLog();
 }
 
-// Hides the log window, drops an armed command and closes the options window
-// over it.
+// Hides the log window, its armed command and the options window over it.
 export function closeLogWindow() {
   setDisplayById(LOG_WINDOW_ID, "none");
   clearPendingCmd();
   closeServerOptions();
 }
 
-// Loads an entire text file into the log window, scrolled to its newest
-// line. A command armed before the reload is dropped.
-function loadLog(file) {
+// Reads the whole log into the window, on its newest line, and drops any armed command.
+async function loadLog() {
   logReadSequence += 1;
   const readSequence = logReadSequence;
-  fetch(fileURL('read', file), { method: 'GET' })
-    .then((response) => {
-      if (!response.ok) {
-        return response.text().then((answerText) => {
-          throw new HttpError(response.status, answerText);
-        });
-      }
-      return response.json();
-    })
-    .then(logText => {
-      // a newer read has gone out since; its text is the one to show
-      if (readSequence !== logReadSequence) {
-        return;
-      }
-      const logTextBox = document.getElementById(LOG_TEXT_BOX_ID);
-      if (!logTextBox) {
-        return;
-      }
-      logTextBox.value = logText;
-      logTextBox.scrollTop = logTextBox.scrollHeight;
-    })
-    .catch((error) => {
-      reportError(`reading the ${file} log`, error);
-    });
-  // The send button's highlight goes with the command. Only the command
-  // used to be dropped here, which left the button lit with nothing to send.
   clearPendingCmd();
+  try {
+    const answerText = await fetchAnswer(fileURL('read', SERVER_LOG_FILE));
+    const logText = JSON.parse(answerText);
+    // a newer read's text is the one to show
+    if (readSequence !== logReadSequence) {
+      return;
+    }
+    const logTextBox = document.getElementById(LOG_TEXT_BOX_ID);
+    logTextBox.value = logText;
+    logTextBox.scrollTop = logTextBox.scrollHeight;
+  } catch (error) {
+    reportError(`reading the ${SERVER_LOG_FILE} log`, error);
+  }
 }
 
 //// arming and sending a command ////
 
-// arms a server command; the send button then transmits it
+// arms a server command; the send button then sends it
 function serverAction(command) {
   pendingServerCommand = command;
-  sendBtnAlert("on");
+  document.getElementById(SEND_BUTTON_ID).classList.add(SEND_ARMED_CLASS);
 }
 
-// Send button: transmits the armed command and notes it in the log box, or
-// asks for one to be picked when none is armed.
+// Send button: sends the armed command and notes it in the log box, or asks for one.
 function serverSend() {
   const logTextBox = document.getElementById(LOG_TEXT_BOX_ID);
   if (pendingServerCommand === null) {
@@ -509,43 +293,24 @@ function serverSend() {
   clearPendingCmd();
 }
 
-// lights the send button while a command is armed: 'on' or 'off'
-function sendBtnAlert(state) {
-  if (state === 'on') {
-    addClassToElem('add', SEND_BUTTON_ID, SEND_ARMED_CLASS);
-  }
-  if (state === 'off') {
-    addClassToElem('remove', SEND_BUTTON_ID, SEND_ARMED_CLASS);
-  }
-}
-
-// drops the armed command and the send button's highlight with it
+// drops the armed command and the send button's highlight
 function clearPendingCmd() {
-  sendBtnAlert("off");
+  document.getElementById(SEND_BUTTON_ID).classList.remove(SEND_ARMED_CLASS);
   pendingServerCommand = null;
 }
 
-// Once a password has been saved, arms the command that uses it and sends it
-// straight away. passwordFile is the file the password was written to.
+// the command each password file is saved for
+const PASSWORD_COMMANDS = { pwd: 'attach_bkps', fusearch: 'mnt_arch_region' };
+
+// A password was saved: sends the command that uses it.
 function afterPOSTActions(passwordFile) {
-  let commandArmed = false;
-  if (passwordFile === 'pwd') {
-    serverAction('attach_bkps');
-    commandArmed = true;
-  }
-  if (passwordFile === 'fusearch') {
-    serverAction('mnt_arch_region');
-    commandArmed = true;
-  }
-  if (commandArmed === true) {
-    serverSend();
-  }
+  serverAction(PASSWORD_COMMANDS[passwordFile]);
+  serverSend();
 }
 
 //// options window ////
 
-// Opens the options window on one of the server's panels. The Pi models have
-// no panel container: their one panel is already in the window.
+// Opens the options window on one of the server's panels; a Pi's panel is already in it.
 function openServerPanel(panelTemplate) {
   closeServerOptions();
   const panelContainer = document.getElementById(OPTIONS_PANEL_CONTAINER_ID);
@@ -555,8 +320,7 @@ function openServerPanel(panelTemplate) {
   classDisplay(OPTIONS_WINDOW_CLASS, "block");
 }
 
-// Closes the options window, its menus and any armed command, and takes the
-// rendered panel markup out entirely.
+// Closes the options window, its menus and any armed command, and removes the panel.
 function closeServerOptions() {
   removeDropdowns();
   clearPendingCmd();
@@ -567,8 +331,7 @@ function closeServerOptions() {
   }
 }
 
-// Upload button: opens the file dialog. The uploader is kept on App, where
-// the page teardown destroys it.
+// Upload button: opens the file dialog.
 function showUpload() {
   removeDropdowns();
   if (!App.uploader) {
@@ -581,8 +344,7 @@ function showUpload() {
 
 const PI_WIFI_PROMPT_ID = 'pinet__prompt';
 
-// Pi options, Setup WiFi: asks for a network and password and sends them to
-// the Pi. A second press while the window is open does nothing.
+// Pi options, Setup WiFi: asks for a network and password and sends them to the Pi.
 async function showPiWiFiPrompt() {
   if (document.getElementById(PI_WIFI_PROMPT_ID)) {
     return;
@@ -596,12 +358,12 @@ async function showPiWiFiPrompt() {
   }
 }
 
-// the two buttons of the Pi's Wi-Fi setup window
+// the Pi Wi-Fi window's buttons
 const PI_WIFI_CANCEL_BUTTON_ID = 'pinet__btn-cancel';
 const PI_WIFI_SAVE_BUTTON_ID = 'pinet__btn-save';
 
-// Asks for an SSID and password and resolves with them base64 encoded as
-// "ssid|$|password", or null when it was cancelled.
+// Asks for an SSID and password; resolves with them base64 encoded as "ssid|$|password",
+// or null when cancelled.
 function piWiFiPrompt(windowId) {
   return new Promise((resolve) => {
     const promptElement = promptWindow(windowId, html`
@@ -624,15 +386,15 @@ function piWiFiPrompt(windowId) {
     const ssidBox = document.getElementById("pinet__ssidbox");
     const passwordBox = document.getElementById("pinet__passbox");
     ssidBox.focus();
-    // empties the boxes, closes the window and settles the promise; after a
-    // save the promise is already settled and the null is ignored
+    // empties the boxes, closes the window and settles the promise as null, which a
+    // save has already settled
     function closeWiFiPrompt() {
       ssidBox.value = "";
       passwordBox.value = "";
       promptElement.remove();
       resolve(null);
     }
-    // settles with the two values, or says which one is still missing
+    // settles with the two values, or says which is missing
     function saveWiFiSettings() {
       if (ssidBox.value === "") {
         ssidLabel.innerHTML = "enter SSID!";
@@ -653,20 +415,8 @@ function piWiFiPrompt(windowId) {
         closeWiFiPrompt();
       }
     });
-    ssidBox.addEventListener("keyup", (keyEvent) => {
-      if (keyEvent.key === "Enter") {
-        passwordBox.focus();
-      } else if (keyEvent.key === "Escape") {
-        closeWiFiPrompt();
-      }
-    });
-    passwordBox.addEventListener("keyup", (keyEvent) => {
-      if (keyEvent.key === "Enter") {
-        saveWiFiSettings();
-      } else if (keyEvent.key === "Escape") {
-        closeWiFiPrompt();
-      }
-    });
+    promptKeys(ssidBox, () => passwordBox.focus(), closeWiFiPrompt);
+    promptKeys(passwordBox, saveWiFiSettings, closeWiFiPrompt);
   });
 }
 
@@ -674,7 +424,7 @@ function piWiFiPrompt(windowId) {
 
 const GUEST_WIFI_PROMPT_ID = 'wifi__prompt';
 
-// Network menu, Access: the QR code and password for guest WiFi access
+// Network menu, Access: the QR code and password for guest WiFi
 function wifiPrompt() {
   if (document.getElementById(GUEST_WIFI_PROMPT_ID)) {
     return;
@@ -688,7 +438,7 @@ function wifiPrompt() {
       label: 'Close'
     })}
   `);
-  // password text set separately (value is data, not markup)
+  // set separately: the value is data, not markup
   document.getElementById("wifi__pwdtxt").innerHTML = atob(SSIDpwd());
   onButtons(promptElement, () => promptElement.remove());
 }
@@ -696,25 +446,30 @@ function wifiPrompt() {
 /////// password prompt ///////
 
 const PASSWORD_PROMPT_ID = 'pass__prompt_win';
-const PASSWORD_CANCEL_BUTTON_ID = 'pass__btn-cancel';
 const PASSWORD_SEND_BUTTON_ID = 'pass__btn-send';
 
-// Asks for a password and saves it to the file named, which the server side
-// reads it from; afterPOSTActions() then sends the command that needs it.
-async function getPassword(passwordFile) {
-  try {
-    removeDropdowns();
-    const password = await passwordPrompt();
-    if (password !== null && password !== "" && password !== undefined) {
-      savePOST(passwordFile, [password], afterPOSTActions);
+// runs onEnter or onEscape as a box's keys are released
+function promptKeys(box, onEnter, onEscape) {
+  box.addEventListener("keyup", (keyEvent) => {
+    if (keyEvent.key === "Enter") {
+      onEnter();
+    } else if (keyEvent.key === "Escape") {
+      onEscape();
     }
-  } catch (cancelled) {
-    // user cancelled -- nothing to do
+  });
+}
+
+// Asks for a password and saves it to the file the server side reads, which then sends
+// the command that needs it.
+async function getPassword(passwordFile) {
+  removeDropdowns();
+  const password = await passwordPrompt();
+  if (password !== null && password !== "") {
+    savePOST(passwordFile, password, afterPOSTActions);
   }
 }
 
-// Resolves with the typed password and rejects when it was cancelled.
-// Answers null, with no new window, when the prompt is already open.
+// Resolves with the typed password, or null when cancelled or already open.
 function passwordPrompt() {
   if (document.getElementById(PASSWORD_PROMPT_ID)) {
     return null;
@@ -724,7 +479,7 @@ function passwordPrompt() {
     <input id="pass__textbox" type="password">
     <div id="pass__prmbtnctr">
       ${gridButtonTemplate({
-        buttonId: PASSWORD_CANCEL_BUTTON_ID,
+        buttonId: 'pass__btn-cancel',
         label: 'Cancel',
         buttonClass: 'pass__prompt_btn'
       })}
@@ -737,23 +492,18 @@ function passwordPrompt() {
   `);
   const passwordBox = document.getElementById("pass__textbox");
   passwordBox.focus();
-  return new Promise(function (resolve, reject) {
+  return new Promise((resolve) => {
+    const finish = (password) => {
+      resolve(password);
+      promptElement.remove();
+    };
     onButtons(promptElement, (button) => {
       if (button.id === PASSWORD_SEND_BUTTON_ID) {
-        resolve(passwordBox.value);
+        finish(passwordBox.value);
       } else {
-        reject(new Error("User cancelled"));
-      }
-      promptElement.remove();
-    });
-    passwordBox.addEventListener("keyup", function (keyEvent) {
-      if (keyEvent.key === "Enter") {
-        resolve(passwordBox.value);
-        promptElement.remove();
-      } else if (keyEvent.key === "Escape") {
-        promptElement.remove();
-        reject(new Error("User cancelled"));
+        finish(null);
       }
     });
+    promptKeys(passwordBox, () => finish(passwordBox.value), () => finish(null));
   });
 }

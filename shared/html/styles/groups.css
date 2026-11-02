@@ -1,48 +1,10 @@
-/*
- *  Automate -- groups.css
- *
- *  The outlined button groups in the main grid (mainGridTemplate and
- *  roomControlsTemplate in main.js), each a <fieldset class="btn-group">
- *  whose first child, a .btn-group-label, names it:
- *    Pixels      Colors / Pixels / Animated
- *    APT         Room / Lights / Power, YouTube / Temp / Media,
- *                Doorway / Server / Lists
- *    <room>      #room-group, the room grid; selectRoom() writes the room's
- *                icon and name into #room-group-icon / #room-group-label
- *
- *  A group sizes itself around its buttons: nothing in here knows how big
- *  a button is. Change the width or height of .button in main.css and every
- *  outline follows, with the same clear all round.
- *
- *  Each group is a three-column grid (the room group's grid is the room
- *  template's own wrapper div, inside #room-grid-container). A .grid-sep in
- *  the markup still ends a row, as it did outside the groups: inside a
- *  group it spans the whole row and is the gap between rows. The fieldset
- *  is max-content wide, so its border hugs the widest row.
- *
- *  The outline is raised like a button: the same walls, rim and shadows as
- *  .button in main.css, falling to the lower right. The group itself is not
- *  shifted the way a button is (a transform would trap the dropdown menus
- *  under the next group), so it keeps 5px of margin on the right and bottom
- *  for the walls to stand in.
- *
- *  The label is the group's first row, inside the border, top left: a div
- *  rather than a <legend>, so the border runs unbroken and the walls follow
- *  a plain rectangle. Its text box is trimmed to the capitals, cap top to
- *  baseline, and its icon takes no height, so the band is exactly
- *  --group-label-gap above the capitals and --group-label-gap below them
- *  to the button faces, at any --group-label-size.
- *
- *  The .btn-group .button rule only changes the margins and alignment;
- *  .button and .button:active in main.css still draw the face, the walls
- *  and the press, untouched. At rest each button's 5px wall ends exactly
- *  on its margin box, so the clear is true on every side; pressed, the face
- *  travels 6px and its 1px wall reaches 2px past its resting edge.
- *
- *  No "+" inside calc(): yui-compressor strips the spaces around a "+",
- *  which breaks calc(). Sums are written as subtracting a negative
- *  (a - -1 * b), which it leaves alone.
- */
+/* Automate: outlined button groups in the main grid: <fieldset class="btn-group">
+   with a .btn-group-label first. Each is a three-column grid sized around its
+   buttons (.button in main.css), a .grid-sep ending a row; the room group's grid is
+   the room template's wrapper div. Raised like a button but not shifted (a transform
+   would trap the menus), so 5px of right and bottom margin holds the walls. The
+   label is a div trimmed to its capitals, with --group-label-gap above and below. No
+   "+" inside calc(): yui-compressor strips its spaces. */
 
 :root {
   --group-columns: 3;      /* buttons per row */
@@ -50,21 +12,18 @@
   --group-clear: 7px;      /* border to buttons: sides and bottom */
   --group-gap: 7px;        /* between buttons, across a row and between rows */
   --group-spacing: 7px;    /* between groups: one's walls to the next's border */
-  /* the outline's colour: the buttons' face colour, which is what their
-     edge is drawn in (lit by the same white rim the group carries below) */
+  /* the buttons' face colour, the edge they are drawn in */
   --group-border-color: var(--main-trans-35);
   --group-label-size: 12px;    /* the label's text and icon */
   --group-label-gap: 7px;      /* top border to the label's capitals, and
                                   their baseline to the button faces */
   --group-label-indent: 8px;   /* the label, further in than the buttons */
-  /* the fill: this much of --group-fill-color, the rest see-through.
-     0% is fully transparent; try 20% to 40% for a tinted glass */
+  /* the fill: this much of --group-fill-color; 0% is see-through */
   --group-fill-color: var(--main-black-50);
   --group-fill-amount: 20%;
 }
 
-/* the grid the buttons sit in: the group itself, or for the room group the
-   room template's own wrapper div (see #room-group below) */
+/* the grid: the group, or the room template's wrapper div */
 .btn-group,
 #room-group #room-grid-container > div {
   display: grid;
@@ -75,21 +34,16 @@
 .btn-group {
   width: max-content;      /* hug the buttons, whatever size they are */
   min-width: 0;            /* a fieldset is min-content wide by default */
-  /* 5px on the right and bottom is room for the walls; below them, the
-     spacing to the next group. The groups stack in one column, so the
-     spacing goes on the bottom only: each group then sits the same
-     distance below the walls of the one above. */
+  /* 5px right and bottom for the walls; below them, the spacing to the next group */
   margin: 0 5px calc(5px - -1 * var(--group-spacing)) 0;
   padding: var(--group-clear);
   /* the label's band is the first row, so it starts at the top border */
   padding-top: 0;
   border: var(--group-border) solid var(--group-border-color);
-  /* 10px, the button's own corner (.button in main.css), plus the clear
-     and the border, so the outline curves round the buttons evenly */
+  /* the button's 10px corner plus clear and border, so the outline curves evenly */
   border-radius: calc(10px - -1 * var(--group-clear) - -1 * var(--group-border));
   background-color: color-mix(in srgb, var(--group-fill-color) var(--group-fill-amount), transparent);
-  /* the same glass edge and walls as .button (main.css). An outer shadow
-     never draws under the box, so the fill decides what shows inside. */
+  /* the same glass edge and walls as .button */
   box-shadow:
     inset 0 0 2px rgba(255, 255, 255, 0.3),
     inset 0 0 10px var(--main-trans-50),
@@ -101,16 +55,12 @@
     10px 10px 20px rgba(0, 0, 0, 0.3);
 }
 
-/* the room group holds one thing, #room-grid-container, whose template
-   swaps with the room; the template's wrapper div is its grid instead */
+/* the room group's template swaps with the room; its wrapper div is the grid */
 #room-group {
   display: block;
 }
 
-/* the label: the group's first row, the indent further in than the
-   buttons, with the icon and the text centred top to bottom. One gap above
-   the text and one below it, which with the text trimmed to its capitals
-   puts them midway between the top border and the button faces. */
+/* the label row: icon and text centred, one gap above and below the capitals */
 .btn-group-label {
   grid-column: 1 / -1;
   display: flex;
@@ -125,33 +75,26 @@
   user-select: none;
 }
 
-/* the * rule in main.css sets the size on every element, the label's icon and
-   its text span included, so both are set here. "> *", not " *": a
-   selector ending in a bare * is tried against every element on the page
-   with a walk up through all its ancestors; with ">" the walk is one step. */
+/* the * rule sizes every element, so both are set; > * keeps the selector's walk to
+   one step */
 .btn-group-label,
 .btn-group-label > * {
   font-size: var(--group-label-size);
 }
 
-/* no height, so the band is the text's alone: a Font Awesome glyph fills
-   its one-em box, which is centred on a line of no height, and that line
-   is centred on the capitals */
+/* no height, so the band is the text's alone */
 .btn-group-label i {
   margin-right: 6px;
   line-height: 0;
 }
 
-/* the text's box trimmed from cap top to baseline, so the gaps measure to
-   the capitals themselves rather than to the font's line */
+/* the text box trimmed to cap top and baseline, so gaps measure to the capitals */
 .btn-group-label span {
   text-box: trim-both cap alphabetic;
 }
 
-/* size comes from .button itself (main.css); only the margins differ.
-   5px top and left, so with the -5px resting translate the face lands
-   exactly on the content edge, one clear in from the border. Top-aligned
-   so a button inside a .dropdown makes a line box no taller than itself. */
+/* only the margins differ: with the -5px translate, the face lands one clear in.
+   Top-aligned so a .dropdown's line box is no taller. */
 .btn-group .button {
   margin: 5px 0 0 5px;
   vertical-align: top;
@@ -164,8 +107,7 @@
   margin: 0;
 }
 
-/* the dropdown menus open 5px under the button's wall, clear of it, as
-   they did when the buttons were loose */
+/* menus open 5px under the button's wall */
 .btn-group .dd-content {
   margin-top: 5px;
 }

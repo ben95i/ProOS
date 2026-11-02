@@ -1,17 +1,5 @@
-/*
- *  Automate -- bookmarks.css
- *
- *  Bookmarks drop-down (rows, favicons, search box) and the add / edit
- *  window.
- *
- *  Split out of the old single styles.css. Loaded from index.html after
- *  styles/main.css, which holds the globals (palette, buttons, menus) these
- *  rules build on.
- *
- *  The grip on each row (.drag-grip / .drag-row--active) and the search box at
- *  the top of the menu (.search-row) are both shared with the lists window and
- *  live in styles/lists.css -- see the notes above them there.
- */
+/* Automate: bookmarks drop-down and add / edit window. The grip and search box are
+   shared with the lists window, in lists.css. */
 
 /*
  *  Bookmarks Style
@@ -43,8 +31,8 @@
   white-space: nowrap;
 }
 
-/* per-row favicon, opens the add / edit window for that bookmark --
-   padded out so roughly 5px around the 16px icon is clickable too */
+/* a row's favicon, opening its edit window; padded so 5px around the 16px icon is
+   clickable */
 .bookmarked__edit {
   flex-shrink: 0;
   display: flex;
@@ -58,10 +46,8 @@
   cursor: pointer;
 }
 
-/* the saved favicon, drawn at the size it is stored at so it stays sharp.
-   Always a circle: the corners of the square source are clipped away. */
-/* the icon sits in its own holder inside the button, so the spinner that
-   rings it survives a favicon redraw */
+/* the saved favicon at its stored size, clipped to a circle */
+/* the icon's own holder, so the spinner survives a redraw */
 .bookmarked__glyph {
   display: flex;
   align-items: center;
@@ -69,9 +55,8 @@
   line-height: 1;
 }
 
-/* Spinner ring around the favicon, from the tap until the edit window is up.
-   32px around a 24px icon, centred with margins rather than a transform --
-   the shared rotation keyframes animate transform and would undo it. */
+/* Ring around the favicon until the edit window is up; centred by margins, as the
+   rotation keyframes animate transform. */
 .bookmark-spinner {
   width: 32px;
   height: 32px;
@@ -81,8 +66,7 @@
   margin-top: -16px;
 }
 
-/* the two-class selectors win over the shared rule's display, whatever the
-   order of the two blocks in this file */
+/* two classes win over the shared rule's display */
 .bookmarked__edit .bookmark-spinner {
   opacity: 0;
   visibility: hidden;
@@ -93,11 +77,8 @@
   visibility: visible;
 }
 
-/* The add button reports on itself the same way a row does, over the read and
-   the write the edit lock takes before the window can open. It has no favicon
-   holder to hang the ring on, so the button itself is the positioning
-   context; the ring is 12px wider than the nav icon, the clearance the rows
-   use. */
+/* The add button rings itself while the lock is taken, the button being the
+   positioning context; 12px wider than the nav icon. */
 #btn-add-bookmark {
   position: relative;
 }
@@ -114,7 +95,7 @@
   visibility: hidden;
 }
 
-/* two classes on the button beat the rule above, whatever the block order */
+/* two classes beat the rule above */
 #btn-add-bookmark.bookmark__add--loading .bookmark-spinner {
   opacity: 0.85;
   visibility: visible;
@@ -156,19 +137,9 @@
   width: 5px;
 }
 
-/* The search row's own chrome in this menu. The box, its icon and everything
-   they look like are shared with the lists window and live in
-   styles/lists.css (.search-row) -- only what makes this one a menu row is
-   here. The display is kept on the id: the menu's own rule for its rows is a
-   two-part selector and would otherwise win over the shared class.
-
-   The sides are set here for the same reason. A menu row is padded on the left
-   to leave room for the icon column every other row in the drop-down carries,
-   and this row has no business in that column -- it put the magnifier a long
-   way in from the edge, where the lists window has it sitting close to it.
-   The row is given the same 8px that window uses, so the two start at the same
-   distance in. Top and bottom are left to the menu, which is what keeps this
-   row standing the same height as the rows below it. */
+/* The search row as a menu row; the id beats the menu's two-part selector. 8px
+   sides, as in the lists window; top and bottom come from the menu, to match the
+   rows' height. */
 #bookmark__search {
   width: 100%;
   display: flex;
@@ -177,10 +148,7 @@
   margin: 0;
 }
 
-/* The icon's own slot, past anything the menu says about the icons on its
-   rows -- those are sized for a column this row does not use, and an id in the
-   selector is what it takes to get out from under them. The values are the
-   shared ones from lists.css; only the weight of the selector differs. */
+/* the icon past the menu's column rules; the values are lists.css's */
 #bookmark__search .search-row__icon {
     width: 25px;
     margin: 0;
@@ -196,7 +164,7 @@
 #editFav__prompt {
   position: absolute;
   display: inline-block;
-  padding-bottom: 10px; 
+  padding-bottom: 10px;
   top: 20%;
   left: 20%;
   height: auto;
@@ -211,8 +179,7 @@
   width: 155px;
 }
 
-/* the site lookup button while a lookup is running -- its own glyph class is
-   taken off, and the turning icon inside stands in for it */
+/* the lookup button while running: its glyph class is off, the ring inside stands in */
 .editFav__button--busy {
   transition: none;
 }
@@ -223,11 +190,8 @@
   transition: none;
 }
 
-/* The ring the lookup button turns while it works. Everything that makes it a
-   ring -- the border, the rotation, the centring on 50% / 50%, the pass
-   through of the press -- comes from .bookmark-spinner above and the shared
-   spinner rule in main.css; only the size is set here. 36px rings the space
-   the magnifier left, with the clearance the rows use. */
+/* the lookup button's ring: 36px round the magnifier's space; all else from
+   .bookmark-spinner */
 .editFav__button--busy .bookmark-spinner {
   width: 36px;
   height: 36px;
@@ -235,10 +199,7 @@
   margin-top: -18px;
 }
 
-/* banner row: title centred, favicon parked on the right-hand edge. Sized
-   to the same 330px as the text boxes so the icon lines up with their right
-   edge, and the type is large enough that the row is taller than the 24px
-   icon, which keeps the padding above and below it even. */
+/* banner row: title centred, favicon on the right, 330px as the text boxes */
 .editFav__toptext {
   position: relative;
   padding-top: 10px;
@@ -264,9 +225,8 @@
   height: auto;
 }
 
-/* pinned to the right of the banner row and vertically centred on it, so
-   the title stays centred in the window whether or not an icon is showing.
-   Clicking it clears the icon. */
+/* pinned right and centred on the banner, so the title stays centred; a click clears
+   the icon */
 .editFav__iconpreview {
   position: absolute;
   right: 0px;
@@ -281,8 +241,7 @@
   cursor: pointer;
 }
 
-/* nothing to preview: the slot is removed, and because it is positioned
-   out of the flow nothing else in the window shifts */
+/* out of the flow, so removing it shifts nothing */
 .editFav__iconpreview--empty {
   display: none;
 }

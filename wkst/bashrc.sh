@@ -2,8 +2,9 @@
 alias ll='ls -la'
 alias mgmt='ssh ben@mgmt -i /home/ben/.ssh/mgmt_ben.rsa'
 alias esp='source "/home/ben/.espressif/tools/activate_idf_v6.0.1.sh"; echo "switch to the projects directory, and then run:"; echo "idf.py -p /dev/ttyUSB0 flash"'
+
 SPINNER=("|" "/" "-" "\\")
-echo "Press any key to connect to the server."
+echo "Press space for a local shell, or any other key to connect to the server."
 RUN_MGMT=false
 LOOPS=50
 for (( I=LOOPS; I>=1; I-- )); do
@@ -11,8 +12,11 @@ for (( I=LOOPS; I>=1; I-- )); do
     SPIN_IDX=$(( (LOOPS - I) % 4 ))
     SPIN_CHAR=${SPINNER[$SPIN_IDX]}
     printf "\rOpening local shell in%2d seconds... %s " "$SEC" "$SPIN_CHAR"
-    if read -r -t 0.1 -n 1 -s KEY; then
-        RUN_MGMT=true
+    # IFS is empty so read keeps a space instead of stripping it (Enter still reads as empty)
+    if IFS= read -r -t 0.1 -n 1 -s KEY; then
+        if [ "$KEY" != " " ]; then
+            RUN_MGMT=true
+        fi
         break
     fi
 done

@@ -1,37 +1,25 @@
-// Automate Website - toggle switch
-//
-// A checkbox drawn as a sliding switch that can also be dragged across.
-// new ToggleSwitch(parentElement, { id, checked, cmdHost, command, onToggle })
-// then .activate() to bind, .destroy() to unbind and remove.
-// onToggle is handed { host, cmd }, where cmd is the command plus 'on' / 'off'.
+// Automate - a checkbox drawn as a sliding switch that can also be dragged across.
+// new ToggleSwitch(parentElement, { id, checked, cmdHost, command, onToggle }) then
+// .activate() to bind, .destroy() to unbind and remove. onToggle is handed
+// { host, cmd }, cmd being the command plus 'on' / 'off'.
 
 import { sendCmd } from './utils.js';
 
-const DRAG_THRESHOLD_PX = 3;   // movement before a press counts as a drag
+const DRAG_THRESHOLD_PX = 3;
 const HANDLE_HEIGHT_RATIO = 0.85;
 const HANDLE_PAD_RATIO = 0.075;
-const CLICK_BLOCK_MS = 300;    // a drag swallows the click that follows it
+const CLICK_BLOCK_MS = 300; // a drag swallows the click that follows it
 
 export default class ToggleSwitch {
 
-  constructor(parent, config = {}) {
+  // draws the switch; see the top of this file
+  constructor(parent, config) {
     this.parent = parent;
-    if (typeof parent === 'string') {
-      this.parent = document.getElementById(parent);
-    }
-    if (!this.parent) throw new Error(`Parent element not found`);
     this.config = config;
-    // a template literal is always truthy, so an id-less switch used to
-    // become "input-undefined" -- two of those on one page would share an id
-    // and one label would drive both
-    if (config.id) {
-      this.toggleId = `input-${config.id}`;
-    } else {
-      this.toggleId = `input-${Math.random().toString(36).substring(2, 11)}`;
-    }
-    this.cmdHost = config.cmdHost || 'none';
-    this.command = config.command || 'none';
-    this.onToggleCallback = config.onToggle || null;
+    this.toggleId = `input-${config.id}`;
+    this.cmdHost = config.cmdHost;
+    this.command = config.command;
+    this.onToggleCallback = config.onToggle;
     this.state = {
       isDragging: false,
       hasMoved: false,
@@ -40,19 +28,15 @@ export default class ToggleSwitch {
       startProgress: 0,
       dragProgress: 0,
       handleTravelDistance: 0,
-      height: 0,
-      handleSize: 0,
-      padding: 0
     };
     this.ticking = false;
-    // One frame each: a pending move frame used to be overwritten by the
-    // release frame, so destroy() could only cancel whichever was current.
     this.moveRafId = null;
     this.upRafId = null;
     this.clickBlockTimeout = null;
     this._render();
   }
 
+  // builds the markup
   _render() {
     this.wrapper = document.createElement('div');
     this.wrapper.className = 'toggle-switch';
@@ -75,8 +59,8 @@ export default class ToggleSwitch {
     this.parent.appendChild(this.wrapper);
     this.checkbox = this.wrapper.querySelector('.toggle-input');
     this.label = this.wrapper.querySelector('.toggle-label');
-    // paints the "on" colour once with transitions off, so a switch drawn in
-    // the on state does not animate into it
+    // paints the "on" colour once with transitions off, so a switch drawn on does not
+    // animate into it
     const track = this.wrapper.querySelector('.toggle-track');
     track.style.transition = 'none';
     track.style.backgroundColor = 'var(--local-color-on)';
@@ -85,12 +69,14 @@ export default class ToggleSwitch {
     track.style.transition = '';
   }
 
+  // binds the switch's events
   activate() {
     this.label.addEventListener('pointerdown', this);
     this.label.addEventListener('click', this);
     this.checkbox.addEventListener('change', this);
   }
 
+  // unbinds the events and removes the switch
   destroy() {
     this.label.removeEventListener('pointerdown', this);
     this.label.removeEventListener('click', this);
@@ -99,11 +85,10 @@ export default class ToggleSwitch {
     if (this.moveRafId) cancelAnimationFrame(this.moveRafId);
     if (this.upRafId) cancelAnimationFrame(this.upRafId);
     if (this.clickBlockTimeout) clearTimeout(this.clickBlockTimeout);
-    if (this.wrapper && this.wrapper.parentNode) {
-      this.wrapper.parentNode.removeChild(this.wrapper);
-    }
+    this.wrapper.remove();
   }
 
+  // routes the bound events
   handleEvent(event) {
     switch (event.type) {
       case 'pointercancel':
@@ -115,6 +100,7 @@ export default class ToggleSwitch {
     }
   }
 
+  // stops following the pointer
   _releasePointer() {
     window.removeEventListener('pointermove', this);
     window.removeEventListener('pointerup', this);
@@ -128,6 +114,7 @@ export default class ToggleSwitch {
     this.wrapper.style.removeProperty('--drag-x');
   }
 
+  // a press: starts following the pointer
   _onPointerDown(e) {
     if (e.button !== 0 && e.pointerType === 'mouse') return;
     this.state.blockNextClick = false;
@@ -142,18 +129,18 @@ export default class ToggleSwitch {
     window.addEventListener('pointercancel', this);
   }
 
-  // How far across the track the handle can travel: the label's width less
-  // the handle itself and the padding at both ends. Measured on the first
-  // move of a drag, when the switch is known to be laid out.
+  // How far the handle can travel: the label's width less the handle and the padding at
+  // both ends. Measured on a drag's first move, when the switch is laid out.
   _measureTravel() {
     const trackRect = this.label.getBoundingClientRect();
-    this.state.height = trackRect.height;
-    this.state.handleSize = this.state.height * HANDLE_HEIGHT_RATIO;
-    this.state.padding = this.state.height * HANDLE_PAD_RATIO;
+    const height = trackRect.height;
+    const handleSize = height * HANDLE_HEIGHT_RATIO;
+    this.state.padding = height * HANDLE_PAD_RATIO;
     const bothEdges = 2 * this.state.padding;
-    this.state.handleTravelDistance = trackRect.width - this.state.handleSize - bothEdges;
+    this.state.handleTravelDistance = trackRect.width - handleSize - bothEdges;
   }
 
+  // a drag: moves the handle once per frame
   _onPointerMove(e) {
     if (!this.state.isDragging) return;
     const deltaX = e.clientX - this.state.startX;
@@ -184,12 +171,12 @@ export default class ToggleSwitch {
     this.ticking = true;
   }
 
+  // a release: past half way is on, and the drag swallows its click
   _onPointerUp(e) {
     if (!this.state.isDragging) return;
     this.state.isDragging = false;
     this._releasePointer();
     if (this.state.hasMoved) {
-      // past the half way point is on
       const newState = this.state.dragProgress >= 0.5;
       if (this.checkbox.checked !== newState) {
         this.checkbox.checked = newState;
@@ -200,8 +187,8 @@ export default class ToggleSwitch {
         this.state.blockNextClick = false;
       }, CLICK_BLOCK_MS);
       this.wrapper.style.setProperty('--drag-progress', newState ? '1' : '0');
-      // two frames: the committed value is painted, then the drag styling is
-      // dropped, so the handle does not jump back before the class goes
+      // two frames: the committed value paints, then the drag styling goes, so the
+      // handle does not jump back first
       this.upRafId = window.requestAnimationFrame(() => {
         this.upRafId = window.requestAnimationFrame(() => this._clearDragStyle());
       });
@@ -211,6 +198,7 @@ export default class ToggleSwitch {
     this.state.hasMoved = false;
   }
 
+  // the checkbox changed: reports it
   _onChange(e) {
     let toggleState = 'off';
     if (e.target.checked) {
@@ -220,11 +208,10 @@ export default class ToggleSwitch {
       host: this.cmdHost,
       cmd: `${this.command}${toggleState}`
     };
-    if (typeof this.onToggleCallback === 'function') {
-      this.onToggleCallback(payload);
-    }
+    this.onToggleCallback(payload);
   }
 
+  // a click flips the switch, unless a drag just ended
   _onClick(e) {
     e.preventDefault();
     e.stopPropagation();
@@ -238,7 +225,7 @@ export default class ToggleSwitch {
   }
 }
 
-// default action for a menu toggle: send the command to the device
-export async function toggleSwitchCallback(payload) {
+// default action for a menu toggle: sends the command to the device
+export function toggleSwitchCallback(payload) {
   sendCmd('main', payload.host, payload.cmd);
 }

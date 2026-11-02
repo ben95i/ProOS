@@ -1,26 +1,8 @@
-/*
- *  Automate -- upload.css
- *
- *  The upload progress window (html/upload.js). One window, a scrolling row
- *  per file, and the progress bar underneath.
- *
- *  Loaded after main.css, which holds .prompt_win, .progress_grid and
- *  .bar_progress -- the bar is the one the volume popup uses, so it carries
- *  the theme colour and the same gradient without being redefined here.
- *
- *  Nothing in this sheet sets a font size except the percentage line. The
- *  site's size comes from the `*` rule in main.css, which lands
- *  on every element directly rather than being inherited -- so a size set on
- *  this window would reach the window and nothing inside it, and the rows
- *  would keep the default while the title moved. Leaving it alone is what
- *  keeps the whole window at one size.
- *
- *  The row height below is sized for that text.
- */
+/* Automate: upload progress window (upload.js). The bar is main.css's
+   .progress_grid. Only the percentage line sets a font size, as the * rule sizes
+   every element directly. */
 
-/* The height the file panel is measured in: five of these is the height of
-   the panel, and upload.js reads the same height back off a row to work out
-   how far to scroll. Changing it here changes both. */
+/* One row's height; five make the panel, and upload.js reads it back to scroll. */
 #upl__win {
   --upl-row-height: 38px;
 }
@@ -29,10 +11,7 @@
  *  Window
  */
 
-/* .prompt_win is position:absolute with no offsets of its own, so a window
-   that does not place itself lands in the page flow and ends up below the
-   fold. Fixed and translated, as the lists window is, holds it in the middle
-   of the viewport however far the page behind it is scrolled. */
+/* fixed and centred, as .prompt_win has no offsets */
 #upl__win {
   position: fixed;
   display: flex;
@@ -56,9 +35,7 @@
  *  File list
  */
 
-/* Exactly five rows, whatever was picked: the sixth and beyond are scrolled
-   to as they are reached, so the queue slides up rather than growing the
-   window down the screen. */
+/* exactly five rows; the queue slides up */
 .upl__list {
   flex: none;
   max-height: calc(var(--upl-row-height) * 5);
@@ -76,8 +53,7 @@
   box-sizing: border-box;
 }
 
-/* the name gives way before the icon does, and one already cut to length in
-   upload.js is still cut here rather than dragging the window wider */
+/* the name gives way first, and does not widen the window */
 .upl__name {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -85,10 +61,7 @@
   min-width: 0;
 }
 
-/* The state icon keeps its column whichever glyph is in it, so the names
-   below each other stay in line as rows move from waiting to done. The gap
-   is on the icon rather than the name: the column would otherwise sit flush
-   against the text. */
+/* the icon keeps its column, so names stay in line */
 .upl__row > i {
   width: 28px;
   margin-right: 14px;
@@ -112,13 +85,7 @@
   color: var(--border-color);
 }
 
-/*
- *  Progress bar
- *
- *  The volume popup's bar, which is laid out for that popup: fixed at 152px
- *  and hidden until the popup shows it. Here it spans the window and is on
- *  from the start, since there is always an upload behind it.
- */
+/* Progress bar: the volume popup's, spanning the window and always on. */
 
 #upl__win .progress_grid {
   display: block;
@@ -129,8 +96,7 @@
   flex: none;
 }
 
-/* The one place a size is set: this line reports on the bar above it rather
-   than standing beside the filenames, so it sits a step below the rest. */
+/* a step below the rest */
 .upl__pct {
   font-size: 20px;
   color: var(--main-40-white);
@@ -141,8 +107,7 @@
  *  Close button
  */
 
-/* The window is a flex column, so a button left to itself is stretched the
-   full width of it. Centred on its own line instead. */
+/* centred on its own line, as a flex column stretches it */
 #upl__win .button {
   align-self: center;
 }

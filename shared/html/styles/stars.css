@@ -1,12 +1,4 @@
-/*
- *  Automate -- stars.css
- *
- *  Full-screen canvas the animated star field is drawn into.
- *
- *  Split out of the old single styles.css. Loaded from index.html after
- *  styles/main.css, which holds the globals (palette, buttons, menus) these
- *  rules build on.
- */
+/* Automate: the star field's full-screen canvas. */
 
 #star-canvas {
   position: fixed;

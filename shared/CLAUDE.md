@@ -42,11 +42,11 @@ Room transmitters answer the Automate API on port 80 (`callApi`), Pico controlle
 
 The page is drawn once from template functions in `main.js`, and every button reaches its handler through one click listener on `document`.
 
-1. **Load.** On `DOMContentLoaded`, `loadPage()` reads the model and `renderPage()` injects the markup from `buildPageHTML()`. Every injected node carries `data-app-injected`, so `removeInjectedPage()` can take the whole page down before a re-render.
+1. **Load.** On `DOMContentLoaded`, `loadPage()` reads the model and injects the markup from `buildPageHTML()`.
 2. **Features.** `loadFeatures()` starts the server-only parts (the last room from `localStorage` key `ctls-mode`, `RoomStateManager`, `WeatherWidget`), then the main menu and theme colour, the stars background and the activity timer.
 3. **Buttons.** Each template is followed by `registerListeners({ id: handler })`, in `main.js`, in each room module and in `server.js` alike. The map and `dispatchRegisteredListener()` live in `utils.js`; one delegated listener walks up from the clicked element to the first id in that map, so markup drawn later (room grids, server panels) needs no binding.
 4. **Every click.** `handleClicks()` restarts the 50 s activity timer (on expiry the stars and the room status refresh pause) and closes open menus unless the click was on a `.button`, a bookmark or a `.nohide` element.
-5. **Teardown.** `removeDropdowns()` closes menus and destroys their toggle switches; `App.destroyAll()` on `beforeunload` and `destroyPageServices()` end every running service.
+5. **Teardown.** `removeDropdowns()` closes menus and destroys their toggle switches; `App.destroyAll()` on `beforeunload` ends every running service.
 
 Shared state lives on `window.App`: the service instances (room status, stars, lists, bookmarks, camera, colour prompt, bathroom settings), the drawn menu rows, the open toggle switches and the current room.
 
@@ -124,7 +124,7 @@ The third group's legend shows the current room's icon and name, and its grid is
 
 Each room is a module of its own that exports its config (`LIVING_ROOM_CONFIG` in `livingrm.js`, `BEDROOM_CONFIG` in `bedrm.js`, `BATHROOM_CONFIG` in `bathrm.js`): a key, a name, an icon, a volume target, a grid template and `climate`, where the temperature window reads the room's temperature and humidity (`{ target, cmd, fields }`: a command and the places of the two in its `~` reply), or null for a room with no sensor. The module also holds the room's button listeners, its menus and its windows, and `main.js` only collects the three configs into `ROOM_CONFIGS`. The key names the room's API commands: `<key>status`, `<key>on`, `<key>off`, and device commands go through `<key>xmit`.
 
-The grids are built from `dropdownButtonTemplate()` and `gridButtonTemplate()` in `utils.js` and `powerButtonTemplate()` in `dropdowns.js`. The Pixels and APT groups and the text scroller in `main.js`, and the Server window's option panels in `server.js`, are built from the same two; both take an optional `buttonClass` (`svropt_button`, `button__sml`), and a button may have an icon, a label or both. The windows' own buttons (log, camera, bathroom settings, temperature, Pixels, bed, colour prompt, About, upload, lists, password and Wi-Fi prompts) are drawn with `gridButtonTemplate()` too. Two kinds stay written out: the temperature / humidity grid button (two icons), and the bookmark edit window's buttons, whose icon class sits on the button itself; every one of them has an id. The volume buttons, their handlers, the subwoofer mode and the volume popup are shared by the two rooms with an amp and live in `volctrl.js` (`volumeButtonsTemplate`, `volumeButtonListeners`, `sendVolume`, `showVolumePopup`).
+The grids are built from `dropdownButtonTemplate()` and `gridButtonTemplate()` in `utils.js` and `powerButtonTemplate()` in `dropdowns.js` (with `powerListeners()` for its handlers and `spinnerIds()` for a menu button's label and spinner). The Pixels and APT groups and the text scroller in `main.js`, and the Server window's option panels in `server.js`, are built from the same two; both take an optional `buttonClass` (`svropt_button`, `button__sml`), and a button may have an icon, a label or both. The windows' own buttons (log, camera, bathroom settings, temperature, Pixels, bed, colour prompt, About, upload, lists, password and Wi-Fi prompts) are drawn with `gridButtonTemplate()` too. One kind stays written out: the bookmark edit window's buttons, whose icon class sits on the button itself; each has an id. The volume buttons, their handlers, the subwoofer mode and the volume popup are shared by the two rooms with an amp and live in `volctrl.js` (`volumeButtonsTemplate`, `volumeButtonListeners`, `sendVolume`).
 
 | Room | Key | Volume target | Room status reads |
 | --- | --- | --- | --- |
@@ -302,7 +302,7 @@ Each feature larger than a room button is a class in its own module, and anythin
 | `thermo.js` | (functions) | Temperature and thermostat window: thermometers, the thermostat's setpoint display, its mode and blower boxes with their Mode and Fan menus, and its Settings view of status, text colour, backlight and log (`openThermoWindow`, `closeThermoWindow`) |
 | `mainmenu.js` | `MainMenu` | Main menus, theme colour (live while picking, kept on close), light-theme switch, About window |
 | `roomstate.js` | `RoomStateManager` | Room status light, 10 s refresh, device dropdown |
-| `colorprompt.js` | `ColorPrompt` | Colour window: saturation / value map, hue slider, palette swatches with names, hex box; `openColorPrompt()` opens it for a device |
+| `colorprompt.js` | `ColorPrompt` | Colour window: saturation / value map, hue slider, palette swatches with names, hex box; `openColorPrompt()` opens it for a device, `showColorPrompt()` for any other caller |
 | `switch.js` | `ToggleSwitch` | Draggable on / off switch used in menus and windows |
 | `stars.js` | `AnimatedBackground` | Star canvas behind the page, paused when idle |
 | `weather.js` | `WeatherWidget` | Weather in the top bar and its menu |
@@ -318,12 +318,12 @@ Each feature larger than a room button is a class in its own module, and anythin
 
 | Area | Exports |
 | --- | --- |
-| Timing | `refreshInterval()` 10 s, `timeoutInterval()` 50 s, `sleep`, `requestThrottle` (with `cancel()`), `trackPromise`, `singleFlight`, `awaitQuiet` |
-| API | `sendCmd(action, arg, var, options)` → parsed JSON, or null with the failure reported (`{ quiet: true }` logs it to the console only); `loadMenu(url)` |
-| Pico | `picoRequestQueue(target)` (one request at a time per Pico), `picoReplyError(reply, xmitPrefix, offlineText)` and its `PICO_REFUSED`, `PICO_NO_REPLY`, `PICO_CMD_ERROR` |
+| Timing | `REFRESH_INTERVAL` 10 s, `TIMEOUT_INTERVAL` 50 s, `sleep`, `requestThrottle` (with `cancel()`), `trackPromise`, `singleFlight`, `awaitQuiet` |
+| API | `sendCmd(action, arg, var, options)` → parsed JSON, or null with the failure reported (`{ quiet: true }` logs it to the console only); `loadMenu(url)`; `fetchAnswer(url)` → text, or throws `HttpError` |
+| Pico | `picoRequestQueue(target)` (one request at a time per Pico), `picoReplyError(reply, xmitPrefix, offlineText)` and its `PICO_REFUSED`, `PICO_NO_REPLY`, `PICO_CMD_ERROR`, `parsePicoNumber(reply, replyError)`, `readPicoLog(win, request, replyError, command, scrollToEnd)` |
 | Files | `fileURL`, `readFile`, `writeFile` (retried after 250 and 750 ms on a dropped connection or 502–504), `savePOST`, `sendFileBeacon`, `reportFileFailure(what)` (reports why the last file request failed) |
-| Text | `splitMenuData`, `cleanString`, `splitByDelimiter`, `isNumeric`, `parsePalette`, `menuRow`, `indicator` |
-| DOM | `html` tag, `makeElement`, `svgElement`, `promptWindow`, `onButtons`, `setSpinner`, `classDisplay`, `setDisplayById` |
+| Text | `splitMenuData`, `fileRows`, `cleanString`, `boundedText`, `splitByDelimiter`, `isNumeric`, `parsePalette`, `menuRow`, `indicator` |
+| DOM | `html` tag, `makeElement`, `svgElement`, `promptWindow`, `onButtons`, `setSpinner`, `classDisplay`, `setDisplayById`, `GoToExtPage` |
 | Buttons | `registerListeners`, `dispatchRegisteredListener`, `gridButtonTemplate`, `dropdownButtonTemplate` |
 | Colour | `hexToRgb`, `rgbToHex`, `hsvToRgb`, `rgbToHsv`, `mapNumber` |
 | Search and drag | `searchRowElement`, `searchTerm`, `searchMatches`, `DragSort` |

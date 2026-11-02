@@ -1,30 +1,10 @@
-/*
- *  Automate -- main.css
- *
- *  Everything main.js draws, plus the globals every component builds on: the
- *  font faces, the :root palette, the button styles, the shared spinners and
- *  the keyframes.
- *
- *  The dropdown menus are in dropdowns.css, each room's own rules in
- *  livingrm.css, bedrm.css and bathrm.css, and the Server window's in
- *  server.css. Those five load directly after this file and in that order,
- *  ahead of every other component sheet, so
- *  each of their rules still meets the other sheets' rules in the order it
- *  did while it was in here.
- *
- *  This file is loaded FIRST, before the per-component sheets in this folder.
- *  The component files were cut out of the old single styles.css and several
- *  of their rules deliberately override a rule in here at equal specificity
- *  (a .list__btn over a .button, say), which only works while they come
- *  after. Do not reorder the <link> tags in index.html.
- */
+/* Automate: globals (fonts, palette, buttons, spinners) and what main.js draws.
+   Loaded first: component sheets override it at equal specificity by coming later,
+   so keep the <link> order. */
 
-/* A url() in a stylesheet is resolved against the stylesheet, not the page,
-   so these gained a "../" when this file moved down into styles/. They still
-   point at BASE_WWW/fonts, exactly where they did before. */
 @font-face {
   font-family: 'JosefinSans';
-  src: url('../fonts/JosefinSans-SemiBold.woff2') format('woff2'); 
+  src: url('../fonts/JosefinSans-SemiBold.woff2') format('woff2');
   font-weight: normal;
   font-style: normal;
 }
@@ -40,16 +20,9 @@
   font-family: 'JosefinSans', system-ui;
   font-size: 22px;
   box-sizing: border-box;
-  -moz-box-sizing: border-box;
-  -webkit-box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;
 }
 
-/* The palette used to be declared on *, which re-declared all eight custom
-   properties on every element in the document -- a per-element style-recalc
-   and memory cost that grew with the DOM, and one that blocked overriding a
-   colour on any subtree. Declared once here they inherit exactly the same
-   values everywhere. */
 :root {
   --nav-menus-color: #36363d;
   --border-color: #878787;
@@ -62,7 +35,6 @@
   --cool-ind: #4ea6ff;
   --main-40-white: color-mix(in srgb, var(--main-color) 40%, #fff);
   --main-75-white: color-mix(in srgb, var(--main-color) 75%, #fff);
-  --main-white-50: color-mix(in srgb, var(--main-color), #fff 50%);
   --main-white-20: color-mix(in srgb, var(--main-color), #fff 20%);
   --main-20-black: color-mix(in srgb, var(--main-color) 20%, #000);
   --main-40-black: color-mix(in srgb, var(--main-color) 40%, #000);
@@ -75,16 +47,11 @@
   --sec-black-40:  color-mix(in srgb, var(--nav-menus-color), #000 40%);
   --sec-50-black:  color-mix(in srgb, var(--nav-menus-color) 50%, #000);
   --sec-60-black:  color-mix(in srgb, var(--nav-menus-color) 60%, #000);
-  --sec-75-black:  color-mix(in srgb, var(--nav-menus-color) 75%, #000);
   --red-trans-35:  color-mix(in srgb, var(--alert-red), transparent 35%);
   --menu-glow: 0px 0px 2px #fff, 0px 0px 7px var(--main-40-white), 0px 0px 16px var(--main-color);
 }
 
 body {
-  /* -webkit-overflow-scrolling: touch was here. It has done nothing since
-     iOS 13 made momentum scrolling the default, but it still forces the
-     legacy accelerated-scrolling layer on some versions, which leaves stale
-     rows painted behind fixed / absolute elements. */
   touch-action: manipulation;
   margin: 0;
   padding: 0;
@@ -98,8 +65,7 @@ body {
  *  Page Body Style
  */
 
-/* a <p>'s default margin is 1em, so these are set in px to keep the page's
-   spacing apart from the font size */
+/* set in px, apart from the font size */
 .pg-top {
   margin-top: 24px;
   margin-bottom: 24px;
@@ -111,19 +77,8 @@ body {
   padding-bottom: 100px;
 }
 
-.dynamic-menus {
-  display: block;
-}
-
 #current-room-icon {
   display: none;
-}
-
-.banner__text {
-  display: none;
-  margin-top: 6px;
-  text-align: left;
-  font-size: 20px;
 }
 
 /*
@@ -134,7 +89,7 @@ body {
   margin-top: 3px;
   margin-bottom: 3px;
   border-radius: 5px;
-  background: transparent; 
+  background: transparent;
 }
 
 .scroll-bar-style::-webkit-scrollbar-thumb {
@@ -148,7 +103,7 @@ body {
 }
 
 .scroll-bar-style::-webkit-scrollbar-corner {
-  background: transparent; 
+  background: transparent;
 }
 
 /*
@@ -156,35 +111,27 @@ body {
  */
 
 input[type="checkbox"] {
-  accent-color: var(--main-color); 
-}
-
-input.chkbox {
-  margin-left: 16px;
-  float: right;
-  width: 22px;
-  height: 22px;
+  accent-color: var(--main-color);
 }
 
 /*
  *  Button Styles
  */
- 
+
 .button {
   /* layout & spacing */
   vertical-align: middle;
   margin-left: 5px;
   margin-bottom: 8px;
   margin-top: 8px;
-  /* the button groups (groups.css) size their outlines round this, so it
-     can be changed here alone */
+  /* the groups (groups.css) size round this */
   width: 140px;
   height: 100px;
   /* typography */
   user-select: none;
   -webkit-user-select: none;
   text-align: center;
-  color: #fff; 
+  color: #fff;
   text-shadow: 0 2px 2px rgba(0, 0, 0, 0.5);
   /* shape & transition */
   border: none;
@@ -198,46 +145,42 @@ input.chkbox {
   backdrop-filter: blur(2px);
   -webkit-backdrop-filter: blur(2px);
   background-image: linear-gradient(
-    165deg, 
-    rgba(255, 255, 255, 0.15) 0%, 
+    165deg,
+    rgba(255, 255, 255, 0.15) 0%,
     rgba(255, 255, 255, 0.05) 40%,
     rgba(0, 0, 0, 0.05) 60%,
     rgba(0, 0, 0, 0.15) 100%
   );
   /* side walls */
   box-shadow:
-    inset 0 0 2px rgba(255, 255, 255, 0.3),  
+    inset 0 0 2px rgba(255, 255, 255, 0.3),
     inset 0 0 10px var(--main-trans-50),
     /* 3 Layers of "Wall" for thickness */
     1px 1px 0 var(--main-black-30),
     3px 3px 0 var(--main-black-40),
     5px 5px 0 var(--main-black-50),
-    /* Wall specular rim moved to the new 5px edge */
-    5px 5px 0 1px rgba(255, 255, 255, 0.1), 
-    6px 6px 3px rgba(0, 0, 0, 0.4),          
-    10px 10px 20px rgba(0, 0, 0, 0.3);       
+    /* Wall specular rim at the 5px edge */
+    5px 5px 0 1px rgba(255, 255, 255, 0.1),
+    6px 6px 3px rgba(0, 0, 0, 0.4),
+    10px 10px 20px rgba(0, 0, 0, 0.3);
   transform: translate(-5px, -5px);
   backface-visibility: hidden;
 }
 
 .button:active {
-  /* Increased travel distance for a "deeper" mechanical click */
+  /* A deeper mechanical click */
   transform: translate(1px, 1px);
-  box-shadow: 
-    inset 0 1px 4px rgba(0, 0, 0, 0.6), /* Deeper shadow as it sinks */
-    inset 0 0 5px var(--main-white-20), 
+  box-shadow:
+    inset 0 1px 4px rgba(0, 0, 0, 0.6), /* Sinks */
+    inset 0 0 5px var(--main-white-20),
     1px 1px 0 var(--main-black-40),
-    1px 1px 0 1px rgba(255, 255, 255, 0.05), 
-    2px 2px 5px rgba(0, 0, 0, 0.6);        
+    1px 1px 0 1px rgba(255, 255, 255, 0.05),
+    2px 2px 5px rgba(0, 0, 0, 0.6);
   transition: all 0.05s ease;
 }
 
 .dark_btn {
   background-color: var(--main-trans-50);
-}
-
-.button__lgr {
-  width: 312px;
 }
 
 .button__med {
@@ -265,16 +208,14 @@ input.chkbox {
  */
 
 .topnav {
-  /* The status light (roomstate.css) is drawn at --nav-status-size, and every
-     icon in the bar is the size of its dot: r=17 in a 50-unit viewBox
-     (roomstate.js), so 34/50 of the light. Change the size here alone. */
+  /* Every bar icon is the status light's dot: r=17 in a 50-unit viewBox
+     (roomstate.js). Change the size here alone. */
   --nav-status-size: 38px;
   --nav-icon-size: calc(var(--nav-status-size) * 34 / 50);
-  /* The space between two icons. 16px leaves the longest room name room
-     beside them at the 442px the button groups need. */
+  /* The space between two icons */
   --nav-icon-gap: 20px;
-  display: flex;             /* Transforms the container into a flexbox */
-  align-items: center;       /* Vertically centers all the icons/links inside */
+  display: flex;
+  align-items: center;
   margin: 5px;
   overflow: hidden;
   border: none;
@@ -284,14 +225,13 @@ input.chkbox {
   opacity: 70%;
 }
 
-.topnav i { /* Tint nav icons */
+.topnav i {
   color: var(--main-40-white);
   font-size: var(--nav-icon-size);
 }
 
 .topnav a {
-  /* centred by flex rather than a line-height, which would tie the icons'
-     height in the bar to the font size */
+  /* centred by flex, apart from the font size */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -300,7 +240,7 @@ input.chkbox {
   padding: 0px calc(var(--nav-icon-gap) / 2) 0px calc(var(--nav-icon-gap) / 2);
   text-align: center;
   text-decoration: none;
-  color: #fff; /* nav font color */
+  color: #fff;
   text-shadow: 1px 1px 1px #000;
   cursor: default;
   border: none;
@@ -320,12 +260,8 @@ input.chkbox {
   }
 }
 
-/* The two icon groups each ask for half of whatever the selector leaves
-   over, which puts the selector dead centre in the bar. min-width holds a
-   group at its own content width, so a group that needs more than its half
-   (the bookmarks add icon appearing, for instance) keeps its icons intact
-   and the surplus comes out of the other group's share -- the selector is
-   nudged aside by exactly the overrun, and only when there is one. */
+/* Each icon group takes half of what the selector leaves, centring it; a group
+   needing more keeps its icons and nudges the selector. */
 #topnav-left {
   display: flex;
   align-items: center;
@@ -341,9 +277,7 @@ input.chkbox {
   justify-content: flex-end;
 }
 
-/* Room selector. Sized by its own content, and the only item in the bar
-   allowed to shrink -- the icon groups are held at max-content, so when the
-   bar runs out of room the name truncates instead of the icons clipping. */
+/* Room selector: the only bar item that shrinks, so its name truncates first. */
 #room_center {
   flex: 0 1 auto;
   min-width: 0;
@@ -353,8 +287,7 @@ input.chkbox {
   overflow: hidden;
 }
 
-/* the name, then the room's icon after it, with the same 7px between them
-   as a dropdown row (.dd-content a) has */
+/* the name, then the room's icon, 7px apart as a dropdown row */
 #room_anchor {
   max-width: 100%;
   min-width: 0;
@@ -367,25 +300,19 @@ input.chkbox {
   overflow: hidden;
 }
 
-/* the icon keeps its size; only the name gives way. The room icons are not
-   all the same width, so they share a box (Font Awesome's fa-fw width) and
-   the name stays put between rooms. */
+/* the icon keeps its size in a shared width, so the name stays put between rooms */
 #room_anchor i {
   flex: 0 0 auto;
   width: 1.25em;
   text-align: center;
 }
 
-/* long names clip to an ellipsis rather than overrunning the nav icons */
+/* long names end in an ellipsis */
 #current-room-label {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.left-padding {
-  padding-left: 8px;
 }
 
 .right-padding {
@@ -397,7 +324,7 @@ input.chkbox {
   flex-wrap: nowrap;
   justify-content: center;
   white-space: nowrap;
-  min-height: 100%;  
+  min-height: 100%;
   height: 100%;
   flex-direction: column;
   align-items: center;
@@ -468,7 +395,7 @@ input.chkbox {
   outline: none;
   resize: none;
   font-family: monospace;
-  font-size: 15px;
+  font-size: 14px;
   text-wrap-mode: nowrap;
   text-overflow: ellipsis;
   overflow-x: scroll;
@@ -485,24 +412,18 @@ input.chkbox {
   margin-left: auto;
 }
 
-/* Main Menu -- the theme colour row, built by MainMenu.colorRow(). Named
-   .theme-colorbox while it lived in a palette dropdown of its own; that
-   dropdown is now the Color row of the main menu. */
+/* Main menu's theme colour row (MainMenu.colorRow()) */
 
 .dd-content a.mainmenu-colorbox {
   border-radius: 5px;
   margin: 5px;
-  /* the same sum as the stars row (dropdowns.css) -- 8px out, 8px in */
+  /* 8px out, 8px in, as the stars row (dropdowns.css) */
   padding-left: 8px;
   padding-right: 8px;
 }
 
-/* Every icon in the main menu and the room menu, in a box of one width
-   and centred in it. The duotone glyphs are not all the same width, so left
-   to themselves they sit a few pixels apart down the menu; this is the same
-   thing Font Awesome's own fa-fw does. The child combinator keeps it off
-   anything the rows hold besides their icon -- the stars row's switch, above
-   all. */
+/* Main and room menu icons share one centred width; the child combinator keeps it
+   off the stars row's switch */
 #mainmenu a > i,
 #main-room-dropdown a > i {
   flex-shrink: 0;
@@ -511,16 +432,13 @@ input.chkbox {
   text-align: center;
 }
 
-/* The box carries the theme colour, and white on a light one is barely
-   there. MainMenu.colorRow() adds this once the colour crosses that line,
-   and the label and the drop go dark instead. The element selector is needed
-   to get past `.dd-content a`, which sets the white this replaces. */
+/* dark text once the colour is light (colorRow()); the element selector beats
+   .dd-content a */
 .dd-content a.mainmenu-colorbox--invert {
   color: #000;
 }
 
-/* the glow the menu rows carry is a white one, and it is the wrong thing to
-   put behind dark text -- the row lifts on hover without it */
+/* no white glow behind dark text */
 @media (hover: hover) and (pointer: fine) {
   .dd-content a.mainmenu-colorbox--invert:hover {
     color: #000;
@@ -528,27 +446,10 @@ input.chkbox {
   }
 }
 
-/*
- *  Light theme colour
- *
- *  MainMenu.apply() puts .theme-light on the page whenever the theme colour
- *  is a light one. Everything below is drawn on that colour and carries
- *  white text, which a light one leaves barely there, so all of it turns
- *  over together on the one threshold -- MainMenu.LIGHT_LUMA, in
- *  mainmenu.js, where the scale is written out.
- *
- *  The menus are deliberately not in here. They are drawn on the grey in
- *  --nav-menus-color whatever the theme is, so their text stays as it is;
- *  the one row of a menu that does take the theme colour is the colour box
- *  itself, and it turns its own label around above.
- */
+/* Light theme colour: MainMenu.apply() sets .theme-light above MainMenu.LIGHT_LUMA.
+   Only what is drawn on the theme colour turns over; menus stay on their grey. */
 
-/* The buttons. Only the text turns black -- the shadow under it stays the
-   dark one every button carries, so the letters keep the same weight they
-   always had rather than being inverted along with the colour.
-
-   .red_btn_menu is left out: it paints its own red over the theme colour, so
-   white is still the right text on it. */
+/* Only the text turns black. .red_btn_menu paints its own red, so it stays white. */
 html.theme-light .button:not(.red_btn_menu) {
   color: #000;
   text-shadow: 0 2px 2px rgba(0, 0, 0, 0.5);
@@ -565,7 +466,7 @@ html.theme-light .button:not(.red_btn_menu) {
   transform: translate(-50%, -50%);
   width: 260px;
   height: 340px;
-  padding: 15px; 
+  padding: 15px;
   color: #fff;
 }
 
@@ -599,7 +500,7 @@ html.theme-light .button:not(.red_btn_menu) {
   transform: translate(-50%, -50%);
   width: 400px;
   height: auto;
-  padding: 5px; 
+  padding: 5px;
 }
 
 #textScrollBox {
@@ -691,7 +592,7 @@ html.theme-light .button:not(.red_btn_menu) {
   left: 50%;
 }
 
-/* the size of the icon it stands in for, centred on the icon's anchor */
+/* the size of the icon it stands in for */
 .right-nav-spinner {
   width: var(--nav-icon-size);
   height: var(--nav-icon-size);
@@ -722,25 +623,15 @@ html.theme-light .button:not(.red_btn_menu) {
 }
 
 .fade-out {
-  -webkit-animation: fadeOut 1s;
   animation: fadeOut 1s;
   animation-fill-mode: forwards;
 }
 
-@-webkit-keyframes fadeOut {
-  0% { 
-    opacity: 1; 
-  }
-  100% { 
-    opacity: 0; 
-  }
-}
-
 @keyframes fadeOut {
-  0% { 
-    opacity: 1; 
+  0% {
+    opacity: 1;
   }
-  100% { 
-    opacity: 0; 
+  100% {
+    opacity: 0;
   }
 }

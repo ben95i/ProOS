@@ -1,14 +1,10 @@
-// Automate Website - bedroom
-//
-// The bedroom's button grid and what its buttons open: the bed lights menu
-// and the bed adjustment window, the relax sounds menu, the power menus, the
-// amp's volume buttons and its input menu. main.js lists BEDROOM_CONFIG among
-// its rooms and draws the grid.
+// Automate - bedroom: button grid and what it opens (bed lights menu and adjustment
+// window, relax sounds, power menus, the amp's volume and inputs).
 
 import { registerListeners, dropdownButtonTemplate, sendCmd,
   requestThrottle, promptWindow, onButtons, gridButtonTemplate } from './utils.js';
 import { volumeButtonsTemplate, volumeButtonListeners } from './volctrl.js';
-import { showPowerMenu, powerButtonTemplate, showDynAPIMenu,
+import { showPowerMenu, powerButtonTemplate, powerListeners, spinnerIds, showDynAPIMenu,
   showInputMenu } from './dropdowns.js';
 import { openColorPrompt } from './colorprompt.js';
 
@@ -16,22 +12,19 @@ import { openColorPrompt } from './colorprompt.js';
 const BEDROOM_TARGET = 'brxmit';
 const BEDROOM_AMP_TARGET = 'brpi';
 
-// What main.js needs to know about the room. key names its API commands
-// (brstatus, bron, broff); the amp counts its volume 0-192, which the volume
-// popup shows as a percentage.
+// The room's config. key names its API commands (brstatus, bron, broff); the amp counts
+// its volume 0-192; climate is the temperature window's source, the hub's temperature~humidity.
 export const BEDROOM_CONFIG = {
   key: 'br',
   name: 'Bedroom',
   icon: 'fad fa-bed',
   voltarget: BEDROOM_AMP_TARGET,
   volmax: 192,
-  // the temperature window reads the hub's temperature~humidity
   climate: { target: BEDROOM_TARGET, cmd: 'roomth', fields: [0, 1] },
   template: bedroomGridTemplate
 };
 
-// Amp inputs, in the order the menu lists them. code is what the amp answers
-// with when that input is live.
+// Amp inputs in menu order; code is the amp's answer while that input is live.
 const BEDROOM_INPUTS = [
   { code: '2', cmd: 'opt-a', label: 'USB' },
   { code: '3', cmd: 'coaxial', label: 'Coaxial' },
@@ -39,14 +32,15 @@ const BEDROOM_INPUTS = [
   { code: '4', cmd: 'aux', label: 'Aux' }
 ];
 
-// what the amp answers in place of an input while it is switched off
+// the amp's answer in place of an input while off
 const BEDROOM_AMP_OFF_CODE = 0;
 
 // the bed lights menu, which showPowerMenu() also fills with a slider
 const BED_LEDS_MENU = 'bed_leds';
 const BEDROOM_INPUT_MENU = 'brinpmenu';
+const BEDROOM_INPUT_SPINNER = 'ampinp';
 
-// the bedroom's button grid
+// the room's button grid
 function bedroomGridTemplate() {
   return `
 <div>
@@ -54,8 +48,7 @@ function bedroomGridTemplate() {
     buttonId: 'btn-menu-br-bed',
     icon: 'fad fa-bed-alt',
     label: 'Bed',
-    textId: `${BED_LEDS_MENU}-text`,
-    spinnerId: `${BED_LEDS_MENU}-spinner`,
+    ...spinnerIds(BED_LEDS_MENU),
     menuId: `${BED_LEDS_MENU}-menu`,
     menuClass: 'dd-button',
     menuContent: `
@@ -87,8 +80,7 @@ function bedroomGridTemplate() {
     buttonClass: 'btm-padding',
     icon: 'fad fa-sliders-v',
     label: 'Inputs',
-    textId: 'ampinp-text',
-    spinnerId: 'ampinp-spinner',
+    ...spinnerIds(BEDROOM_INPUT_SPINNER),
     menuId: BEDROOM_INPUT_MENU
   })}
   ${powerButtonTemplate('retropi', 'fad fa-gamepad', 'RetroPi')}
@@ -102,24 +94,19 @@ registerListeners({
   'bed_leds-colorcycle':  () => sendCmd('main', BEDROOM_TARGET, 'bed_leds_cy'),
   'bed_leds-sweep':       () => sendCmd('main', BEDROOM_TARGET, 'bed_leds_sw'),
   'btn-dyn-relaxmenu':    () => showDynAPIMenu('relaxmenu'),
-  'btn-power-brlamp1':    () => showPowerMenu(BEDROOM_TARGET, 'brlamp1'),
-  'btn-power-brtv':       () => showPowerMenu(BEDROOM_TARGET, 'brtv'),
-  'btn-power-ampstate':   () => showPowerMenu(BEDROOM_AMP_TARGET, 'ampstate'),
-  'btn-power-brpc':       () => showPowerMenu(BEDROOM_TARGET, 'brpc'),
-  'btn-power-brmacs':     () => showPowerMenu(BEDROOM_TARGET, 'brmacs'),
   'btn-show-br-amp':      () => showBedroomAmpInput(),
-  'btn-power-retropi':    () => showPowerMenu(BEDROOM_TARGET, 'retropi')
+  ...powerListeners(BEDROOM_TARGET, ['brlamp1', 'brtv', 'brpc', 'brmacs', 'retropi']),
+  ...powerListeners(BEDROOM_AMP_TARGET, ['ampstate'])
 });
 registerListeners(volumeButtonListeners(BEDROOM_CONFIG));
 
-// Inputs: the amp's inputs, green on the one that is live
+// Inputs: the amp's inputs, green on the live one
 function showBedroomAmpInput() {
   showInputMenu({
     menu: BEDROOM_INPUT_MENU,
     target: BEDROOM_AMP_TARGET,
     cmd: 'inputstate',
-    textId: 'ampinp-text',
-    spinnerId: 'ampinp-spinner',
+    spinner: BEDROOM_INPUT_SPINNER,
     offCode: BEDROOM_AMP_OFF_CODE,
     inputs: BEDROOM_INPUTS
   });
@@ -127,11 +114,11 @@ function showBedroomAmpInput() {
 
 /////// Bed Adjustment Window ///////
 
-// the bed motor takes at most one step every this many milliseconds
+// the bed motor takes at most one step this often
 const BED_ADJUST_THROTTLE_MS = 250;
 const BED_PROMPT_ID = 'bed__prompt';
 
-// separate throttles so up/down each get their own 250ms window
+// separate throttles, so up and down each get their own window
 const throttledBedUp = requestThrottle(() => {
   sendCmd('main', BEDROOM_TARGET, 'bed_adj_up');
 }, BED_ADJUST_THROTTLE_MS);
@@ -140,8 +127,7 @@ const throttledBedDown = requestThrottle(() => {
   sendCmd('main', BEDROOM_TARGET, 'bed_adj_dwn');
 }, BED_ADJUST_THROTTLE_MS);
 
-// Opens the bed adjustment window: an up button, a down button and Close.
-// A second press of Adjust while it is open does nothing.
+// Opens the bed adjustment window: up, down and Close.
 function bedPrompt() {
   if (document.getElementById(BED_PROMPT_ID)) {
     return;
@@ -173,8 +159,7 @@ function bedPrompt() {
         throttledBedDown();
         break;
       case 'bed__btn-close':
-        // a trailing press still inside its window would otherwise go out
-        // after the window it came from had gone
+        // a trailing press would otherwise go out after its window had gone
         throttledBedUp.cancel();
         throttledBedDown.cancel();
         bedWindow.remove();

@@ -1,36 +1,27 @@
-// Automate Website - bathroom
-//
-// The bathroom's button grid and everything behind it: the brightness and
-// mode menus, and the Settings window for the light's motion sensor.
-// main.js lists BATHROOM_CONFIG among its rooms, draws the grid, and calls
-// closeBathroomSettings() when the page is taken down.
+// Automate - bathroom: button grid, brightness and mode menus, and the Settings window for
+// the light's motion sensor.
 
 import { registerListeners, gridButtonTemplate, dropdownButtonTemplate,
   cleanString, isNumeric, menuRow, promptWindow, onButtons, picoReplyError,
-  picoRequestQueue, PICO_REFUSED, PICO_CMD_ERROR } from './utils.js';
-import { openDeviceMenu, inputMenuRows, removeDropdowns } from './dropdowns.js';
+  picoRequestQueue, parsePicoNumber, readPicoLog, PICO_REFUSED } from './utils.js';
+import { openDeviceMenu, inputMenuRows, removeDropdowns, spinnerIds } from './dropdowns.js';
 import ToggleSwitch from './switch.js';
 
-// What main.js needs to know about the room. key names its API commands
-// (bthrstatus, bthron, bthroff). There is no amp in this room, so its grid
-// carries no volume buttons and it has no volume target.
+// The room's config. key names its API commands (bthrstatus, bthron, bthroff). No amp, so
+// no volume target; no sensor, so the temperature window shows the living room's.
 export const BATHROOM_CONFIG = {
   key: 'bthr',
   name: 'Bathroom',
   icon: 'fad fa-bath',
-  voltarget: null,
-  volmax: null,
-  // no sensor here, so the temperature window shows the living room's
   climate: null,
   template: bathroomGridTemplate
 };
 
-// the two menus, named once for their buttons, spinners and rows
+// the two menus
 const BTHR_BRIGHTNESS_MENU = 'bthrbrightmenu';
 const BTHR_MODE_MENU = 'bthrmodemenu';
 
-// one device, the BathroomLight Pico (bthr-light1): its dimmer, its light
-// mode, and the Settings window for its motion sensor
+// the room's button grid: the BathroomLight Pico's dimmer, mode and Settings window
 function bathroomGridTemplate() {
   return `
 <div>
@@ -38,16 +29,14 @@ function bathroomGridTemplate() {
     buttonId: 'btn-bthr-bright',
     icon: 'fad fa-sun',
     label: 'Brightness',
-    textId: `${BTHR_BRIGHTNESS_MENU}-text`,
-    spinnerId: `${BTHR_BRIGHTNESS_MENU}-spinner`,
+    ...spinnerIds(BTHR_BRIGHTNESS_MENU),
     menuId: BTHR_BRIGHTNESS_MENU
   })}
   ${dropdownButtonTemplate({
     buttonId: 'btn-bthr-mode',
     icon: 'fad fa-walking',
     label: 'Mode',
-    textId: `${BTHR_MODE_MENU}-text`,
-    spinnerId: `${BTHR_MODE_MENU}-spinner`,
+    ...spinnerIds(BTHR_MODE_MENU),
     menuId: BTHR_MODE_MENU
   })}
   ${gridButtonTemplate({
@@ -64,42 +53,32 @@ registerListeners({
 });
 
 //// bathroom ////
-//
-// The bathroom's one device is the BathroomLight Pico (bthr-light1). Every
-// command reaches it through the API as
-//   /api?action=main&arg=bthrxmit&var=<command>
-// and an error comes back as an ordinary string with HTTP 200, so the text is
-// what says whether a reply is one (see the Bathroom API Reference).
+
+// Every command reaches the BathroomLight Pico as /api?action=main&arg=bthrxmit&var=<command>.
 
 const BTHR_TARGET = 'bthrxmit';
 const BTHR_DEVICE = 'bthr-light1';
 
-// what bthrReplyError() answers for a light that did not answer; the other
-// failures are picoReplyError()'s (utils.js)
+// bthrReplyError()'s answer for a light that did not answer
 const BTHR_OFFLINE = 'Light offline';
 const BTHR_XMIT_PREFIX = 'bthrXmit:';
 
-// '' for a reply that is not an error, or a short line saying what went wrong
+// '' for a good reply, or a short line saying what went wrong
 function bthrReplyError(reply) {
   return picoReplyError(reply, BTHR_XMIT_PREFIX, BTHR_OFFLINE);
 }
 
-// The light serves one request at a time, so the Settings window's requests
-// join one queue and reach it one after another rather than all at once.
-// bthrRequest(command) answers a promise of the reply.
+// the light serves one request at a time
 const bthrRequest = picoRequestQueue(BTHR_TARGET);
 
-// The light modes, in the shape inputMenuRows() takes: code is what
-// bthr-light1_mode answers with while that mode is the one in force.
+// The light modes for inputMenuRows(); code is what bthr-light1_mode answers.
 const BATHROOM_MODES = [
   { code: '2', cmd: `${BTHR_DEVICE}_mode_set_2`, label: 'Stay On' },
   { code: '1', cmd: `${BTHR_DEVICE}_mode_set_1`, label: 'Automatic' },
   { code: '0', cmd: `${BTHR_DEVICE}_mode_set_0`, label: 'Keep Off' }
 ];
 
-// The one row a bathroom menu shows when the light did not give a usable
-// answer: black for a light that is offline, as the other menus show it, and
-// red for anything else.
+// The row a bathroom menu shows for an unusable answer: black when offline, else red.
 function bathroomErrorRow(menuId, reply) {
   let label = bthrReplyError(reply);
   if (label === '') {
@@ -112,67 +91,50 @@ function bathroomErrorRow(menuId, reply) {
   return menuRow(`${menuId}-error`, indicatorType, label);
 }
 
-// Brightness: one slider, set from bthr-light1. That reads 1-255 whether the
-// light is on or off: on, the level it is at (or fading to); off -- Auto with
-// the room empty, or Off -- the level it will come on at, which is also what
-// a level set while it is off changes.
-function showBathroomBrightness() {
-  const menuId = BTHR_BRIGHTNESS_MENU;
+// Opens one of the light's menus: reads cmd, and draws buildRows(reply) for a numeric
+// reply or the error row for anything else.
+function showBathroomMenu(menuId, cmd, buildRows) {
   openDeviceMenu({
     menu: menuId,
     target: BTHR_TARGET,
-    cmd: BTHR_DEVICE,
-    textId: `${menuId}-text`,
-    spinnerId: `${menuId}-spinner`,
+    cmd: cmd,
     build: (reply) => {
       if (isNumeric(reply) !== true) {
         return bathroomErrorRow(menuId, reply);
       }
-      return menuRow(`${reply}~${BTHR_TARGET}~${BTHR_DEVICE}`, 'slider', '');
+      return buildRows(reply);
     }
   });
 }
 
-// Mode: Always On / Auto / Off, green on the one in force
+// Brightness: one slider, reading 1-255 on or off: the level it is at, or will come on at.
+function showBathroomBrightness() {
+  showBathroomMenu(BTHR_BRIGHTNESS_MENU, BTHR_DEVICE, (reply) => {
+    return menuRow(`${reply}~${BTHR_TARGET}~${BTHR_DEVICE}`, 'slider', '');
+  });
+}
+
+// Mode: green on the one in force
 function showBathroomMode() {
-  const menuId = BTHR_MODE_MENU;
-  openDeviceMenu({
-    menu: menuId,
-    target: BTHR_TARGET,
-    cmd: `${BTHR_DEVICE}_mode`,
-    textId: `${menuId}-text`,
-    spinnerId: `${menuId}-spinner`,
-    build: (reply) => {
-      if (isNumeric(reply) !== true) {
-        return bathroomErrorRow(menuId, reply);
-      }
-      return inputMenuRows(BTHR_TARGET, reply, BATHROOM_MODES);
-    }
+  showBathroomMenu(BTHR_MODE_MENU, `${BTHR_DEVICE}_mode`, (reply) => {
+    return inputMenuRows(BTHR_TARGET, reply, BATHROOM_MODES);
   });
 }
 
 /////// Bathroom Settings Window ///////
-//
-// The light's motion sensor settings as sliders and a switch, and its log and
-// sensor read-outs in a log box that takes the settings' place. The window's
-// state lives on App.bathroomSettings while it is open, so the page teardown
-// can close it.
 
-// bthr-light1_config answers min~max~presence~timeout~mode; `field` is each
-// setting's place in it, and `key` is its name in the _set command
+// bthr-light1_config answers min~max~presence~timeout~mode; field is each setting's place
+// in it, key its name in the _set command. timeout is in seconds, the ranges in cm.
 const BTHR_CONFIG_FIELDS = 5;
 const BTHR_SETTINGS = [
-  { key: 'timeout', field: 3, kind: 'delay', label: 'Off delay', min: 10, max: 3600 }, // in seconds
+  { key: 'timeout', field: 3, kind: 'delay', label: 'Off delay', min: 10, max: 3600 },
   { key: 'presence', field: 2, kind: 'switch', label: 'Presence hold' },
-  { key: 'rangemin', field: 0, kind: 'range', label: 'Nearest detection', min: 0, max: 762, partner: 'rangemax' }, // in cm
-  { key: 'rangemax', field: 1, kind: 'range', label: 'Farthest detection', min: 0, max: 762, partner: 'rangemin' } // in cm
+  { key: 'rangemin', field: 0, kind: 'range', label: 'Nearest detection', min: 0, max: 762, partner: 'rangemax' },
+  { key: 'rangemax', field: 1, kind: 'range', label: 'Farthest detection', min: 0, max: 762, partner: 'rangemin' }
 ];
 
-// The off delay runs 6 s to an hour, too wide for a plain slider: the short
-// delays that matter most would be a few pixels each. The slider runs 0 to
-// BTHR_DELAY_STEPS and the delay grows with the cube of it, so short delays
-// move about a second at a time and long ones in bigger steps. A delay
-// already set past an hour shows as it is, with the slider at its end.
+// The off delay grows with the cube of the slider, so short delays move about a second
+// at a time. A delay set past an hour shows as it is, with the slider at its end.
 const BTHR_DELAY_STEPS = 1000;
 const BTHR_DELAY_POWER = 3;
 
@@ -180,22 +142,20 @@ const BTHR_TITLE_SETTINGS = 'Bathroom Light';
 const BTHR_TITLE_LOG = 'Light Log';
 const BTHR_TITLE_SENSOR = 'Sensor Status';
 const BTHR_DISABLED_CLASS = 'is-disabled';
-// A change, or what went wrong, is shown in place of the heading for this
-// long, and then the heading comes back.
+// how long a change or error stands in place of the heading
 const BTHR_MESSAGE_MS = 3000;
 const BTHR_TITLE_ERROR_CLASS = 'bthr__title--error';
-// on the heading while a message stands in its place: smaller and grey
+// on the heading while a message stands in its place
 const BTHR_TITLE_MESSAGE_CLASS = 'bthr__title--message';
 const BTHR_WIDE_CLASS = 'bthr__prompt--wide';
 const BTHR_PROMPT_ID = 'bthr__prompt';
-// the size of the window's six icon buttons
+// the window's six icon buttons
 const BTHR_BUTTON_CLASS = 'button_left_txtwin';
-// the size the presence switch is drawn at
+// the presence switch
 const BTHR_SWITCH_WIDTH = '75px';
 const BTHR_SWITCH_HEIGHT = '35px';
 
-// Opens the Settings window and fills it from the light. A second press of
-// Settings while it is open does nothing.
+// Opens the Settings window and fills it from the light.
 function bathroomSettingsPrompt() {
   if (document.getElementById(BTHR_PROMPT_ID)) {
     return;
@@ -253,21 +213,20 @@ function bathroomSettingsPrompt() {
     title: document.getElementById('bthr__title'),
     panel: 'settings',     // which of the two is showing
     titleText: BTHR_TITLE_SETTINGS, // the heading a message gives way to
-    messageTimer: null,    // brings the heading back after a message
+    messageTimer: null,
     settingsPanel: document.getElementById('bthr__settings'),
     logPanel: document.getElementById('bthr__log'),
     logBox: document.getElementById('bthr__logbox'),
     presenceSwitch: null,
     controls: {},     // per setting key: its box, slider and value label
-    values: {},    // per setting key: what the light last confirmed
-    // per setting key, bumped on each save: only the newest save of a slider
-    // moves it, so an older reply cannot pull it back under a newer release
+    values: {},       // per setting key: what the light last confirmed
+    // per setting key, bumped on each save, so an older reply cannot pull a slider back
     saveSeq: {},
-    // bumped per log read, so Back -- or a second read -- drops one in the air
+    // bumped per log read, so Back or a second read drops one in the air
     logSeq: 0,
-    // the read-out the log box is showing, which Refresh reads again
+    // the read-out on show, which Refresh reads again
     logView: null,
-    // set on close; a reply landing afterwards is dropped
+    // set on close; a late reply is dropped
     closed: false
   };
   App.bathroomSettings = settingsWindow;
@@ -288,7 +247,7 @@ function bathroomSettingsPrompt() {
         bthrRefreshLog(settingsWindow);
         break;
       case 'bthr__btn-back':
-        settingsWindow.logSeq += 1; // a read still in the air is no longer wanted
+        settingsWindow.logSeq += 1; // a read in the air is no longer wanted
         bthrShowPanel(settingsWindow, 'settings', BTHR_TITLE_SETTINGS);
         break;
     }
@@ -297,8 +256,7 @@ function bathroomSettingsPrompt() {
   bthrLoadConfig(settingsWindow);
 }
 
-// Takes the window down. The switch holds pointer listeners on window while
-// it is dragged, so it is destroyed rather than just dropped with the markup.
+// Takes the window down; the switch's window listeners go with destroy().
 export function closeBathroomSettings() {
   const settingsWindow = App.bathroomSettings;
   if (!settingsWindow) {
@@ -321,8 +279,7 @@ function bthrSettingId(setting) {
   return `bthr__set-${setting.key}`;
 }
 
-// one setting's box: a label and its value over a slider, or a label and a
-// switch on one line. Labels are fixed strings from BTHR_SETTINGS.
+// One setting's box: a label and value over a slider, or a label and switch on one line.
 function bthrSettingHTML(setting) {
   const settingId = bthrSettingId(setting);
   if (setting.kind === 'switch') {
@@ -401,50 +358,31 @@ function bthrShowPanel(settingsWindow, name, title) {
   }
   settingsWindow.settingsPanel.style.display = settingsDisplay;
   settingsWindow.logPanel.style.display = logDisplay;
-  // the log and the sensor status run wide, so the window doubles for them
+  // the log and sensor status run wide
   settingsWindow.win.classList.toggle(BTHR_WIDE_CLASS, name !== 'settings');
   settingsWindow.panel = name;
   settingsWindow.titleText = title;
-  // a message still showing belonged to the panel being left
+  // a message showing belonged to the panel being left
   bthrRestoreTitle(settingsWindow);
 }
 
-// Reads one of the light's text read-outs into the log box. The log is oldest
-// first, so it opens at the bottom on the newest line; the sensor status
-// opens at the top, where its first lines are.
-async function bthrShowLog(settingsWindow, command, title, scrollToEnd) {
+// Reads one of the light's read-outs into the log box. The log opens on its newest line,
+// the sensor status at the top.
+function bthrShowLog(settingsWindow, command, title, scrollToEnd) {
   settingsWindow.logView = { command, title, scrollToEnd };
   bthrShowPanel(settingsWindow, 'log', title);
   settingsWindow.logBox.value = 'Loading...';
   settingsWindow.logBox.scrollTop = 0;
-  settingsWindow.logSeq += 1;
-  const sequence = settingsWindow.logSeq;
-  const reply = await bthrRequest(command);
-  if (settingsWindow.closed === true || sequence !== settingsWindow.logSeq) {
-    return;
-  }
-  const error = bthrReplyError(reply);
-  if (error !== '') {
-    settingsWindow.logBox.value = error;
-    return;
-  }
-  settingsWindow.logBox.value = String(reply).replace(/\r\n/g, '\n');
-  if (scrollToEnd === true) {
-    settingsWindow.logBox.scrollTop = settingsWindow.logBox.scrollHeight;
-  }
+  readPicoLog(settingsWindow, bthrRequest, bthrReplyError, command, scrollToEnd);
 }
 
-// Reads the read-out on show again, for its latest lines. The read before it,
-// if it is still in the air, is dropped by bthrShowLog()'s sequence count.
+// reads the read-out on show again
 function bthrRefreshLog(settingsWindow) {
   const logView = settingsWindow.logView;
-  if (!logView) {
-    return;
-  }
   bthrShowLog(settingsWindow, logView.command, logView.title, logView.scrollToEnd);
 }
 
-// puts the heading back, dropping any message showing in its place
+// puts the heading back, dropping any message in its place
 function bthrRestoreTitle(settingsWindow) {
   clearTimeout(settingsWindow.messageTimer);
   settingsWindow.messageTimer = null;
@@ -453,12 +391,10 @@ function bthrRestoreTitle(settingsWindow) {
   settingsWindow.title.classList.remove(BTHR_TITLE_MESSAGE_CLASS);
 }
 
-// Shows a message in place of the settings heading -- 'Off delay: 6 min 8 s'
-// -- with an error drawn in red. It gives the heading back after
-// BTHR_MESSAGE_MS, or, held, stays until the next message. Messages are for
-// the settings: one landing while the log box is showing is left unshown.
+// Shows a message in place of the settings heading: 'Off delay: 6 min 8 s', an error in
+// red. It gives way after BTHR_MESSAGE_MS, or held, to the next message. A closed window,
+// or the log box showing, leaves it unshown.
 function bthrShowMessage(settingsWindow, text, isError = false, held = false) {
-  // a closed window has no heading left to write on, and its timer is gone
   if (settingsWindow.closed === true) {
     return;
   }
@@ -476,8 +412,7 @@ function bthrShowMessage(settingsWindow, text, isError = false, held = false) {
   settingsWindow.messageTimer = setTimeout(() => bthrRestoreTitle(settingsWindow), BTHR_MESSAGE_MS);
 }
 
-// greys the settings out while there is nothing read from the light to
-// change -- before the first read lands, or when it failed
+// greys the settings out until a read from the light lands
 function bthrSetReady(settingsWindow, ready) {
   BTHR_SETTINGS.forEach(setting => {
     const settingControls = settingsWindow.controls[setting.key];
@@ -488,8 +423,7 @@ function bthrSetReady(settingsWindow, ready) {
   });
 }
 
-// Fills every setting from the one bthr-light1_config read, rather than one
-// read per setting.
+// Fills every setting from the one bthr-light1_config read.
 async function bthrLoadConfig(settingsWindow) {
   bthrSetReady(settingsWindow, false);
   bthrShowMessage(settingsWindow, 'Reading settings...', false, true);
@@ -536,10 +470,10 @@ function bthrFormatValue(setting, value) {
   return bthrFormatDistance(value);
 }
 
-// The light counts its detection distances in centimetres, and so do the
-// sliders; only the read-out is in feet. 100 -> "3.3 ft"
+// Distances are cm on the light and the sliders; only the read-out is in feet.
 const BTHR_CM_PER_FOOT = 30.48;
 
+// 100 -> "3.3 ft"
 function bthrFormatDistance(centimetres) {
   const feet = centimetres / BTHR_CM_PER_FOOT;
   return `${feet.toFixed(1)} ft`;
@@ -582,7 +516,7 @@ function bthrDelayFromSlider(setting, position) {
 function bthrSliderFromDelay(setting, seconds) {
   const delaySpan = setting.max - setting.min;
   const secondsAboveMinimum = seconds - setting.min;
-  // a delay set outside the slider's range stands at the nearer end of it
+  // a delay outside the slider's range stands at the nearer end
   let delayFraction = secondsAboveMinimum / delaySpan;
   if (delayFraction < 0) {
     delayFraction = 0;
@@ -605,10 +539,8 @@ function bthrSliderValue(settingsWindow, setting) {
   return position;
 }
 
-// Where a distance slider may go: the nearest has to stay below the farthest
-// and the farthest above the nearest, or the light refuses it. Measured
-// against where the other slider stands now, so a release on one that is
-// still on its way to the light counts.
+// Where a distance slider may go: nearest stays below farthest, or the light refuses it.
+// Measured against where the other slider stands now.
 function bthrRangeLimits(settingsWindow, setting) {
   const limits = { low: setting.min, high: setting.max };
   const partnerSetting = BTHR_SETTINGS.find(other => other.key === setting.partner);
@@ -639,7 +571,7 @@ function bthrClampedSliderValue(settingsWindow, setting) {
   if (value < limits.low) {
     value = limits.low;
   }
-  // the thumb stops at the limit rather than running past it
+  // the thumb stops at the limit
   settingsWindow.controls[setting.key].slider.value = value;
   return value;
 }
@@ -661,24 +593,24 @@ function bthrShowValue(settingsWindow, setting, value) {
   settingControls.value.textContent = bthrFormatValue(setting, value);
 }
 
-// while a slider is dragged: only the value beside it follows
+// while dragged: only the value beside the slider follows
 function bthrSliderMoved(settingsWindow, setting) {
   const value = bthrClampedSliderValue(settingsWindow, setting);
   settingsWindow.controls[setting.key].value.textContent = bthrFormatValue(setting, value);
 }
 
-// on release: the value is sent, unless the slider is back where it was
+// on release: sends the value, unless the slider is back where it was
 function bthrSliderReleased(settingsWindow, setting) {
   const value = bthrClampedSliderValue(settingsWindow, setting);
   if (value === settingsWindow.values[setting.key]) {
-    bthrShowValue(settingsWindow, setting, value); // back where it was; nothing to send
+    bthrShowValue(settingsWindow, setting, value);
     return;
   }
   bthrSaveSetting(settingsWindow, setting, value);
 }
 
-// Sends one setting and shows what the light took. A refusal puts the control
-// back and re-reads every setting, as the API reference asks.
+// Sends one setting and shows what the light took. A refusal puts the control back and
+// re-reads every setting.
 async function bthrSaveSetting(settingsWindow, setting, value) {
   let sequence = 1;
   if (settingsWindow.saveSeq[setting.key]) {
@@ -689,14 +621,7 @@ async function bthrSaveSetting(settingsWindow, setting, value) {
   if (settingsWindow.closed === true) {
     return;
   }
-  let error = bthrReplyError(reply);
-  let answer = '';
-  if (error === '') {
-    answer = cleanString(String(reply));
-  }
-  if (error === '' && isNumeric(answer) !== true) {
-    error = PICO_CMD_ERROR;
-  }
+  const { answer, error } = parsePicoNumber(reply, bthrReplyError);
   const newest = sequence === settingsWindow.saveSeq[setting.key];
   if (error !== '') {
     if (newest) {
@@ -704,13 +629,8 @@ async function bthrSaveSetting(settingsWindow, setting, value) {
     }
     if (error === PICO_REFUSED) {
       await bthrLoadConfig(settingsWindow);
-      // the window was closed while the re-read was in the air: a message
-      // now would start a timer on a window that is no longer there
-      if (settingsWindow.closed === true) {
-        return;
-      }
     }
-    // after the re-read, so the reason is what is left on screen
+    // after the re-read, so the reason is what stays on screen
     bthrShowMessage(settingsWindow, `${setting.label}: ${error}`, true);
     return;
   }

@@ -1,19 +1,11 @@
-// Automate Website - JavaScript Frontend
+// Automate - page entry. Draws the page for this device model, runs every button
+// through one delegated click listener, and owns the page-level windows and teardown.
 // by Ben Provenzano III
-//
-// Draws the page for this device model, wires every button through one
-// delegated click listener, and owns the page-level windows, the popups and
-// the page teardown.
-//
-// The rooms live in their own modules (livingrm.js, bedrm.js, bathrm.js),
-// the Server window in server.js, the dropdown menus in dropdowns.js, the
-// volume buttons the amp rooms share in volctrl.js, and what they share in
-// utils.js.
 
 import { classDisplay, cleanString, base64URLSafeEncode, sendCmd,
-  timeoutInterval, setSpinner, setDisplayById, menuRow, registerListeners,
+  TIMEOUT_INTERVAL, setSpinner, setDisplayById, menuRow, registerListeners,
   dispatchRegisteredListener, gridButtonTemplate,
-  dropdownButtonTemplate } from './utils.js';
+  dropdownButtonTemplate, GoToExtPage } from './utils.js';
 import { clearVolumePopupTimer } from './volctrl.js';
 import { clearPopupTimer, installErrorHandlers } from './error.js';
 import { configureMenus, removeDropdowns, openDropdown, drawMenu,
@@ -36,9 +28,7 @@ import Lists from './lists.js';
 import Bookmarks from './bookmarks.js';
 import CameraView from './camera.js';
 
-// The rooms, in the order the room menu lists them; the first is the one a
-// browser with nothing saved opens on. Each room's module owns its config:
-// its key, name, icon, volume target and grid template.
+// The rooms, in room menu order; a browser with nothing saved opens on the first.
 const ROOM_CONFIGS = {
   [LIVING_ROOM_CONFIG.key]: LIVING_ROOM_CONFIG,
   [BEDROOM_CONFIG.key]: BEDROOM_CONFIG,
@@ -49,6 +39,7 @@ let serverMode = false;
 window.App = {
   starBackground: null,
   roomStateManager: null,
+  weatherWidget: null,
   uploader: null,
   lists: null,
   bookmarks: null,
@@ -59,132 +50,99 @@ window.App = {
   pixelsWindow: null,
   mainMenu: null,
   activeSwitches: [],
-  fileData: [],
   dynMenuNodes: [],
-  dynMenuActive: 0,
   sysModel: null,
   activityTimeout: null,
-  listenersReady: false,
   ledScrollData: [
     '00FF00', '8x8', '12.0'
   ]
 };
 
-// main entry point
+// entry point
 window.addEventListener("DOMContentLoaded", () => {
   installErrorHandlers();
   loadPage();
   loadFeatures();
 });
 
+// reads the model from the title and draws its markup
 function loadPage() {
   App.sysModel = document.getElementById('title').textContent;
-  destroyPageServices();
-  renderPage(App.sysModel);
+  document.body.insertAdjacentHTML('afterbegin', buildPageHTML(App.sysModel));
 }
 
+// starts what the page runs: the server's services, the main menu, stars and timers
 function loadFeatures() {
   if (serverMode) serverFeatures();
   App.mainMenu = new MainMenu({ isServer: serverMode });
   App.mainMenu.load();
   App.starBackground = new AnimatedBackground('star-canvas', starsAnimationEnabled());
   App.starBackground.activate();
-  setupEventListeners();
+  document.addEventListener('click', handleClicks);
   resetActivityTimer();
 }
 
+// starts the server page's own services: the last room, its status, the weather
 function serverFeatures() {
   selectRoom(localStorage.getItem("ctls-mode"));
   App.roomStateManager = new RoomStateManager('status_anchor');
-  window.weatherWidget = new WeatherWidget();
-  window.weatherWidget.activate();
-  // the Pixels window reaches every LED host through the server's API, so
-  // only the server's Control menu offers it
+  App.weatherWidget = new WeatherWidget();
+  App.weatherWidget.activate();
+  // the Pixels window reaches every LED host through the server's API
   configureMenus({ openPixels: openPixelsWindow });
 }
 
-// injects the markup for the given model, replacing any previous render
-function renderPage(model) {
-  removeInjectedPage();
-  document.body.insertAdjacentHTML('afterbegin', buildPageHTML(model));
-}
-
-// The server serves index.html as written, so its title is SERVER_MODEL.
-// Every Pi's installer swaps that title for its brand.txt name ("Bedroom",
-// "LEDwall", "RaspberryPi" without one), so any other title is a Pi: a LED
-// Pi when it holds "led", a plain Pi otherwise -- whatever else it says.
+// Index.html is served as written, so the server's title is SERVER_MODEL. A Pi's installer
+// swaps it for its brand.txt name: a LED Pi when that holds "led", a plain Pi otherwise.
 const SERVER_MODEL = 'Automate';
 
+// the whole page's markup for a model
 function buildPageHTML(model) {
   const modelName = model.trim();
   serverMode = modelName === SERVER_MODEL;
   const ledPi = !serverMode && modelName.toLowerCase().includes('led');
   const select = {
     isServer: serverMode,
-    isLedCapable: serverMode || ledPi,
-    isPiLike: !serverMode
+    isLedCapable: serverMode || ledPi
   };
   return [
-    '<canvas id="star-canvas" data-app-injected></canvas>',
+    '<canvas id="star-canvas"></canvas>',
     topNavTemplate(select),
-    navDropdownsTemplate(select),
-    '<p class="pg-top" data-app-injected></p>',
+    navDropdownsTemplate(),
+    '<p class="pg-top"></p>',
     mainGridTemplate(select),
     serverOptionsTemplate(select),
     textScrollTemplate(select),
     logFormTemplate(),
-    '<div id="color-popup" data-app-injected></div>',
-    camPopupTemplate(),
-    '<p class="pg-bottom" data-app-injected></p>'
+    '<div id="color-popup"></div>',
+    CameraView.POPUP_HTML,
+    '<p class="pg-bottom"></p>'
   ].filter(Boolean).join('\n');
 }
 
-function setupEventListeners() {
-  if (App.listenersReady) return;
-  App.listenersReady = true;
-  document.addEventListener('click', handleClicks, false);
-  // button dispatcher for every group registered next to its template
-  document.addEventListener('click', (event) => {
-    dispatchRegisteredListener(event.target);
-  });
-}
-
-// runs on each click anywhere on the page
+// Every click: restarts the activity timer, closes menus unless it landed on a button,
+// a bookmark or a .nohide element, then runs the button's handler. While a bookmark is
+// being edited, only its window takes clicks.
 function handleClicks(event) {
   resetActivityTimer();
-  // no click events while the bookmark edit window is up
   if (App.bookmarks && App.bookmarks.isEditMode()) {
-    // closest() rather than a className compare: drawPrompt() adds
-    // "prompt_win" after setting the class, so an equality test never matched
     if (!event.target.closest(".editFav__win")) {
-      // the button dispatcher is a second listener on document, and
-      // stopPropagation() does not stop listeners on the same node -- so
-      // delegated buttons used to keep firing right through edit mode
-      event.stopImmediatePropagation();
+      return;
     }
-    return;
+  } else if (!event.target.closest('.button, .bookmarked__item, .nohide')) {
+    removeDropdowns();
   }
-  // don't hide menus when clicking these elements
-  const NO_HIDE_ELEMENTS = ['.button', '.bookmarked__item', '.nohide'].join(', ');
-  if (event.target.closest(NO_HIDE_ELEMENTS)) return;
-  removeDropdowns();
-}
-
-// removes every node injected by renderPage() -- full DOM cleanup
-function removeInjectedPage() {
-  document.querySelectorAll('[data-app-injected]').forEach((node) => {
-    node.remove();
-  });
+  dispatchRegisteredListener(event.target);
 }
 
 //// stars animation setting ////
 
-// anything other than an explicit "off" is on, so a browser with nothing
-// saved yet gets the animation
+// on unless explicitly "off", so a browser with nothing saved gets the animation
 function starsAnimationEnabled() {
   return localStorage.getItem("stars-anim") !== "off";
 }
 
+// saves the stars setting and applies it
 function setStarsAnimation(on) {
   let saved = "off";
   if (on === true) {
@@ -196,9 +154,7 @@ function setStarsAnimation(on) {
   }
 }
 
-// Checkbox rows drawn by drawMenu(). A menu file lives on the device, so a
-// browser-side setting has nowhere in it to live -- these are keyed by the
-// name in the row's first column and supply their own read and write.
+// Browser-side settings for 'chk' menu rows, by the name in the row's first column.
 const WWW_SETTINGS = {
   'stars': {
     get: () => starsAnimationEnabled(),
@@ -208,63 +164,55 @@ const WWW_SETTINGS = {
 
 //// activity timeout ////
 
+// restarts the timer that pauses the page's services when idle
 function resetActivityTimer() {
   activityBegin();
   clearTimeout(App.activityTimeout);
-  App.activityTimeout = setTimeout(() => {
-    activityStop();
-  }, timeoutInterval() * 1000);
+  App.activityTimeout = setTimeout(activityStop, TIMEOUT_INTERVAL * 1000);
 }
 
+// resumes the services on activity
 function activityBegin() {
   if (App.starBackground) {
     App.starBackground.resume();
   }
-  if (serverMode && App.roomStateManager) {
+  if (App.roomStateManager) {
     App.roomStateManager.showRoomState();
   }
 }
 
+// pauses the services when idle
 function activityStop() {
   if (App.starBackground) {
     App.starBackground.pause();
   }
-  if (serverMode && App.roomStateManager) {
+  if (App.roomStateManager) {
     App.roomStateManager.hideRoomState();
-  }
-}
-
-async function refreshRoomState() {
-  if (serverMode && App.roomStateManager) {
-    App.roomStateManager.restartRoomState();
   }
 }
 
 //// dropdowns ////
 
-// Closes the menus other modules own, when removeDropdowns() closes the rest.
+// closes the menus other modules own, when removeDropdowns() closes the rest
 function closePageMenus() {
-  if (!serverMode) {
-    return;
-  }
   if (App.bookmarks) {
     App.bookmarks.close();
   }
-  if (window.weatherWidget && typeof window.weatherWidget.closeMenu === 'function') {
-    window.weatherWidget.closeMenu();
+  if (App.weatherWidget) {
+    App.weatherWidget.closeMenu();
   }
 }
 
-// a row of the room menu was picked: draw that room, read its devices, and
-// read an open temperature window again for its climate
+// a room menu row was picked: draws the room, reads its devices and any open temperature window
 function pickRoom(roomKey) {
   selectRoom(roomKey);
-  refreshRoomState();
+  if (App.roomStateManager) {
+    App.roomStateManager.restartRoomState();
+  }
   refreshThermoWindow();
 }
 
-// dropdowns.js sits below this module and cannot import from it, so what its
-// rows and its close need from the page is handed over here
+// what dropdowns.js's rows and close need from the page
 configureMenus({
   closePageMenus: closePageMenus,
   roomConfig: (roomKey) => ROOM_CONFIGS[roomKey],
@@ -273,6 +221,7 @@ configureMenus({
   browserSetting: (settingName) => WWW_SETTINGS[settingName]
 });
 
+// the room selector: a menu of the other rooms
 function openRoomDropdown() {
   const menuname = 'main-room-dropdown';
   if (!openDropdown(menuname)) {
@@ -287,10 +236,7 @@ function openRoomDropdown() {
   drawMenu(menuDataString, menuname);
 }
 
-// Puts a room's icon and name on an icon <i> and a label element, either
-// of which may be missing; a room without an icon hides the <i>.
-// textContent rather than innerText: it sets the text without making the
-// browser lay the page out first.
+// Puts a room's icon and name on an icon and a label, either of which may be missing.
 function showRoomIdentity(iconId, labelId, config) {
   const icon = document.getElementById(iconId);
   if (icon) {
@@ -301,49 +247,35 @@ function showRoomIdentity(iconId, labelId, config) {
   if (label) label.textContent = config.name;
 }
 
+// draws a room's grid and saves the choice; an unknown room falls back to the first
 function selectRoom(_mode) {
   if (!ROOM_CONFIGS[_mode]) {
-    _mode = Object.keys(ROOM_CONFIGS)[0]; // load the first if not defined
+    _mode = Object.keys(ROOM_CONFIGS)[0];
   }
   const config = ROOM_CONFIGS[_mode];
   const container = document.getElementById('room-grid-container');
   if (container) {
-    // the outgoing room's markup is about to go: any of its menus that is
-    // open is torn down first (a toggle switch in one holds listeners on
-    // window until destroyed), and a request still in flight for one of
-    // them is stopped from drawing when it lands
+    // closes the outgoing room's menus (their switches hold window listeners)
     removeDropdowns();
-    // all of the grid's buttons (volume included) are handled by the
-    // delegated dispatcher, so rendering the markup is all that's needed
     container.innerHTML = config.template();
   }
-  // the nav and the room group's label show the same icon and name
   showRoomIdentity('current-room-icon', 'current-room-label', config);
   showRoomIdentity('room-group-icon', 'room-group-label', config);
   App.currentRoom = _mode;
   localStorage.setItem("ctls-mode", _mode);
 }
 
-// open URL in new tab
-function GoToExtPage(_path) {
-  window.open("https://" + _path, "_blank");
-}
-
-// back to home page
+// the Pi menu's Home row: back to the server's page
 function GoToHomePage() {
-  if (serverMode) {
-    removeInjectedPage();
-    loadPage();
-  } else {
-    window.location = 'https://automate.home';
-  }
+  window.location = 'https://automate.home';
 }
 
 //// page templates ////
 
+// the top bar
 function topNavTemplate(f) {
   return `
-<div class="topnav nohide" data-app-injected>
+<div class="topnav nohide">
   <div id="topnav-left">
     <a id="btn-mainmenu">
       <i class="fad fa-list"></i>
@@ -380,19 +312,16 @@ registerListeners({
   'nav_stats_menu':      () => showStatusMenu()
 });
 
-// mainmenu is left empty here: its rows are written out in MainMenu.MENU_HTML
-// (server) and PI_MENU_HTML (Pi), in the order they are drawn, so each menu
-// can be reordered in one place. The handlers for those ids are still
-// registered below.
-function navDropdownsTemplate(f) {
+// The menus' containers; MainMenu fills mainmenu with its own rows.
+function navDropdownsTemplate() {
   return `
-<div class="nav_dd_left" data-app-injected>
+<div class="nav_dd_left">
   <div class="dd-content dd-menu" id="mainmenu"></div>
   <div class="dd-content dd-menu" id="bookmarks"></div>
   <div class="dd-content dd-menu" id="roomstatus"></div>
   <div class="dd-content dd-menu" id="main-room-dropdown"></div>
 </div>
-<div class="nav_dd_right" data-app-injected>
+<div class="nav_dd_right">
   <div class="dd-content dd-menu ind-button" id="statsmenu"></div>
 </div>`;
 }
@@ -402,12 +331,11 @@ registerListeners({
   'btn-home-pi': () => GoToHomePage()
 });
 
-// main control grid (server + LEDpi): the groups stack in one centred column,
-// Pixels first, then the server-only APT and room groups under it
+// the main grid (server + LED Pi): Pixels, then the server-only APT and room groups
 function mainGridTemplate(f) {
   if (!f.isLedCapable) return '';
   return `
-<div data-app-injected>
+<div>
   <div class="grid">
     <fieldset class="btn-group">
       <div class="btn-group-label"><i class="fad fa-stars"></i><span>Pixels</span></div>
@@ -452,27 +380,14 @@ registerListeners({
   'btn-cmd-leds-pause':    () => sendLeds('pause')
 });
 
-// the On and Off rows the three APT menus hold from the start
+// the On and Off rows of the three APT menus
 function onOffRowsTemplate(onRowId, offRowId) {
   return `
     <a id="${onRowId}"> On<i class="fad fa-toggle-on"></i></a>
     <a id="${offRowId}"> Off<i class="fad fa-toggle-off"></i></a>`;
 }
 
-// The temperature / humidity button is written out here: it is the one
-// button with two icons and no label, which gridButtonTemplate() does not draw.
-function temperatureButtonTemplate() {
-  return `
-  <button type="button" class="button" id="btn-show-temphumid">
-    <span class="button__text">
-      <i class="fad fa-temperature-hot large__icon"></i>
-      <i class="fad fa-humidity large__icon"></i>
-    </span>
-  </button>`;
-}
-
-// The room whose temperature and humidity the temperature window shows: the
-// room on screen when it has a sensor of its own (its config's climate), or
+// The room the temperature window reads: the one on screen when it has a sensor, or
 // else the living room.
 function climateRoomConfig() {
   const roomConfig = ROOM_CONFIGS[App.currentRoom];
@@ -482,7 +397,7 @@ function climateRoomConfig() {
   return LIVING_ROOM_CONFIG;
 }
 
-// server-only APT group, between Pixels and the room group in the main grid
+// the server-only APT group
 function roomControlsTemplate() {
   return `
 <div>
@@ -519,7 +434,11 @@ function roomControlsTemplate() {
     icon: 'fab fa-youtube',
     label: 'YouTube'
   })}
-  ${temperatureButtonTemplate()}
+  ${gridButtonTemplate({
+    buttonId: 'btn-show-temphumid',
+    label: `<i class="fad fa-temperature-hot large__icon"></i>
+      <i class="fad fa-humidity large__icon"></i>`
+  })}
   ${gridButtonTemplate({
     buttonId: 'btn-media-link',
     icon: 'fad fa-mp3-player',
@@ -562,56 +481,50 @@ registerListeners({
   'btn-open-log-svr':   () => openLogWindow()
 });
 
-// the text scroller's six buttons are the small size
+// the text scroller's menus: [row id suffix, label, the value a row sets]
+const TEXT_SCROLL_COLORS = [['1', 'Green', '00FF00'], ['2', 'Red', 'FF0000'], ['3', 'Blue', '0000FF'],
+  ['4', 'Orange', 'FFA500'], ['5', 'Purple', 'A020F0'], ['6', 'Yellow', 'FFCC00'], ['7', 'White', 'FFFFFF']];
+const TEXT_SCROLL_FONTS = [['8x8', 'Large', '8x8'], ['5x7', 'Small', '5x7'], ['3x5', 'Narrow', '3x5']];
+const TEXT_SCROLL_SPEEDS = [['slowest', 'Slowest', '3.0'], ['slow', 'Slow', '9.0'], ['normal', 'Normal', '12.0'],
+  ['fast', 'Fast', '15.0'], ['fastest', 'Fastest', '20.0']];
 const TEXT_SCROLL_BUTTON_CLASS = 'button__sml';
 
-// LED text scroller prompt (server + LEDpi)
+// one of the text scroller's three small menu buttons, with its rows
+function textScrollMenuTemplate(name, label, rowPrefix, rows) {
+  let rowsMarkup = '';
+  rows.forEach(([suffix, rowLabel]) => {
+    rowsMarkup += `<a id="${rowPrefix}-${suffix}"> ${rowLabel}</a>`;
+  });
+  return dropdownButtonTemplate({
+    buttonId: `btn-menu-textscroll${name}`,
+    label: label,
+    buttonClass: TEXT_SCROLL_BUTTON_CLASS,
+    menuId: `textscroll${name}-menu`,
+    menuClass: 'dd-button',
+    menuContent: rowsMarkup
+  });
+}
+
+// the handlers for one text scroller menu, whose rows set field `field` of ledScrollData
+function textScrollMenuListeners(name, rowPrefix, rows, field) {
+  const listeners = { [`btn-menu-textscroll${name}`]: () => openDropdown(`textscroll${name}-menu`) };
+  rows.forEach(([suffix, , value]) => {
+    listeners[`${rowPrefix}-${suffix}`] = () => setTextScrollField(field, value);
+  });
+  return listeners;
+}
+
+// the LED text scroller window (server + LED Pi)
 function textScrollTemplate(f) {
   if (!f.isLedCapable) return '';
   return `
-<div data-app-injected>
+<div>
   <div class="textscroll__prompt prompt_win">
     <div id="textScrollTitle">TextScroll</div>
     <textarea class="scroll-bar-style" id="textScrollBox" spellcheck="false"></textarea>
-    ${dropdownButtonTemplate({
-      buttonId: 'btn-menu-textscrollcolor',
-      label: 'Colors',
-      buttonClass: TEXT_SCROLL_BUTTON_CLASS,
-      menuId: 'textscrollcolor-menu',
-      menuClass: 'dd-button',
-      menuContent: `
-        <a id="btn-tscolor-1"> Green</a>
-        <a id="btn-tscolor-2"> Red</a>
-        <a id="btn-tscolor-3"> Blue</a>
-        <a id="btn-tscolor-4"> Orange</a>
-        <a id="btn-tscolor-5"> Purple</a>
-        <a id="btn-tscolor-6"> Yellow</a>
-        <a id="btn-tscolor-7"> White</a>`
-    })}
-    ${dropdownButtonTemplate({
-      buttonId: 'btn-menu-textscrollfont',
-      label: 'Font',
-      buttonClass: TEXT_SCROLL_BUTTON_CLASS,
-      menuId: 'textscrollfont-menu',
-      menuClass: 'dd-button',
-      menuContent: `
-        <a id="btn-tsfont-8x8"> Large</a>
-        <a id="btn-tsfont-5x7"> Small</a>
-        <a id="btn-tsfont-3x5"> Narrow</a>`
-    })}
-    ${dropdownButtonTemplate({
-      buttonId: 'btn-menu-textscrollspeed',
-      label: 'Speed',
-      buttonClass: TEXT_SCROLL_BUTTON_CLASS,
-      menuId: 'textscrollspeed-menu',
-      menuClass: 'dd-button',
-      menuContent: `
-        <a id="btn-tsspeed-slowest"> Slowest</a>
-        <a id="btn-tsspeed-slow"> Slow</a>
-        <a id="btn-tsspeed-normal"> Normal</a>
-        <a id="btn-tsspeed-fast"> Fast</a>
-        <a id="btn-tsspeed-fastest"> Fastest</a>`
-    })}
+    ${textScrollMenuTemplate('color', 'Colors', 'btn-tscolor', TEXT_SCROLL_COLORS)}
+    ${textScrollMenuTemplate('font', 'Font', 'btn-tsfont', TEXT_SCROLL_FONTS)}
+    ${textScrollMenuTemplate('speed', 'Speed', 'btn-tsspeed', TEXT_SCROLL_SPEEDS)}
     ${gridButtonTemplate({
       buttonId: 'btn-ts-close',
       icon: 'fad fa-times-octagon',
@@ -631,46 +544,24 @@ function textScrollTemplate(f) {
 </div>`;
 }
 registerListeners({
-  'btn-menu-textscrollcolor': () => openDropdown('textscrollcolor-menu'),
-  'btn-tscolor-1':            () => setTextScrollColor('00FF00'),
-  'btn-tscolor-2':            () => setTextScrollColor('FF0000'),
-  'btn-tscolor-3':            () => setTextScrollColor('0000FF'),
-  'btn-tscolor-4':            () => setTextScrollColor('FFA500'),
-  'btn-tscolor-5':            () => setTextScrollColor('A020F0'),
-  'btn-tscolor-6':            () => setTextScrollColor('FFCC00'),
-  'btn-tscolor-7':            () => setTextScrollColor('FFFFFF'),
-  'btn-menu-textscrollfont':  () => openDropdown('textscrollfont-menu'),
-  'btn-tsfont-8x8':           () => setTextScrollFont('8x8'),
-  'btn-tsfont-5x7':           () => setTextScrollFont('5x7'),
-  'btn-tsfont-3x5':           () => setTextScrollFont('3x5'),
-  'btn-menu-textscrollspeed': () => openDropdown('textscrollspeed-menu'),
-  'btn-tsspeed-slowest':      () => setTextScrollSpeed('3.0'),
-  'btn-tsspeed-slow':         () => setTextScrollSpeed('9.0'),
-  'btn-tsspeed-normal':       () => setTextScrollSpeed('12.0'),
-  'btn-tsspeed-fast':         () => setTextScrollSpeed('15.0'),
-  'btn-tsspeed-fastest':      () => setTextScrollSpeed('20.0'),
+  ...textScrollMenuListeners('color', 'btn-tscolor', TEXT_SCROLL_COLORS, 0),
+  ...textScrollMenuListeners('font', 'btn-tsfont', TEXT_SCROLL_FONTS, 1),
+  ...textScrollMenuListeners('speed', 'btn-tsspeed', TEXT_SCROLL_SPEEDS, 2),
   'btn-ts-close':             () => closeTextScroll(),
   'btn-ts-clear':             () => clearLEDsMessage(),
   'btn-ts-send':              () => sendTextScroll()
 });
 
-// the log window's close button closes the camera window with it, so it is
-// handled here beside the camera's own
+// the log and camera windows close together, as closePopup() closes both
 registerListeners({
-  'btn-log-close': () => closePopup()
-});
-
-// the camera window's markup lives with the class that plays it (camera.js)
-function camPopupTemplate() {
-  return CameraView.POPUP_HTML;
-}
-registerListeners({
+  'btn-log-close':      () => closePopup(),
   'btn-cam-close':      () => closePopup(),
-  'btn-cam-fullscreen': () => toggleCamFullscreen()
+  'btn-cam-fullscreen': () => App.cameraView.toggleFullscreen()
 });
 
 /////// LEDScroll ///////
 
+// writes the scroller's settings into its title, in its colour
 function setTextScrollTitle() {
   const title = document.getElementById('textScrollTitle');
   const [color, font, speed] = App.ledScrollData;
@@ -678,45 +569,40 @@ function setTextScrollTitle() {
   title.textContent = "Textscroll " + font + ' ' + speed + 'x';
 }
 
+// empties the scroller's box
 function clearTextScrollBox() {
   const textbox = document.getElementById('textScrollBox');
   textbox.placeholder = "Enter message";
   textbox.value = '';
 }
 
+// opens the scroller
 function openTextScroll() {
   classDisplay("textscroll__prompt", "block");
   clearTextScrollBox();
   setTextScrollTitle();
 }
 
+// closes the scroller
 function closeTextScroll() {
   classDisplay("textscroll__prompt", "none");
   clearTextScrollBox();
   removeDropdowns();
 }
 
+// empties the box and stops the LEDs
 function clearLEDsMessage() {
   clearTextScrollBox();
   sendLeds('stop');
 }
 
-function setTextScrollColor(color) {
-  App.ledScrollData[0] = color;
+// a menu row: sets one of colour, font, speed
+function setTextScrollField(field, value) {
+  App.ledScrollData[field] = value;
   setTextScrollTitle();
 }
 
-function setTextScrollFont(font) {
-  App.ledScrollData[1] = font;
-  setTextScrollTitle();
-}
-
-function setTextScrollSpeed(speed) {
-  App.ledScrollData[2] = speed;
-  setTextScrollTitle();
-}
-
-// sends the box's text to the LED grid as message|color|font|speed, base64
+// sends the box's text to the LEDs as base64 of message|color|font|speed
 function sendTextScroll() {
   const textbox = document.getElementById('textScrollBox');
   const message = cleanString(textbox.value.replaceAll("|", "-"));
@@ -742,8 +628,7 @@ function sendTextScroll() {
 
 //// Lists Window ////
 
-// opens the lists window (clicking again closes it); the window keeps its own
-// state and talks to the same read / write file API the bookmarks use
+// opens the lists window, or closes it when open
 function showLists() {
   removeDropdowns();
   if (!App.lists) {
@@ -754,17 +639,15 @@ function showLists() {
 
 //// Bookmarks Menu ////
 
-// star button: the Bookmarks class owns the menu, its buttons, the add/edit
-// window and the file
+// star button: toggles the bookmarks menu
 function showBookmarks() {
   if (!App.bookmarks) {
-    App.bookmarks = new Bookmarks({
-      removeDropdowns: removeDropdowns
-    });
+    App.bookmarks = new Bookmarks();
   }
   App.bookmarks.toggle();
 }
 
+// the stats button: probes the network's hosts into its menu
 function showStatusMenu() {
   const _menu = 'statsmenu';
   const iconId = 'navstats-icon';
@@ -783,15 +666,13 @@ function showStatusMenu() {
   });
 }
 
-// Server button (and System on the Pi models): the log window, opened over
-// nothing else
+// Server button, or System on the Pi models: the log window, over nothing else
 function openLogWindow() {
   closePopup();
   showLogWindow();
 }
 
-// Doorway button: the camera's live stream, relayed by the API
-// (api/camstream.js) and played by CameraView
+// Doorway button: the camera's live stream
 function openCamWindow() {
   closePopup();
   if (!App.cameraView) {
@@ -800,13 +681,7 @@ function openCamWindow() {
   App.cameraView.open();
 }
 
-function toggleCamFullscreen() {
-  if (App.cameraView) {
-    App.cameraView.toggleFullscreen();
-  }
-}
-
-// close all popup windows
+// closes the log and camera windows
 function closePopup() {
   closeLogWindow();
   setDisplayById("cam-popup", "none");
@@ -815,56 +690,38 @@ function closePopup() {
   }
 }
 
-//// runs before exit ////
+//// teardown ////
 
-window.addEventListener('beforeunload', () => {
-  App.destroyAll();
-});
+// ends one service on App and drops it, if it is running
+function endService(serviceName, endMethod) {
+  const service = App[serviceName];
+  if (service) {
+    service[endMethod]();
+    App[serviceName] = null;
+  }
+}
 
+// Ends every running service, handing back any bookmark edit lock first.
 App.destroyAll = function() {
   console.log("shutting down...");
-  if (App.activityTimeout) clearTimeout(App.activityTimeout);
+  clearTimeout(App.activityTimeout);
   clearPopupTimer();
   clearVolumePopupTimer();
   if (App.bookmarks) App.bookmarks.unloadBeacon();
   destroyActiveSwitches();
-  destroyPageServices();
-};
-
-function destroyPageServices() {
-  if (App.roomStateManager) {
-    App.roomStateManager.destroy();
-    App.roomStateManager = null;
-  }
-  if (App.starBackground) {
-    App.starBackground.destroy();
-    App.starBackground = null;
-  }
-  if (App.lists) {
-    App.lists.dispose();
-    App.lists = null;
-  }
-  if (App.uploader) {
-    App.uploader.destroy();
-    App.uploader = null;
-  }
-  if (App.colorPrompt) {
-    App.colorPrompt.destroy();
-    App.colorPrompt = null;
-  }
+  endService('roomStateManager', 'destroy');
+  endService('starBackground', 'destroy');
+  endService('lists', 'dispose');
+  endService('uploader', 'destroy');
+  endService('colorPrompt', 'destroy');
   closeBathroomSettings();
   closeThermoWindow();
   closePixelsWindow();
-  if (App.bookmarks) {
-    App.bookmarks.close();
-    App.bookmarks = null;
-  }
-  if (App.cameraView) {
-    App.cameraView.destroy();
-    App.cameraView = null;
-  }
-  if (window.weatherWidget && typeof window.weatherWidget.remove === 'function') {
-    window.weatherWidget.remove();
-    window.weatherWidget = null;
-  }
-}
+  endService('bookmarks', 'close');
+  endService('cameraView', 'close');
+  endService('weatherWidget', 'remove');
+};
+
+window.addEventListener('beforeunload', () => {
+  App.destroyAll();
+});

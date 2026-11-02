@@ -1,55 +1,42 @@
-// Automate Website - shared utilities
-//
-// Everything more than one module needs: API calls, the file read/write
-// pair, DOM helpers, the delegated button listeners, the button templates
-// the room grids share, colour maths, the search row, drag re-ordering and
-// the edit lock. The volume controls are in volctrl.js and the browser-side
-// encryption in encrypt.js, and the message popup and error reports in
-// error.js.
+// Automate - shared utilities: API calls, file read / write, DOM helpers, button
+// templates and delegated listeners, colour maths, search row, drag re-order, edit lock.
 
 import { HttpError, reportError, reportNotConnected, logError,
   describeCommand } from './error.js';
 
-const REFRESH_INTERVAL = 10; // seconds, room status refresh
-const TIMEOUT_INTERVAL = 50; // seconds, inactivity before services pause
-
-export function refreshInterval() {
-  return REFRESH_INTERVAL;
-}
-
-export function timeoutInterval() {
-  return TIMEOUT_INTERVAL;
-}
+export const REFRESH_INTERVAL = 10; // seconds, room status refresh
+export const TIMEOUT_INTERVAL = 50; // seconds, inactivity before services pause
 
 //// API calls ////
 
-// Query values are pasted straight into the URL. Only characters that would
-// end a value or read as an escape are encoded; everything the site sends
-// (letters, digits, _ - ~ . @) goes out byte for byte.
+// Only characters that would end a query value or read as an escape are encoded.
 const QUERY_UNSAFE = /[%&#+=?\s]/g;
 
+// a query value, encoded
 function encodeArg(value) {
   const text = (value === null || value === undefined) ? '' : String(value);
   return text.replace(QUERY_UNSAFE, (ch) =>
     '%' + ch.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0'));
 }
 
-// Sends one command to the device API and returns the parsed JSON answer, or
-// null when the request failed, which is reported in the error popup. The
-// body is read inside the same try, so a connection that drops part way
-// through an answer is reported as lost too. options.quiet logs a failure to
-// the console only, for a caller that shows failures itself.
+// Fetches a URL and answers its text; an error status throws HttpError.
+export async function fetchAnswer(url) {
+  const response = await fetch(url, { method: 'GET' });
+  const answerText = await response.text();
+  if (!response.ok) {
+    throw new HttpError(response.status, answerText);
+  }
+  return answerText;
+}
+
+// Sends a command and answers the parsed JSON, or null with the failure reported.
+// options.quiet logs it to the console only.
 // sendCmd('main', 'brxmit', 'brtvon')
-// sendCmd('main', 'lrstatus', '', { quiet: true })
 export async function sendCmd(act, arg1, arg2 = '', options = {}) {
   const url = location.protocol + "//" + location.hostname + "/api?var=" +
     encodeArg(arg2) + "&arg=" + encodeArg(arg1) + "&action=" + encodeArg(act);
   try {
-    const response = await fetch(url, { method: 'GET' });
-    const answerText = await response.text();
-    if (!response.ok) {
-      throw new HttpError(response.status, answerText);
-    }
+    const answerText = await fetchAnswer(url);
     return JSON.parse(answerText);
   } catch (error) {
     const what = `sending ${describeCommand(act, arg1, arg2)}`;
@@ -62,18 +49,12 @@ export async function sendCmd(act, arg1, arg2 = '', options = {}) {
   }
 }
 
-// Reads a menu / list file at a full URL, as text; undefined when it could
-// not be read, which is reported in the error popup.
+// Reads a menu file at a full URL as text; undefined with the failure reported.
 // loadMenu(fileURL('read', 'ledeffectmenu'))
 export async function loadMenu(url) {
   const fileName = fileNameOf(url);
   try {
-    const response = await fetch(url, { method: "GET" });
-    const answerText = await response.text();
-    if (!response.ok) {
-      throw new HttpError(response.status, answerText);
-    }
-    return answerText;
+    return await fetchAnswer(url);
   } catch (error) {
     reportError(`reading the ${fileName} menu`, error);
     return undefined;
@@ -81,13 +62,9 @@ export async function loadMenu(url) {
 }
 
 //// Pico controllers ////
-//
-// A Pico W controller (the bathroom light, the living room thermostat) serves
-// one request at a time, and an error comes back from it as an ordinary
-// string with HTTP 200, so the text is what says whether a reply is one.
+// A Pico serves one request at a time; errors arrive as text under HTTP 200.
 
-// what picoReplyError() answers for each kind of failure; a device that is
-// offline is named by its own module ('Light offline')
+// picoReplyError()'s answers; the offline text is the caller's own
 export const PICO_REFUSED = 'Value out of range';
 export const PICO_NO_REPLY = 'No reply from server';
 export const PICO_CMD_ERROR = 'Command error';
@@ -97,13 +74,11 @@ const PICO_OFFLINE_PREFIX = 'commonAPIRequest exception';
 const PICO_REFUSED_PREFIX = 'commonAPIRequest: invalid response';
 const PICO_ERROR_PREFIXES = ['commonAPIRequest', 'executeMain:'];
 
-// '' for a reply that is not an error, or a short line saying what went
-// wrong. xmitPrefix is the room's own error prefix, and offlineText what to
-// say for a device that did not answer.
+// '' for a good reply, or a short line saying what went wrong.
 // picoReplyError('commonAPIRequest exception: …', 'bthrXmit:', 'Light offline') -> 'Light offline'
 export function picoReplyError(reply, xmitPrefix, offlineText) {
   if (reply === null || reply === undefined) {
-    return PICO_NO_REPLY; // sendCmd() could not reach the API at all
+    return PICO_NO_REPLY;
   }
   const text = String(reply);
   if (text.startsWith(PICO_OFFLINE_PREFIX)) {
@@ -121,17 +96,49 @@ export function picoReplyError(reply, xmitPrefix, offlineText) {
   return '';
 }
 
-// One queue per Pico: each command waits for the reply before it, so the
-// commands reach the Pico one after another rather than all at once.
-// sendCmd() never rejects (it answers null), so nothing breaks the chain.
+// One queue per Pico, so commands reach it one after another. Answers the send function.
 // const bthrRequest = picoRequestQueue('bthrxmit'); bthrRequest('bthr-light1_config')
 export function picoRequestQueue(target) {
   let queue = Promise.resolve();
   return (command) => {
     const running = queue.then(() => sendCmd('main', target, command));
-    queue = running.catch(() => null);
+    queue = running;
     return running;
   };
+}
+
+// A reply that should be one number: "71" -> { answer: '71', error: '' }, or
+// { answer: '', error } with what went wrong.
+export function parsePicoNumber(reply, replyError) {
+  const error = replyError(reply);
+  if (error !== '') {
+    return { answer: '', error: error };
+  }
+  const answer = cleanString(String(reply));
+  if (isNumeric(answer) !== true) {
+    return { answer: '', error: PICO_CMD_ERROR };
+  }
+  return { answer: answer, error: '' };
+}
+
+// Reads a Pico's text read-out into win.logBox. A closed window or a newer read
+// (win.closed, win.logSeq) drops the reply; scrollToEnd opens on the last line.
+export async function readPicoLog(win, request, replyError, command, scrollToEnd) {
+  win.logSeq += 1;
+  const sequence = win.logSeq;
+  const reply = await request(command);
+  if (win.closed === true || sequence !== win.logSeq) {
+    return;
+  }
+  const error = replyError(reply);
+  if (error !== '') {
+    win.logBox.value = error;
+    return;
+  }
+  win.logBox.value = String(reply).replace(/\r\n/g, '\n');
+  if (scrollToEnd === true) {
+    win.logBox.scrollTop = win.logBox.scrollHeight;
+  }
 }
 
 //// file transfer ////
@@ -146,26 +153,18 @@ function fileNameOf(url) {
   return new URL(url, location.href).searchParams.get('file');
 }
 
-// A file request lost on the way is sent again after a short pause: a
-// keep-alive connection the far end had already closed fails the request
-// without it ever reaching the API (Safari reports "Load failed"), and the
-// proxy answers 502-504 while it cannot reach the API for a moment. Only
-// those are retried -- an answer from the API itself stands. Every write
-// replaces the whole file, so a write sent twice leaves the same file.
-const FILE_RETRY_MS = [250, 750];      // pause before each further attempt
+// A request lost on the way (no answer, or the proxy's 502-504) is retried after
+// these pauses. An answer from the API stands; every write replaces the whole file.
+const FILE_RETRY_MS = [250, 750];
 const FILE_RETRY_STATUS = [502, 503, 504];
 
-// The last file request that failed, so the caller that gave up on it can say
-// why: { file, status, text, attempts, time }, status null when nothing
-// answered. Kept until the next failure; reportFileFailure() reads it while
-// it is fresh.
+// Last failed file request for reportFileFailure(): { file, status, text, attempts,
+// time }, status null when nothing answered.
 const FILE_FAILURE_MAX_AGE_MS = 10000;
 let lastFileFailure = null;
 
-// { ok, status, text } once the server has answered, or null when it never
-// did. The body is read inside the same try, so a connection that drops
-// part way through an answer counts as lost too. A failure is kept in
-// lastFileFailure.
+// { ok, status, text } once the server answered, or null when it never did. The body
+// is read in the same try, so a connection dropped mid-answer counts as lost.
 async function fileRequest(url, options) {
   let attempt = 0;
   while (true) {
@@ -213,10 +212,8 @@ function recordFileFailure(fileName, answer, attempt) {
   };
 }
 
-// Reports why a file read or write just failed, in the error popup: Not
-// connected when nothing answered (or only the proxy did), an exception with
-// the server's answer otherwise. what says what the page was doing.
-// reportFileFailure('saving the bookmarks')
+// Reports why a file request just failed: Not connected when nothing answered, or
+// an exception with the server's answer. reportFileFailure('saving the bookmarks')
 export function reportFileFailure(what) {
   const failure = lastFileFailure;
   let failureAge = Infinity;
@@ -248,8 +245,7 @@ export async function readFile(file) {
   return answer.text;
 }
 
-// true only when the server confirms the write; a failed attempt leaves the
-// file on the server exactly as it was
+// true only when the server confirms the write
 export async function writeFile(file, text) {
   const answer = await fileRequest(fileURL('write', file), {
     method: 'POST',
@@ -259,32 +255,21 @@ export async function writeFile(file, text) {
   return answer !== null && answer.ok === true;
 }
 
-// Writes a file and calls onSuccess(file) once the server takes it, reporting
-// a failure in the error popup. Fire and forget, for callers with nothing to
-// await. savePOST('pwd', ['secret'], afterPOSTActions)
+// Writes a file and calls onSuccess(file) once taken; a failure is reported.
+// savePOST('pwd', 'secret', afterPOSTActions)
 export function savePOST(file, data, onSuccess) {
-  writeFile(file, String(data)).then((sent) => {
+  writeFile(file, data).then((sent) => {
     if (sent !== true) {
       reportFileFailure('saving the file');
       return;
     }
-    if (typeof onSuccess === 'function') {
-      onSuccess(file);
-    }
+    onSuccess(file);
   });
 }
 
-// Hands a file to the browser to send on its own. A page being torn down is
-// exactly when the browser cancels requests still in flight; a beacon is
-// finished off without the page. There is no answer to read, so this reports
-// only whether the browser accepted it.
+// Hands a file to the browser to send as the page goes away, when ordinary requests
+// get cancelled. Answers only whether the browser accepted it.
 export function sendFileBeacon(file, text) {
-  if (typeof navigator === 'undefined') {
-    return false;
-  }
-  if (typeof navigator.sendBeacon !== 'function') {
-    return false;
-  }
   const blob = new Blob([text], { type: 'text/plain' });
   return navigator.sendBeacon(fileURL('write', file), blob) === true;
 }
@@ -306,6 +291,13 @@ export function cleanString(data) {
   return data.replace(/(\r\n|\n|\r)/gm, '');
 }
 
+// file text -> its non-empty lines, line endings stripped
+export function fileRows(text) {
+  return splitMenuData(text)
+    .map(row => cleanString(row))
+    .filter(row => row);
+}
+
 // 'a-b-c' -> ['a', 'b-c']; only the first delimiter splits
 export function splitByDelimiter(str, delimiter = '-') {
   if (!str) return ['', ''];
@@ -318,15 +310,14 @@ export function splitByDelimiter(str, delimiter = '-') {
   return [before, after];
 }
 
-// true for a string holding a whole number ("" and " " are not numeric)
+// true for a string holding a whole number ("" and " " are not)
 export function isNumeric(value) {
   return typeof value === 'string' && value.trim() !== '' &&
     Number.isInteger(Number(value));
 }
 
-// A palette file: one colour per line, `hex_value|display_name`. Shared by
-// the theme menu and the colour prompt's default swatches. A line with no
-// colour is dropped, and a value written without its "#" still reads.
+// Palette file (`hex|name` per line) -> [{ color, name }]. A line with no colour is
+// dropped; a value without its "#" still reads.
 export function parsePalette(fileText) {
   const colors = [];
   if (!fileText || typeof fileText !== 'string') {
@@ -350,12 +341,20 @@ export function parsePalette(fileText) {
   return colors;
 }
 
+// cuts a name to length, marking that it was cut
+export function boundedText(name, limit) {
+  if (name.length >= limit) {
+    return `${name.substring(0, limit)}...`;
+  }
+  return name;
+}
+
 // one dynamic menu row: menuRow('cmd~lrxmit~usb', 'grnind', 'USB')
 export function menuRow(col0, col1, col2) {
   return `${col0}|${col1}|${col2}\n`;
 }
 
-// the indicator column for a row that is either on or off
+// the indicator column for an on / off row
 export function indicator(on) {
   if (on === true) {
     return 'grnind';
@@ -365,6 +364,7 @@ export function indicator(on) {
 
 //// base64 ////
 
+// binary string -> URL-safe base64
 export function base64URLSafeEncode(buffer) {
   return btoa(buffer)
     .replace(/\+/g, '-')  // '+' -> '-'
@@ -372,8 +372,7 @@ export function base64URLSafeEncode(buffer) {
     .replace(/\=/g, '@'); // '=' -> '@'
 }
 
-// URL-safe base64 back to the standard alphabet, which is what an
-// <img src="data:..."> expects. Swaps characters only, does not decode.
+// URL-safe base64 -> standard alphabet, for a data: URL. Does not decode.
 export function base64URLSafeToStandard(data) {
   if (!data) {
     return '';
@@ -386,9 +385,8 @@ export function base64URLSafeToStandard(data) {
 
 //// DOM helpers ////
 
-// Tag function for DOM markup. Strips whitespace between tags so the result
-// holds no stray text nodes (they would render as gaps between inline-block
-// elements). html`<div id="${id}"></div>`
+// Tag for DOM markup; strips whitespace between tags, which would render as gaps
+// between inline-block elements. html`<div id="${id}"></div>`
 export function html(strings, ...values) {
   return strings
     .reduce((out, str, i) => out + str + (i < values.length ? values[i] : ""), "")
@@ -396,7 +394,7 @@ export function html(strings, ...values) {
     .trim();
 }
 
-// new element with its class and, optionally, its markup already set
+// new element with its class and, optionally, its markup
 export function makeElement(tag, className = '', innerHTML = '') {
   const elem = document.createElement(tag);
   elem.className = className;
@@ -406,7 +404,7 @@ export function makeElement(tag, className = '', innerHTML = '') {
   return elem;
 }
 
-// new SVG element in the SVG namespace: svgElement('circle', { cx: '25' })
+// new SVG element: svgElement('circle', { cx: '25' })
 export function svgElement(tag, attributes = {}) {
   const elem = document.createElementNS("http://www.w3.org/2000/svg", tag);
   Object.keys(attributes).forEach(name => {
@@ -415,26 +413,15 @@ export function svgElement(tag, attributes = {}) {
   return elem;
 }
 
-// display style of every element carrying a class
-export function classDisplay(_elem, _state) {
-  const _class = document.getElementsByClassName(_elem);
-  for (let _itr = 0; _itr < _class.length; _itr++) {
-    _class[_itr].style.display = _state;
+// sets the display style of every element carrying a class
+export function classDisplay(className, state) {
+  const elements = document.getElementsByClassName(className);
+  for (let index = 0; index < elements.length; index++) {
+    elements[index].style.display = state;
   }
 }
 
-// add / remove a class on an element by ID: addClassToElem('add', 'id', 'cls')
-export function addClassToElem(_action, _elmid, _class) {
-  const _elm = document.getElementById(_elmid);
-  if (_action === 'add') {
-    _elm.classList.add(_class);
-  }
-  if (_action === 'remove') {
-    _elm.classList.remove(_class);
-  }
-}
-
-// display style of one element by ID, when it is on the page
+// display style of one element by id, when it is on the page
 export function setDisplayById(id, state) {
   const elem = document.getElementById(id);
   if (elem) {
@@ -448,7 +435,7 @@ export function isBlockDisplayed(id) {
   return !!elem && elem.style.display === 'block';
 }
 
-// remove an element by ID
+// removes an element by id
 export function removeWindow(id) {
   const win = document.getElementById(id);
   if (win) {
@@ -456,19 +443,20 @@ export function removeWindow(id) {
   }
 }
 
-// Draws a centred prompt window and adds it to the page.
-// promptWindow('bed__prompt', '<div class="bed__title">Bed</div>')
+// Draws a centred prompt window: promptWindow('bed__prompt', '<div>Bed</div>')
 export function promptWindow(id, markup, className = 'prompt_win') {
-  const win = document.createElement("div");
+  const win = makeElement('div', className, markup);
   win.id = id;
-  win.className = className;
-  win.innerHTML = markup;
   document.body.appendChild(win);
   return win;
 }
 
-// Calls handler(button) for every button press inside a window. The listener
-// goes away with the window, so nothing has to unbind it.
+// Opens a URL in a new tab: GoToExtPage('media.home')
+export function GoToExtPage(_path) {
+  window.open("https://" + _path, "_blank");
+}
+
+// Calls handler(button) for every button press inside a window.
 export function onButtons(win, handler) {
   win.addEventListener("click", (click_event) => {
     const button = click_event.target.closest('button');
@@ -478,8 +466,7 @@ export function onButtons(win, handler) {
   });
 }
 
-// Swaps a button's label for its spinner while a request is in flight.
-// setSpinner('hfinmenu-text', 'hfinmenu-spinner', true)
+// Swaps a button's label for its spinner: setSpinner('hfinmenu-text', 'hfinmenu-spinner', true)
 export function setSpinner(textId, spinnerId, on, spinnerClass = 'btn-spinner') {
   const text = document.getElementById(textId);
   const spinner = document.getElementById(spinnerId);
@@ -490,23 +477,15 @@ export function setSpinner(textId, spinnerId, on, spinnerClass = 'btn-spinner') 
     text.style.visibility = 'hidden';
     spinner.classList.add(spinnerClass);
   } else {
-    // cleared rather than set to visible, so a hidden window panel around
-    // the button keeps it hidden
+    // cleared rather than set to visible, so a hidden panel around it keeps it hidden
     text.style.visibility = '';
     spinner.classList.remove(spinnerClass);
   }
 }
 
 //// button templates ////
-//
-// The markup every button repeats: the room grids, the Pixels and APT
-// groups, the text scroller, the Server window's option panels and the
-// windows' own buttons. They are built from these two rather than writing the same button out once per
-// device, so a change to how a button is drawn is made in one place.
 
-// The inside of a button: its icon when it has one, then its label when it
-// has one. The icon carries an id when something changes it later.
-// buttonLabelMarkup('fad fa-lamp-floor', 'Lamp')
+// A button's inside: its icon, then its label. buttonLabelMarkup('fad fa-lamp-floor', 'Lamp')
 function buttonLabelMarkup(iconClass, labelText, iconId) {
   let labelMarkup = '';
   if (iconClass) {
@@ -525,7 +504,6 @@ function buttonLabelMarkup(iconClass, labelText, iconId) {
   return labelMarkup;
 }
 
-// The classes a button carries: "button", then any of its own.
 // buttonClassNames('svropt_button') -> "button svropt_button"
 function buttonClassNames(extraClass) {
   if (extraClass) {
@@ -534,13 +512,8 @@ function buttonClassNames(extraClass) {
   return 'button';
 }
 
-// One plain button, which opens no menu of its own: a button of a button
-// grid, or one of a window's own buttons.
-// config: buttonId, and optionally
-//   icon         the icon's classes (a text-only button has none)
-//   iconId       an id for the icon, when something changes it later
-//   label        the text after the icon (an icon-only button has none)
-//   buttonClass  the classes the button carries besides "button"
+// A plain button: a grid button or one of a window's own.
+// config: buttonId, optional icon, iconId, label, buttonClass
 export function gridButtonTemplate(config) {
   const labelMarkup = buttonLabelMarkup(config.icon, config.label, config.iconId);
   const buttonClass = buttonClassNames(config.buttonClass);
@@ -550,14 +523,10 @@ export function gridButtonTemplate(config) {
   </button>`;
 }
 
-// One button of a button grid together with the dropdown that opens under it.
-// config: buttonId, menuId, and optionally
-//   icon, iconId, label as gridButtonTemplate() takes them
-//   textId + spinnerId  the label and the spinner that takes its place while
-//                       the device is being asked for its state
-//   buttonClass         a class the button carries besides "button"
-//   menuClass           "ind-button" (the default) or "dd-button"
-//   menuContent         rows the menu holds from the start
+// A grid button with the dropdown under it.
+// config: buttonId, menuId, optional icon, iconId, label, buttonClass,
+// textId + spinnerId (the label and its spinner), menuClass ("ind-button" by default
+// or "dd-button"), menuContent (rows held from the start)
 export function dropdownButtonTemplate(config) {
   const labelMarkup = buttonLabelMarkup(config.icon, config.label, config.iconId);
   const buttonClass = buttonClassNames(config.buttonClass);
@@ -569,7 +538,7 @@ export function dropdownButtonTemplate(config) {
   if (config.menuContent) {
     menuContent = config.menuContent;
   }
-  // a button with no spinner has a label with no id, as nothing swaps it out
+  // a button with no spinner has a label with no id
   let buttonContent = `
       <span class="button__text">${labelMarkup}</span>`;
   if (config.spinnerId) {
@@ -586,18 +555,12 @@ export function dropdownButtonTemplate(config) {
 }
 
 //// delegated button listeners ////
-//
-// Each template registers its own button handlers with registerListeners()
-// directly beneath its markup; the groups merge into this one map, which the
-// page's single click listener looks up through dispatchRegisteredListener().
-// Delegation means handlers keep working for markup rendered later (room
-// grids, bookmark buttons, svropt panels) and never need re-attaching after
-// a re-render. The map lives here, below every module that registers into
-// it, so a room module can register while it loads without importing main.js.
+
+// { elementId: handler }, filled by each template's registerListeners() call and
+// read by the page's one click listener, so markup drawn later needs no binding.
 const DELEGATED_LISTENERS = {};
 
-// Adds a group of { elementId: handler } pairs. The first handler registered
-// for an id is the one that stays.
+// Adds { elementId: handler } pairs; the first handler for an id stays.
 export function registerListeners(listeners) {
   for (const [elementId, handler] of Object.entries(listeners)) {
     if (!(elementId in DELEGATED_LISTENERS)) {
@@ -606,8 +569,8 @@ export function registerListeners(listeners) {
   }
 }
 
-// Walks up from the clicked element to the first id with a registered handler
-// and runs it. Answers true when a handler ran.
+// Runs the handler of the nearest element with one, walking up from the click.
+// Answers true when one ran.
 export function dispatchRegisteredListener(clickedElement) {
   let currentElement = clickedElement;
   while (currentElement && currentElement !== document) {
@@ -622,36 +585,31 @@ export function dispatchRegisteredListener(clickedElement) {
 
 //// timing ////
 
+// a promise that resolves after ms
 export function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Rate limiter: calls func at most once per limit ms, with the last call of a
-// burst sent on the trailing edge. throttled.cancel() drops a trailing call
-// that has not fired yet, so a value cannot arrive after the window it came
-// from has been torn down.
+// Calls func at most once per limit ms, the last call of a burst on the trailing edge.
+// cancel() drops a trailing call that has not fired.
 export function requestThrottle(func, limit) {
   let lastFunc;
   let lastRan;
-  // a declaration, not an arrow: `this` and `arguments` reach the wrapped
-  // call, and cancel() hangs off the name
-  function throttled() {
-    const context = this;
-    const args = arguments;
+  const throttled = (...args) => {
     if (!lastRan) {
-      func.apply(context, args);
+      func(...args);
       lastRan = Date.now();
     } else {
       clearTimeout(lastFunc);
-      lastFunc = setTimeout(function() {
+      lastFunc = setTimeout(() => {
         if ((Date.now() - lastRan) >= limit) {
-          func.apply(context, args);
+          func(...args);
           lastRan = Date.now();
         }
       }, limit - (Date.now() - lastRan));
     }
-  }
-  throttled.cancel = function() {
+  };
+  throttled.cancel = () => {
     clearTimeout(lastFunc);
     lastFunc = undefined;
   };
@@ -659,17 +617,11 @@ export function requestThrottle(func, limit) {
 }
 
 //// in-flight promises ////
-//
-// One operation at a time on a shared resource. The promise is held on the
-// owner under `key` and cleared when it settles, so a second caller can see
-// that one is already running.
 
-// Holds a promise that has just been started. Always starts a new one.
+// Holds a started promise on owner[key] until it settles.
 export function trackPromise(owner, key, running) {
   owner[key] = running;
-  // .finally() hands back a promise of its own, and a rejection travels down
-  // it: without this catch it surfaced as an unhandled rejection even where
-  // the caller handles the failure itself
+  // the catch stops the .finally() promise surfacing a rejection the caller handles
   running.finally(() => {
     if (owner[key] === running) {
       owner[key] = null;
@@ -678,7 +630,7 @@ export function trackPromise(owner, key, running) {
   return running;
 }
 
-// Returns the promise already in flight, or starts one with factory().
+// Returns the promise in flight on owner[key], or starts one with factory().
 export function singleFlight(owner, key, factory) {
   if (owner[key]) {
     return owner[key];
@@ -686,8 +638,7 @@ export function singleFlight(owner, key, factory) {
   return trackPromise(owner, key, factory());
 }
 
-// Waits for a tracked promise to settle, however it settles. Whoever started
-// it reports its failure.
+// Waits for a tracked promise however it settles; its starter reports failures.
 export async function awaitQuiet(promise) {
   if (!promise) {
     return;
@@ -739,9 +690,7 @@ export function rgbToHexFromStyle(rgbString) {
   return rgbToHex(red, green, blue);
 }
 
-// The six faces of the hue wheel, in 60 degree steps. Each entry names how
-// that segment builds its raw colour from the chroma, the ramp between the
-// two strongest channels, and zero.
+// The hue wheel's six 60 degree faces, each naming how it builds red, green and blue.
 const HUE_SEGMENTS = [
   ['chroma', 'ramp', 'zero'],
   ['ramp', 'chroma', 'zero'],
@@ -753,7 +702,7 @@ const HUE_SEGMENTS = [
 
 // hue 0-360, saturation and value 0-1 -> { red, green, blue } 0-255
 export function hsvToRgb(hue, saturation, value) {
-  // wrap into [0, 360) so hue === 360 (slider at max) maps back to red
+  // wraps into [0, 360), so hue 360 (slider at max) maps back to red
   const wrappedHue = ((hue % 360) + 360) % 360;
   const chroma = value * saturation;
   const hueSegment = wrappedHue / 60;
@@ -800,72 +749,50 @@ export function rgbToHsv(red, green, blue) {
 }
 
 //// shared search box ////
-//
-// The one search row, used by the bookmarks drop-down and the lists window.
-// The row is an icon and a box: a magnifier while the box is empty, a cross
-// that clears it once there is anything in it. Everything the host does with
-// what is typed goes through one onSearch callback, clearing included. The
-// look is one block of CSS, in styles/lists.css.
 
-export const SEARCH_ROW_CLASS = 'search-row';
-export const SEARCH_ICON_CLASS = 'search-row__icon';
-export const SEARCH_CLEAR_CLASS = 'search-row__icon--clear';
-export const SEARCH_BOX_CLASS = 'search-row__box';
-export const SEARCH_GLASS_ICON = 'fa-search';
-export const SEARCH_CLEAR_ICON = 'fa-times';
-export const SEARCH_PLACEHOLDER = 'Search here...';
+const SEARCH_GLASS_ICON = 'fa-search';
+const SEARCH_CLEAR_ICON = 'fa-times';
 
-// The icon follows what is in the box rather than what is being matched on: a
-// box holding only spaces filters nothing, but there is still something in it
-// to clear.
+// The icon follows the box's content: a magnifier while empty, else a cross that clears it.
 function setSearchIcon(icon, value) {
   const clear = value !== "";
   icon.classList.toggle(SEARCH_CLEAR_ICON, clear);
   icon.classList.toggle(SEARCH_GLASS_ICON, !clear);
-  icon.classList.toggle(SEARCH_CLEAR_CLASS, clear);
+  icon.classList.toggle('search-row__icon--clear', clear);
 }
 
 // what was typed, ready to match against
 export function searchTerm(value) {
-  if (value === null || value === undefined) {
-    return "";
-  }
   return String(value).trim().toLowerCase();
 }
 
-// one name against a term from searchTerm(); an empty term matches everything
+// one name against a searchTerm(); an empty term matches everything
 export function searchMatches(text, term) {
   if (term === "") {
     return true;
   }
-  let subject = "";
-  if (text !== null && text !== undefined) {
-    subject = String(text);
-  }
-  return subject.toLowerCase().indexOf(term) !== -1;
+  return String(text).toLowerCase().indexOf(term) !== -1;
 }
 
-// Builds the search row.
-//   tag          element to build the row from ('div', or 'a' in a menu)
-//   id           id for the row, if the host needs to find it again
-//   rowClass     extra class on the row alone, for the host's own chrome
-//   partClass    class every part carries -- the bookmarks menu's "nohide"
-//   boxId        id for the box, if the host needs to find it again
-//   placeholder  what the empty box says
-//   maxLength    longest term the box will take
-//   value        what the box opens with, so a re-drawn row keeps its search
-//   onSearch     called with the box's value on every change, clearing included
-export function searchRowElement(options = {}) {
+// Builds the search row (styled in lists.css). options:
+//   tag        element to build the row from ('div', or 'a' in a menu)
+//   id, boxId  ids for the row and box
+//   rowClass   extra class on the row alone
+//   partClass  class on the row and both parts (the menu's "nohide")
+//   maxLength  longest term the box takes
+//   value      what the box opens with
+//   onSearch   called with the box's value on every change, clearing included
+export function searchRowElement(options) {
   const row = document.createElement(options.tag || 'div');
   if (options.id) {
     row.id = options.id;
   }
-  row.className = SEARCH_ROW_CLASS;
+  row.className = 'search-row';
   const icon = document.createElement('i');
-  icon.className = `fad ${SEARCH_GLASS_ICON} ${SEARCH_ICON_CLASS}`;
+  icon.className = `fad ${SEARCH_GLASS_ICON} search-row__icon`;
   const box = document.createElement('input');
   box.type = "text";
-  box.className = SEARCH_BOX_CLASS;
+  box.className = 'search-row__box';
   if (options.boxId) {
     box.id = options.boxId;
   }
@@ -873,14 +800,12 @@ export function searchRowElement(options = {}) {
     row.className += ` ${options.rowClass}`;
   }
   if (options.partClass) {
-    // on the row and both of its parts: a menu that decides what closes it by
-    // looking at what was pressed has to be told about the icon as well, or
-    // clearing a search would shut the menu it was clearing
+    // on the icon too, or clearing a search would close the menu it is in
     row.className += ` ${options.partClass}`;
     icon.className += ` ${options.partClass}`;
     box.className += ` ${options.partClass}`;
   }
-  box.placeholder = options.placeholder || SEARCH_PLACEHOLDER;
+  box.placeholder = 'Search here...';
   box.setAttribute("autocorrect", "off");
   box.setAttribute("autocapitalize", "none");
   box.setAttribute("spellcheck", "false");
@@ -890,20 +815,17 @@ export function searchRowElement(options = {}) {
   box.value = options.value ? String(options.value) : "";
   const report = () => {
     setSearchIcon(icon, box.value);
-    if (typeof options.onSearch === 'function') {
-      options.onSearch(box.value);
-    }
+    options.onSearch(box.value);
   };
   const clear = () => {
     if (box.value === "") {
-      return false; // still a magnifier, and a magnifier does nothing
+      return false; // a magnifier does nothing
     }
     box.value = "";
     report();
     return true;
   };
-  // the press must not take the focus off the box beside it, so the keyboard
-  // does not drop away underneath a clear
+  // the press must not blur the box, or the keyboard drops away under a clear
   icon.addEventListener('pointerdown', (event) => event.preventDefault());
   icon.addEventListener('click', () => {
     if (clear()) {
@@ -918,7 +840,7 @@ export function searchRowElement(options = {}) {
       return;
     }
     if (key_event.key === 'Enter') {
-      // rows are filtered as it is typed, so this only puts a keyboard away
+      // rows filter as typed, so this only puts a keyboard away
       key_event.preventDefault();
       box.blur();
     }
@@ -931,36 +853,30 @@ export function searchRowElement(options = {}) {
 
 //// drag to re-order ////
 
-export const DRAG_GRIP_CLASS = 'drag-grip';
-export const DRAG_GRIP_OFF_CLASS = 'drag-grip--off';
-export const DRAG_GRIP_HTML = '<i class="fad fa-grip-lines"></i>';
+const DRAG_GRIP_CLASS = 'drag-grip';
+const DRAG_GRIP_OFF_CLASS = 'drag-grip--off';
 
-// grip handle for a draggable row; a fixed row gets a grip that cannot drag
+// grip handle for a draggable row; a fixed row's grip cannot drag
 export function dragGripElement(fixed = false) {
   let className = DRAG_GRIP_CLASS;
   if (fixed === true) {
     className += ` ${DRAG_GRIP_OFF_CLASS}`;
   }
-  return makeElement('span', className, DRAG_GRIP_HTML);
+  return makeElement('span', className, '<i class="fad fa-grip-lines"></i>');
 }
 
-// Pointer drag re-ordering for a list of rows. The row is moved in the DOM
-// while it is dragged, so the caller only has to read the new order back out
-// of the container when onDrop fires.
-//   rowClass  class every draggable row carries
-//   onDrop    called once the row is released
+// Pointer drag re-ordering: the row moves in the DOM while dragged, and the caller
+// reads the order back when onDrop fires. options: rowClass, onDrop
 export class DragSort {
 
-  constructor(options = {}) {
-    this.rowClass = options.rowClass || 'drag-row';
-    this.onDrop = function () {};
-    if (typeof options.onDrop === 'function') {
-      this.onDrop = options.onDrop;
-    }
+  // no drag until start() takes one
+  constructor(options) {
+    this.rowClass = options.rowClass;
+    this.onDrop = options.onDrop;
     this.drag = null;
   }
 
-  // true when the event started a drag
+  // starts a drag from a pointerdown on a grip; true when it did
   start(event) {
     const grip = event.target.closest(`.${DRAG_GRIP_CLASS}`);
     if (!grip || grip.classList.contains(DRAG_GRIP_OFF_CLASS)) {
@@ -979,13 +895,11 @@ export class DragSort {
       offset: 0
     };
     row.classList.add("drag-row--active");
-    if (grip.setPointerCapture) {
-      grip.setPointerCapture(event.pointerId);
-    }
+    grip.setPointerCapture(event.pointerId);
     return true;
   }
 
-  // next / previous row that is allowed to swap with the dragged row
+  // the next or previous row the dragged row may swap with, or null
   neighbour(row, forward) {
     let next = row.previousElementSibling;
     if (forward === true) {
@@ -1001,6 +915,7 @@ export class DragSort {
     return next;
   }
 
+  // follows the pointer, swapping past a neighbour's mid-point
   move(event) {
     const drag = this.drag;
     if (!drag || event.pointerId !== drag.pointer) {
@@ -1008,8 +923,6 @@ export class DragSort {
     }
     event.preventDefault();
     drag.offset = event.clientY - drag.startY;
-    // step over a neighbour once the row has travelled past its mid-point,
-    // then re-base the offset so the row stays under the pointer
     let stepped = true;
     while (stepped) {
       const forward = drag.offset > 0;
@@ -1031,6 +944,7 @@ export class DragSort {
     drag.row.style.transform = `translateY(${drag.offset}px)`;
   }
 
+  // ends the drag and reports the drop
   end(event) {
     const drag = this.drag;
     if (!drag || (event && event.pointerId !== drag.pointer)) {
@@ -1040,7 +954,7 @@ export class DragSort {
     this.onDrop();
   }
 
-  // drops the drag without reporting it (used when tearing down)
+  // drops the drag without reporting it
   cancel() {
     const drag = this.drag;
     if (!drag) {
@@ -1048,63 +962,46 @@ export class DragSort {
     }
     drag.row.style.transform = "";
     drag.row.classList.remove("drag-row--active");
-    if (drag.grip.hasPointerCapture && drag.grip.hasPointerCapture(drag.pointer)) {
+    if (drag.grip.hasPointerCapture(drag.pointer)) {
       drag.grip.releasePointerCapture(drag.pointer);
     }
     this.drag = null;
   }
 
+  // is a row being dragged
   isDragging() {
     return this.drag !== null;
   }
 }
 
 //// shared edit lock ////
-//
-// One editor at a time for a file several browsers can open. The lock lives
-// in a small file of its own beside the data it guards -- lists-lock.save,
-// bookmarks-lock.save -- holding a single row:
-//   OWNER_TOKEN|TIMESTAMP
-// A blank token, or a timestamp older than the expiry, means it is free.
-//
-// Keeping it out of the data file is what makes re-stamping cheap: a one row
-// write to a tiny file, so it can run often without pushing the whole menu
-// back over the wire. Older data files carry a leading LOCK| row from when
-// the two shared a file; both menus drop that row when they parse.
 
-// still exported so the menus can recognise the old leading LOCK| row
+// the leading row older data files still carry, dropped when parsed
 export const LOCK_TAG = 'LOCK';
 
-export const LOCK_EXPIRE_MS = 75000; // a lock left behind is ignored after this
-export const LOCK_BEAT_MS = 15000;   // owner re-stamps the lock this often
-export const LOCK_SETTLE_MS = 600;   // let a competing claim land before checking
+const LOCK_EXPIRE_MS = 75000; // a lock left behind is ignored after this
+const LOCK_BEAT_MS = 15000;   // the owner re-stamps this often
+const LOCK_SETTLE_MS = 600;   // lets a competing claim land before checking
+
+// One editor at a time for a file several browsers open. The lock file holds one row,
+// OWNER_TOKEN|TIMESTAMP; a blank token or an expired stamp means free.
+// new FileLock({ file, onLost })
 
 export class FileLock {
 
-  // options: file (the lock file), onLost(), onExchange(ok)
-  constructor(options = {}) {
+  // options: file (the lock file), onLost()
+  constructor(options) {
     this.file = options.file;
-    this.onLost = function () {};
-    if (typeof options.onLost === 'function') {
-      this.onLost = options.onLost;
-    }
-    // called with true / false after every exchange, for a caller showing a
-    // connection state of its own
-    this.onExchange = function () {};
-    if (typeof options.onExchange === 'function') {
-      this.onExchange = options.onExchange;
-    }
+    this.onLost = options.onLost;
     this.owned = false;
     this.beatTimer = null;
     this.confirming = null;
     this.writing = null; // lock row on the wire, so writes cannot overtake
-    // identifies this window in the lock row (ASCII, no separators)
+    // identifies this window in the lock row
     this.token = Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
   }
 
-  //// the row ////
-
-  // the whole file: one row, OWNER_TOKEN|TIMESTAMP
+  // the whole file: one row, held by this window or free
   line(held) {
     if (held === true) {
       return `${this.token}|${Date.now()}\n`;
@@ -1112,16 +1009,13 @@ export class FileLock {
     return "|0\n";
   }
 
-  // lock file text -> { token, stamp }. Anything unreadable counts as free,
-  // which is the same answer a missing file gives.
+  // lock file text -> { token, stamp }; anything unreadable counts as free
   parse(text) {
     const free = { token: "", stamp: 0 };
     if (typeof text !== 'string' || text === "") {
       return free;
     }
-    const rows = splitMenuData(text)
-      .map(row => cleanString(row))
-      .filter(row => row);
+    const rows = fileRows(text);
     if (rows.length === 0) {
       return free;
     }
@@ -1132,7 +1026,7 @@ export class FileLock {
     return { token: cols[0], stamp: Number(cols[1]) };
   }
 
-  // someone else is editing, recently enough that they have not gone away
+  // is someone else editing, recently enough that they have not gone away
   busy(text) {
     if (text === null) {
       return false; // nothing to go on; claim() refuses on its own
@@ -1144,41 +1038,28 @@ export class FileLock {
     return (Date.now() - row.stamp) < LOCK_EXPIRE_MS;
   }
 
-  //// file ////
-
+  // the lock file text, or null
   async read() {
-    const text = await readFile(this.file);
-    this.onExchange(text !== null);
-    return text;
+    return await readFile(this.file);
   }
 
-  // One write at a time, in the order they were asked for. A re-stamp still
-  // being retried when the lock is handed back would otherwise land after
-  // the free row and leave the lock held by a window that has gone.
+  // One write at a time, in order: a retried re-stamp landing after the free row
+  // would leave the lock held by a window that has gone.
   write(text) {
     const previous = this.writing;
     return trackPromise(this, 'writing', this.runWrite(previous, text));
   }
 
+  // waits for the previous write, then writes
   async runWrite(previous, text) {
     await awaitQuiet(previous);
-    const sent = await writeFile(this.file, text);
-    this.onExchange(sent);
-    return sent;
+    return await writeFile(this.file, text);
   }
 
-  //// claiming ////
-
-  // Takes the lock. Pass the lock file text if it has already been read --
-  // opening a menu reads the data and the lock together -- or leave it out
-  // and this reads it. False when another window holds it, or on a failure.
-  async claim(text) {
-    let lockText = text;
-    if (lockText === undefined) {
-      lockText = await this.read();
-    }
+  // Takes the lock, given the lock file's text. False when another window holds it, or on a failure.
+  async claim(lockText) {
     if (lockText === null) {
-      return false; // the lock file could not be read, so do not assume it
+      return false; // unreadable, so do not assume it is free
     }
     if (this.busy(lockText)) {
       return false;
@@ -1193,22 +1074,22 @@ export class FileLock {
     return true;
   }
 
-  // Reads the row back after the settle pause. Two windows that claimed
-  // together both land here, and the one whose token is not in the file
-  // stands down. Left running in the background so the caller draws without
-  // waiting; settle() holds any later write until it lands.
+  // Reads the row back after the settle pause: of two windows that claimed together,
+  // the one whose token is not in the file stands down. Runs in the background;
+  // settle() holds later writes until it lands.
   confirm() {
     return trackPromise(this, 'confirming', this.runConfirm());
   }
 
+  // the confirm itself; true unless the lock was lost
   async runConfirm() {
     await sleep(LOCK_SETTLE_MS);
     if (this.owned !== true) {
-      return true; // released or abandoned while the pause ran
+      return true; // released or abandoned during the pause
     }
     const text = await this.read();
     if (text === null) {
-      return true; // nothing to go on, so leave the claim standing
+      return true; // nothing to go on, so the claim stands
     }
     if (this.parse(text).token === this.token) {
       return true;
@@ -1219,19 +1100,18 @@ export class FileLock {
     return false;
   }
 
-  // waits for a confirm that is still running, so nothing is written while it
-  // is unknown whether this window holds the lock
+  // waits for a running confirm, so nothing is written while ownership is unknown
   async settle() {
     await awaitQuiet(this.confirming);
   }
 
-  //// keeping and handing back ////
-
+  // starts re-stamping
   startBeat() {
     this.stopBeat();
     this.beatTimer = setInterval(() => this.refresh(), LOCK_BEAT_MS);
   }
 
+  // stops re-stamping
   stopBeat() {
     if (this.beatTimer !== null) {
       clearInterval(this.beatTimer);
@@ -1239,8 +1119,7 @@ export class FileLock {
     }
   }
 
-  // Re-stamps the timestamp so the lock does not expire under an open window.
-  // One row, to a file of its own -- the data is not involved.
+  // re-stamps the lock so it does not expire under an open window
   async refresh() {
     if (this.owned !== true) {
       return true;
@@ -1248,18 +1127,14 @@ export class FileLock {
     return await this.write(this.line(true));
   }
 
-  // Hands the lock back. write is false when the server is known to be
-  // unreachable, and then the lock is left to expire instead.
-  async release(write) {
+  // writes the free row, after any confirm has settled
+  async release() {
     this.stopBeat();
     await this.settle();
     if (this.owned !== true) {
       return true;
     }
     this.owned = false;
-    if (write !== true) {
-      return true;
-    }
     return await this.write(this.line(false));
   }
 

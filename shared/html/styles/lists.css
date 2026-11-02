@@ -1,14 +1,5 @@
-/*
- *  Automate -- lists.css
- *
- *  Lists window: header, rows, round buttons, rename box, search box, status
- *  dot and the unsaved-changes dialog. Also holds the shared drag handle --
- *  see the note above it.
- *
- *  Split out of the old single styles.css. Loaded from index.html after
- *  styles/main.css, which holds the globals (palette, buttons, menus) these
- *  rules build on.
- */
+/* Automate: lists window, plus the drag handle and search box shared with the
+   bookmarks menu. */
 
 /*
  *  Lists Window
@@ -47,7 +38,7 @@
   color: var(--main-40-white);
 }
 
-/* the same glow the drop-down menu rows carry, and gated the same way */
+/* the menu rows' glow */
 @media (hover: hover) and (pointer: fine) {
   #list__btn-back:hover {
     color: #fff;
@@ -76,9 +67,7 @@
   background-color: var(--sec-60-black);
   overflow-y: auto;
   overflow-x: hidden;
-  /* keeps a fling that runs off the end of the rows inside this panel rather
-     than handing it on to the page behind the window -- on iOS that chaining
-     is what leaves the panel parked in an overscrolled state */
+  /* keeps a fling in this panel; on iOS chaining parks it overscrolled */
   overscroll-behavior: contain;
 }
 
@@ -96,17 +85,13 @@
   -webkit-user-select: none;
 }
 
-/* rows in the lists view stand half again as tall as the item rows: 12px of
-   padding either side becomes 21px */
+/* list rows stand half again as tall: 12px padding becomes 21px */
 .list__row--tall {
   padding-top: 21px;
   padding-bottom: 21px;
 }
 
-/* Delete mode swaps the drag grip for a round button, and the round is the
-   taller of the two, so the row grew by the difference every time the mode
-   came on. Pinning both to the round's 30px takes the row height off what the
-   row happens to be holding, so it sits still through the swap. */
+/* Grip and round both 30px, so delete mode's swap does not change the row's height. */
 .list__row .drag-grip,
 .list__row .list__label,
 .list__row .list__count {
@@ -123,13 +108,8 @@
   }
 }
 
-/* Shared drag handle -- lists window and bookmarks menu. The engine behind it
-   is DragSort in utils.js, which has no sheet of its own, and the three rules
-   below stay here rather than moving to main.css for a cascade reason:
-   .drag-row--active and .list__row both set background-color at the same
-   specificity, so the dragged row only comes out highlighted while this rule
-   sits after .list__row. main.css is loaded first, so putting them there
-   would have handed the row back its normal background mid-drag. */
+/* Shared drag handle (DragSort in utils.js). Here rather than main.css:
+   .drag-row--active must come after .list__row to win its background. */
 .drag-grip {
   flex-shrink: 0;
   padding: 0px 2px;
@@ -153,8 +133,7 @@
   box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.5);
 }
 
-/* the row is the theme colour itself, so its name follows the same rule the
-   buttons do -- see the light theme colour block in main.css */
+/* the row is the theme colour, so its name turns over as buttons do */
 html.theme-light .drag-row--active {
   color: #000;
 }
@@ -186,17 +165,13 @@ html.theme-light .drag-row--active {
   opacity: 1;
 }
 
-/* the filled ring is the theme colour, so the tick on it turns over with the
-   rest -- but not on the red ring below, which keeps its own colour and its
-   white tick whatever the theme is */
+/* the filled ring turns over too, but not the red ring below */
 html.theme-light .list__round--on:not(.list__round--del) i {
   color: #000;
 }
 
-/* the same button while delete mode is on: red, so picking a row for deletion
-   never reads as ticking it off. The ring turns red as soon as the mode comes
-   on, whether or not the row is picked, so the mode itself is visible; the
-   fill follows on the rows that are actually selected. */
+/* delete mode: red, so picking never reads as ticking; the ring shows the mode, the
+   fill the pick */
 .list__round--del {
   border-color: var(--alert-red);
 }
@@ -207,30 +182,25 @@ html.theme-light .list__round--on:not(.list__round--del) i {
 }
 
 .list__label {
-  /* rename target -- a few pixels of padding around the text are part of it */
+  /* rename target, with a few pixels of padding */
   flex-shrink: 1;
   min-width: 0px;
   padding: 4px 6px;
   margin: -4px -2px;
   border-radius: 6px;
   white-space: nowrap;
-  /* the window still grows to fit a long name up to its max-width; past that
-     the name is cut short here rather than widening the row */
+  /* past max-width the name is cut rather than widening the row */
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* The row the add button leaves behind, waiting to be named. It is not a list
-   yet and nothing about it has been saved, so it does not read as one: the
-   same faded white the rename box uses for its own placeholder. */
+/* the placeholder row, in the rename box's faded white */
 .list__label--new {
   color: #c1c1c1;
 }
 
 /* the rest of the row: opens the list / ticks the item off */
-/* An item carrying line breaks. The row is a flex line that sizes to its
-   content, so letting the text wrap is all it takes for the row to grow taller
-   -- the window keeps the width it already had. */
+/* an item with line breaks: wrapping grows the row, not the window */
 .list__label--multi {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -249,8 +219,7 @@ html.theme-light .list__round--on:not(.list__round--del) i {
   color: var(--main-40-white);
 }
 
-/* rename box -- same look as the bookmarks "Search here..." box, sized in JS
-   to the space the name already had so the row does not change size */
+/* rename box, sized in JS to the name's space so the row keeps its size */
 .list__namebox {
   flex: none;
   min-width: 0px;
@@ -268,9 +237,7 @@ html.theme-light .list__round--on:not(.list__round--del) i {
   color: #c1c1c1;
 }
 
-/* The item box. It is grown a line at a time by growNamebox(), so it carries
-   no scrollbar of its own and cannot be dragged to a size of the user's own
-   -- the height it is given is always the height its text needs. */
+/* the item box, grown by growNamebox(): no scrollbar or user resize */
 .list__namebox--multi {
   display: block;
   resize: none;
@@ -283,26 +250,15 @@ html.theme-light .list__round--on:not(.list__round--del) i {
   outline: 3px solid var(--main-40-white);
 }
 
-/* Shared search box -- lists window and bookmarks menu. Built by
-   searchRowElement() in utils.js, which has no sheet of its own, so it sits
-   here beside the drag handle for the same reason that one does: these two
-   are what the two menus have in common.
-
-   Everything the box is made of is set here rather than left to the host --
-   the type size included -- so the two come out the same height without either
-   one being told what the other's font is. A host adds its own chrome around
-   the row (.list__search below, #bookmark__search in bookmarks.css) and
-   nothing else. */
+/* Shared search box (searchRowElement() in utils.js). Everything is set here, type
+   size included, so both hosts match; a host adds only its chrome. */
 .search-row {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-/* The magnifier, and the cross it becomes once there is something to clear.
-   Held to one width, with nothing around it, so the box beside it does not
-   shift by the difference between the two glyphs as they swap and the gap to
-   the box is the row's own and no one else's. */
+/* magnifier or cross at one width, so the box does not shift as they swap */
 .search-row__icon {
   flex-shrink: 0;
   width: 20px;
@@ -312,8 +268,7 @@ html.theme-light .list__round--on:not(.list__round--del) i {
   line-height: 1;
   text-align: center;
   color: var(--main-40-white);
-  /* it is a button while it is a cross, so a long press on it should not be a
-     text selection or a callout */
+  /* a button while a cross, so no selection or callout */
   user-select: none;
   -webkit-user-select: none;
   touch-action: manipulation;
@@ -354,32 +309,25 @@ html.theme-light .list__round--on:not(.list__round--del) i {
   outline: 3px solid var(--main-40-white);
 }
 
-/* The search row's own chrome in this window: a row of the list rather than a
-   fixture above it, so it scrolls away with the rows and the panel keeps the
-   whole of its height for them. Tighter than an item row at the sides, and
-   the shorter padding above and below leaves it the same height as one. */
+/* this window's search row: scrolls with the rows; tighter sides, an item row's
+   height */
 .list__search {
   padding: 8px 8px;
   background-color: var(--sec-black-20);
   border-bottom: 1px solid var(--sec-50-black);
 }
 
-/* a row the search does not match. Hidden rather than dropped, so the rows
-   keep the order they are saved in and a cleared box brings them all back. */
+/* hidden rather than dropped, so a cleared box brings all back */
 .list__row--hide {
   display: none;
 }
 
-/* While a search is on, the rows on screen are not the whole list, so there
-   is no order in them to drag into. The grips go for as long as it lasts --
-   as a class on the panel rather than on each row, so every grip picks its own
-   state back up when the search is cleared. */
+/* the grips go during a search, as a class on the panel */
 .list__list--find .drag-grip {
   visibility: hidden;
 }
 
-/* The two quiet lines the panel puts up on its own: the empty state where the
-   rows would be, and the total under them. Same text, same box. */
+/* the panel's two quiet lines: empty state and total */
 .list__empty,
 .list__total {
   padding: 20px 10px;
@@ -388,7 +336,7 @@ html.theme-light .list__round--on:not(.list__round--del) i {
   color: #a6a9ad;
 }
 
-/* un-checked count on a list row -- the same text again */
+/* unchecked count on a list row */
 .list__count {
   flex-shrink: 0;
   font-size: 20px;
@@ -416,17 +364,14 @@ html.theme-light .list__round--on:not(.list__round--del) i {
   box-shadow: 0px 0px 6px var(--green-ind);
 }
 
-/* edits the server has not been given yet; they go out on close, on hide,
-   when the page is unloaded, or when this dot is tapped */
+/* edits not given to the server yet */
 .list__dot--unsaved {
   background-color: var(--yellow-ind);
   box-shadow: 0px 0px 6px var(--yellow-ind);
 }
 
-/* Turns around the status dot while the server is being waited on, in place
-   of any wording in the list area. The dot sits 20px wide at 18px in from the
-   top and right corner, so its centre is 28px in; a 30px ring centred on that
-   leaves a 5px gap all the way round it. */
+/* Ring round the dot while the server is waited on: centre 28px in; 30px across
+   leaves a 5px gap. */
 .list__spinner {
   pointer-events: none;
   position: absolute;
@@ -447,8 +392,7 @@ html.theme-light .list__round--on:not(.list__round--del) i {
   display: inline-block;
 }
 
-/* only worth pressing while there is something to save, so it only offers
-   itself then */
+/* offers itself only with something to save */
 .list__dot--save {
   cursor: pointer;
 }
@@ -463,8 +407,7 @@ html.theme-light .list__round--on:not(.list__round--del) i {
   bottom: -12px;
 }
 
-/* a write failed -- the edits are still in memory, nothing on the server
-   changed, and closing the window offers to retry or discard them */
+/* a write failed: edits stay in memory, closing offers retry or discard */
 .list__dot--error {
   background-color: var(--alert-red);
   box-shadow: 0px 0px 6px var(--alert-red);
@@ -532,20 +475,13 @@ html.theme-light .list__round--on:not(.list__round--del) i {
   height: 60px;
 }
 
-/* the delete button while its mode is on, in the same red as the rings on the
-   rows -- the icon only, so the button keeps its usual face */
+/* the delete button's icon in delete mode */
 #list__del-icon.list__del-icon--on {
   color: var(--alert-red);
 }
 
-/*
- *  Encrypted lists
- *
- *  The lock in the top left corner, the badge on a row and the password
- *  prompt. The prompt is the unsaved-changes dialog's markup with boxes in
- *  it, so it inherits .list__overlay / .list__dialog / .list__dlg-btn above
- *  and the boxes inherit .list__namebox -- only what differs is here.
- */
+/* Encrypted lists: the corner lock, a row's badge and the password prompt, which is
+   the unsaved dialog with boxes. */
 
 /* the lock shares the corner with the back button and its glow with it */
 @media (hover: hover) and (pointer: fine) {
@@ -555,17 +491,14 @@ html.theme-light .list__round--on:not(.list__round--del) i {
   }
 }
 
-/* open: the same white the header text carries, so the state reads at a
-   glance from across the room rather than only from the icon's shape */
+/* open: the header's white, readable from across the room */
 #list__lock-icon.list__lock-icon--on {
   color: #fff;
   text-shadow: var(--menu-glow);
 }
 
-/* On a list row: the badge saying the list is encrypted. It only reports --
-   whether a list is one is settled when it is added -- so it takes no press.
-   Sized to the round button beside it so the row keeps its height either way,
-   and in the same white the open header lock carries. */
+/* a row's badge, which only reports: sized to the round button so the row keeps its
+   height */
 .list__rowlock {
   display: flex;
   align-items: center;
@@ -582,15 +515,9 @@ html.theme-light .list__round--on:not(.list__round--del) i {
   touch-action: manipulation;
 }
 
-/* Once the encrypted lists are unlocked their rows sit among the ordinary
-   ones, and a lock beside every one of them is a column of icons saying the
-   same thing. The badge comes off and the name carries the state instead:
-   italic, and a step back from the white the other rows are in.
-
-   Only a named row goes that way. The row being added is the one being
-   renamed, so its name is a .list__namebox rather than a .list__label, and
-   the badge is left standing to say what is about to be made. Keying the rule
-   on a following .list__label is what tells the two apart. */
+/* Unlocked: the badge comes off a named row, whose name goes italic and dimmer. A
+   row being added has a .list__namebox instead of a label, so keying on the label
+   keeps its badge. */
 .list__rowlock:has(+ .list__label) {
   display: none;
 }
@@ -620,18 +547,14 @@ html.theme-light .list__round--on:not(.list__round--del) i {
   -webkit-user-select: none;
 }
 
-/* Held down for three seconds, the lock offers a password change. The colour
-   creeps across that time on its own, so the hold shows it is counting
-   without anything having to drive it -- the class goes on when the press
-   starts and comes off when it ends, and the transition is the whole
-   animation. */
+/* Held down, the lock offers a password change; the transition alone shows it
+   counting. */
 #list__lock-icon.list__lock-icon--hold {
   color: var(--yellow-ind);
   transition: color 3s linear;
 }
 
-/* a long press on a button is a text selection or a callout everywhere else;
-   here it is the gesture itself */
+/* a long press is the gesture here, not a selection or callout */
 #list__btn-lock {
   user-select: none;
   -webkit-user-select: none;

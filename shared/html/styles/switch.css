@@ -1,25 +1,13 @@
-/*
- *  Automate -- switch.css
- *
- *  ToggleSwitch: track, handle, ON / OFF lettering and the drag state,
- *  plus the smaller variant used on a menu-checkbox row.
- *
- *  Split out of the old single styles.css. Loaded from index.html after
- *  styles/main.css, which holds the globals (palette, buttons, menus) these
- *  rules build on.
- */
+/* Automate: ToggleSwitch: track, handle, lettering, drag state and the menu-checkbox
+   size. */
 
-/* ToggleSwitch sets contain: layout paint on its wrapper inline, and paint
-   containment clips to the wrapper box -- which is exactly the track, so the
-   handle's drop shadow was being cut off square along the bottom edge.
-   Layout containment is what the drag actually needs; dropping paint lets the
-   shadow fall outside the track again. Inline styles need the !important. */
+/* Drops the wrapper's inline paint containment, which clips the handle's shadow;
+   inline needs !important. */
 .menu-checkbox .toggle-switch {
   contain: layout !important;
 }
 
-/* at this size the ON / OFF lettering no longer fits inside the handle, so
-   the switch reads by track colour and handle position alone */
+/* no ON / OFF lettering at this size */
 .menu-checkbox .toggle-text-on,
 .menu-checkbox .toggle-text-off {
   display: none;
@@ -38,16 +26,16 @@
   --local-color-off: var(--main-20-black);
   --local-color-handle: var(--alt-filler);
   --drag-progress: 0;
-  --drag-x: 0px;  
+  --drag-x: 0px;
   width: var(--local-width);
   height: var(--local-height);
   position: relative;
-  user-select: none; 
+  user-select: none;
 }
 
 .toggle-input {
   opacity: 0;
-  top: 0; 
+  top: 0;
   left: 0;
   width: 0;
   height: 0;
@@ -64,7 +52,7 @@
   display: block;
   cursor: pointer;
   position: relative;
-  touch-action: none; 
+  touch-action: none;
 }
 
 .toggle-track {
@@ -89,7 +77,7 @@
   box-shadow: 0px 4px 10px rgba(0,0,0,0.5);
   position: absolute;
   top: var(--handle-padding);
-  left: var(--handle-padding); 
+  left: var(--handle-padding);
   display: grid;
   place-items: center;
   z-index: 2;
@@ -114,11 +102,11 @@
 }
 
 .toggle-text-on {
-  opacity: 0; 
+  opacity: 0;
 }
 
 .toggle-text-off {
-  opacity: 1; 
+  opacity: 1;
 }
 
 .toggle-input:checked + .toggle-label .toggle-track {
@@ -134,11 +122,11 @@
 
 .toggle-switch.is-dragging .toggle-track {
   background-color: color-mix(
-    in srgb, 
-    var(--local-color-on) calc(var(--drag-progress) * 100%), 
+    in srgb,
+    var(--local-color-on) calc(var(--drag-progress) * 100%),
     var(--local-color-off)
   ) !important;
-  transition: none !important; 
+  transition: none !important;
 }
 
 .toggle-switch.is-dragging .toggle-handle {

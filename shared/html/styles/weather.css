@@ -1,12 +1,4 @@
-/*
- *  Automate -- weather.css
- *
- *  Title-bar weather icon, its temperature badge and its drop-down.
- *
- *  Split out of the old single styles.css. Loaded from index.html after
- *  styles/main.css, which holds the globals (palette, buttons, menus) these
- *  rules build on.
- */
+/* Automate: title-bar weather icon, temperature badge and drop-down. */
 
 /* Weather Status */
 
@@ -15,8 +7,7 @@
   outline: none;
   position: relative;
   height: 60px;
-  /* the widest weather icon (1.25em) and the gap the anchor's padding makes,
-     so the bar does not move when the weather changes */
+  /* the widest icon and its gap, so the bar does not move */
   width: calc(var(--nav-icon-size) * 1.25 - -1 * var(--nav-icon-gap));
 }
 
@@ -42,5 +33,5 @@
 }
 
 .weather-dropdown {
-  pointer-events: none; 
+  pointer-events: none;
 }

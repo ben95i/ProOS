@@ -1,24 +1,9 @@
-/*
- *  Automate -- dropdowns.css
- *
- *  The dropdown menus dropdowns.js opens and fills: the dropdown containers,
- *  the rows drawMenu() / createListItem() draw in them (links, indicator dots,
- *  setting switches, sliders) and the icon tints the rows use.
- *
- *  Loaded directly after main.css, which holds the palette these rules draw
- *  from, and before every other sheet: the room sheets and the component
- *  sheets override a rule in here at equal specificity only by coming later.
- *  The rules are in the order they had in main.css -- .ind-button after
- *  .dd-menu, the sliders after the rows -- and that order matters too.
- */
+/* Automate: dropdown menus (dropdowns.js): containers, rows, indicator dots, setting
+   switches, sliders. Loads straight after main.css; later sheets override it by
+   order, and the order inside matters. */
 
-/* Hover is only drawn on a device that has a pointer to hover with. A touch
-   screen has no hover state to leave, so Safari on iOS holds :hover on the
-   last thing tapped until something else is tapped -- which is what left a
-   menu row still glowing after it had been picked. Every :hover rule on the
-   site is wrapped like this one; the styling itself is unchanged.
-   This rule cancels the nav hover on rows that opt out of it, so it is gated
-   the same way -- with no hover to cancel there is nothing for it to do. */
+/* Every :hover is wrapped like this: iOS Safari holds :hover on the last thing
+   tapped. This cancels the nav hover on rows that opt out. */
 @media (hover: hover) and (pointer: fine) {
   .no-hover:hover {
     background-color: transparent !important;
@@ -52,9 +37,8 @@
   display: block;
 }
 
-/* room menu, centred in the bar under the selector. .dd-menu is fixed, so
-   only the horizontal placement is overridden -- it still drops from the
-   nav at its static height. */
+/* room menu: centred under the selector; .dd-menu is fixed, so only horizontal
+   placement changes */
 #main-room-dropdown {
   left: 50%;
   transform: translateX(-50%);
@@ -72,7 +56,7 @@
 }
 
 /* dropdown menu on buttons */
-.dd-button { 
+.dd-button {
   position: absolute;
   min-width: 130px;
   border-radius: 5px;
@@ -82,10 +66,8 @@
 .dd-content {
   display: none;
   border-radius: 5px;
-  /* the translucency is in the background colour rather than opacity: an
-     opacity below 1 promotes the whole menu to its own composited layer,
-     which iOS Safari does not always repaint cleanly. Text inside is now
-     fully opaque, which it was not before. */
+  /* translucency in the colour, not opacity: iOS Safari repaints opacity layers
+     poorly */
   background-color: color-mix(in srgb, var(--nav-menus-color), transparent 4%);
   z-index: 995;
 }
@@ -104,7 +86,7 @@
   gap: 7px;
 }
 
-/* the glow that used to stay lit on the row a finger last touched */
+/* the row's glow */
 @media (hover: hover) and (pointer: fine) {
   .dd-content a:hover {
     color: #fff;
@@ -112,14 +94,9 @@
   }
 }
 
-/* A settings row inside a menu: the icon and its switch sit in a box inset
-   from the menu's edges, cut to the same shape as the colour row below.
-
-   Written against `.dd-content a` rather than on its own. That rule sets the
-   padding of every menu row and outranks a lone class, so the two lines at
-   the bottom here were being thrown away -- the row kept the full 16px and
-   sat 8px further in than the rows with no margin. 8px out and 8px in comes
-   to the same 16px, so the icon starts in the same place either way. */
+/* A settings row: icon and switch in a box inset from the menu's edges, shaped as
+   the colour row. Beats .dd-content a's padding: 8px out and 8px in lines up with
+   other rows. */
 .dd-content a.menu-checkbox {
   margin: 8px;
   border-radius: 5px;
@@ -177,7 +154,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 !important; 
+  padding: 0 !important;
   margin: 0;
   overflow: hidden;
   box-sizing: border-box;

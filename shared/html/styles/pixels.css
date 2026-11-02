@@ -1,22 +1,12 @@
-/*
- *  Automate -- pixels.css
- *
- *  The Pixels window (pixels.js), drawn like the Bathroom Light settings
- *  window (bathrm.css): a narrow column on black with one box per LED host,
- *  each holding the host's name over a line saying what it is showing, a
- *  link to its page and a .slider-wide (dropdowns.css), over the
- *  .button_left_txtwin Close and Refresh buttons (main.css) in
- *  .popup-actions. The rules below that resize one of those
- *  win at equal specificity only because this sheet loads after main.css and
- *  dropdowns.css -- keep it after them in index.html.
- */
+/* Automate: Pixels window (pixels.js), drawn like the bathroom settings window.
+   Rules resizing shared classes win by loading after them. */
 
 #pixels__prompt {
   top: 50%;
   left: 50%;
   margin-right: -50%;
   transform: translate(-50%, -50%);
-  /* the Bathroom Light window's width, so the two read as one family */
+  /* the bathroom settings window's width */
   width: 302px;
   height: auto;
   padding: 10px 20px;
@@ -29,8 +19,7 @@
   margin-bottom: 8px;
 }
 
-/* more hosts than the screen holds scroll on their own, so the close button
-   stays in view */
+/* many hosts scroll on their own, keeping the buttons in view */
 .pixels__hosts {
   max-height: 60vh;
   overflow-y: auto;
@@ -55,8 +44,7 @@
   border-radius: 8px;
 }
 
-/* the gap goes above each box after the first, so the last box has only
-   the buttons' own spacing under it */
+/* the gap goes above each box after the first */
 .pixels__host + .pixels__host {
   margin-top: 12px;
 }
@@ -80,16 +68,14 @@
   font-size: 22px;
 }
 
-/* the name over its state line; the head lines its link up with the name,
-   the column's first line */
+/* name over state line; the link lines up with the name */
 .pixels__name {
   display: flex;
   flex-direction: column;
   min-width: 0;
 }
 
-/* a long name, or effect, ends in an ellipsis rather than pushing the link
-   out */
+/* a long name or effect ends in an ellipsis */
 .pixels__label,
 .pixels__state {
   overflow: hidden;
@@ -97,8 +83,7 @@
   white-space: nowrap;
 }
 
-/* "Maze is active", "Not active", or a colour dot and "is set". A block
-   rather than a flex row, so a long line can still end in an ellipsis. */
+/* the state line: a block, so it can end in an ellipsis */
 .pixels__state {
   display: block;
   margin-top: 2px;
@@ -163,8 +148,7 @@
   display: inline;
 }
 
-/* Close and Refresh, under the boxes with the same 18px above them as below
-   (see .bthr__actions in bathrm.css), and spanning the boxes' width */
+/* Close and Refresh under the boxes, 18px above as below */
 .pixels__actions {
   justify-content: center;
   padding-top: 15px;
@@ -172,12 +156,7 @@
   padding-right: 0;
 }
 
-/* Wide enough that the first face starts level with the boxes' left border
-   and the last wall ends level with their right one. Each button takes its
-   5px left margin and its width; its face is lifted 5px left onto the margin
-   and its walls drawn 5px right into the space it left, so the row reads
-   exactly its own width. The window holds 260px inside its padding:
-   260 - 10 (the gap) - 2 x 5 (the margins) = 240, so 120px each. */
+/* Wide enough to span the boxes: 260 - 10 (gap) - 2 x 5 (margins) = 240, 120px each. */
 .pixels__actions .button_left_txtwin {
   width: 120px;
 }

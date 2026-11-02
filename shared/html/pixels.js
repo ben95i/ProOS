@@ -1,31 +1,21 @@
-// Automate Website - Pixels window
-//
-// The More... row of the Pixels Control menu opens this window: one
-// brightness slider per LED host in the mainmenu file, each under the host's
-// name, a line saying what it is showing ("Maze is active") and a link to its
-// own page. Every host is asked for its status on its own and all at once, so
-// a host that is off is marked "Not available" while the others fill in. Server page only: main.js hands openPixelsWindow() to
-// the menus as their openPixels hook, and calls closePixelsWindow() when the
-// page is taken down. The window's state lives on App.pixelsWindow while it
-// is open.
+// Automate - Pixels window (server page only): one box per LED host in the mainmenu file,
+// with its name, status line, page link and brightness slider. Every host is asked at
+// once, so one that is off shows "Not available" without holding up the rest. State is
+// on App.pixelsWindow while open.
 
 import { sendCmd, readFile, splitMenuData, promptWindow, onButtons,
   makeElement, requestThrottle, gridButtonTemplate } from './utils.js';
 import { removeDropdowns, SLIDER_MS } from './dropdowns.js';
 
-// the LED hosts, one per line as URL|NAME; nodeapi/ledparser.js sends
-// every Pixels command to the same list
+// the LED hosts, URL|NAME per line; nodeapi/ledparser.js uses the same list
 const PIXELS_HOST_FILE = 'mainmenu';
-// the Animated menu's effects, one per line as effect|Name, for the name a
-// status line shows
+// the Animated menu's effects, effect|Name per line
 const PIXELS_EFFECT_FILE = 'ledeffectmenu';
 
-// The API's commands for one host (nodeapi/ledparser.js), with the host's
-// NAME as the second argument:
-//   /api?action=leds&arg=fc_host_status&var=LEDwall
-//     -> { effect: "maze", state: "active", color: null, brightness: 128 }
-//   /api?action=leds&arg=fc_host_set_120&var=LEDwall   -> "OK"
-// Anything else back means the host did not answer.
+// One host's commands (nodeapi/ledparser.js), with its NAME as the second argument:
+//   fc_host_status -> { effect: "maze", state: "active", color: null, brightness: 128 }
+//   fc_host_set_120 -> "OK"
+// Anything else means the host did not answer.
 const PIXELS_STATUS_CMD = 'fc_host_status';
 const PIXELS_SET_CMD = 'fc_host_set';
 const PIXELS_SET_OK = 'OK';
@@ -37,8 +27,7 @@ const PIXELS_NO_FILE = 'Could not read the host list';
 const PIXELS_NO_HOSTS = 'No LED hosts listed';
 const PIXELS_UNAVAILABLE = 'Not available';
 
-// What a host's status line reads for each state it can answer: an effect's
-// name before the first two, a dot in the colour before the third.
+// A status line for each state: after an effect's name, or after a colour dot.
 const PIXELS_STATE_TEXT = {
   active: 'is active',
   paused: 'is paused',
@@ -46,17 +35,17 @@ const PIXELS_STATE_TEXT = {
 };
 // the state line for 'off', and for anything else
 const PIXELS_NOT_ACTIVE = 'Not active';
-// the name an effect missing from the effects file goes by
+// an effect missing from the effects file
 const PIXELS_EFFECT_FALLBACK = 'Effect';
 const PIXELS_LINK_ICON = 'fad fa-external-link-alt';
-// the size of the window's two buttons (widened in pixels.css)
+// the window's two buttons (widened in pixels.css)
 const PIXELS_BUTTON_CLASS = 'button_left_txtwin';
 
-// a host's box while its level is being read, and once it did not answer
+// a host's box while its status is read, and once it did not answer
 const PIXELS_LOADING_CLASS = 'is-loading';
 const PIXELS_DOWN_CLASS = 'is-down';
 const PIXELS_MESSAGE_ERROR_CLASS = 'pixels__message--error';
-// the Refresh icon, which turns while the hosts are being asked
+// the Refresh icon, turning while the hosts are asked
 const PIXELS_REFRESH_ICON_ID = 'pixels__refresh-icon';
 const PIXELS_SPIN_CLASS = 'fa-spin';
 // how long a slider takes to move to a level read on Refresh
@@ -67,8 +56,7 @@ const PIXELS_LEVEL_MIN = 0;
 const PIXELS_LEVEL_MAX = 255;
 const PIXELS_LEVEL_STEP = 1;
 
-// Opens the window and asks every host for its level. A second press of
-// More... while it is open does nothing.
+// Opens the window and asks every host for its status.
 export function openPixelsWindow() {
   if (App.pixelsWindow) {
     return;
@@ -95,20 +83,17 @@ export function openPixelsWindow() {
     win: promptElement,
     hostList: document.getElementById('pixels__hosts'),
     refreshIcon: document.getElementById(PIXELS_REFRESH_ICON_ID),
-    // per host, in file order: its name, its box, its state line and slider
+    // per host, in file order: its name, box, state line and slider
     hosts: [],
-    // effect -> its name in the Animated menu, read with the host list
+    // effect -> its name in the Animated menu
     effectNames: new Map(),
-    // bumped per load, so a host list read before a Refresh cannot draw
-    // over the one read after it
+    // bumped per load, so an older host list cannot draw over a newer one
     loadSeq: 0,
-    // While a slider is dragged its level goes at most every SLIDER_MS, as
-    // the Control menu's does. One throttle serves every slider, as only one
-    // can be dragged at a time.
+    // one throttle serves every slider, as only one can be dragged at a time
     sendLevel: requestThrottle((hostName, level) => {
       sendCmd('leds', `${PIXELS_SET_CMD}_${level}`, hostName);
     }, SLIDER_MS),
-    // set on close; a reply landing afterwards is dropped
+    // set on close; a late reply is dropped
     closed: false
   };
   App.pixelsWindow = pixelsWindow;
@@ -125,8 +110,7 @@ export function openPixelsWindow() {
   pixelsLoadHosts(pixelsWindow);
 }
 
-// Takes the window down, with the slider send still waiting to go and any
-// slider still moving.
+// Takes the window down, with any level waiting to go and slider still moving.
 export function closePixelsWindow() {
   const pixelsWindow = App.pixelsWindow;
   if (!pixelsWindow) {
@@ -134,14 +118,12 @@ export function closePixelsWindow() {
   }
   App.pixelsWindow = null;
   pixelsWindow.closed = true;
-  pixelsWindow.sendLevel.cancel();
-  pixelsWindow.hosts.forEach(hostControls => pixelsStopSlide(hostControls));
+  pixelsClearHosts(pixelsWindow);
   pixelsWindow.win.remove();
 }
 
-// mainmenu file text -> [{ url, name }], read the way ledparser.js reads it:
-// the name is the line's last field, so an older URL|link|NAME line reads
-// the same; a line with no name goes by its URL, and a blank line is left out.
+// mainmenu file text -> [{ url, name }]. The name is the line's last field, so an older
+// URL|link|NAME line reads the same; a line with no name goes by its URL.
 // 'http://ledwall.home:80|LEDwall' -> { url: 'http://ledwall.home:80', name: 'LEDwall' }
 function parsePixelHosts(fileText) {
   const hosts = [];
@@ -161,8 +143,8 @@ function parsePixelHosts(fileText) {
   return hosts;
 }
 
-// ledeffectmenu file text -> Map of effect to its name in the Animated menu.
-// 'maze|Maze' -> 'maze' => 'Maze'. A file that could not be read gives none.
+// ledeffectmenu file text -> Map of effect to name; an unreadable file gives none.
+// 'maze|Maze' -> 'maze' => 'Maze'
 function parseEffectNames(fileText) {
   const effectNames = new Map();
   if (fileText === null) {
@@ -179,12 +161,9 @@ function parseEffectNames(fileText) {
   return effectNames;
 }
 
-// Reads the host list and the effect names, draws a box per host, then asks
-// every host for its status at once; each box fills in as its own answer
-// lands, and the Refresh icon turns until the last one has. Refresh runs it
-// again: while the list is the same, the boxes on screen stay and take the
-// new statuses as they land, their sliders moving to the new level. Only a
-// list that changed is drawn afresh.
+// Reads the host list and effect names, draws a box per host, then asks every host at once;
+// each box fills in as its answer lands, with the Refresh icon turning until the last.
+// While the list is unchanged the boxes stay, sliders moving to the new level.
 async function pixelsLoadHosts(pixelsWindow) {
   pixelsWindow.loadSeq += 1;
   const sequence = pixelsWindow.loadSeq;
@@ -236,7 +215,7 @@ async function pixelsLoadHosts(pixelsWindow) {
   pixelsWindow.refreshIcon.classList.remove(PIXELS_SPIN_CLASS);
 }
 
-// Are these the hosts the boxes on screen were drawn for, in the same order?
+// are these the hosts the boxes on screen were drawn for, in order?
 function pixelsSameHosts(hostControlsList, hosts) {
   if (hostControlsList.length !== hosts.length) {
     return false;
@@ -247,15 +226,14 @@ function pixelsSameHosts(hostControlsList, hosts) {
   });
 }
 
-// Lets go of the boxes about to be taken off the screen: a level still
-// waiting to go and a slider still moving belong to them.
+// Lets go of the boxes about to leave the screen: a waiting level, a moving slider.
 function pixelsClearHosts(pixelsWindow) {
   pixelsWindow.sendLevel.cancel();
   pixelsWindow.hosts.forEach(hostControls => pixelsStopSlide(hostControls));
   pixelsWindow.hosts = [];
 }
 
-// one line of text in place of the host boxes: Loading..., or what went wrong
+// one line of text in place of the boxes: Loading..., or what went wrong
 function pixelsShowMessage(pixelsWindow, text, isError) {
   const message = makeElement('div', 'pixels__message');
   message.classList.toggle(PIXELS_MESSAGE_ERROR_CLASS, isError === true);
@@ -264,11 +242,9 @@ function pixelsShowMessage(pixelsWindow, text, isError) {
   pixelsWindow.hostList.appendChild(message);
 }
 
-// One host's box: its name over its state line, and a link to its page,
-// above a slider, greyed out until its status is read. Built node by node,
-// as the names and URLs are file text.
-// Answers { name, url, box, stateLine, stateKey, slider, slideFrame,
-// dragging, readSeq, saveSeq }.
+// One host's box: name over state line and page link, above a slider, greyed until its
+// status is read. Built node by node, as names and URLs are file text.
+// Answers { name, url, box, stateLine, stateKey, slider, slideFrame, dragging, readSeq, saveSeq }.
 function pixelsHostBox(pixelsWindow, host, hostIndex) {
   const box = makeElement('div', 'pixels__host');
   box.id = `pixels__host-${hostIndex}`;
@@ -306,16 +282,16 @@ function pixelsHostBox(pixelsWindow, host, hostIndex) {
     // what the state line shows, so an unchanged status is not redrawn
     stateKey: '',
     slider: slider,
-    // the animation frame of a slider moving to a new level, or null
+    // the animation frame of a moving slider, or null
     slideFrame: null,
-    // while a finger or the mouse holds the slider, a level read leaves it be
+    // while held, a level read leaves the slider be
     dragging: false,
-    // bumped on each status read: only the newest read's answer is shown
+    // bumped per status read: only the newest answer shows
     readSeq: 0,
-    // bumped on each release: only the newest release's answer marks the host
+    // bumped per release: only the newest answer marks the host
     saveSeq: 0
   };
-  // a slider taken hold of stops moving and stays where it is put
+  // a slider taken hold of stops moving
   slider.addEventListener('pointerdown', () => {
     hostControls.dragging = true;
     pixelsStopSlide(hostControls);
@@ -326,8 +302,7 @@ function pixelsHostBox(pixelsWindow, host, hostIndex) {
   slider.addEventListener('pointercancel', () => {
     hostControls.dragging = false;
   });
-  // the level goes while the slider is dragged, and once more on release so
-  // the last one always lands
+  // sends while dragged, and once more on release
   slider.addEventListener('input', () => {
     pixelsWindow.sendLevel(hostControls.name, slider.value);
   });
@@ -339,11 +314,8 @@ function pixelsHostBox(pixelsWindow, host, hostIndex) {
   return hostControls;
 }
 
-// Shows a host as answering, with its state line and its slider at the
-// brightness, from the status the API answered; or, when status is null, as
-// not available: the state line, slider and link give way to the red notice.
-// A slider already showing a level moves to the new one; one just shown
-// (first read, or back from not available) is put straight there.
+// Shows a host from its status, its slider moving to the brightness (or put straight there
+// when just shown); a null status shows it as not available.
 function pixelsShowHost(pixelsWindow, hostControls, status) {
   const isDown = status === null;
   const wasLoading = hostControls.box.classList.contains(PIXELS_LOADING_CLASS);
@@ -367,10 +339,8 @@ function pixelsShowHost(pixelsWindow, hostControls, status) {
   pixelsShowState(pixelsWindow, hostControls, status);
 }
 
-// Moves a slider from where it stands to `level` over PIXELS_SLIDE_MS,
-// easing out, so a level read on Refresh is seen to travel rather than
-// jump. A slider being held is left where it is. Setting the value from
-// here sends nothing: only the slider's own input and change events do.
+// Moves a slider to `level` over PIXELS_SLIDE_MS, easing out; one being held stays. Setting
+// the value sends nothing, as only the slider's own events do.
 function pixelsSlideTo(hostControls, level) {
   pixelsStopSlide(hostControls);
   if (hostControls.dragging === true) {
@@ -389,7 +359,7 @@ function pixelsSlideTo(hostControls, level) {
     if (progress > 1) {
       progress = 1;
     }
-    // ease-out cubic: fast at first, settling gently on the level
+    // ease-out cubic
     const progressLeft = 1 - progress;
     const easedLeft = progressLeft * progressLeft * progressLeft;
     const easedProgress = 1 - easedLeft;
@@ -404,7 +374,7 @@ function pixelsSlideTo(hostControls, level) {
   hostControls.slideFrame = requestAnimationFrame(step);
 }
 
-// stops a slider that is moving, leaving it where it has got to
+// stops a moving slider where it has got to
 function pixelsStopSlide(hostControls) {
   if (hostControls.slideFrame === null) {
     return;
@@ -413,11 +383,10 @@ function pixelsStopSlide(hostControls) {
   hostControls.slideFrame = null;
 }
 
-// Writes a host's state line when it says something new, with no fade:
-//   { state: 'active', effect: 'maze' }    -> "Maze is active"
-//   { state: 'paused', effect: 'maze' }    -> "Maze is paused"
-//   { state: 'color', color: 'FF8800' }    -> an orange dot, then "is set"
-//   { state: 'off' }                       -> "Not active"
+// Writes a host's state line when it says something new:
+//   { state: 'active', effect: 'maze' } -> "Maze is active"
+//   { state: 'color', color: 'FF8800' } -> an orange dot, then "is set"
+//   { state: 'off' }                    -> "Not active"
 function pixelsShowState(pixelsWindow, hostControls, status) {
   const stateLine = hostControls.stateLine;
   let lineText = PIXELS_NOT_ACTIVE;
@@ -449,14 +418,12 @@ function pixelsShowState(pixelsWindow, hostControls, status) {
   }
 }
 
-// Asks one host for its status. sendCmd() answers the parsed reply: the
-// status object, text when the host is down, an object without a brightness
-// for a request the API refused, or null when the API could not be reached.
+// Asks one host for its status: a status object, or anything else for a host that is down.
 async function pixelsReadStatus(pixelsWindow, hostControls) {
   hostControls.readSeq += 1;
   const sequence = hostControls.readSeq;
   const reply = await sendCmd('leds', PIXELS_STATUS_CMD, hostControls.name);
-  // closed, or a later Refresh has asked again since
+  // closed, or a later Refresh has asked again
   if (pixelsWindow.closed === true || sequence !== hostControls.readSeq) {
     return;
   }
@@ -468,8 +435,8 @@ async function pixelsReadStatus(pixelsWindow, hostControls) {
   pixelsShowHost(pixelsWindow, hostControls, reply);
 }
 
-// Sends the level a slider was let go at. A host that does not take it is
-// marked not available, unless a newer release is already on its way.
+// Sends the level a slider was let go at; a host that does not take it is marked not
+// available, unless a newer release is on its way.
 async function pixelsSaveLevel(pixelsWindow, hostControls, level) {
   hostControls.saveSeq += 1;
   const sequence = hostControls.saveSeq;

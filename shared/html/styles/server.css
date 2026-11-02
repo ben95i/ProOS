@@ -1,18 +1,6 @@
-/*
- *  Automate -- server.css
- *
- *  The Server window (server.js): the log window's size, the send button's
- *  armed highlight, the options window and its buttons, and the windows the
- *  options open -- the password prompt, the Pi's Wi-Fi setup and the guest
- *  Wi-Fi window.
- *
- *  The log window's frame and buttons (.popup-win, .popup-ctn,
- *  .popup-actions, .button_left_txtwin) stay in main.css: the camera window
- *  and the bathroom settings are built from them too.
- *
- *  Loaded after main.css: .svropt_button and .pass__prompt_btn have to come
- *  after .button to resize it.
- */
+/* Automate: Server window (server.js): log window size, armed send button, options
+   window and the prompts it opens. .svropt_button and .pass__prompt_btn come after
+   .button to resize it. */
 
 /*
  *  Log Window
@@ -43,8 +31,7 @@
   --svropt-edge: 10px;
   /* the black space between two buttons */
   --svropt-gap: 8px;
-  /* how far a .button's face sits up and left of its box (its
-     translate(-5px, -5px) in main.css), the depth of its side walls */
+  /* a .button's wall depth (its translate in main.css) */
   --svropt-wall: 5px;
   display: none;
   overflow-y: visible;
@@ -56,9 +43,7 @@
   height: auto;
 }
 
-/* A panel's buttons, three to a row. Each button's face is drawn a wall's
-   depth up and left of its box and its walls end at the box, so the top and
-   left padding and the gaps add a wall's depth to stay that wide on screen. */
+/* Three to a row; padding and gaps add a wall's depth to stay that wide on screen. */
 .svropt__panel {
   display: grid;
   grid-template-columns: repeat(3, auto);
@@ -74,10 +59,6 @@
   display: block;
   margin: 0;
   width: 135px;
-}
-
-.svropt_button_lgr {
-  width: 283px;  
 }
 
 /*
@@ -97,8 +78,8 @@
 #pass__textbox {
   border-radius: 15px;
   margin: 15px;
-  width: 285px; 
-  padding: 5px; 
+  width: 285px;
+  padding: 5px;
 }
 
 #pass__prmbtnctr {
@@ -123,31 +104,31 @@
   left: 50%;
   margin-right: -50%;
   transform: translate(-50%, -50%);
-  width: 350px;  
+  width: 350px;
   height: auto;
-  padding: 16px; 
+  padding: 16px;
 }
 
 #pinet__ssidbox {
   border-radius: 15px;
   margin: 15px;
-  width: 280px; 
-  padding: 5px; 
+  width: 280px;
+  padding: 5px;
 }
 
 #pinet__passbox {
   border-radius: 15px;
   margin: 15px;
-  width: 280px; 
-  padding: 5px; 
-  padding-bottom: 10px; 
+  width: 280px;
+  padding: 5px;
+  padding-bottom: 10px;
 }
 
 .pinet__btn {
   margin-left: 15px;
   margin-right: 15px;
-  width: 127px; 
-  height: 70px; 
+  width: 127px;
+  height: 70px;
 }
 
 /*
@@ -159,14 +140,14 @@
   left: 50%;
   margin-right: -50%;
   transform: translate(-50%, -50%);
-  width: auto;  
+  width: auto;
   height: auto;
-  padding: 16px; 
+  padding: 16px;
 }
 
 #wifi__img {
   margin: 10px;
-} 
+}
 
 #wifi__pwdtxt {
   text-align: center;

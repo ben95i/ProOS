@@ -1,36 +1,13 @@
-// Automate Website - camera window
+// Automate - camera window: plays the API's relayed fragmented MP4 (nodeapi/camstream.js)
+// through Media Source Extensions, with no transcoding. The first frame shows as a still
+// while it loads; the camera's rotation is a CSS transform; the stream stops while the tab
+// is hidden, and only a few seconds of video are held.
 //
-// Plays a camera's live stream in the camera popup. The API relays the
-// camera's RTSP feed as fragmented MP4 without re-encoding it (api/
-// camstream.js), and this class hands it straight to the browser's own
-// video decoder through Media Source Extensions -- no plugin, and no
-// transcoding anywhere between the camera and the screen.
+// Video arrives a second at a time and unevenly over Wi-Fi, so playback sits TARGET_DELAY_S
+// behind the newest frame. It (re)starts only once that cushion is in, corrects drift by
+// playing a few percent off speed on an averaged lag, and seeks only when far behind.
 //
-// While it loads, the first frame of the live stream is shown as a still
-// under the "Loading..." message, and the window is sized to fit the visible
-// part of the screen (on an iPhone, between Safari's bars).
-//
-// The API reports the rotation the camera asks for (X-Camera-Rotation) and
-// the picture is turned to match with a CSS transform, which the browser's
-// compositor does at no cost. A quarter turn also swaps the window's shape,
-// so a portrait camera gets a portrait window.
-//
-// Kept light on purpose: the stream stops while the tab is hidden and only
-// a few seconds of video are held in memory.
-//
-// Smoothness over delay: the video arrives a second at a time (the API
-// sends whole groups of pictures) and over Wi-Fi it arrives unevenly, so
-// playback is held TARGET_DELAY_S behind the newest frame as a cushion.
-//   - It only starts, and only restarts after running dry, once the full
-//     cushion is in: one longer pause instead of many small stutters.
-//   - Drift is corrected by playing a few percent faster or slower, judged
-//     on the lag averaged over several seconds so the once-a-second arrival
-//     of new video does not keep changing the speed.
-//   - A seek, which shows as a hitch, is only used when far behind.
-//
-// new CameraView(name) then .open() / .close() / .toggleFullscreen();
-// .destroy() on page teardown. CameraView.POPUP_HTML is the popup's markup,
-// placed by main.js with the rest of the page.
+// new CameraView(name) then .open() / .close() / .toggleFullscreen().
 
 import { gridButtonTemplate } from './utils.js';
 
@@ -43,39 +20,35 @@ export default class CameraView {
   static VIDEO_ID = 'cam-video';
   static STATUS_ID = 'cam-status';
 
-  // the stage takes this while the picture is turned a quarter, which swaps
-  // the video's width and height (camera.css)
+  // on the stage for a quarter turn, which swaps the video's width and height
   static QUARTER_CLASS = 'cam-stage--quarter';
-  // the whole-window stand-in for browsers without the Fullscreen API
-  // (iPhone Safari), put on the popup
+  // the popup filling the window where there is no Fullscreen API (iPhone Safari)
   static MAXIMIZED_CLASS = 'cam-popup--max';
 
   static STATUS_LOADING = 'Loading...';
   static STATUS_RECONNECTING = 'Reconnecting...';
   static STATUS_UNSUPPORTED = 'This browser cannot play the camera stream';
 
-  static RETRY_MS = 3000;          // pause before reconnecting
-  static TICK_MS = 500;            // how often the delay is checked
-  // How far behind the newest frame playback sits. Raise it if the picture
-  // still stutters on a poor connection, lower it (not below 2) for less
-  // delay -- the API delivers a second of video at a time.
+  static RETRY_MS = 3000;
+  static TICK_MS = 500;
+  // How far behind the newest frame playback sits: higher for a poor connection, not
+  // below 2, as the API delivers a second of video at a time.
   static TARGET_DELAY_S = 3;
   static DELAY_TOLERANCE_S = 1;    // averaged drift allowed before the speed changes
-  static LAG_SMOOTHING = 0.1;      // weight of each new lag reading in the average
-  static CATCH_UP_RATE = 1.05;     // speed while too far behind
-  static SLOW_DOWN_RATE = 0.95;    // speed while too close to running dry
+  static LAG_SMOOTHING = 0.1;      // weight of each new reading in the average
+  static CATCH_UP_RATE = 1.05;
+  static SLOW_DOWN_RATE = 0.95;
   static NORMAL_RATE = 1;
   static MAX_LAG_S = 10;           // further behind than this: seek forward
   static KEEP_BUFFER_S = 4;        // video kept behind the playhead
   static TRIM_STEP_S = 4;          // trim once this much more has built up
   static MAX_QUEUE_BYTES = 4 * 1024 * 1024; // unplayed data before giving up
 
-  // clear space kept above and below the popup; the bottom one matches
-  // .popup-win's bottom: 10px in main.css
+  // clear space above and below the popup; matches .popup-win's bottom: 10px
   static VIEWPORT_MARGIN_PX = 10;
   static MIN_STAGE_HEIGHT_PX = 120;
 
-  // the shape shown until the first frame says otherwise
+  // the shape until the first frame says otherwise
   static DEFAULT_WIDTH = 16;
   static DEFAULT_HEIGHT = 9;
 
@@ -83,7 +56,7 @@ export default class CameraView {
   static DEGREES_PER_QUARTER = 90;
 
   static POPUP_HTML = `
-<div class="popup-win" id="cam-popup" data-app-injected>
+<div class="popup-win" id="cam-popup">
   <div class="popup-ctn">
     <div id="cam-stage">
       <video id="cam-video" muted autoplay playsinline disablepictureinpicture></video>
@@ -104,11 +77,11 @@ export default class CameraView {
   </div>
 </div>`;
 
+  // set up by open()
   constructor(cameraName) {
     this.cameraName = cameraName;
     this.isOpen = false;
-    // bumped every time a stream starts or stops, so a reply, a chunk or a
-    // buffer event from a stream that has since been stopped is ignored
+    // bumped as a stream starts or stops, so anything from a stopped stream is ignored
     this.session = 0;
     this.abortController = null;
     this.mediaSource = null;
@@ -130,20 +103,22 @@ export default class CameraView {
     this.onStageClick = () => this.restoreFromMaximized();
   }
 
-  //// elements ////
-
+  // the popup element
   popup() {
     return document.getElementById(CameraView.POPUP_ID);
   }
 
+  // the picture's box
   stage() {
     return document.getElementById(CameraView.STAGE_ID);
   }
 
+  // the video element
   video() {
     return document.getElementById(CameraView.VIDEO_ID);
   }
 
+  // sets the status line
   setStatus(text) {
     const status = document.getElementById(CameraView.STATUS_ID);
     if (status) {
@@ -151,6 +126,7 @@ export default class CameraView {
     }
   }
 
+  // the API's stream URL for this camera
   streamURL() {
     const name = encodeURIComponent(this.cameraName);
     return `${location.protocol}//${location.hostname}/${CameraView.STREAM_PATH}/${name}`;
@@ -158,6 +134,7 @@ export default class CameraView {
 
   //// the window ////
 
+  // shows the popup and starts the stream
   open() {
     const popup = this.popup();
     const video = this.video();
@@ -180,6 +157,7 @@ export default class CameraView {
     this.start();
   }
 
+  // stops the stream and hides the popup
   close() {
     if (!this.isOpen) {
       return;
@@ -209,12 +187,7 @@ export default class CameraView {
     }
   }
 
-  destroy() {
-    this.close();
-  }
-
-  // Nothing is decoded or downloaded while the tab is out of sight; the
-  // stream picks up again, at live, when it comes back.
+  // Nothing plays while the tab is hidden; the stream restarts, at live, on return.
   visibilityChanged() {
     if (!this.isOpen) {
       return;
@@ -228,11 +201,12 @@ export default class CameraView {
 
   //// the stream ////
 
+  // opens the stream: fetch, codec check, MediaSource, then pump until it breaks
   async start() {
     this.stop();
     const session = ++this.session;
     this.setStatus(CameraView.STATUS_LOADING);
-    // Safari on iPhone only has ManagedMediaSource
+    // iPhone Safari only has ManagedMediaSource
     const MediaSourceType = window.ManagedMediaSource || window.MediaSource;
     if (!MediaSourceType) {
       this.setStatus(CameraView.STATUS_UNSUPPORTED);
@@ -253,7 +227,7 @@ export default class CameraView {
       const codec = response.headers.get('X-Camera-Codec');
       const mimeType = `video/mp4; codecs="${codec}"`;
       if (!codec || !MediaSourceType.isTypeSupported(mimeType)) {
-        // retrying would only get the same answer
+        // retrying would get the same answer
         this.stop();
         this.setStatus(`${CameraView.STATUS_UNSUPPORTED} (${codec})`);
         return;
@@ -272,8 +246,7 @@ export default class CameraView {
     }
   }
 
-  // Tears the stream down completely: the download, the MediaSource and
-  // the video's decoder, so a closed window holds no memory at all.
+  // Tears the stream down completely, so a closed window holds no memory.
   stop() {
     this.session += 1;
     clearTimeout(this.retryTimer);
@@ -310,8 +283,7 @@ export default class CameraView {
     }
   }
 
-  // The stream broke or ended (the camera restarted, the API restarted,
-  // the network dropped): start again shortly while the window is open.
+  // The stream broke or ended: starts again shortly while the window is open.
   retryLater(err) {
     const reason = (err && err.message) ? err.message : 'stream stopped';
     console.log(`[CameraView] ${this.cameraName}: ${reason}, reconnecting`);
@@ -323,6 +295,7 @@ export default class CameraView {
     this.retryTimer = setTimeout(() => this.start(), CameraView.RETRY_MS);
   }
 
+  // creates the MediaSource and its SourceBuffer on the video
   openMediaSource(MediaSourceType, mimeType, session) {
     return new Promise((resolve, reject) => {
       const mediaSource = new MediaSourceType();
@@ -334,7 +307,7 @@ export default class CameraView {
         }
         try {
           const sourceBuffer = mediaSource.addSourceBuffer(mimeType);
-          sourceBuffer.mode = 'segments'; // place frames by their own timestamps
+          sourceBuffer.mode = 'segments'; // frames placed by their own timestamps
           sourceBuffer.addEventListener('updateend', () => this.bufferUpdated(session));
           this.sourceBuffer = sourceBuffer;
           resolve();
@@ -343,15 +316,14 @@ export default class CameraView {
         }
       }, { once: true });
       const video = this.video();
-      // ManagedMediaSource only plays with remote playback (AirPlay) off
+      // ManagedMediaSource only plays with AirPlay off
       video.disableRemotePlayback = true;
       this.objectURL = URL.createObjectURL(mediaSource);
       video.src = this.objectURL;
     });
   }
 
-  // Reads the response as it arrives and queues it for the SourceBuffer.
-  // Only returns by throwing: an ended response is a dropped stream too.
+  // Queues the response as it arrives; an ended response is a dropped stream too.
   async pump(reader, session) {
     for (;;) {
       const { value, done } = await reader.read();
@@ -370,8 +342,7 @@ export default class CameraView {
     }
   }
 
-  // Hands everything queued to the SourceBuffer in one append. Chunks that
-  // arrive while it is busy wait for its updateend.
+  // Hands everything queued to the SourceBuffer in one append.
   appendQueued() {
     const sourceBuffer = this.sourceBuffer;
     if (!sourceBuffer || sourceBuffer.updating || this.queue.length === 0) {
@@ -392,7 +363,7 @@ export default class CameraView {
       this.queuedBytes = 0;
     } catch (err) {
       if (err.name === 'QuotaExceededError') {
-        // the browser's buffer is full: keep the data, free some, try again
+        // the browser's buffer is full: keeps the data, frees some, tries again
         this.queue = [data];
         this.trimBuffer(0);
         return;
@@ -401,10 +372,8 @@ export default class CameraView {
     }
   }
 
-  // After every append or trim: on the first video, put its first frame on
-  // screen as a still and wait for the cushion to fill (keepLive starts
-  // playback); then trim what has been watched and append whatever came in
-  // meanwhile.
+  // After every append or trim: the first video goes up as a still while the cushion
+  // fills; then trims what has been watched and appends what came in.
   bufferUpdated(session) {
     if (session !== this.session || !this.sourceBuffer) {
       return;
@@ -413,19 +382,17 @@ export default class CameraView {
       this.hasStarted = true;
       this.isBuffering = true;
       this.jumpToLive();
-      // A paused video does not always paint the frame it was moved to
-      // (Safari keeps it blank), so it is set playing and stopped again by
-      // startedPlaying() the moment the frame is up.
+      // a paused video may not paint the frame it was moved to (Safari), so it is set
+      // playing and startedPlaying() stops it once the frame is up
       this.playVideo();
     }
     if (this.trimBuffer(CameraView.KEEP_BUFFER_S)) {
-      return; // a remove is running; its updateend comes back here
+      return; // its updateend comes back here
     }
     this.appendQueued();
   }
 
-  // Drops video more than keepSeconds behind the playhead. Answers true
-  // when a remove was started.
+  // Drops video over keepSeconds behind the playhead; true when a remove started.
   trimBuffer(keepSeconds) {
     const sourceBuffer = this.sourceBuffer;
     const video = this.video();
@@ -445,8 +412,7 @@ export default class CameraView {
     return true;
   }
 
-  // Puts the playhead the target delay behind the newest frame, or as far
-  // back as there is video when there is less than that.
+  // Puts the playhead the target delay behind the newest frame, or as far back as there is.
   jumpToLive() {
     const sourceBuffer = this.sourceBuffer;
     const video = this.video();
@@ -459,9 +425,8 @@ export default class CameraView {
     this.setPlaybackRate(CameraView.NORMAL_RATE);
   }
 
-  // The video began to play. While still filling the cushion this was only
-  // to paint the first frame: it is stopped there, a still under the
-  // loading message. Otherwise it is the real start, and the message goes.
+  // The video began to play: while filling the cushion only to paint the first frame, so
+  // it stops there; otherwise the real start, and the message goes.
   startedPlaying() {
     if (this.isBuffering) {
       this.video().pause();
@@ -470,9 +435,8 @@ export default class CameraView {
     this.setStatus('');
   }
 
-  // Playback caught up with the newest frame and stopped. Rather than let
-  // the browser resume on every frame that trickles in -- a stutter each
-  // time -- it pauses until the whole cushion is back.
+  // Playback caught up and stopped: pauses until the cushion is back, rather than
+  // stuttering on every frame that trickles in.
   ranDry() {
     if (!this.hasStarted || this.isBuffering) {
       return;
@@ -481,10 +445,8 @@ export default class CameraView {
     this.video().pause();
   }
 
-  // Runs every TICK_MS: starts playback once the cushion is in, then keeps
-  // it near TARGET_DELAY_S behind live with small speed changes. Seeks only
-  // when far behind, or when stuck before a gap the server left by skipping
-  // frames a slow connection could not take.
+  // Every TICK_MS: starts playback once the cushion is in, then holds it near the target
+  // with small speed changes. Seeks only when far behind, or stuck before a gap.
   keepLive() {
     const sourceBuffer = this.sourceBuffer;
     const video = this.video();
@@ -514,8 +476,7 @@ export default class CameraView {
     }
   }
 
-  // Running average of the lag. Video lands a second at a time, so a single
-  // reading swings by that much depending on when it is taken.
+  // Running average of the lag, as one reading swings with video landing a second at a time.
   smoothLag(lag) {
     if (this.averageLag === null) {
       return lag;
@@ -524,9 +485,8 @@ export default class CameraView {
     return this.averageLag + change * CameraView.LAG_SMOOTHING;
   }
 
-  // The speed to play at for this much lag. A change of speed holds until
-  // the lag is back on target, not merely back inside the tolerance, so
-  // the speed does not flick back and forth at the edge of it.
+  // The speed for this lag. A change holds until the lag is back on target, not merely
+  // inside the tolerance, so it does not flick at the edge.
   rateForLag(lag, currentRate) {
     const isTooFarBehind = lag > CameraView.TARGET_DELAY_S + CameraView.DELAY_TOLERANCE_S;
     const isTooClose = lag < CameraView.TARGET_DELAY_S - CameraView.DELAY_TOLERANCE_S;
@@ -546,6 +506,7 @@ export default class CameraView {
     return currentRate;
   }
 
+  // sets the video's speed
   setPlaybackRate(rate) {
     const video = this.video();
     if (video && video.playbackRate !== rate) {
@@ -553,20 +514,17 @@ export default class CameraView {
     }
   }
 
+  // plays, ignoring a refusal: the next tick tries again
   playVideo() {
     const playing = this.video().play();
     if (playing && typeof playing.catch === 'function') {
-      playing.catch(() => {
-        // refused (no user gesture yet on some browsers): the next tick
-        // tries again
-      });
+      playing.catch(() => {});
     }
   }
 
   //// rotation and shape ////
 
-  // Turns the picture the way the camera asked: 0, 90, 180 or 270 degrees
-  // clockwise, anything else rounded to the nearest quarter.
+  // Turns the picture as the camera asked, rounded to the nearest quarter.
   applyRotation(headerValue) {
     const degrees = Number.parseInt(headerValue, 10);
     let rotation = 0;
@@ -583,13 +541,13 @@ export default class CameraView {
     this.fitToVideo();
   }
 
+  // is the picture turned a quarter
   isQuarterTurn() {
     const quarterTurns = this.rotation / CameraView.DEGREES_PER_QUARTER;
     return quarterTurns % 2 === 1;
   }
 
-  // Shapes the window to the picture as it will be seen: the video's own
-  // size once it is known, with width and height swapped for a quarter turn.
+  // Shapes the window to the picture as seen, width and height swapped for a quarter turn.
   fitToVideo() {
     const video = this.video();
     const stage = this.stage();
@@ -604,12 +562,8 @@ export default class CameraView {
     stage.style.setProperty('--cam-aspect', `${width} / ${height}`);
   }
 
-  // Sizes the picture so the whole popup -- picture, frame and buttons --
-  // fits in the part of the screen that can be seen. The visual viewport is
-  // used where there is one: on a phone it is the area between the
-  // browser's bars, where the CSS viewport units also count what is behind
-  // them. Runs on open and whenever that area changes size (rotation, the
-  // bars showing or hiding).
+  // Sizes the picture so the whole popup fits the visible screen: the visual viewport where
+  // there is one, as a phone's CSS units count what is behind its bars.
   fitToViewport() {
     const popup = this.popup();
     const stage = this.stage();
@@ -618,8 +572,7 @@ export default class CameraView {
     }
     const viewport = window.visualViewport;
     const viewportHeight = viewport ? viewport.height : window.innerHeight;
-    // everything in the popup that is not the picture: its border, padding
-    // and the button row
+    // the popup's border, padding and button row
     const popupChrome = popup.offsetHeight - stage.offsetHeight;
     const margins = 2 * CameraView.VIEWPORT_MARGIN_PX;
     const availableHeight = viewportHeight - popupChrome - margins;
@@ -629,13 +582,13 @@ export default class CameraView {
 
   //// fullscreen ////
 
+  // the element in fullscreen, if any
   fullscreenElement() {
     return document.fullscreenElement || document.webkitFullscreenElement || null;
   }
 
-  // Fills the screen with the picture (rotated as it is in the window), or
-  // goes back. Where the Fullscreen API is missing the popup fills the
-  // browser window instead; a tap on the picture brings it back.
+  // Fills the screen with the picture, or goes back. Without the Fullscreen API the popup
+  // fills the window instead, and a tap on the picture restores it.
   toggleFullscreen() {
     if (!this.isOpen) {
       return;
@@ -656,6 +609,7 @@ export default class CameraView {
     });
   }
 
+  // leaves either form of fullscreen
   leaveFullscreen() {
     const popup = this.popup();
     if (popup) {
@@ -670,9 +624,10 @@ export default class CameraView {
     }
   }
 
+  // a tap on the picture: back from filling the window
   restoreFromMaximized() {
     const popup = this.popup();
-    if (popup && popup.classList.contains(CameraView.MAXIMIZED_CLASS)) {
+    if (popup) {
       popup.classList.remove(CameraView.MAXIMIZED_CLASS);
     }
   }

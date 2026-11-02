@@ -1,34 +1,19 @@
-// Automate Website - message popup, error popups and error logging
-//
-// The one message popup at the top of the page, and every report of a
-// failure. A failure is one of two kinds:
-//
-//   Not connected           a request never got an answer, or the web server
-//                           could not reach the API behind it (wifi-slash icon)
-//   Exception has occurred  anything else: an error answer, an answer that
-//                           does not read, an error thrown in the page (alert
-//                           icon)
-//
-// Both are logged to the console in full and shown in the message popup:
-// the icon and title, a sentence saying what went wrong, then what the page
-// was doing, the error itself and the server's answer when there was one.
-// Styles are in styles/error.css.
-//
-// This module imports nothing, so every other module can use it, utils.js
-// included.
+// Automate - message popup and failure reports (styles/error.css). Imports nothing,
+// so every module can use it. Failures show as one of two kinds:
+//   Not connected           no answer, or the proxy could not reach the API
+//   Exception has occurred  an error answer, an unreadable answer, a page error
 
 const POPUP_ID = 'msg-popup';
 const POPUP_TEXT_ID = 'msg-text';
 const POPUP_CLASS = 'popup-alert';
 const POPUP_FADE_CLASS = 'fade-out';
-const MESSAGE_MS = 4000;  // a message's time on screen
-const ERROR_MS = 7000;    // an error's, which has more to read
+const MESSAGE_MS = 4000;
+const ERROR_MS = 7000;
 const LOG_PREFIX = '[Automate]';
 
 // longest server answer or command quoted in a popup; the console has it all
 const ANSWER_MAX_CHARS = 160;
 const COMMAND_MAX_CHARS = 60;
-
 
 // the two kinds of failure
 const ERROR_KINDS = {
@@ -44,13 +29,11 @@ const ERROR_KINDS = {
   }
 };
 
-// What browsers say when a request got no answer at all: Safari "Load
-// failed", Chrome "Failed to fetch", Firefox "NetworkError when attempting to
-// fetch resource.", older Safari "The network connection was lost."
+// What browsers say when a request got no answer (Safari, Chrome, Firefox, older Safari)
 const NETWORK_ERROR_TEXT =
   /load failed|failed to fetch|networkerror|network connection was lost|network request failed/i;
 
-// lighttpd answers these itself while it cannot reach the node API
+// lighttpd answers these itself while the node API is down
 const PROXY_DOWN_STATUS = [502, 503, 504];
 
 const HTTP_STATUS_TEXT = {
@@ -70,7 +53,7 @@ const HTTP_STATUS_TEXT = {
 
 let messagePopupTimer = null;
 
-// lets the page teardown drop a pending fade
+// drops a pending fade, for the page teardown
 export function clearPopupTimer() {
   if (messagePopupTimer) {
     clearTimeout(messagePopupTimer);
@@ -78,11 +61,19 @@ export function clearPopupTimer() {
   }
 }
 
-// Shows a message in the popup at the top of the page for four seconds. The
-// message is markup, or a node the caller built. options.popupClass styles
-// one kind of popup and goes with its message, and options.duration is its
-// time on screen in ms.
-// showPopup("[lists] saved.")
+// Removes a popup when its fade ends. Attached once for the popup's life: a message
+// arriving mid-fade cancels the animation, so a per-fade listener would never fire.
+export function removeOnFade(popupWindow) {
+  popupWindow.addEventListener("animationend", () => {
+    if (popupWindow.classList.contains(POPUP_FADE_CLASS) &&
+        popupWindow.isConnected) {
+      popupWindow.remove();
+    }
+  });
+}
+
+// Shows a message at the top of the page. message is markup or a node; options:
+// popupClass, duration in ms. showPopup("[lists] saved.")
 export function showPopup(message, options = {}) {
   let popupWindow = document.getElementById(POPUP_ID);
   if (!popupWindow) {
@@ -91,18 +82,10 @@ export function showPopup(message, options = {}) {
     const textBox = document.createElement("div");
     textBox.id = POPUP_TEXT_ID;
     popupWindow.appendChild(textBox);
-    // Attached once, for the life of the window. A message arriving mid-fade
-    // takes the class off again, which cancels the animation before it ends:
-    // a {once:true} listener per fade would never fire and never unregister.
-    popupWindow.addEventListener("animationend", () => {
-      if (popupWindow.classList.contains(POPUP_FADE_CLASS) &&
-          popupWindow.isConnected) {
-        popupWindow.remove();
-      }
-    });
+    removeOnFade(popupWindow);
     document.body.appendChild(popupWindow);
   }
-  // the class list is set whole, which also drops the fade
+  // set whole, which also drops the fade
   let popupClass = POPUP_CLASS;
   if (options.popupClass) {
     popupClass = `${POPUP_CLASS} ${options.popupClass}`;
@@ -121,16 +104,16 @@ export function showPopup(message, options = {}) {
   clearPopupTimer();
   messagePopupTimer = setTimeout(() => {
     messagePopupTimer = null;
-    // the listener above removes the window once the fade ends
+    // removeOnFade() takes the window off once the fade ends
     popupWindow.classList.add(POPUP_FADE_CLASS);
   }, duration);
 }
 
 //// errors ////
 
-// An answer the server sent with an error status. body is the answer's text,
-// quoted in the popup: throw new HttpError(response.status, text)
+// An error status answer; body is quoted in the popup: throw new HttpError(response.status, text)
 export class HttpError extends Error {
+  // status and the answer's text
   constructor(status, body = '') {
     super(httpStatusLine(status));
     this.name = 'HttpError';
@@ -142,17 +125,15 @@ export class HttpError extends Error {
 // 502 -> 'HTTP 502 Bad Gateway'
 function httpStatusLine(status) {
   let line = `HTTP ${status}`;
-  if (Object.prototype.hasOwnProperty.call(HTTP_STATUS_TEXT, status)) {
+  if (HTTP_STATUS_TEXT[status]) {
     line = `${line} ${HTTP_STATUS_TEXT[status]}`;
   }
   return line;
 }
 
-// Whether an error means the connection to the server is gone, rather than
-// the server or the page failing. A request with no answer rejects with a
-// TypeError, worded per browser; while the device is offline any TypeError
-// from a request counts. isConnectionError(new TypeError('Load failed'))
-export function isConnectionError(error) {
+// Does this error mean the connection is gone? A request with no answer rejects with a
+// TypeError, worded per browser; while offline any TypeError counts.
+function isConnectionError(error) {
   if (error instanceof HttpError) {
     return PROXY_DOWN_STATUS.includes(error.status);
   }
@@ -165,14 +146,12 @@ export function isConnectionError(error) {
   return NETWORK_ERROR_TEXT.test(error.message);
 }
 
-// Logs a failure to the console with everything known about it, and nothing
-// else. logError('reading the weather', error)
+// Logs a failure to the console only: logError('reading the weather', error)
 export function logError(what, error) {
   console.error(`${LOG_PREFIX} ${what}:`, error);
 }
 
-// Reports a failure caught around a request or any other step, as Not
-// connected or as an exception, whichever the error is.
+// Reports a caught failure as Not connected or an exception, whichever the error is.
 // reportError('sending lrxmit wl1_dual', error)
 export function reportError(what, error) {
   if (isConnectionError(error)) {
@@ -182,8 +161,7 @@ export function reportError(what, error) {
   }
 }
 
-// Reports a lost connection. reason is the sentence under the title, error
-// the failure itself when there is one.
+// Reports a lost connection, with reason as the sentence shown.
 // reportNotConnected('sending the LED command stop', 'No answer from LEDgrid')
 export function reportNotConnected(what, reason = '', error = null) {
   let sentence = reason;
@@ -193,8 +171,8 @@ export function reportNotConnected(what, reason = '', error = null) {
   presentError(ERROR_KINDS.connection, what, sentence, error);
 }
 
-// Reports any other failure. reason is an Error, which explains itself, or
-// the sentence to show: reportException('uploading files', '2 files failed.')
+// Reports any other failure; reason is an Error or the sentence to show.
+// reportException('uploading files', '2 files failed.')
 export function reportException(what, reason) {
   if (reason instanceof Error) {
     presentError(ERROR_KINDS.exception, what, exceptionSentence(reason), reason);
@@ -203,7 +181,7 @@ export function reportException(what, reason) {
   presentError(ERROR_KINDS.exception, what, String(reason), null);
 }
 
-// The sentence under Not connected, from what is known about the failure.
+// the sentence under Not connected
 function connectionSentence(error) {
   const host = location.hostname;
   if (navigator.onLine === false) {
@@ -215,7 +193,7 @@ function connectionSentence(error) {
   return `No answer from ${host}. The connection dropped or the server is down.`;
 }
 
-// The sentence under Exception has occurred, from the error's own kind.
+// the sentence under Exception has occurred
 function exceptionSentence(error) {
   if (error instanceof HttpError) {
     const clientErrorTop = 500;
@@ -230,8 +208,7 @@ function exceptionSentence(error) {
   return 'Part of the page failed.';
 }
 
-// Logs a failure and shows it in place of whatever is on screen, so the
-// popup always names the newest failure.
+// Logs a failure and shows it in place of whatever is on screen.
 function presentError(kind, what, sentence, error) {
   const logLine = `${LOG_PREFIX} ${kind.title} while ${what}: ${sentence}`;
   if (error === null) {
@@ -246,11 +223,8 @@ function presentError(kind, what, sentence, error) {
   });
 }
 
-// The labelled rows under the sentence: what the page was doing, the error,
-// the server's answer to a request it refused, and where in the page an
-// error was thrown.
-// [{ label: 'While', value: 'sending lrxmit wl1_dual' },
-//  { label: 'Error', value: 'TypeError: Load failed' }]
+// The rows under the sentence: what the page was doing, the error, the server's answer,
+// and where it was thrown. [{ label: 'While', value: 'sending lrxmit wl1_dual' }]
 function errorRows(what, error) {
   const rows = [{ label: 'While', value: what }];
   if (!(error instanceof Error)) {
@@ -275,8 +249,7 @@ function errorRows(what, error) {
   return rows;
 }
 
-// A server answer cut down to fit a popup: tags dropped (a proxy's error
-// page is HTML), runs of white space made one space, then shortened.
+// A server answer cut to fit a popup: tags dropped, white space collapsed, shortened.
 function answerExcerpt(body) {
   const withoutTags = String(body).replace(/<[^>]*>/g, ' ');
   const oneLine = withoutTags.replace(/\s+/g, ' ').trim();
@@ -292,8 +265,7 @@ function shortenText(text, maxChars) {
   return `${text.slice(0, keptChars)}…`;
 }
 
-// The file and line an error was thrown from, from the first frame of its
-// stack that names one: 'bedrm.js:212'. Empty when there is none.
+// the file and line an error was thrown from: 'bedrm.js:212', or ''
 function errorOrigin(error) {
   if (typeof error.stack !== 'string') {
     return '';
@@ -305,7 +277,7 @@ function errorOrigin(error) {
   return `${frame[1]}:${frame[2]}`;
 }
 
-// The popup's content as nodes, so no server text is ever read as markup.
+// The popup's content as nodes, so no server text is read as markup.
 function errorPopupContent(kind, sentence, rows) {
   const content = popupElement('div', 'error-popup');
   const head = popupElement('div', 'error-popup__head');
@@ -327,7 +299,7 @@ function errorPopupContent(kind, sentence, rows) {
   return content;
 }
 
-// An element with a class and plain text: popupElement('span', 'x', 'hi')
+// an element with a class and plain text: popupElement('span', 'x', 'hi')
 function popupElement(tag, className, text = '') {
   const element = document.createElement(tag);
   element.className = className;
@@ -339,9 +311,8 @@ function popupElement(tag, className, text = '') {
 
 //// commands ////
 
-// A command as the popup names it, the default 'main' action left out and a
-// long value (base64 text) shortened: ('main', 'brxmit', 'brtvon') ->
-// 'brxmit brtvon'
+// A command as the popup names it, 'main' left out and a long value shortened.
+// ('main', 'brxmit', 'brtvon') -> 'brxmit brtvon'
 export function describeCommand(action, arg, value) {
   const parts = [];
   if (action !== 'main') {
@@ -356,17 +327,10 @@ export function describeCommand(action, arg, value) {
 
 //// uncaught errors ////
 
-let errorHandlersInstalled = false;
-
-// Reports anything thrown or rejected that no code caught. Installed once,
-// as the page loads: installErrorHandlers()
+// Reports anything thrown or rejected that no code caught; called once at page load.
 export function installErrorHandlers() {
-  if (errorHandlersInstalled) {
-    return;
-  }
-  errorHandlersInstalled = true;
   window.addEventListener('error', (event) => {
-    // a resource that failed to load (an <img>) fires here too, with no error
+    // a resource that failed to load fires here too, with no error
     if (!(event.error instanceof Error)) {
       return;
     }

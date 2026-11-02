@@ -1,51 +1,32 @@
-/*
- *  Automate -- bathrm.css
- *
- *  The bathroom's own rules (bathrm.js).
- */
+/* Automate: the bathroom's own rules (bathrm.js). */
 
-/*
- *  Bathroom Settings Window
- *
- *  bathroomSettingsPrompt() in bathrm.js. Drawn like the colour prompt (a
- *  narrow column on black) and built from what the site already has: the
- *  sliders are .slider-wide (dropdowns.css), the log box is the server log's
- *  .popup-ctn and .popup-actions, and the icon buttons are
- *  .button_left_txtwin (main.css). The rules below that resize one of those
- *  win at equal specificity only because this sheet loads after main.css and
- *  dropdowns.css -- keep it after them in index.html.
- */
+/* Bathroom Settings Window. Built from .slider-wide, .popup-ctn and
+   .button_left_txtwin; rules resizing those win by loading after them. */
 
 #bthr__prompt {
   top: 50%;
   left: 50%;
   margin-right: -50%;
   transform: translate(-50%, -50%);
-  /* As wide as its row of three buttons, so the setting boxes end level with
-     the buttons at both sides. The row is 260px from the first face to the
-     last wall: three 75px buttons, their 5px left margins and two 10px gaps,
-     and the 5px the first face is lifted to the left. The 20px padding and
-     1px border each side make it 302px. */
+  /* as wide as its three buttons (260px, face to wall) plus 20px padding and 1px
+     border each side */
   width: 302px;
   height: auto;
   padding: 10px 20px;
   color: #fff;
 }
 
-/* showing the Light Log or Sensor Status: twice the width, for their long
-   lines, and never wider than the screen */
+/* the log or sensor read-out: double width, never wider than the screen */
 #bthr__prompt.bthr__prompt--wide {
   width: 680px;
   max-width: 95vw;
 }
 
-/* The heading, which also shows a change or an error in its place for a few
-   seconds. Held to one line: a longer message ends in an ellipsis rather
-   than wrapping, so the boxes below never move. */
+/* The heading, also showing a change or error for a few seconds; one line, so the
+   boxes never move. */
 .bthr__title {
   font-size: 22px;
-  /* a set line height, so the smaller message text stands as tall as the
-     heading it takes the place of */
+  /* the smaller message stands as tall as the heading */
   line-height: 28px;
   margin-bottom: 8px;
   white-space: nowrap;
@@ -53,8 +34,7 @@
   text-overflow: ellipsis;
 }
 
-/* a change just made ("Off delay: 1 min 26 s"): the size of the setting
-   labels, in light grey. An error keeps the size and turns red, below. */
+/* a change just made: label-sized light grey; an error turns red, below */
 .bthr__title--message {
   font-size: 18px;
   color: #c1c1c1;
@@ -74,13 +54,12 @@
   transition: opacity .2s ease;
 }
 
-/* the gap between boxes goes above each one after the first, so the last
-   box has nothing under it and the buttons' own spacing is all there is */
+/* the gap goes above each box after the first */
 .bthr__setting + .bthr__setting {
   margin-top: 12px;
 }
 
-/* before the settings are read off the light, or when they could not be */
+/* before the settings are read, or when they could not be */
 .bthr__setting.is-disabled {
   opacity: .4;
   pointer-events: none;
@@ -113,14 +92,13 @@
   gap: 10px;
 }
 
-/* .slider-wide_container is sized for a menu row; a little lower in here */
+/* .slider-wide_container is sized for a menu row; a little lower here */
 .bthr__slider {
   height: 44px;
 }
 
-/* The switch is the menu-checkbox size, so it is treated the way switch.css
-   treats that one: paint containment off so the handle keeps its shadow,
-   and no ON / OFF lettering, which no longer fits in the handle. */
+/* the menu-checkbox size: no paint containment, so the handle keeps its shadow, and
+   no ON / OFF lettering */
 .bthr__setting .toggle-switch {
   contain: layout !important;
   flex-shrink: 0;
@@ -135,25 +113,18 @@
   padding-top: 0;
 }
 
-/* the icon buttons, centred under the boxes rather than pushed right as
-   they are in the server log window */
-/* The same 18px of space above the buttons as below them.
-   Below: the bottom of a button's walls to the window's edge is the button's
-   8px bottom margin and the window's 10px padding (the face is lifted 5px
-   and its 5px walls fill exactly that).
-   Above: the box to the button's face is this padding, the button's 8px top
-   margin, less the 5px the face is lifted: 15 + 8 - 5 = 18. */
+/* centred under the boxes */
+/* 18px above the buttons, as below them: a button's 8px margin plus the window's
+   10px padding */
 .bthr__actions {
   justify-content: center;
   padding-top: 15px;
-  /* no side padding: the row of buttons spans the window from box edge to
-     box edge (see #bthr__prompt) */
+  /* no side padding: the row spans box edge to box edge */
   padding-left: 0;
   padding-right: 0;
 }
 
-/* the server log window (.popup-ctn), cut down to fit inside the prompt.
-   Hidden until the Log or Sensor button shows it in the settings' place. */
+/* the server log window (.popup-ctn) cut down; hidden until Log or Sensor shows it */
 .bthr__log {
   display: none;
   height: 440px;

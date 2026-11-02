@@ -1,0 +1,419 @@
+d1 00:00:00.000  power off    RUN     SmartThermo host test: unit tests of thermo.cpp
+d1 00:00:00.000  up 0:00:00   UNIT    ---- pins and timing constants against the HVAC reference ----
+d1 00:00:00.000  up 0:00:00   UNIT    ok    W1 relay on GP18 (got GP18)
+d1 00:00:00.000  up 0:00:00   UNIT    ok    Y1 relay on GP17 (got GP17)
+d1 00:00:00.000  up 0:00:00   UNIT    ok    G relay on GP16 (got GP16)
+d1 00:00:00.000  up 0:00:00   UNIT    ok    DHT22 data on GP22 (got GP22)
+d1 00:00:00.000  up 0:00:00   UNIT    ok    no HVAC pin on GP23 (Wi-Fi chip / ADC)
+d1 00:00:00.000  up 0:00:00   UNIT    ok    no HVAC pin on GP24 (Wi-Fi chip / ADC)
+d1 00:00:00.000  up 0:00:00   UNIT    ok    no HVAC pin on GP25 (Wi-Fi chip / ADC)
+d1 00:00:00.000  up 0:00:00   UNIT    ok    no HVAC pin on GP26 (Wi-Fi chip / ADC)
+d1 00:00:00.000  up 0:00:00   UNIT    ok    no HVAC pin on GP27 (Wi-Fi chip / ADC)
+d1 00:00:00.000  up 0:00:00   UNIT    ok    no HVAC pin on GP28 (Wi-Fi chip / ADC)
+d1 00:00:00.000  up 0:00:00   UNIT    ok    no HVAC pin on GP29 (Wi-Fi chip / ADC)
+d1 00:00:00.000  up 0:00:00   UNIT    ok    power-up delay 5 min (300000 ms)
+d1 00:00:00.000  up 0:00:00   UNIT    ok    compressor minimum off 5 min
+d1 00:00:00.000  up 0:00:00   UNIT    ok    compressor minimum on 3-5 min
+d1 00:00:00.000  up 0:00:00   UNIT    ok    furnace minimum on 3 min
+d1 00:00:00.000  up 0:00:00   UNIT    ok    heat/cool dead band 5 min
+d1 00:00:00.000  up 0:00:00   UNIT    ok    blower run-on 60 s (0-90 s)
+d1 00:00:00.000  up 0:00:00   UNIT    ok    cool starts per hour 3-4 (4)
+d1 00:00:00.000  up 0:00:00   UNIT    ok    heat starts per hour 5-6 (6)
+d1 00:00:00.000  up 0:00:00   UNIT    ok    startup lockout after 60 s without a reading
+d1 00:00:00.000  up 0:00:00   UNIT    ok    stale after 60 s
+d1 00:00:00.000  up 0:00:00   UNIT    ok    failed after 10 min without a reading
+d1 00:00:00.000  up 0:00:00   UNIT    ok    DHT22 read at most every 2 s (5000 ms)
+d1 00:00:00.000  up 0:00:00   UNIT    ok    heat fallback 25 % duty
+d1 00:00:00.000  up 0:00:00   UNIT    ok    1 F swing centred on the setpoint
+d1 00:00:00.000  up 0:00:00   UNIT    ---- time and text helpers ----
+d1 00:00:00.000  up 0:00:00   UNIT    ok    msSince clamps a future start to 0
+d1 00:00:00.000  up 0:00:00   UNIT    ok    msSince(5, 10) = 5
+d1 00:00:00.000  up 0:00:00   UNIT    ok    intervalElapsed at its boundary
+d1 00:00:00.000  up 0:00:00   UNIT    ok    msRemaining
+d1 00:00:00.000  up 0:00:00   UNIT    ok    msToSecondsRoundedUp never shows a running wait as 0 s
+d1 00:00:00.000  up 0:00:00   UNIT    ok    msToSeconds truncates
+d1 00:00:00.000  up 0:00:00   UNIT    ok    formatTenths(713) = "71.3" (got "71.3")
+d1 00:00:00.000  up 0:00:00   UNIT    ok    formatTenths(-45) = "-4.5" (got "-4.5")
+d1 00:00:00.000  up 0:00:00   UNIT    ok    formatTenths(0) = "0.0" (got "0.0")
+d1 00:00:00.000  up 0:00:00   UNIT    ok    formatTenths(-5) = "-0.5" (got "-0.5")
+d1 00:00:00.000  up 0:00:00   UNIT    ok    formatTenths(1000) = "100.0" (got "100.0")
+d1 00:00:00.000  up 0:00:00   UNIT    ---- DHT22 decode ----
+d1 00:00:00.000  up 0:00:00   UNIT    ok    datasheet example: 65.2 %, 35.1 C = 95.1 F (95.18 truncated) (got ok, 951 tenths F, 652 tenths %)
+d1 00:00:00.000  up 0:00:00   UNIT    ok    0.0 C = 32.0 F (got ok, 320 tenths F, 400 tenths %)
+d1 00:00:00.000  up 0:00:00   UNIT    ok    -0.0 C = 32.0 F (got ok, 320 tenths F, 400 tenths %)
+d1 00:00:00.000  up 0:00:00   UNIT    ok    25.6 C = 78.0 F (78.08 truncated) (got ok, 780 tenths F, 400 tenths %)
+d1 00:00:00.000  up 0:00:00   UNIT    ok    -10.1 C = 13.9 F (13.82 rounded toward zero) (got ok, 139 tenths F, 500 tenths %)
+d1 00:00:00.000  up 0:00:00   UNIT    ok    -40.0 C = -40.0 F, the bottom of the range (got ok, -400 tenths F, 500 tenths %)
+d1 00:00:00.000  up 0:00:00   UNIT    ok    -40.1 C is out of range: reading out of range, outputs untouched (got reading out of range)
+d1 00:00:00.000  up 0:00:00   UNIT    ok    80.0 C = 176.0 F, the top of the range (got ok, 1760 tenths F, 500 tenths %)
+d1 00:00:00.000  up 0:00:00   UNIT    ok    80.1 C is out of range: reading out of range, outputs untouched (got reading out of range)
+d1 00:00:00.000  up 0:00:00   UNIT    ok    100.0 % humidity is in range (got ok, 770 tenths F, 1000 tenths %)
+d1 00:00:00.000  up 0:00:00   UNIT    ok    100.1 % humidity is out of range: reading out of range, outputs untouched (got reading out of range)
+d1 00:00:00.000  up 0:00:00   UNIT    ok    checksum is the low byte of the sum (0x11D) (got ok, 770 tenths F, 800 tenths %)
+d1 00:00:00.000  up 0:00:00   UNIT    ok    checksum off by one: bad checksum, outputs untouched (got bad checksum)
+d1 00:00:00.000  up 0:00:00   UNIT    ok    one data bit flipped: bad checksum, outputs untouched (got bad checksum)
+d1 00:00:00.000  up 0:00:00   UNIT    ok    garbage with a valid checksum: reading out of range, outputs untouched (got reading out of range)
+d1 00:00:00.000  up 0:00:00   UNIT    ---- DHT22 read over the data line (start signal, 80 us answer, 40 bits by pulse length) ----
+d1 00:00:00.005  up 0:00:00   UNIT    ok    datasheet frame read bit for bit (got ok, 02 8C 01 5F EE)
+d1 00:00:00.005  up 0:00:00   UNIT    ok    interrupts back on after the read
+d1 00:00:05.010  up 0:00:05   UNIT    ok    datasheet frame read bit for bit (got ok, 02 8C 01 5F EE)
+d1 00:00:05.010  up 0:00:05   UNIT    ok    interrupts back on after the read
+d1 00:00:10.015  up 0:00:10   UNIT    ok    datasheet frame read bit for bit (got ok, 02 8C 01 5F EE)
+d1 00:00:10.015  up 0:00:10   UNIT    ok    interrupts back on after the read
+d1 00:00:15.021  up 0:00:15   UNIT    ok    all ones (got ok, FF FF FF FF FC)
+d1 00:00:15.021  up 0:00:15   UNIT    ok    interrupts back on after the read
+d1 00:00:20.027  up 0:00:20   UNIT    ok    all ones (got ok, FF FF FF FF FC)
+d1 00:00:20.027  up 0:00:20   UNIT    ok    interrupts back on after the read
+d1 00:00:25.033  up 0:00:25   UNIT    ok    all ones (got ok, FF FF FF FF FC)
+d1 00:00:25.033  up 0:00:25   UNIT    ok    interrupts back on after the read
+d1 00:00:30.037  up 0:00:30   UNIT    ok    all zeros (got ok, 00 00 00 00 00)
+d1 00:00:30.037  up 0:00:30   UNIT    ok    interrupts back on after the read
+d1 00:00:35.042  up 0:00:35   UNIT    ok    all zeros (got ok, 00 00 00 00 00)
+d1 00:00:35.042  up 0:00:35   UNIT    ok    interrupts back on after the read
+d1 00:00:40.046  up 0:00:40   UNIT    ok    all zeros (got ok, 00 00 00 00 00)
+d1 00:00:40.046  up 0:00:40   UNIT    ok    interrupts back on after the read
+d1 00:00:45.051  up 0:00:45   UNIT    ok    alternating bits (got ok, A5 5A 81 18 98)
+d1 00:00:45.051  up 0:00:45   UNIT    ok    interrupts back on after the read
+d1 00:00:50.056  up 0:00:50   UNIT    ok    alternating bits (got ok, A5 5A 81 18 98)
+d1 00:00:50.056  up 0:00:50   UNIT    ok    interrupts back on after the read
+d1 00:00:55.061  up 0:00:55   UNIT    ok    alternating bits (got ok, A5 5A 81 18 98)
+d1 00:00:55.061  up 0:00:55   UNIT    ok    interrupts back on after the read
+d1 00:01:00.063  up 0:01:00   UNIT    ok    unplugged: no response (got no response, 00 00 00 00 00)
+d1 00:01:00.063  up 0:01:00   UNIT    ok    interrupts back on after the read
+d1 00:01:05.064  up 0:01:05   UNIT    ok    unplugged: no response (got no response, 00 00 00 00 00)
+d1 00:01:05.064  up 0:01:05   UNIT    ok    interrupts back on after the read
+d1 00:01:10.065  up 0:01:10   UNIT    ok    unplugged: no response (got no response, 00 00 00 00 00)
+d1 00:01:10.065  up 0:01:10   UNIT    ok    interrupts back on after the read
+d1 00:01:15.066  up 0:01:15   UNIT    ok    line shorted low: no response (got no response, 00 00 00 00 00)
+d1 00:01:15.066  up 0:01:15   UNIT    ok    interrupts back on after the read
+d1 00:01:20.068  up 0:01:20   UNIT    ok    line shorted low: no response (got no response, 00 00 00 00 00)
+d1 00:01:20.068  up 0:01:20   UNIT    ok    interrupts back on after the read
+d1 00:01:25.069  up 0:01:25   UNIT    ok    line shorted low: no response (got no response, 00 00 00 00 00)
+d1 00:01:25.069  up 0:01:25   UNIT    ok    interrupts back on after the read
+d1 00:01:30.072  up 0:01:30   UNIT    ok    stops part way: data timeout (got data timeout, 00 00 00 00 00)
+d1 00:01:30.072  up 0:01:30   UNIT    ok    interrupts back on after the read
+d1 00:01:35.077  up 0:01:35   UNIT    ok    stops part way: data timeout (got data timeout, 00 00 00 00 00)
+d1 00:01:35.077  up 0:01:35   UNIT    ok    interrupts back on after the read
+d1 00:01:40.079  up 0:01:40   UNIT    ok    stops part way: data timeout (got data timeout, 00 00 00 00 00)
+d1 00:01:40.079  up 0:01:40   UNIT    ok    interrupts back on after the read
+d1 00:01:45.079  up 0:01:45   UNIT    ok    interrupts held off at most 4.95 ms
+d1 00:01:45.079  up 0:01:45   UNIT    ---- believable readings ----
+d1 00:00:00.000  up 0:00:00   UNIT    ok    an all-zero frame passes its checksum
+d1 00:00:00.000  up 0:00:00   UNIT    ok    but 32.0 F, 0.0 % is rejected
+d1 00:00:00.000  up 0:00:00   UNIT    ok    19.9 F is rejected
+d1 00:00:00.000  up 0:00:00   UNIT    ok    120.1 F is rejected
+d1 00:00:00.000  up 0:00:00   UNIT    ok    0.9 % humidity is rejected
+d1 00:00:00.000  up 0:00:00   UNIT    ok    20.0 F, 1.0 % is accepted, the first reading since boot
+d1 00:00:00.000  up 0:00:00   UNIT    ok    120.0 F is accepted, the first reading since boot
+d1 00:00:00.000  up 0:00:00   UNIT    ok    exactly 5 F up is accepted
+d1 00:00:00.000  up 0:00:00   UNIT    ok    exactly 5 F down is accepted
+d1 00:00:00.000  up 0:00:00   UNIT    ok    20 F low waits to be repeated
+d1 00:00:00.000  up 0:00:00   UNIT    ok    the next normal reading is accepted
+d1 00:00:00.000  up 0:00:00   UNIT    ok    and the jump is forgotten
+d1 00:00:00.000  up 0:00:00   UNIT    ok    another single jump waits again
+d1 00:00:00.000  up 0:00:00   UNIT    ok    a jump that repeats is real and accepted
+d1 00:00:00.000  up 0:00:00   UNIT    ok    up by 20 F waits
+d1 00:00:00.000  up 0:00:00   UNIT    ok    a different jump replaces it and waits
+d1 00:00:00.000  up 0:00:00   UNIT    ok    and is accepted when repeated
+d1 00:00:02.004  up 0:00:02   UNIT    ok    a rejected reading changes nothing and doesn't count as valid
+d1 00:00:02.004  up 0:00:02   FW      DHT22 read failed: unconfirmed jump
+d1 00:00:02.004  up 0:00:02   UNIT    ok    it is counted and logged as a failed read
+d1 00:00:07.004  up 0:00:07   UNIT    ok    accepted when repeated
+d1 00:00:07.004  up 0:00:07   UNIT    ---- DHT22 read schedule ----
+d1 00:00:01.999  up 0:00:01   UNIT    ok    no read before the sensor's 2 s power-up time
+d1 00:00:02.004  up 0:00:02   UNIT    ok    first read 2 s after boot
+d1 00:00:02.004  up 0:00:02   UNIT    ok    the reading is the room's 70 F (got 699 tenths)
+d1 00:00:06.999  up 0:00:06   UNIT    ok    no read within 5 s of the last
+d1 00:00:07.004  up 0:00:07   UNIT    ok    next read 5 s later
+d1 00:00:22.001  up 0:00:22   UNIT    ok    failed reads counted (3 failed, 3 in a row)
+d1 00:00:22.001  up 0:00:22   FW      DHT22 read failed: no response
+d1 00:00:22.001  up 0:00:22   UNIT    ok    a run of failures is logged once
+d1 00:00:22.001  up 0:00:22   UNIT    ok    the last good reading's time is kept
+d1 00:00:27.004  up 0:00:27   UNIT    ok    a good read clears the failure run
+d1 00:00:27.004  up 0:00:27   UNIT    ---- sensor states ----
+d1 00:00:00.000  up 0:00:00   UNIT    ok    starting until 60 s
+d1 00:00:00.000  up 0:00:00   UNIT    ok    startup lockout at 60 s without a reading
+d1 00:00:00.000  up 0:00:00   UNIT    ok    mode off: still locked out at 10 min
+d1 00:00:00.000  up 0:00:00   UNIT    ok    mode cool: still locked out at 10 min
+d1 00:00:00.000  up 0:00:00   UNIT    ok    mode heat: locked out until 10 min
+d1 00:00:00.000  up 0:00:00   UNIT    ok    mode heat: failed at 10 min, so the fallback runs
+d1 00:00:00.000  up 0:00:00   UNIT    ok    ok within 60 s of a reading
+d1 00:00:00.000  up 0:00:00   UNIT    ok    stale at 60 s
+d1 00:00:00.000  up 0:00:00   UNIT    ok    still stale at 9:59.999
+d1 00:00:00.000  up 0:00:00   UNIT    ok    failed at 10 min
+d1 00:01:00.000  up 0:01:00   FW      ERROR DHT22 not readable at startup (no response): HVAC locked out
+d1 00:01:00.000  up 0:01:00   UNIT    ok    lockout logged with the read result
+d1 00:01:00.000  up 0:01:00   UNIT    ok    the lockout holds every relay
+d1 00:01:00.000  up 0:01:00   FW      DHT22 reading: 70.0 F, 45.0 %, startup lockout cleared
+d1 00:01:00.000  up 0:01:00   UNIT    ok    lockout cleared
+d1 00:01:00.000  up 0:01:00   UNIT    ok    no hold once the sensor reads
+d1 00:01:00.000  up 0:01:00   FW      ERROR DHT22 no reading for 60s (bad checksum), heat/cool paused
+d1 00:01:00.000  up 0:01:00   UNIT    ok    stale logged
+d1 00:01:00.000  up 0:01:00   FW      ERROR DHT22 failed, no reading for 600s (bad checksum)
+d1 00:01:00.000  up 0:01:00   FW      ERROR DHT22 failed: cool mode switched off
+d1 00:01:00.000  up 0:01:00   UNIT    ok    failed logged
+d1 00:01:00.000  up 0:01:00   UNIT    ok    cool mode switched off and marked for saving
+d1 00:01:00.000  up 0:01:00   UNIT    ok    the shut-off is recorded in the settings
+d1 00:01:00.000  up 0:01:00   FW      ERROR DHT22 failed, no reading for 600s (bad checksum)
+d1 00:01:00.000  up 0:01:00   FW      ERROR DHT22 failed: heat running 25% (300s every 1200s)
+d1 00:01:00.000  up 0:01:00   UNIT    ok    heat stays on, on the 25 % fallback
+d1 00:01:00.000  up 0:01:00   FW      DHT22 reading again: 70.0 F, 45.0 %
+d1 00:01:00.000  up 0:01:00   UNIT    ok    recovery logged
+d1 00:01:00.000  up 0:01:00   UNIT    ---- display readings ----
+d1 00:00:00.000  up 0:00:00   UNIT    ok    71.3 F shows 71
+d1 00:00:00.000  up 0:00:00   UNIT    ok    71.5 F shows 72
+d1 00:00:00.000  up 0:00:00   UNIT    ok    -4.5 F shows -5
+d1 00:00:00.000  up 0:00:00   UNIT    ok    -4.4 F shows -4
+d1 00:00:00.000  up 0:00:00   UNIT    ok    a stale reading still shows
+d1 00:00:00.000  up 0:00:00   UNIT    ok    no temperature once the sensor has failed
+d1 00:00:00.000  up 0:00:00   UNIT    ok    no temperature in the startup lockout
+d1 00:00:00.000  up 0:00:00   UNIT    ok    valid and failed reads both count as samples
+d1 00:00:00.000  up 0:00:00   UNIT    ---- backlight log ----
+d1 00:01:49.750  up 0:01:49   UNIT    ok    nothing is logged during a drag
+d1 00:01:51.749  up 0:01:51   UNIT    ok    nothing is logged before the level settles
+d1 00:01:51.750  up 0:01:51   FW      http: default backlight set to 49
+d1 00:01:51.750  up 0:01:51   UNIT    ok    one entry with the final level once it has settled
+d1 00:02:51.749  up 0:02:51   UNIT    ok    no second entry within the minute
+d1 00:02:51.750  up 0:02:51   FW      http: default backlight set to 60
+d1 00:02:51.750  up 0:02:51   UNIT    ok    the settled level is logged when the minute is up
+d1 00:03:56.750  up 0:03:56   UNIT    ok    a level dragged back to the one logged writes nothing
+d1 00:00:00.000  up 0:00:00   UNIT    ---- run limits ----
+d1 00:00:00.000  up 0:00:00   HTTP    API server started on port 4000
+d1 00:00:00.000  up 0:00:00   UNIT    ok    W1 runs on inside its 1 h window
+d1 00:00:00.000  up 0:00:00   FW      ERROR heat: no temperature response for 3600s, resting 1800s
+d1 00:00:00.000  up 0:00:00   UNIT    ok    0.9 F in 1 h stops W1
+d1 00:00:00.000  up 0:00:00   UNIT    ok    W1 opens this pass
+d1 00:00:00.000  up 0:00:00   UNIT    ok    the stop lasts one pass
+d1 00:00:00.000  up 0:00:00   UNIT    ok    the rest holds a heat start
+d1 00:00:00.000  up 0:00:00   UNIT    ok    and a cool start
+d1 00:00:00.000  up 0:00:00   UNIT    ok    the rest's time left
+d1 01:16:41.000  up 1:16:41   UNIT    ok    the alarm shows in the status
+d1 01:16:41.000  up 1:16:41   UNIT    ok    the rest shows in the status
+d1 01:16:41.000  up 1:16:41   UNIT    ok    still resting until 30 min
+d1 01:16:41.000  up 1:16:41   UNIT    ok    the rest ends at 30 min, and the alarm stays
+d1 01:16:41.000  up 1:16:41   UNIT    ok    heat may start again
+d1 01:16:41.000  up 1:16:41   UNIT    ok    1.0 F warmer in a later run clears the alarm
+d1 00:00:00.000  up 0:00:00   UNIT    ok    W1 runs on just under 3 h while the room improves
+d1 00:00:00.000  up 0:00:00   FW      ERROR heat: run limit of 10800s reached, resting 1800s
+d1 00:00:00.000  up 0:00:00   UNIT    ok    W1 stops at 3 h
+d1 00:00:00.000  up 0:00:00   UNIT    ok    a hard cap isn't a no-response stop
+d1 00:00:00.000  up 0:00:00   UNIT    ok    Y1 runs on just under 6 h while the room improves
+d1 00:00:00.000  up 0:00:00   FW      ERROR cool: run limit of 21600s reached, resting 1800s
+d1 00:00:00.000  up 0:00:00   UNIT    ok    Y1 stops at 6 h
+d1 00:00:00.000  up 0:00:00   UNIT    ok    Y1 opens this pass, and G runs on
+d1 00:00:00.000  up 0:00:00   UNIT    ok    only fresh readings count towards no response
+d1 00:00:00.000  up 0:00:00   UNIT    ok    one stop counted
+d1 00:00:00.000  up 0:00:00   UNIT    ok    two stops counted
+d1 00:00:00.000  up 0:00:00   FW      ERROR heat: no temperature response for 3600s, resting 1800s
+d1 00:00:00.000  up 0:00:00   FW      ERROR heat: no temperature response for 3600s, resting 1800s
+d1 00:00:00.000  up 0:00:00   FW      ERROR heat: no temperature response for 3600s, resting 1800s
+d1 00:00:00.000  up 0:00:00   FW      ERROR reading frozen: heat running 25% until it moves
+d1 00:00:00.000  up 0:00:00   UNIT    ok    the third stop drops heat to 25 %
+d1 00:00:00.000  up 0:00:00   UNIT    ok    the fallback is active
+d1 00:00:00.000  up 0:00:00   UNIT    ok    5 min on from the rest's end
+d1 00:00:00.000  up 0:00:00   UNIT    ok    a stale sensor's rules take over
+d1 00:00:00.000  up 0:00:00   FW      reading moving again: heat back to normal control
+d1 00:00:00.000  up 0:00:00   UNIT    ok    1.0 F of movement ends it
+d1 00:00:00.000  up 0:00:00   UNIT    ok    the room drifting 1.0 F proves the sensor works, so the count resets
+d1 00:00:00.000  up 0:00:00   UNIT    ok    and it starts again from one
+d1 00:00:00.000  up 0:00:00   UNIT    ok    cool stays on through two stops
+d1 00:00:00.000  up 0:00:00   UNIT    ok    the third stop switches cool off and saves it
+d1 00:00:00.000  up 0:00:00   FW      ERROR heat: no temperature response for 3600s, resting 1800s
+d1 00:00:00.000  up 0:00:00   FW      ERROR heat: no temperature response for 3600s, resting 1800s
+d1 00:00:00.000  up 0:00:00   FW      ERROR heat: no temperature response for 3600s, resting 1800s
+d1 00:00:00.000  up 0:00:00   FW      ERROR cool: no temperature response for 7200s, resting 1800s
+d1 00:00:00.000  up 0:00:00   FW      ERROR cool: no temperature response for 7200s, resting 1800s
+d1 00:00:00.000  up 0:00:00   FW      ERROR cool: no temperature response for 7200s, resting 1800s
+d1 00:00:00.000  up 0:00:00   FW      ERROR reading frozen: cool mode switched off
+d1 00:00:00.000  up 0:00:00   UNIT    ok    logged with its cause
+d1 00:00:00.000  up 0:00:00   UNIT    ok    frozen before the mode is set
+d1 00:00:00.000  up 0:00:00   UNIT    ok    setting a mode clears the run limits
+d1 00:00:00.000  up 0:00:00   UNIT    ---- 25 % heat fallback ----
+d1 00:00:00.000  up 0:00:00   UNIT    ok    fallback at 600000 ms is on
+d1 00:00:00.000  up 0:00:00   UNIT    ok    fallback at 899999 ms is on
+d1 00:00:00.000  up 0:00:00   UNIT    ok    fallback at 900000 ms is off
+d1 00:00:00.000  up 0:00:00   UNIT    ok    fallback at 1799999 ms is off
+d1 00:00:00.000  up 0:00:00   UNIT    ok    fallback at 1800000 ms is on
+d1 00:00:00.000  up 0:00:00   UNIT    ok    fallback at 2099999 ms is on
+d1 00:00:00.000  up 0:00:00   UNIT    ok    fallback at 2100000 ms is off
+d1 00:00:00.000  up 0:00:00   UNIT    ok    fallback at 300000 ms is on
+d1 00:00:00.000  up 0:00:00   UNIT    ok    exactly 25 % on over 80 min (1200 of 4800 s)
+d1 00:00:00.000  up 0:00:00   UNIT    ok    fallback active: failed sensor in heat
+d1 00:00:00.000  up 0:00:00   UNIT    ok    no fallback in cool
+d1 00:00:00.000  up 0:00:00   UNIT    ok    no fallback while only stale
+d1 00:00:00.000  up 0:00:00   UNIT    ---- switching temperatures (1 F swing) ----
+d1 00:00:00.000  up 0:00:00   UNIT    ok    at 50 F heat runs 495-505, cool 495-505 tenths
+d1 00:00:00.000  up 0:00:00   UNIT    ok    at 70 F heat runs 695-705, cool 695-705 tenths
+d1 00:00:00.000  up 0:00:00   UNIT    ok    at 80 F heat runs 795-805, cool 795-805 tenths
+d1 00:10:00.000  up 0:10:00   UNIT    ok    heat starts at 69.5 F
+d1 00:10:00.000  up 0:10:00   UNIT    ok    no heat at 69.6 F
+d1 00:10:00.000  up 0:10:00   UNIT    ok    heat continues at 70.4 F
+d1 00:10:00.000  up 0:10:00   UNIT    ok    heat stops at 70.5 F
+d1 00:10:00.000  up 0:10:00   UNIT    ok    heat held at 70.5 F inside the furnace minimum on time
+d1 00:10:00.000  up 0:10:00   FW      ERROR heat: no temperature response for 3600s, resting 1800s
+d1 00:10:00.000  up 0:10:00   FW      ERROR heat: no temperature response for 3600s, resting 1800s
+d1 00:10:00.000  up 0:10:00   FW      ERROR heat: no temperature response for 3600s, resting 1800s
+d1 00:10:00.000  up 0:10:00   FW      ERROR reading frozen: heat running 25% until it moves
+d1 00:10:00.000  up 0:10:00   FW      http: hvac mode set to 1 (heat)
+d1 00:10:00.000  up 0:10:00   FW      heat setpoint reached, held for furnace minimum on time, 120s left
+d1 00:10:00.000  up 0:10:00   UNIT    ok    the hold is logged
+d1 00:10:00.000  up 0:10:00   UNIT    ok    cool starts at 70.5 F
+d1 00:10:00.000  up 0:10:00   UNIT    ok    no cool at 70.4 F
+d1 00:10:00.000  up 0:10:00   UNIT    ok    cool continues at 69.6 F
+d1 00:10:00.000  up 0:10:00   UNIT    ok    cool stops at 69.5 F and the blower may run on
+d1 00:10:00.000  up 0:10:00   UNIT    ---- start blockers ----
+d1 00:00:00.000  up 0:00:00   UNIT    ok    heat waits for the power-up delay
+d1 00:00:00.000  up 0:00:00   UNIT    ok    heat free at 5 min
+d1 00:00:00.000  up 0:00:00   UNIT    ok    cool waits for the power-up delay
+d1 00:00:00.000  up 0:00:00   UNIT    ok    cool free at 5 min
+d1 00:00:00.000  up 0:00:00   UNIT    ok    a relay hold comes first
+d1 00:00:00.000  up 0:00:00   UNIT    ok    heat waits for the first reading
+d1 00:00:00.000  up 0:00:00   UNIT    ok    cool waits for the first reading
+d1 00:00:00.000  up 0:00:00   UNIT    ok    heat waits out the dead band after cooling
+d1 00:00:00.000  up 0:00:00   UNIT    ok    dead band remaining 100 s
+d1 00:00:00.000  up 0:00:00   UNIT    ok    cool waits for the compressor off time
+d1 00:00:00.000  up 0:00:00   UNIT    ok    off time remaining 100 s
+d1 00:00:00.000  up 0:00:00   UNIT    ok    heat waits while cooling runs
+d1 00:00:00.000  up 0:00:00   UNIT    ok    full dead band after cooling
+d1 00:00:00.000  up 0:00:00   UNIT    ok    cool waits out the dead band after heating
+d1 00:00:00.000  up 0:00:00   UNIT    ok    cool waits while heating runs
+d1 00:00:00.000  up 0:00:00   UNIT    ok    heat waits at 6 starts in the hour
+d1 00:00:00.000  up 0:00:00   UNIT    ok    cool waits at 4 starts in the hour
+d1 00:00:00.000  up 0:00:00   UNIT    ok    until the first start is an hour old
+d1 00:10:00.000  up 0:10:00   FW      cool call waiting: starts per hour limit, 3300s left
+d1 00:10:00.000  up 0:10:00   UNIT    ok    a waiting call is logged once
+d1 00:10:00.000  up 0:10:00   UNIT    ---- starts per hour history ----
+d1 00:10:00.000  up 0:10:00   UNIT    ok    a full history drops its oldest start
+d1 00:10:00.000  up 0:10:00   UNIT    ok    starts an hour old are dropped (count 7)
+d1 00:10:00.000  up 0:10:00   UNIT    ok    4 of 7 starts: the 4th newest leaves the hour in 4 min (got 240000 ms)
+d1 00:10:00.000  up 0:10:00   UNIT    ok    below the limit nothing waits
+d1 00:10:00.000  up 0:10:00   UNIT    ---- final interlock ----
+d1 00:20:00.000  up 0:20:00   UNIT    ok    W1 + Y1 together: both held open
+d1 00:20:00.000  up 0:20:00   FW      ERROR interlock: W1 and Y1 requested together, both held open
+d1 00:20:00.000  up 0:20:00   UNIT    ok    the refusal is logged as an error
+d1 00:20:00.000  up 0:20:00   UNIT    ok    the same refusal is counted once
+d1 00:20:00.000  up 0:20:00   UNIT    ok    a good request clears it
+d1 00:20:00.000  up 0:20:00   UNIT    ok    Y1 without G: G closed with it
+d1 00:20:00.000  up 0:20:00   UNIT    ok    Y1 inside the compressor off time: refused
+d1 00:20:00.000  up 0:20:00   UNIT    ok    Y1 inside the dead band after heat: refused
+d1 00:20:00.000  up 0:20:00   UNIT    ok    W1 inside the dead band after cool: refused
+d1 00:20:00.000  up 0:20:00   UNIT    ok    W1 refused in the pass that opens Y1
+d1 00:20:00.000  up 0:20:00   UNIT    ok    a running compressor passes
+d1 00:20:00.000  up 0:20:00   UNIT    ok    Y1 refused while W1 is closed
+d1 00:20:00.000  up 0:20:00   UNIT    ---- relay switching order ----
+d1 00:00:00.000  up 0:00:00   GPIO    GP18 W1 (furnace heat call) mode OUTPUT: contact stays open | W1 open, Y1 open, G open
+d1 00:00:00.000  up 0:00:00   GPIO    GP18 W1 (furnace heat call) drive 12 mA
+d1 00:00:00.000  up 0:00:00   GPIO    GP18 W1 (furnace heat call) <- LOW: contact stays open | W1 open, Y1 open, G open
+d1 00:00:00.000  up 0:00:00   GPIO    GP17 Y1 (compressor) mode OUTPUT: contact stays open | W1 open, Y1 open, G open
+d1 00:00:00.000  up 0:00:00   GPIO    GP17 Y1 (compressor) drive 12 mA
+d1 00:00:00.000  up 0:00:00   GPIO    GP17 Y1 (compressor) <- LOW: contact stays open | W1 open, Y1 open, G open
+d1 00:00:00.000  up 0:00:00   GPIO    GP16 G (indoor blower) mode OUTPUT: contact stays open | W1 open, Y1 open, G open
+d1 00:00:00.000  up 0:00:00   GPIO    GP16 G (indoor blower) drive 12 mA
+d1 00:00:00.000  up 0:00:00   GPIO    GP16 G (indoor blower) <- LOW: contact stays open | W1 open, Y1 open, G open
+d1 00:00:00.000  up 0:00:00   UNIT    ok    initRelays opens every contact
+d1 00:00:00.000  up 0:00:00   UNIT    ok    initRelays sets every relay pin to 12 mA drive
+d1 00:20:00.000  up 0:20:00   GPIO    GP16 G (indoor blower) <- HIGH: contact closed | W1 open, Y1 open, G closed
+d1 00:20:00.000  up 0:20:00   GPIO    GP17 Y1 (compressor) <- HIGH: contact closed | W1 open, Y1 closed, G closed
+d1 00:20:00.000  up 0:20:00   UNIT    ok    cool start: G closes before Y1
+d1 00:20:00.000  up 0:20:00   FW      ERROR interlock: Y1 requested without G, G closed
+d1 00:20:00.000  up 0:20:00   FW      ERROR interlock: Y1 start refused: compressor off time or dead band
+d1 00:20:00.000  up 0:20:00   FW      ERROR interlock: W1 start refused: dead band
+d1 00:20:00.000  up 0:20:00   FW      ERROR interlock: Y1 start refused: compressor off time or dead band
+d1 00:20:00.000  up 0:20:00   FW      cool on (G, Y1 closed): 70.0 F, setpoint 70 F
+d1 00:20:00.000  up 0:20:00   UNIT    ok    cool start logged
+d1 00:26:00.000  up 0:26:00   GPIO    GP17 Y1 (compressor) <- LOW: contact open | W1 open, Y1 open, G closed
+d1 00:26:00.000  up 0:26:00   GPIO    GP16 G (indoor blower) <- LOW: contact open | W1 open, Y1 open, G open
+d1 00:26:00.000  up 0:26:00   UNIT    ok    cool stop: Y1 opens before G
+d1 00:26:00.000  up 0:26:00   FW      cool off (Y1, G opened) after 360s: setpoint reached, 70.0 F
+d1 00:26:00.000  up 0:26:00   UNIT    ok    cool stop logged with its run time and reason
+d1 00:32:00.000  up 0:32:00   GPIO    GP18 W1 (furnace heat call) <- HIGH: contact closed | W1 closed, Y1 open, G open
+d1 00:36:00.000  up 0:36:00   GPIO    GP18 W1 (furnace heat call) <- LOW: contact open | W1 open, Y1 open, G open
+d1 00:36:00.000  up 0:36:00   GPIO    GP16 G (indoor blower) <- HIGH: contact closed | W1 open, Y1 open, G closed
+d1 00:36:00.000  up 0:36:00   UNIT    ok    contacts open before any closes
+d1 00:36:00.000  up 0:36:00   UNIT    ok    starts recorded
+d1 00:36:00.000  up 0:36:00   UNIT    ok    G alone is fan only
+d1 00:36:00.000  up 0:36:00   GPIO    GP17 Y1 (compressor) <- LOW: contact stays open | W1 open, Y1 open, G closed
+d1 00:36:00.000  up 0:36:00   GPIO    GP18 W1 (furnace heat call) <- LOW: contact stays open | W1 open, Y1 open, G closed
+d1 00:36:00.000  up 0:36:00   GPIO    GP16 G (indoor blower) <- LOW: contact open | W1 open, Y1 open, G open
+d1 00:36:00.000  up 0:36:00   UNIT    ok    openAllRelays opens every contact
+d1 00:36:00.000  up 0:36:00   UNIT    ---- fan (G) decision ----
+d1 00:00:00.000  up 0:00:00   UNIT    ok    G with every cool call
+d1 00:00:00.000  up 0:00:00   UNIT    ok    G open during the lockout
+d1 00:00:00.000  up 0:00:00   UNIT    ok    G closed in fan on
+d1 00:00:00.000  up 0:00:00   UNIT    ok    fan on with mode off: fan only
+d1 00:00:00.000  up 0:00:00   UNIT    ok    G runs on 30 s after a cool cycle
+d1 00:00:00.000  up 0:00:00   UNIT    ok    G runs on after a change to heat
+d1 00:00:00.000  up 0:00:00   UNIT    ok    off ends the run-on
+d1 00:00:00.000  up 0:00:00   UNIT    ok    run-on over at 60 s
+d1 00:00:00.000  up 0:00:00   UNIT    ok    run-on starts in the pass that opens Y1
+d1 00:00:00.000  up 0:00:00   UNIT    ok    no run-on after a safety stop
+d1 00:00:00.000  up 0:00:00   UNIT    ok    fan auto on heat: G open (the furnace runs its blower)
+d1 00:30:00.000  up 0:30:00   UNIT    ok    a cycle is still running during the blower run-on
+d1 00:30:00.000  up 0:30:00   UNIT    ok    the cycle is over once the run-on ends
+d1 00:30:00.000  up 0:30:00   UNIT    ok    fan on alone (no run-on) is not a cycle
+d1 00:30:00.000  up 0:30:00   UNIT    ok    W1 closed is a running cycle
+d1 00:30:00.000  up 0:30:00   UNIT    ok    Y1 closed is a running cycle
+d1 00:30:00.000  up 0:30:00   UNIT    ---- safety stops ----
+d1 00:30:00.000  up 0:30:00   UNIT    ok    a failed sensor stops Y1 at once, inside its minimum, without run-on
+d1 00:30:00.000  up 0:30:00   UNIT    ok    no cool start with a failed sensor
+d1 00:30:00.000  up 0:30:00   UNIT    ok    off stops Y1 at once
+d1 00:30:00.000  up 0:30:00   UNIT    ok    a change to heat waits for the compressor minimum
+d1 00:30:00.000  up 0:30:00   UNIT    ok    the lockout stops Y1
+d1 00:30:00.000  up 0:30:00   UNIT    ok    the lockout stops W1
+d1 00:30:00.000  up 0:30:00   UNIT    ok    off stops W1 at once
+d1 00:30:00.000  up 0:30:00   UNIT    ok    a change to cool waits for the furnace minimum
+d1 00:30:00.000  up 0:30:00   UNIT    ok    a failed sensor switches cool mode off
+d1 00:30:00.000  up 0:30:00   UNIT    ok    heat mode is left alone
+d1 00:30:00.000  up 0:30:00   UNIT    ---- stale sensor: nothing starts, running cycles stop after their minimum ----
+d1 00:30:00.000  up 0:30:00   UNIT    ok    heat start blocked while stale
+d1 00:30:00.000  up 0:30:00   UNIT    ok    no furnace start on an old reading
+d1 00:30:00.000  up 0:30:00   FW      heat on (W1 closed): 70.0 F, setpoint 70 F
+d1 00:30:00.000  up 0:30:00   FW      heat off (W1 opened) after 240s: , 70.0 F
+d1 00:30:00.000  up 0:30:00   FW      fan on (G closed): 
+d1 00:30:00.000  up 0:30:00   FW      cool mode changed, held for compressor minimum on time, 240s left
+d1 00:30:00.000  up 0:30:00   FW      heat mode changed, held for furnace minimum on time, 120s left
+d1 00:30:00.000  up 0:30:00   FW      ERROR DHT22 failed: cool mode switched off
+d1 00:30:00.000  up 0:30:00   FW      heat call waiting: sensor stale
+d1 00:30:00.000  up 0:30:00   UNIT    ok    the waiting call is logged
+d1 00:30:00.000  up 0:30:00   UNIT    ok    a running furnace finishes its minimum on time
+d1 00:30:00.000  up 0:30:00   FW      heat sensor stale, held for furnace minimum on time, 120s left
+d1 00:30:00.000  up 0:30:00   UNIT    ok    the hold is logged
+d1 00:30:00.000  up 0:30:00   UNIT    ok    then the furnace stops
+d1 00:30:00.000  up 0:30:00   UNIT    ok    cool start blocked while stale
+d1 00:30:00.000  up 0:30:00   UNIT    ok    no compressor start on an old reading
+d1 00:30:00.000  up 0:30:00   UNIT    ok    a running compressor finishes its minimum on time
+d1 00:30:00.000  up 0:30:00   UNIT    ok    then it stops, with the blower run-on
+d1 00:30:00.000  up 0:30:00   UNIT    ok    once failed, the 25 % fallback starts the furnace
+d1 00:30:00.000  up 0:30:00   UNIT    ---- status text (?10,0,0~ and ?11,0,0~) ----
+d1 00:00:00.000  up 0:00:00   HTTP    API server started on port 4000
+d1 00:30:00.000  up 0:30:00   UNIT    ok    failed in heat: fallback error
+d1 00:30:00.000  up 0:30:00   UNIT    ok    failed: time without a reading
+d1 00:30:00.000  up 0:30:00   UNIT    ok    failed in heat: setpoint not used
+d1 00:30:00.000  up 0:30:00   UNIT    ok    failed: temperature NA
+d1 00:30:00.000  up 0:30:00   UNIT    ok    ?11,0,0~ while failed (got "1~0~70~NA~NA~4~0~0~0~0")
+d1 00:30:00.000  up 0:30:00   UNIT    ok    failed in off: cool not allowed
+d1 00:30:00.000  up 0:30:00   UNIT    ok    lockout error
+d1 00:30:00.000  up 0:30:00   UNIT    ok    lockout: no reading since boot
+d1 00:30:00.000  up 0:30:00   UNIT    ok    stale: time to failure
+d1 00:30:00.000  up 0:30:00   UNIT    ok    stale: last reading shown
+d1 00:30:00.000  up 0:30:00   UNIT    ok    cool switching temperatures shown
+d1 00:30:00.000  up 0:30:00   UNIT    ok    heat switching temperatures shown
+d1 00:30:00.000  up 0:30:00   UNIT    ok    interlock overrides reported
+d1 00:30:00.000  up 0:30:00   UNIT    ok    the cool shut-off is reported
+d1 00:30:00.000  up 0:30:00   UNIT    ok    setting the mode clears it
+d1 00:30:00.000  up 0:30:00   UNIT    ---- names ----
+d1 00:30:00.000  up 0:30:00   UNIT    ok    sensor state 0 is "ok"
+d1 00:30:00.000  up 0:30:00   UNIT    ok    sensor state 1 is "starting"
+d1 00:30:00.000  up 0:30:00   UNIT    ok    sensor state 2 is "startup lockout"
+d1 00:30:00.000  up 0:30:00   UNIT    ok    sensor state 3 is "stale"
+d1 00:30:00.000  up 0:30:00   UNIT    ok    sensor state 4 is "failed"
+d1 00:30:00.000  up 0:30:00   UNIT    ok    an unknown sensor state is "unknown"
+d1 00:30:00.000  up 0:30:00   UNIT    ok    running state 0 is "idle"
+d1 00:30:00.000  up 0:30:00   UNIT    ok    running state 1 is "heating"
+d1 00:30:00.000  up 0:30:00   UNIT    ok    running state 2 is "cooling"
+d1 00:30:00.000  up 0:30:00   UNIT    ok    running state 3 is "fan only"
+d1 00:30:00.000  up 0:30:00   UNIT    ok    DHT result names
+d1 00:30:00.000  up 0:30:00   UNIT    ok    blocker names
+d1 00:30:00.000  up 0:30:00   UNIT    ok    the stale blocker's name
+d1 00:30:00.000  up 0:30:00   UNIT    325 unit checks, 0 failed
+d1 00:30:00.000  power off    RUN     PASSED

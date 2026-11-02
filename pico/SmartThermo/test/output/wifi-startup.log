@@ -1,0 +1,870 @@
+d1 07:00:00.000  power off    RUN     SmartThermo host test: wifi-startup
+d1 07:00:00.000  power off    RUN     the first join fails after a power cut: retries every 15 s for 5 min, then every 2 min
+d1 07:00:00.000  power off    RUN     season winter, 1.00 h from 07:00, indoor 67.0 F at the start, seed 1, step 1000 ms
+d1 07:00:00.000  power off    RUN     trace: SENSOR every 1 DHT22 read(s) and every faulted one, GPIO every relay pin write, FW every firmware log line, API every request, WORLD every 15 min, DAY summaries
+d1 07:00:00.000  up 0:00:00   BOOT    boot 1 (first power-up, flash as prepared)
+d1 07:00:00.000  up 0:00:00   GPIO    GP18 W1 (furnace heat call) mode OUTPUT: contact stays open | W1 open, Y1 open, G open
+d1 07:00:00.000  up 0:00:00   GPIO    GP18 W1 (furnace heat call) drive 12 mA
+d1 07:00:00.000  up 0:00:00   GPIO    GP18 W1 (furnace heat call) <- LOW: contact stays open | W1 open, Y1 open, G open
+d1 07:00:00.000  up 0:00:00   GPIO    GP17 Y1 (compressor) mode OUTPUT: contact stays open | W1 open, Y1 open, G open
+d1 07:00:00.000  up 0:00:00   GPIO    GP17 Y1 (compressor) drive 12 mA
+d1 07:00:00.000  up 0:00:00   GPIO    GP17 Y1 (compressor) <- LOW: contact stays open | W1 open, Y1 open, G open
+d1 07:00:00.000  up 0:00:00   GPIO    GP16 G (indoor blower) mode OUTPUT: contact stays open | W1 open, Y1 open, G open
+d1 07:00:00.000  up 0:00:00   GPIO    GP16 G (indoor blower) drive 12 mA
+d1 07:00:00.000  up 0:00:00   GPIO    GP16 G (indoor blower) <- LOW: contact stays open | W1 open, Y1 open, G open
+d1 07:00:00.000  up 0:00:00   EEPROM  commit: flash now holds mode 0, fan 0, setpoint 70 F (magic 5E70, firmware 3393CFA0)
+d1 07:00:00.000  up 0:00:00   WDOG    watchdog enabled, 8000 ms
+d1 07:00:00.000  up 0:00:00   WIFI    hostname SmartThermo
+d1 07:00:00.000  up 0:00:00   WIFI    join SimNetwork (attempt 1): access point found, address in 2.5 s
+d1 07:00:00.000  up 0:00:00   HTTP    API server started on port 4000
+d1 07:00:00.000  up 0:00:00   FW      SmartThermo started, relays open
+d1 07:00:00.000  up 0:00:00   FW      no settings from this firmware: EEPROM wiped, using defaults (off)
+d1 07:00:00.000  up 0:00:00   FW      heat and cool wait 300s after power-up
+d1 07:00:00.000  up 0:00:00   FW      connecting to Wi-Fi SimNetwork
+d1 07:00:02.004  up 0:00:02   FW      DHT22 reading: 67.1 F, 19.4 %
+d1 07:00:02.004  up 0:00:02   SENSOR  room air 67.00 F, at sensor 67.00 F, RH 20.1 % | DHT22 sent 00 C2 00 C3 85 (19.5 C, 19.4 %) | firmware: 67.1 F, 19.4 %, sensor ok
+d1 07:00:04.000  up 0:00:04   FW      Wi-Fi connected, IP 192.168.1.40, RSSI -61 dBm
+d1 07:00:07.004  up 0:00:07   SENSOR  room air 66.99 F, at sensor 67.00 F, RH 20.1 % | DHT22 sent 00 C7 00 C2 89 (19.4 C, 19.9 %) | firmware: 66.9 F, 19.9 %, sensor ok
+d1 07:00:12.004  up 0:00:12   SENSOR  room air 66.99 F, at sensor 67.00 F, RH 20.1 % | DHT22 sent 00 C8 00 C2 8A (19.4 C, 20.0 %) | firmware: 66.9 F, 20.0 %, sensor ok
+d1 07:00:17.004  up 0:00:17   SENSOR  room air 66.98 F, at sensor 67.00 F, RH 20.1 % | DHT22 sent 00 CC 00 C3 8F (19.5 C, 20.4 %) | firmware: 67.1 F, 20.4 %, sensor ok
+d1 07:00:22.004  up 0:00:22   SENSOR  room air 66.98 F, at sensor 67.00 F, RH 20.1 % | DHT22 sent 00 C5 00 C2 87 (19.4 C, 19.7 %) | firmware: 66.9 F, 19.7 %, sensor ok
+d1 07:00:27.004  up 0:00:27   SENSOR  room air 66.97 F, at sensor 67.00 F, RH 20.1 % | DHT22 sent 00 C4 00 C3 87 (19.5 C, 19.6 %) | firmware: 67.1 F, 19.6 %, sensor ok
+d1 07:00:32.004  up 0:00:32   SENSOR  room air 66.97 F, at sensor 66.99 F, RH 20.1 % | DHT22 sent 00 CE 00 C2 90 (19.4 C, 20.6 %) | firmware: 66.9 F, 20.6 %, sensor ok
+d1 07:00:37.004  up 0:00:37   SENSOR  room air 66.96 F, at sensor 66.99 F, RH 20.1 % | DHT22 sent 00 C7 00 C3 8A (19.5 C, 19.9 %) | firmware: 67.1 F, 19.9 %, sensor ok
+d1 07:00:42.004  up 0:00:42   SENSOR  room air 66.96 F, at sensor 66.99 F, RH 20.1 % | DHT22 sent 00 CA 00 C3 8D (19.5 C, 20.2 %) | firmware: 67.1 F, 20.2 %, sensor ok
+d1 07:00:47.004  up 0:00:47   SENSOR  room air 66.95 F, at sensor 66.99 F, RH 20.1 % | DHT22 sent 00 CA 00 C1 8B (19.3 C, 20.2 %) | firmware: 66.7 F, 20.2 %, sensor ok
+d1 07:00:52.004  up 0:00:52   SENSOR  room air 66.95 F, at sensor 66.99 F, RH 20.1 % | DHT22 sent 00 CD 00 C2 8F (19.4 C, 20.5 %) | firmware: 66.9 F, 20.5 %, sensor ok
+d1 07:00:57.004  up 0:00:57   SENSOR  room air 66.94 F, at sensor 66.99 F, RH 20.1 % | DHT22 sent 00 C8 00 C1 89 (19.3 C, 20.0 %) | firmware: 66.7 F, 20.0 %, sensor ok
+d1 07:01:02.004  up 0:01:02   SENSOR  room air 66.94 F, at sensor 66.98 F, RH 20.1 % | DHT22 sent 00 C5 00 C3 88 (19.5 C, 19.7 %) | firmware: 67.1 F, 19.7 %, sensor ok
+d1 07:01:07.004  up 0:01:07   SENSOR  room air 66.93 F, at sensor 66.98 F, RH 20.1 % | DHT22 sent 00 C7 00 C3 8A (19.5 C, 19.9 %) | firmware: 67.1 F, 19.9 %, sensor ok
+d1 07:01:12.004  up 0:01:12   SENSOR  room air 66.93 F, at sensor 66.98 F, RH 20.1 % | DHT22 sent 00 C7 00 C2 89 (19.4 C, 19.9 %) | firmware: 66.9 F, 19.9 %, sensor ok
+d1 07:01:17.004  up 0:01:17   SENSOR  room air 66.92 F, at sensor 66.97 F, RH 20.2 % | DHT22 sent 00 C9 00 C2 8B (19.4 C, 20.1 %) | firmware: 66.9 F, 20.1 %, sensor ok
+d1 07:01:22.004  up 0:01:22   SENSOR  room air 66.92 F, at sensor 66.97 F, RH 20.2 % | DHT22 sent 00 CA 00 C3 8D (19.5 C, 20.2 %) | firmware: 67.1 F, 20.2 %, sensor ok
+d1 07:01:27.004  up 0:01:27   SENSOR  room air 66.92 F, at sensor 66.97 F, RH 20.2 % | DHT22 sent 00 C4 00 C3 87 (19.5 C, 19.6 %) | firmware: 67.1 F, 19.6 %, sensor ok
+d1 07:01:32.004  up 0:01:32   SENSOR  room air 66.91 F, at sensor 66.97 F, RH 20.2 % | DHT22 sent 00 CC 00 C4 90 (19.6 C, 20.4 %) | firmware: 67.2 F, 20.4 %, sensor ok
+d1 07:01:37.004  up 0:01:37   SENSOR  room air 66.91 F, at sensor 66.96 F, RH 20.2 % | DHT22 sent 00 CC 00 C3 8F (19.5 C, 20.4 %) | firmware: 67.1 F, 20.4 %, sensor ok
+d1 07:01:42.004  up 0:01:42   SENSOR  room air 66.90 F, at sensor 66.96 F, RH 20.2 % | DHT22 sent 00 C9 00 C2 8B (19.4 C, 20.1 %) | firmware: 66.9 F, 20.1 %, sensor ok
+d1 07:01:47.004  up 0:01:47   SENSOR  room air 66.90 F, at sensor 66.96 F, RH 20.2 % | DHT22 sent 00 CE 00 C3 91 (19.5 C, 20.6 %) | firmware: 67.1 F, 20.6 %, sensor ok
+d1 07:01:52.004  up 0:01:52   SENSOR  room air 66.89 F, at sensor 66.95 F, RH 20.2 % | DHT22 sent 00 C9 00 C3 8C (19.5 C, 20.1 %) | firmware: 67.1 F, 20.1 %, sensor ok
+d1 07:01:57.004  up 0:01:57   SENSOR  room air 66.89 F, at sensor 66.95 F, RH 20.2 % | DHT22 sent 00 C7 00 C3 8A (19.5 C, 19.9 %) | firmware: 67.1 F, 19.9 %, sensor ok
+d1 07:02:02.004  up 0:02:02   SENSOR  room air 66.88 F, at sensor 66.95 F, RH 20.2 % | DHT22 sent 00 CD 00 C2 8F (19.4 C, 20.5 %) | firmware: 66.9 F, 20.5 %, sensor ok
+d1 07:02:07.004  up 0:02:07   SENSOR  room air 66.88 F, at sensor 66.94 F, RH 20.2 % | DHT22 sent 00 C5 00 C2 87 (19.4 C, 19.7 %) | firmware: 66.9 F, 19.7 %, sensor ok
+d1 07:02:12.004  up 0:02:12   SENSOR  room air 66.87 F, at sensor 66.94 F, RH 20.2 % | DHT22 sent 00 CC 00 C3 8F (19.5 C, 20.4 %) | firmware: 67.1 F, 20.4 %, sensor ok
+d1 07:02:17.004  up 0:02:17   SENSOR  room air 66.87 F, at sensor 66.93 F, RH 20.2 % | DHT22 sent 00 CA 00 C4 8E (19.6 C, 20.2 %) | firmware: 67.2 F, 20.2 %, sensor ok
+d1 07:02:22.004  up 0:02:22   SENSOR  room air 66.86 F, at sensor 66.93 F, RH 20.2 % | DHT22 sent 00 C9 00 C2 8B (19.4 C, 20.1 %) | firmware: 66.9 F, 20.1 %, sensor ok
+d1 07:02:27.004  up 0:02:27   SENSOR  room air 66.86 F, at sensor 66.93 F, RH 20.2 % | DHT22 sent 00 C4 00 C3 87 (19.5 C, 19.6 %) | firmware: 67.1 F, 19.6 %, sensor ok
+d1 07:02:32.004  up 0:02:32   SENSOR  room air 66.85 F, at sensor 66.92 F, RH 20.2 % | DHT22 sent 00 C7 00 C1 88 (19.3 C, 19.9 %) | firmware: 66.7 F, 19.9 %, sensor ok
+d1 07:02:37.004  up 0:02:37   SENSOR  room air 66.85 F, at sensor 66.92 F, RH 20.2 % | DHT22 sent 00 CB 00 C3 8E (19.5 C, 20.3 %) | firmware: 67.1 F, 20.3 %, sensor ok
+d1 07:02:42.004  up 0:02:42   SENSOR  room air 66.84 F, at sensor 66.92 F, RH 20.2 % | DHT22 sent 00 CA 00 C2 8C (19.4 C, 20.2 %) | firmware: 66.9 F, 20.2 %, sensor ok
+d1 07:02:47.004  up 0:02:47   SENSOR  room air 66.84 F, at sensor 66.91 F, RH 20.2 % | DHT22 sent 00 C5 00 C1 86 (19.3 C, 19.7 %) | firmware: 66.7 F, 19.7 %, sensor ok
+d1 07:02:52.004  up 0:02:52   SENSOR  room air 66.83 F, at sensor 66.91 F, RH 20.2 % | DHT22 sent 00 C7 00 C1 88 (19.3 C, 19.9 %) | firmware: 66.7 F, 19.9 %, sensor ok
+d1 07:02:57.004  up 0:02:57   SENSOR  room air 66.83 F, at sensor 66.90 F, RH 20.2 % | DHT22 sent 00 C7 00 C2 89 (19.4 C, 19.9 %) | firmware: 66.9 F, 19.9 %, sensor ok
+d1 07:03:02.004  up 0:03:02   SENSOR  room air 66.82 F, at sensor 66.90 F, RH 20.2 % | DHT22 sent 00 CA 00 C2 8C (19.4 C, 20.2 %) | firmware: 66.9 F, 20.2 %, sensor ok
+d1 07:03:07.004  up 0:03:07   SENSOR  room air 66.82 F, at sensor 66.89 F, RH 20.2 % | DHT22 sent 00 CD 00 C4 91 (19.6 C, 20.5 %) | firmware: 67.2 F, 20.5 %, sensor ok
+d1 07:03:12.004  up 0:03:12   SENSOR  room air 66.82 F, at sensor 66.89 F, RH 20.2 % | DHT22 sent 00 CC 00 C1 8D (19.3 C, 20.4 %) | firmware: 66.7 F, 20.4 %, sensor ok
+d1 07:03:17.004  up 0:03:17   SENSOR  room air 66.81 F, at sensor 66.89 F, RH 20.2 % | DHT22 sent 00 C5 00 C3 88 (19.5 C, 19.7 %) | firmware: 67.1 F, 19.7 %, sensor ok
+d1 07:03:22.004  up 0:03:22   SENSOR  room air 66.81 F, at sensor 66.88 F, RH 20.2 % | DHT22 sent 00 CA 00 C1 8B (19.3 C, 20.2 %) | firmware: 66.7 F, 20.2 %, sensor ok
+d1 07:03:27.004  up 0:03:27   SENSOR  room air 66.80 F, at sensor 66.88 F, RH 20.2 % | DHT22 sent 00 C9 00 C2 8B (19.4 C, 20.1 %) | firmware: 66.9 F, 20.1 %, sensor ok
+d1 07:03:32.004  up 0:03:32   SENSOR  room air 66.80 F, at sensor 66.87 F, RH 20.2 % | DHT22 sent 00 CA 00 C3 8D (19.5 C, 20.2 %) | firmware: 67.1 F, 20.2 %, sensor ok
+d1 07:03:37.004  up 0:03:37   SENSOR  room air 66.79 F, at sensor 66.87 F, RH 20.2 % | DHT22 sent 00 CC 00 C3 8F (19.5 C, 20.4 %) | firmware: 67.1 F, 20.4 %, sensor ok
+d1 07:03:42.004  up 0:03:42   SENSOR  room air 66.79 F, at sensor 66.86 F, RH 20.2 % | DHT22 sent 00 C8 00 C1 89 (19.3 C, 20.0 %) | firmware: 66.7 F, 20.0 %, sensor ok
+d1 07:03:47.004  up 0:03:47   SENSOR  room air 66.78 F, at sensor 66.86 F, RH 20.3 % | DHT22 sent 00 CA 00 C1 8B (19.3 C, 20.2 %) | firmware: 66.7 F, 20.2 %, sensor ok
+d1 07:03:52.004  up 0:03:52   SENSOR  room air 66.78 F, at sensor 66.86 F, RH 20.3 % | DHT22 sent 00 C7 00 C2 89 (19.4 C, 19.9 %) | firmware: 66.9 F, 19.9 %, sensor ok
+d1 07:03:57.004  up 0:03:57   SENSOR  room air 66.77 F, at sensor 66.85 F, RH 20.3 % | DHT22 sent 00 C4 00 C2 86 (19.4 C, 19.6 %) | firmware: 66.9 F, 19.6 %, sensor ok
+d1 07:04:02.004  up 0:04:02   SENSOR  room air 66.77 F, at sensor 66.85 F, RH 20.3 % | DHT22 sent 00 CD 00 C0 8D (19.2 C, 20.5 %) | firmware: 66.5 F, 20.5 %, sensor ok
+d1 07:04:07.004  up 0:04:07   SENSOR  room air 66.76 F, at sensor 66.84 F, RH 20.3 % | DHT22 sent 00 CD 00 C2 8F (19.4 C, 20.5 %) | firmware: 66.9 F, 20.5 %, sensor ok
+d1 07:04:12.004  up 0:04:12   SENSOR  room air 66.76 F, at sensor 66.84 F, RH 20.3 % | DHT22 sent 00 C6 00 C2 88 (19.4 C, 19.8 %) | firmware: 66.9 F, 19.8 %, sensor ok
+d1 07:04:17.004  up 0:04:17   SENSOR  room air 66.75 F, at sensor 66.83 F, RH 20.3 % | DHT22 sent 00 C8 00 C3 8B (19.5 C, 20.0 %) | firmware: 67.1 F, 20.0 %, sensor ok
+d1 07:04:22.004  up 0:04:22   SENSOR  room air 66.75 F, at sensor 66.83 F, RH 20.3 % | DHT22 sent 00 C7 00 C1 88 (19.3 C, 19.9 %) | firmware: 66.7 F, 19.9 %, sensor ok
+d1 07:04:27.004  up 0:04:27   SENSOR  room air 66.75 F, at sensor 66.83 F, RH 20.3 % | DHT22 sent 00 CB 00 C0 8B (19.2 C, 20.3 %) | firmware: 66.5 F, 20.3 %, sensor ok
+d1 07:04:32.004  up 0:04:32   SENSOR  room air 66.74 F, at sensor 66.82 F, RH 20.3 % | DHT22 sent 00 C6 00 C2 88 (19.4 C, 19.8 %) | firmware: 66.9 F, 19.8 %, sensor ok
+d1 07:04:37.004  up 0:04:37   SENSOR  room air 66.74 F, at sensor 66.82 F, RH 20.3 % | DHT22 sent 00 CE 00 C2 90 (19.4 C, 20.6 %) | firmware: 66.9 F, 20.6 %, sensor ok
+d1 07:04:42.004  up 0:04:42   SENSOR  room air 66.73 F, at sensor 66.81 F, RH 20.3 % | DHT22 sent 00 CA 00 C1 8B (19.3 C, 20.2 %) | firmware: 66.7 F, 20.2 %, sensor ok
+d1 07:04:47.004  up 0:04:47   SENSOR  room air 66.73 F, at sensor 66.81 F, RH 20.3 % | DHT22 sent 00 C8 00 C2 8A (19.4 C, 20.0 %) | firmware: 66.9 F, 20.0 %, sensor ok
+d1 07:04:52.004  up 0:04:52   SENSOR  room air 66.72 F, at sensor 66.80 F, RH 20.3 % | DHT22 sent 00 C6 00 C1 87 (19.3 C, 19.8 %) | firmware: 66.7 F, 19.8 %, sensor ok
+d1 07:04:57.004  up 0:04:57   SENSOR  room air 66.72 F, at sensor 66.80 F, RH 20.3 % | DHT22 sent 00 CA 00 C0 8A (19.2 C, 20.2 %) | firmware: 66.5 F, 20.2 %, sensor ok
+d1 07:05:02.004  up 0:05:02   SENSOR  room air 66.71 F, at sensor 66.79 F, RH 20.3 % | DHT22 sent 00 CD 00 C1 8E (19.3 C, 20.5 %) | firmware: 66.7 F, 20.5 %, sensor ok
+d1 07:05:07.004  up 0:05:07   SENSOR  room air 66.71 F, at sensor 66.79 F, RH 20.3 % | DHT22 sent 00 C9 00 C0 89 (19.2 C, 20.1 %) | firmware: 66.5 F, 20.1 %, sensor ok
+d1 07:05:12.004  up 0:05:12   SENSOR  room air 66.70 F, at sensor 66.78 F, RH 20.3 % | DHT22 sent 00 CA 00 C0 8A (19.2 C, 20.2 %) | firmware: 66.5 F, 20.2 %, sensor ok
+d1 07:05:17.004  up 0:05:17   SENSOR  room air 66.70 F, at sensor 66.78 F, RH 20.3 % | DHT22 sent 00 C6 00 C1 87 (19.3 C, 19.8 %) | firmware: 66.7 F, 19.8 %, sensor ok
+d1 07:05:22.004  up 0:05:22   SENSOR  room air 66.70 F, at sensor 66.78 F, RH 20.3 % | DHT22 sent 00 C7 00 C1 88 (19.3 C, 19.9 %) | firmware: 66.7 F, 19.9 %, sensor ok
+d1 07:05:27.004  up 0:05:27   SENSOR  room air 66.69 F, at sensor 66.77 F, RH 20.3 % | DHT22 sent 00 CB 00 C2 8D (19.4 C, 20.3 %) | firmware: 66.9 F, 20.3 %, sensor ok
+d1 07:05:32.004  up 0:05:32   SENSOR  room air 66.69 F, at sensor 66.77 F, RH 20.3 % | DHT22 sent 00 CF 00 C1 90 (19.3 C, 20.7 %) | firmware: 66.7 F, 20.7 %, sensor ok
+d1 07:05:37.004  up 0:05:37   SENSOR  room air 66.68 F, at sensor 66.76 F, RH 20.3 % | DHT22 sent 00 C8 00 C2 8A (19.4 C, 20.0 %) | firmware: 66.9 F, 20.0 %, sensor ok
+d1 07:05:42.004  up 0:05:42   SENSOR  room air 66.68 F, at sensor 66.76 F, RH 20.3 % | DHT22 sent 00 CA 00 C1 8B (19.3 C, 20.2 %) | firmware: 66.7 F, 20.2 %, sensor ok
+d1 07:05:47.004  up 0:05:47   SENSOR  room air 66.67 F, at sensor 66.75 F, RH 20.3 % | DHT22 sent 00 C6 00 C1 87 (19.3 C, 19.8 %) | firmware: 66.7 F, 19.8 %, sensor ok
+d1 07:05:52.004  up 0:05:52   SENSOR  room air 66.67 F, at sensor 66.75 F, RH 20.3 % | DHT22 sent 00 CA 00 C1 8B (19.3 C, 20.2 %) | firmware: 66.7 F, 20.2 %, sensor ok
+d1 07:05:57.004  up 0:05:57   SENSOR  room air 66.66 F, at sensor 66.74 F, RH 20.3 % | DHT22 sent 00 CE 00 C0 8E (19.2 C, 20.6 %) | firmware: 66.5 F, 20.6 %, sensor ok
+d1 07:06:02.004  up 0:06:02   SENSOR  room air 66.66 F, at sensor 66.74 F, RH 20.3 % | DHT22 sent 00 CD 00 C2 8F (19.4 C, 20.5 %) | firmware: 66.9 F, 20.5 %, sensor ok
+d1 07:06:07.005  up 0:06:07   SENSOR  room air 66.65 F, at sensor 66.74 F, RH 20.3 % | DHT22 sent 00 CE 00 BF 8D (19.1 C, 20.6 %) | firmware: 66.3 F, 20.6 %, sensor ok
+d1 07:06:12.004  up 0:06:12   SENSOR  room air 66.65 F, at sensor 66.73 F, RH 20.3 % | DHT22 sent 00 D2 00 C0 92 (19.2 C, 21.0 %) | firmware: 66.5 F, 21.0 %, sensor ok
+d1 07:06:17.004  up 0:06:17   SENSOR  room air 66.65 F, at sensor 66.73 F, RH 20.3 % | DHT22 sent 00 C9 00 C2 8B (19.4 C, 20.1 %) | firmware: 66.9 F, 20.1 %, sensor ok
+d1 07:06:22.004  up 0:06:22   SENSOR  room air 66.64 F, at sensor 66.72 F, RH 20.4 % | DHT22 sent 00 C9 00 C2 8B (19.4 C, 20.1 %) | firmware: 66.9 F, 20.1 %, sensor ok
+d1 07:06:27.004  up 0:06:27   SENSOR  room air 66.64 F, at sensor 66.72 F, RH 20.4 % | DHT22 sent 00 CB 00 C1 8C (19.3 C, 20.3 %) | firmware: 66.7 F, 20.3 %, sensor ok
+d1 07:06:32.004  up 0:06:32   SENSOR  room air 66.63 F, at sensor 66.71 F, RH 20.4 % | DHT22 sent 00 CA 00 C1 8B (19.3 C, 20.2 %) | firmware: 66.7 F, 20.2 %, sensor ok
+d1 07:06:37.004  up 0:06:37   SENSOR  room air 66.63 F, at sensor 66.71 F, RH 20.4 % | DHT22 sent 00 C9 00 C0 89 (19.2 C, 20.1 %) | firmware: 66.5 F, 20.1 %, sensor ok
+d1 07:06:42.004  up 0:06:42   SENSOR  room air 66.62 F, at sensor 66.70 F, RH 20.4 % | DHT22 sent 00 CD 00 C1 8E (19.3 C, 20.5 %) | firmware: 66.7 F, 20.5 %, sensor ok
+d1 07:06:47.004  up 0:06:47   SENSOR  room air 66.62 F, at sensor 66.70 F, RH 20.4 % | DHT22 sent 00 CC 00 C1 8D (19.3 C, 20.4 %) | firmware: 66.7 F, 20.4 %, sensor ok
+d1 07:06:52.004  up 0:06:52   SENSOR  room air 66.61 F, at sensor 66.69 F, RH 20.4 % | DHT22 sent 00 CA 00 C1 8B (19.3 C, 20.2 %) | firmware: 66.7 F, 20.2 %, sensor ok
+d1 07:06:57.004  up 0:06:57   SENSOR  room air 66.61 F, at sensor 66.69 F, RH 20.4 % | DHT22 sent 00 D1 00 C1 92 (19.3 C, 20.9 %) | firmware: 66.7 F, 20.9 %, sensor ok
+d1 07:07:02.004  up 0:07:02   SENSOR  room air 66.61 F, at sensor 66.69 F, RH 20.4 % | DHT22 sent 00 C6 00 C1 87 (19.3 C, 19.8 %) | firmware: 66.7 F, 19.8 %, sensor ok
+d1 07:07:07.004  up 0:07:07   SENSOR  room air 66.60 F, at sensor 66.68 F, RH 20.4 % | DHT22 sent 00 CB 00 C0 8B (19.2 C, 20.3 %) | firmware: 66.5 F, 20.3 %, sensor ok
+d1 07:07:12.004  up 0:07:12   SENSOR  room air 66.60 F, at sensor 66.68 F, RH 20.4 % | DHT22 sent 00 C9 00 C2 8B (19.4 C, 20.1 %) | firmware: 66.9 F, 20.1 %, sensor ok
+d1 07:07:17.004  up 0:07:17   SENSOR  room air 66.59 F, at sensor 66.67 F, RH 20.4 % | DHT22 sent 00 CC 00 C1 8D (19.3 C, 20.4 %) | firmware: 66.7 F, 20.4 %, sensor ok
+d1 07:07:22.004  up 0:07:22   SENSOR  room air 66.59 F, at sensor 66.67 F, RH 20.4 % | DHT22 sent 00 C9 00 C0 89 (19.2 C, 20.1 %) | firmware: 66.5 F, 20.1 %, sensor ok
+d1 07:07:27.004  up 0:07:27   SENSOR  room air 66.58 F, at sensor 66.66 F, RH 20.4 % | DHT22 sent 00 CB 00 C2 8D (19.4 C, 20.3 %) | firmware: 66.9 F, 20.3 %, sensor ok
+d1 07:07:32.004  up 0:07:32   SENSOR  room air 66.58 F, at sensor 66.66 F, RH 20.4 % | DHT22 sent 00 C8 00 C2 8A (19.4 C, 20.0 %) | firmware: 66.9 F, 20.0 %, sensor ok
+d1 07:07:37.004  up 0:07:37   SENSOR  room air 66.57 F, at sensor 66.65 F, RH 20.4 % | DHT22 sent 00 CC 00 C0 8C (19.2 C, 20.4 %) | firmware: 66.5 F, 20.4 %, sensor ok
+d1 07:07:42.004  up 0:07:42   SENSOR  room air 66.57 F, at sensor 66.65 F, RH 20.4 % | DHT22 sent 00 D0 00 C1 91 (19.3 C, 20.8 %) | firmware: 66.7 F, 20.8 %, sensor ok
+d1 07:07:47.004  up 0:07:47   SENSOR  room air 66.57 F, at sensor 66.65 F, RH 20.4 % | DHT22 sent 00 CF 00 C0 8F (19.2 C, 20.7 %) | firmware: 66.5 F, 20.7 %, sensor ok
+d1 07:07:52.004  up 0:07:52   SENSOR  room air 66.56 F, at sensor 66.64 F, RH 20.4 % | DHT22 sent 00 D1 00 C1 92 (19.3 C, 20.9 %) | firmware: 66.7 F, 20.9 %, sensor ok
+d1 07:07:57.005  up 0:07:57   SENSOR  room air 66.56 F, at sensor 66.64 F, RH 20.4 % | DHT22 sent 00 CC 00 BF 8B (19.1 C, 20.4 %) | firmware: 66.3 F, 20.4 %, sensor ok
+d1 07:08:02.004  up 0:08:02   SENSOR  room air 66.55 F, at sensor 66.63 F, RH 20.4 % | DHT22 sent 00 C8 00 C0 88 (19.2 C, 20.0 %) | firmware: 66.5 F, 20.0 %, sensor ok
+d1 07:08:07.004  up 0:08:07   SENSOR  room air 66.55 F, at sensor 66.63 F, RH 20.4 % | DHT22 sent 00 CC 00 C0 8C (19.2 C, 20.4 %) | firmware: 66.5 F, 20.4 %, sensor ok
+d1 07:08:12.004  up 0:08:12   SENSOR  room air 66.54 F, at sensor 66.62 F, RH 20.4 % | DHT22 sent 00 CC 00 C0 8C (19.2 C, 20.4 %) | firmware: 66.5 F, 20.4 %, sensor ok
+d1 07:08:17.004  up 0:08:17   SENSOR  room air 66.54 F, at sensor 66.62 F, RH 20.4 % | DHT22 sent 00 D0 00 C0 90 (19.2 C, 20.8 %) | firmware: 66.5 F, 20.8 %, sensor ok
+d1 07:08:22.004  up 0:08:22   SENSOR  room air 66.54 F, at sensor 66.61 F, RH 20.4 % | DHT22 sent 00 CF 00 C2 91 (19.4 C, 20.7 %) | firmware: 66.9 F, 20.7 %, sensor ok
+d1 07:08:27.005  up 0:08:27   SENSOR  room air 66.53 F, at sensor 66.61 F, RH 20.4 % | DHT22 sent 00 CE 00 BF 8D (19.1 C, 20.6 %) | firmware: 66.3 F, 20.6 %, sensor ok
+d1 07:08:32.004  up 0:08:32   SENSOR  room air 66.53 F, at sensor 66.61 F, RH 20.4 % | DHT22 sent 00 CC 00 C1 8D (19.3 C, 20.4 %) | firmware: 66.7 F, 20.4 %, sensor ok
+d1 07:08:37.004  up 0:08:37   SENSOR  room air 66.52 F, at sensor 66.60 F, RH 20.4 % | DHT22 sent 00 CB 00 C0 8B (19.2 C, 20.3 %) | firmware: 66.5 F, 20.3 %, sensor ok
+d1 07:08:42.004  up 0:08:42   SENSOR  room air 66.52 F, at sensor 66.60 F, RH 20.4 % | DHT22 sent 00 CD 00 C1 8E (19.3 C, 20.5 %) | firmware: 66.7 F, 20.5 %, sensor ok
+d1 07:08:47.004  up 0:08:47   SENSOR  room air 66.51 F, at sensor 66.59 F, RH 20.4 % | DHT22 sent 00 CC 00 C1 8D (19.3 C, 20.4 %) | firmware: 66.7 F, 20.4 %, sensor ok
+d1 07:08:52.004  up 0:08:52   SENSOR  room air 66.51 F, at sensor 66.59 F, RH 20.4 % | DHT22 sent 00 CD 00 C1 8E (19.3 C, 20.5 %) | firmware: 66.7 F, 20.5 %, sensor ok
+d1 07:08:57.004  up 0:08:57   SENSOR  room air 66.51 F, at sensor 66.58 F, RH 20.4 % | DHT22 sent 00 C9 00 C0 89 (19.2 C, 20.1 %) | firmware: 66.5 F, 20.1 %, sensor ok
+d1 07:09:02.004  up 0:09:02   SENSOR  room air 66.50 F, at sensor 66.58 F, RH 20.4 % | DHT22 sent 00 D1 00 C1 92 (19.3 C, 20.9 %) | firmware: 66.7 F, 20.9 %, sensor ok
+d1 07:09:07.004  up 0:09:07   SENSOR  room air 66.50 F, at sensor 66.58 F, RH 20.5 % | DHT22 sent 00 CD 00 C0 8D (19.2 C, 20.5 %) | firmware: 66.5 F, 20.5 %, sensor ok
+d1 07:09:12.004  up 0:09:12   SENSOR  room air 66.49 F, at sensor 66.57 F, RH 20.5 % | DHT22 sent 00 CA 00 C0 8A (19.2 C, 20.2 %) | firmware: 66.5 F, 20.2 %, sensor ok
+d1 07:09:17.004  up 0:09:17   SENSOR  room air 66.49 F, at sensor 66.57 F, RH 20.5 % | DHT22 sent 00 C7 00 C0 87 (19.2 C, 19.9 %) | firmware: 66.5 F, 19.9 %, sensor ok
+d1 07:09:22.005  up 0:09:22   SENSOR  room air 66.48 F, at sensor 66.56 F, RH 20.5 % | DHT22 sent 00 C6 00 BF 85 (19.1 C, 19.8 %) | firmware: 66.3 F, 19.8 %, sensor ok
+d1 07:09:27.004  up 0:09:27   SENSOR  room air 66.48 F, at sensor 66.56 F, RH 20.5 % | DHT22 sent 00 C9 00 C1 8A (19.3 C, 20.1 %) | firmware: 66.7 F, 20.1 %, sensor ok
+d1 07:09:32.004  up 0:09:32   SENSOR  room air 66.48 F, at sensor 66.55 F, RH 20.5 % | DHT22 sent 00 C8 00 C0 88 (19.2 C, 20.0 %) | firmware: 66.5 F, 20.0 %, sensor ok
+d1 07:09:37.005  up 0:09:37   SENSOR  room air 66.47 F, at sensor 66.55 F, RH 20.5 % | DHT22 sent 00 D3 00 BF 92 (19.1 C, 21.1 %) | firmware: 66.3 F, 21.1 %, sensor ok
+d1 07:09:42.004  up 0:09:42   SENSOR  room air 66.47 F, at sensor 66.54 F, RH 20.5 % | DHT22 sent 00 CB 00 C1 8C (19.3 C, 20.3 %) | firmware: 66.7 F, 20.3 %, sensor ok
+d1 07:09:47.004  up 0:09:47   SENSOR  room air 66.46 F, at sensor 66.54 F, RH 20.5 % | DHT22 sent 00 CE 00 C0 8E (19.2 C, 20.6 %) | firmware: 66.5 F, 20.6 %, sensor ok
+d1 07:09:52.004  up 0:09:52   SENSOR  room air 66.46 F, at sensor 66.54 F, RH 20.5 % | DHT22 sent 00 CA 00 C2 8C (19.4 C, 20.2 %) | firmware: 66.9 F, 20.2 %, sensor ok
+d1 07:09:57.004  up 0:09:57   SENSOR  room air 66.45 F, at sensor 66.53 F, RH 20.5 % | DHT22 sent 00 C9 00 C0 89 (19.2 C, 20.1 %) | firmware: 66.5 F, 20.1 %, sensor ok
+d1 07:10:00.000  up 0:10:00   EVENT   Wi-Fi access point DOWN
+d1 07:10:00.000  up 0:10:00   EVENT   POWER CUT for 0.50 min
+d1 07:10:00.000  up 0:10:00   RESET   POWER LOST: the Pico stops, every relay opens
+d1 07:10:30.000  up 0:00:00   BOOT    boot 2 (power restored)
+d1 07:10:30.000  up 0:00:00   GPIO    GP18 W1 (furnace heat call) mode OUTPUT: contact stays open | W1 open, Y1 open, G open
+d1 07:10:30.000  up 0:00:00   GPIO    GP18 W1 (furnace heat call) drive 12 mA
+d1 07:10:30.000  up 0:00:00   GPIO    GP18 W1 (furnace heat call) <- LOW: contact stays open | W1 open, Y1 open, G open
+d1 07:10:30.000  up 0:00:00   GPIO    GP17 Y1 (compressor) mode OUTPUT: contact stays open | W1 open, Y1 open, G open
+d1 07:10:30.000  up 0:00:00   GPIO    GP17 Y1 (compressor) drive 12 mA
+d1 07:10:30.000  up 0:00:00   GPIO    GP17 Y1 (compressor) <- LOW: contact stays open | W1 open, Y1 open, G open
+d1 07:10:30.000  up 0:00:00   GPIO    GP16 G (indoor blower) mode OUTPUT: contact stays open | W1 open, Y1 open, G open
+d1 07:10:30.000  up 0:00:00   GPIO    GP16 G (indoor blower) drive 12 mA
+d1 07:10:30.000  up 0:00:00   GPIO    GP16 G (indoor blower) <- LOW: contact stays open | W1 open, Y1 open, G open
+d1 07:10:30.000  up 0:00:00   WDOG    watchdog enabled, 8000 ms
+d1 07:10:30.000  up 0:00:00   WIFI    hostname SmartThermo
+d1 07:10:30.000  up 0:00:00   WIFI    join SimNetwork (attempt 2): no access point, gave up after 5000 ms (core 0 blocked, core 1 runs on)
+d1 07:10:30.000  up 0:00:00   HTTP    API server started on port 4000
+d1 07:10:30.000  up 0:00:00   FW      SmartThermo started, relays open
+d1 07:10:30.000  up 0:00:00   FW      settings restored: mode off, fan auto, setpoint 70 F
+d1 07:10:30.000  up 0:00:00   FW      heat and cool wait 300s after power-up
+d1 07:10:30.000  up 0:00:00   FW      connecting to Wi-Fi SimNetwork
+d1 07:10:32.005  up 0:00:02   FW      DHT22 reading: 66.3 F, 20.4 %
+d1 07:10:32.005  up 0:00:02   SENSOR  room air 66.43 F, at sensor 66.50 F, RH 20.5 % | DHT22 sent 00 CC 00 BF 8B (19.1 C, 20.4 %) | firmware: 66.3 F, 20.4 %, sensor ok
+d1 07:10:37.005  up 0:00:07   SENSOR  room air 66.42 F, at sensor 66.50 F, RH 20.5 % | DHT22 sent 00 CB 00 BF 8A (19.1 C, 20.3 %) | firmware: 66.3 F, 20.3 %, sensor ok
+d1 07:10:42.004  up 0:00:12   SENSOR  room air 66.42 F, at sensor 66.49 F, RH 20.5 % | DHT22 sent 00 C9 00 C0 89 (19.2 C, 20.1 %) | firmware: 66.5 F, 20.1 %, sensor ok
+d1 07:10:45.000  up 0:00:15   WIFI    hostname SmartThermo
+d1 07:10:45.000  up 0:00:15   WIFI    join SimNetwork (attempt 3): no access point, gave up after 5000 ms (core 0 blocked, core 1 runs on)
+d1 07:10:45.000  up 0:00:15   FW      Wi-Fi not connected yet: retrying every 15s until 5 min after boot
+d1 07:10:47.004  up 0:00:17   SENSOR  room air 66.41 F, at sensor 66.49 F, RH 20.5 % | DHT22 sent 00 D4 00 C0 94 (19.2 C, 21.2 %) | firmware: 66.5 F, 21.2 %, sensor ok
+d1 07:10:52.004  up 0:00:22   SENSOR  room air 66.41 F, at sensor 66.48 F, RH 20.5 % | DHT22 sent 00 C8 00 BD 85 (18.9 C, 20.0 %) | firmware: 66.0 F, 20.0 %, sensor ok
+d1 07:10:57.004  up 0:00:27   SENSOR  room air 66.40 F, at sensor 66.48 F, RH 20.5 % | DHT22 sent 00 CA 00 BF 89 (19.1 C, 20.2 %) | firmware: 66.3 F, 20.2 %, sensor ok
+d1 07:11:00.000  up 0:00:30   EXPECT  ok: firmware logged "Wi-Fi not connected yet: retrying every 15s" (since minute 10.4)
+d1 07:11:00.000  up 0:00:30   EVENT   Wi-Fi access point back up
+d1 07:11:00.000  up 0:00:30   WIFI    hostname SmartThermo
+d1 07:11:00.000  up 0:00:30   WIFI    join SimNetwork (attempt 4): access point found, address in 2.5 s
+d1 07:11:02.005  up 0:00:32   SENSOR  room air 66.40 F, at sensor 66.48 F, RH 20.5 % | DHT22 sent 00 CD 00 BF 8C (19.1 C, 20.5 %) | firmware: 66.3 F, 20.5 %, sensor ok
+d1 07:11:04.000  up 0:00:34   FW      Wi-Fi connected, IP 192.168.1.40, RSSI -61 dBm
+d1 07:11:07.004  up 0:00:37   SENSOR  room air 66.40 F, at sensor 66.47 F, RH 20.5 % | DHT22 sent 00 C7 00 C1 88 (19.3 C, 19.9 %) | firmware: 66.7 F, 19.9 %, sensor ok
+d1 07:11:12.004  up 0:00:42   SENSOR  room air 66.39 F, at sensor 66.47 F, RH 20.5 % | DHT22 sent 00 CC 00 BE 8A (19.0 C, 20.4 %) | firmware: 66.2 F, 20.4 %, sensor ok
+d1 07:11:17.005  up 0:00:47   SENSOR  room air 66.39 F, at sensor 66.46 F, RH 20.5 % | DHT22 sent 00 CE 00 BF 8D (19.1 C, 20.6 %) | firmware: 66.3 F, 20.6 %, sensor ok
+d1 07:11:22.004  up 0:00:52   SENSOR  room air 66.38 F, at sensor 66.46 F, RH 20.5 % | DHT22 sent 00 CA 00 C1 8B (19.3 C, 20.2 %) | firmware: 66.7 F, 20.2 %, sensor ok
+d1 07:11:27.004  up 0:00:57   SENSOR  room air 66.38 F, at sensor 66.46 F, RH 20.5 % | DHT22 sent 00 D2 00 C0 92 (19.2 C, 21.0 %) | firmware: 66.5 F, 21.0 %, sensor ok
+d1 07:11:30.000  up 0:01:00   EXPECT  ok: firmware logged "Wi-Fi connected, IP 192.168.1.40" (since minute 10.9)
+d1 07:11:30.000  up 0:01:00   API     ?2,0,2~ -> 0
+d1 07:11:30.000  up 0:01:00   EXPECT  ok: ?2,0,2~ replies "0" (got "0")
+d1 07:11:30.000  up 0:01:00   EXPECT  ok: the quick attempts don't count towards the 10
+d1 07:11:32.005  up 0:01:02   SENSOR  room air 66.38 F, at sensor 66.45 F, RH 20.5 % | DHT22 sent 00 CC 00 BF 8B (19.1 C, 20.4 %) | firmware: 66.3 F, 20.4 %, sensor ok
+d1 07:11:37.004  up 0:01:07   SENSOR  room air 66.37 F, at sensor 66.45 F, RH 20.5 % | DHT22 sent 00 CC 00 C0 8C (19.2 C, 20.4 %) | firmware: 66.5 F, 20.4 %, sensor ok
+d1 07:11:42.005  up 0:01:12   SENSOR  room air 66.37 F, at sensor 66.44 F, RH 20.5 % | DHT22 sent 00 CB 00 BF 8A (19.1 C, 20.3 %) | firmware: 66.3 F, 20.3 %, sensor ok
+d1 07:11:47.005  up 0:01:17   SENSOR  room air 66.36 F, at sensor 66.44 F, RH 20.5 % | DHT22 sent 00 CD 00 BF 8C (19.1 C, 20.5 %) | firmware: 66.3 F, 20.5 %, sensor ok
+d1 07:11:52.004  up 0:01:22   SENSOR  room air 66.36 F, at sensor 66.43 F, RH 20.6 % | DHT22 sent 00 CF 00 C1 90 (19.3 C, 20.7 %) | firmware: 66.7 F, 20.7 %, sensor ok
+d1 07:11:57.004  up 0:01:27   SENSOR  room air 66.36 F, at sensor 66.43 F, RH 20.6 % | DHT22 sent 00 D1 00 C0 91 (19.2 C, 20.9 %) | firmware: 66.5 F, 20.9 %, sensor ok
+d1 07:12:02.005  up 0:01:32   SENSOR  room air 66.35 F, at sensor 66.43 F, RH 20.6 % | DHT22 sent 00 CD 00 BF 8C (19.1 C, 20.5 %) | firmware: 66.3 F, 20.5 %, sensor ok
+d1 07:12:07.005  up 0:01:37   SENSOR  room air 66.35 F, at sensor 66.42 F, RH 20.6 % | DHT22 sent 00 CB 00 BF 8A (19.1 C, 20.3 %) | firmware: 66.3 F, 20.3 %, sensor ok
+d1 07:12:12.004  up 0:01:42   SENSOR  room air 66.34 F, at sensor 66.42 F, RH 20.6 % | DHT22 sent 00 CA 00 BF 89 (19.1 C, 20.2 %) | firmware: 66.3 F, 20.2 %, sensor ok
+d1 07:12:17.005  up 0:01:47   SENSOR  room air 66.34 F, at sensor 66.41 F, RH 20.6 % | DHT22 sent 00 D0 00 BF 8F (19.1 C, 20.8 %) | firmware: 66.3 F, 20.8 %, sensor ok
+d1 07:12:22.004  up 0:01:52   SENSOR  room air 66.33 F, at sensor 66.41 F, RH 20.6 % | DHT22 sent 00 C9 00 C0 89 (19.2 C, 20.1 %) | firmware: 66.5 F, 20.1 %, sensor ok
+d1 07:12:27.005  up 0:01:57   SENSOR  room air 66.33 F, at sensor 66.41 F, RH 20.6 % | DHT22 sent 00 D0 00 BF 8F (19.1 C, 20.8 %) | firmware: 66.3 F, 20.8 %, sensor ok
+d1 07:12:32.005  up 0:02:02   SENSOR  room air 66.33 F, at sensor 66.40 F, RH 20.6 % | DHT22 sent 00 CD 00 BF 8C (19.1 C, 20.5 %) | firmware: 66.3 F, 20.5 %, sensor ok
+d1 07:12:37.005  up 0:02:07   SENSOR  room air 66.32 F, at sensor 66.40 F, RH 20.6 % | DHT22 sent 00 CC 00 BF 8B (19.1 C, 20.4 %) | firmware: 66.3 F, 20.4 %, sensor ok
+d1 07:12:42.004  up 0:02:12   SENSOR  room air 66.32 F, at sensor 66.39 F, RH 20.6 % | DHT22 sent 00 CD 00 C0 8D (19.2 C, 20.5 %) | firmware: 66.5 F, 20.5 %, sensor ok
+d1 07:12:47.005  up 0:02:17   SENSOR  room air 66.31 F, at sensor 66.39 F, RH 20.6 % | DHT22 sent 00 CF 00 BF 8E (19.1 C, 20.7 %) | firmware: 66.3 F, 20.7 %, sensor ok
+d1 07:12:52.005  up 0:02:22   SENSOR  room air 66.31 F, at sensor 66.38 F, RH 20.6 % | DHT22 sent 00 D0 00 BF 8F (19.1 C, 20.8 %) | firmware: 66.3 F, 20.8 %, sensor ok
+d1 07:12:57.004  up 0:02:27   SENSOR  room air 66.31 F, at sensor 66.38 F, RH 20.6 % | DHT22 sent 00 CA 00 C0 8A (19.2 C, 20.2 %) | firmware: 66.5 F, 20.2 %, sensor ok
+d1 07:13:02.004  up 0:02:32   SENSOR  room air 66.30 F, at sensor 66.38 F, RH 20.6 % | DHT22 sent 00 CA 00 C0 8A (19.2 C, 20.2 %) | firmware: 66.5 F, 20.2 %, sensor ok
+d1 07:13:07.005  up 0:02:37   SENSOR  room air 66.30 F, at sensor 66.37 F, RH 20.6 % | DHT22 sent 00 CC 00 BF 8B (19.1 C, 20.4 %) | firmware: 66.3 F, 20.4 %, sensor ok
+d1 07:13:12.004  up 0:02:42   SENSOR  room air 66.29 F, at sensor 66.37 F, RH 20.6 % | DHT22 sent 00 CC 00 C0 8C (19.2 C, 20.4 %) | firmware: 66.5 F, 20.4 %, sensor ok
+d1 07:13:17.004  up 0:02:47   SENSOR  room air 66.29 F, at sensor 66.36 F, RH 20.6 % | DHT22 sent 00 C9 00 BF 88 (19.1 C, 20.1 %) | firmware: 66.3 F, 20.1 %, sensor ok
+d1 07:13:22.005  up 0:02:52   SENSOR  room air 66.29 F, at sensor 66.36 F, RH 20.6 % | DHT22 sent 00 CF 00 BD 8C (18.9 C, 20.7 %) | firmware: 66.0 F, 20.7 %, sensor ok
+d1 07:13:27.004  up 0:02:57   SENSOR  room air 66.28 F, at sensor 66.36 F, RH 20.6 % | DHT22 sent 00 D1 00 BF 90 (19.1 C, 20.9 %) | firmware: 66.3 F, 20.9 %, sensor ok
+d1 07:13:32.005  up 0:03:02   SENSOR  room air 66.28 F, at sensor 66.35 F, RH 20.6 % | DHT22 sent 00 CF 00 BF 8E (19.1 C, 20.7 %) | firmware: 66.3 F, 20.7 %, sensor ok
+d1 07:13:37.005  up 0:03:07   SENSOR  room air 66.27 F, at sensor 66.35 F, RH 20.6 % | DHT22 sent 00 CD 00 BE 8B (19.0 C, 20.5 %) | firmware: 66.2 F, 20.5 %, sensor ok
+d1 07:13:42.004  up 0:03:12   SENSOR  room air 66.27 F, at sensor 66.34 F, RH 20.6 % | DHT22 sent 00 CA 00 BF 89 (19.1 C, 20.2 %) | firmware: 66.3 F, 20.2 %, sensor ok
+d1 07:13:47.004  up 0:03:17   SENSOR  room air 66.27 F, at sensor 66.34 F, RH 20.6 % | DHT22 sent 00 CA 00 C0 8A (19.2 C, 20.2 %) | firmware: 66.5 F, 20.2 %, sensor ok
+d1 07:13:52.004  up 0:03:22   SENSOR  room air 66.26 F, at sensor 66.34 F, RH 20.6 % | DHT22 sent 00 CC 00 BE 8A (19.0 C, 20.4 %) | firmware: 66.2 F, 20.4 %, sensor ok
+d1 07:13:57.005  up 0:03:27   SENSOR  room air 66.26 F, at sensor 66.33 F, RH 20.6 % | DHT22 sent 00 CD 00 BE 8B (19.0 C, 20.5 %) | firmware: 66.2 F, 20.5 %, sensor ok
+d1 07:14:02.005  up 0:03:32   SENSOR  room air 66.25 F, at sensor 66.33 F, RH 20.6 % | DHT22 sent 00 CC 00 BF 8B (19.1 C, 20.4 %) | firmware: 66.3 F, 20.4 %, sensor ok
+d1 07:14:07.004  up 0:03:37   SENSOR  room air 66.25 F, at sensor 66.32 F, RH 20.6 % | DHT22 sent 00 D3 00 BE 91 (19.0 C, 21.1 %) | firmware: 66.2 F, 21.1 %, sensor ok
+d1 07:14:12.004  up 0:03:42   SENSOR  room air 66.25 F, at sensor 66.32 F, RH 20.6 % | DHT22 sent 00 C9 00 BD 86 (18.9 C, 20.1 %) | firmware: 66.0 F, 20.1 %, sensor ok
+d1 07:14:17.005  up 0:03:47   SENSOR  room air 66.24 F, at sensor 66.32 F, RH 20.6 % | DHT22 sent 00 D3 00 BF 92 (19.1 C, 21.1 %) | firmware: 66.3 F, 21.1 %, sensor ok
+d1 07:14:22.005  up 0:03:52   SENSOR  room air 66.24 F, at sensor 66.31 F, RH 20.6 % | DHT22 sent 00 CF 00 BF 8E (19.1 C, 20.7 %) | firmware: 66.3 F, 20.7 %, sensor ok
+d1 07:14:27.004  up 0:03:57   SENSOR  room air 66.24 F, at sensor 66.31 F, RH 20.6 % | DHT22 sent 00 D0 00 BD 8D (18.9 C, 20.8 %) | firmware: 66.0 F, 20.8 %, sensor ok
+d1 07:14:32.005  up 0:04:02   SENSOR  room air 66.23 F, at sensor 66.30 F, RH 20.6 % | DHT22 sent 00 CE 00 BD 8B (18.9 C, 20.6 %) | firmware: 66.0 F, 20.6 %, sensor ok
+d1 07:14:37.004  up 0:04:07   SENSOR  room air 66.23 F, at sensor 66.30 F, RH 20.6 % | DHT22 sent 00 CE 00 BE 8C (19.0 C, 20.6 %) | firmware: 66.2 F, 20.6 %, sensor ok
+d1 07:14:42.005  up 0:04:12   SENSOR  room air 66.22 F, at sensor 66.30 F, RH 20.6 % | DHT22 sent 00 CC 00 BF 8B (19.1 C, 20.4 %) | firmware: 66.3 F, 20.4 %, sensor ok
+d1 07:14:47.004  up 0:04:17   SENSOR  room air 66.22 F, at sensor 66.29 F, RH 20.7 % | DHT22 sent 00 D1 00 BF 90 (19.1 C, 20.9 %) | firmware: 66.3 F, 20.9 %, sensor ok
+d1 07:14:52.004  up 0:04:22   SENSOR  room air 66.22 F, at sensor 66.29 F, RH 20.7 % | DHT22 sent 00 D2 00 BE 90 (19.0 C, 21.0 %) | firmware: 66.2 F, 21.0 %, sensor ok
+d1 07:14:57.005  up 0:04:27   SENSOR  room air 66.21 F, at sensor 66.28 F, RH 20.7 % | DHT22 sent 00 D2 00 BD 8F (18.9 C, 21.0 %) | firmware: 66.0 F, 21.0 %, sensor ok
+d1 07:15:00.000  up 0:04:30   WORLD   outdoor 22.1 F | indoor air 66.21 F, structure 66.96 F, at sensor 66.28 F, RH 20.7 % | mode off, fan auto, setpoint 70 F | W1 open, Y1 open, G open (idle) | sensor ok | furnace 0 %, coil 0 %
+d1 07:15:02.004  up 0:04:32   SENSOR  room air 66.21 F, at sensor 66.28 F, RH 20.7 % | DHT22 sent 00 CC 00 C0 8C (19.2 C, 20.4 %) | firmware: 66.5 F, 20.4 %, sensor ok
+d1 07:15:07.004  up 0:04:37   SENSOR  room air 66.20 F, at sensor 66.28 F, RH 20.7 % | DHT22 sent 00 CD 00 BD 8A (18.9 C, 20.5 %) | firmware: 66.0 F, 20.5 %, sensor ok
+d1 07:15:12.004  up 0:04:42   SENSOR  room air 66.20 F, at sensor 66.27 F, RH 20.7 % | DHT22 sent 00 D4 00 BE 92 (19.0 C, 21.2 %) | firmware: 66.2 F, 21.2 %, sensor ok
+d1 07:15:17.005  up 0:04:47   SENSOR  room air 66.20 F, at sensor 66.27 F, RH 20.7 % | DHT22 sent 00 CD 00 BE 8B (19.0 C, 20.5 %) | firmware: 66.2 F, 20.5 %, sensor ok
+d1 07:15:22.004  up 0:04:52   SENSOR  room air 66.19 F, at sensor 66.26 F, RH 20.7 % | DHT22 sent 00 CE 00 C0 8E (19.2 C, 20.6 %) | firmware: 66.5 F, 20.6 %, sensor ok
+d1 07:15:27.004  up 0:04:57   SENSOR  room air 66.19 F, at sensor 66.26 F, RH 20.7 % | DHT22 sent 00 CE 00 BE 8C (19.0 C, 20.6 %) | firmware: 66.2 F, 20.6 %, sensor ok
+d1 07:15:32.004  up 0:05:02   SENSOR  room air 66.18 F, at sensor 66.26 F, RH 20.7 % | DHT22 sent 00 C8 00 BF 87 (19.1 C, 20.0 %) | firmware: 66.3 F, 20.0 %, sensor ok
+d1 07:15:37.005  up 0:05:07   SENSOR  room air 66.18 F, at sensor 66.25 F, RH 20.7 % | DHT22 sent 00 D2 00 BD 8F (18.9 C, 21.0 %) | firmware: 66.0 F, 21.0 %, sensor ok
+d1 07:15:42.004  up 0:05:12   SENSOR  room air 66.18 F, at sensor 66.25 F, RH 20.7 % | DHT22 sent 00 D0 00 BD 8D (18.9 C, 20.8 %) | firmware: 66.0 F, 20.8 %, sensor ok
+d1 07:15:47.005  up 0:05:17   SENSOR  room air 66.17 F, at sensor 66.24 F, RH 20.7 % | DHT22 sent 00 CB 00 BF 8A (19.1 C, 20.3 %) | firmware: 66.3 F, 20.3 %, sensor ok
+d1 07:15:52.005  up 0:05:22   SENSOR  room air 66.17 F, at sensor 66.24 F, RH 20.7 % | DHT22 sent 00 D4 00 BF 93 (19.1 C, 21.2 %) | firmware: 66.3 F, 21.2 %, sensor ok
+d1 07:15:57.004  up 0:05:27   SENSOR  room air 66.17 F, at sensor 66.24 F, RH 20.7 % | DHT22 sent 00 CC 00 BE 8A (19.0 C, 20.4 %) | firmware: 66.2 F, 20.4 %, sensor ok
+d1 07:16:02.005  up 0:05:32   SENSOR  room air 66.16 F, at sensor 66.23 F, RH 20.7 % | DHT22 sent 00 CE 00 BF 8D (19.1 C, 20.6 %) | firmware: 66.3 F, 20.6 %, sensor ok
+d1 07:16:07.005  up 0:05:37   SENSOR  room air 66.16 F, at sensor 66.23 F, RH 20.7 % | DHT22 sent 00 CD 00 BD 8A (18.9 C, 20.5 %) | firmware: 66.0 F, 20.5 %, sensor ok
+d1 07:16:12.005  up 0:05:42   SENSOR  room air 66.15 F, at sensor 66.22 F, RH 20.7 % | DHT22 sent 00 CF 00 BE 8D (19.0 C, 20.7 %) | firmware: 66.2 F, 20.7 %, sensor ok
+d1 07:16:17.005  up 0:05:47   SENSOR  room air 66.15 F, at sensor 66.22 F, RH 20.7 % | DHT22 sent 00 D1 00 BE 8F (19.0 C, 20.9 %) | firmware: 66.2 F, 20.9 %, sensor ok
+d1 07:16:22.005  up 0:05:52   SENSOR  room air 66.15 F, at sensor 66.22 F, RH 20.7 % | DHT22 sent 00 D1 00 BE 8F (19.0 C, 20.9 %) | firmware: 66.2 F, 20.9 %, sensor ok
+d1 07:16:27.004  up 0:05:57   SENSOR  room air 66.14 F, at sensor 66.21 F, RH 20.7 % | DHT22 sent 00 D4 00 BE 92 (19.0 C, 21.2 %) | firmware: 66.2 F, 21.2 %, sensor ok
+d1 07:16:32.004  up 0:06:02   SENSOR  room air 66.14 F, at sensor 66.21 F, RH 20.7 % | DHT22 sent 00 C7 00 BD 84 (18.9 C, 19.9 %) | firmware: 66.0 F, 19.9 %, sensor ok
+d1 07:16:37.004  up 0:06:07   SENSOR  room air 66.13 F, at sensor 66.20 F, RH 20.7 % | DHT22 sent 00 D2 00 C0 92 (19.2 C, 21.0 %) | firmware: 66.5 F, 21.0 %, sensor ok
+d1 07:16:42.004  up 0:06:12   SENSOR  room air 66.13 F, at sensor 66.20 F, RH 20.7 % | DHT22 sent 00 CC 00 BD 89 (18.9 C, 20.4 %) | firmware: 66.0 F, 20.4 %, sensor ok
+d1 07:16:47.005  up 0:06:17   SENSOR  room air 66.13 F, at sensor 66.20 F, RH 20.7 % | DHT22 sent 00 CE 00 BD 8B (18.9 C, 20.6 %) | firmware: 66.0 F, 20.6 %, sensor ok
+d1 07:16:52.005  up 0:06:22   SENSOR  room air 66.12 F, at sensor 66.19 F, RH 20.7 % | DHT22 sent 00 CB 00 BF 8A (19.1 C, 20.3 %) | firmware: 66.3 F, 20.3 %, sensor ok
+d1 07:16:57.004  up 0:06:27   SENSOR  room air 66.12 F, at sensor 66.19 F, RH 20.7 % | DHT22 sent 00 D0 00 BD 8D (18.9 C, 20.8 %) | firmware: 66.0 F, 20.8 %, sensor ok
+d1 07:17:02.005  up 0:06:32   SENSOR  room air 66.12 F, at sensor 66.19 F, RH 20.7 % | DHT22 sent 00 CD 00 BE 8B (19.0 C, 20.5 %) | firmware: 66.2 F, 20.5 %, sensor ok
+d1 07:17:07.004  up 0:06:37   SENSOR  room air 66.11 F, at sensor 66.18 F, RH 20.7 % | DHT22 sent 00 D6 00 BE 94 (19.0 C, 21.4 %) | firmware: 66.2 F, 21.4 %, sensor ok
+d1 07:17:12.004  up 0:06:42   SENSOR  room air 66.11 F, at sensor 66.18 F, RH 20.7 % | DHT22 sent 00 CE 00 BE 8C (19.0 C, 20.6 %) | firmware: 66.2 F, 20.6 %, sensor ok
+d1 07:17:17.005  up 0:06:47   SENSOR  room air 66.10 F, at sensor 66.17 F, RH 20.7 % | DHT22 sent 00 CC 00 BF 8B (19.1 C, 20.4 %) | firmware: 66.3 F, 20.4 %, sensor ok
+d1 07:17:22.004  up 0:06:52   SENSOR  room air 66.10 F, at sensor 66.17 F, RH 20.7 % | DHT22 sent 00 CD 00 BD 8A (18.9 C, 20.5 %) | firmware: 66.0 F, 20.5 %, sensor ok
+d1 07:17:27.004  up 0:06:57   SENSOR  room air 66.10 F, at sensor 66.17 F, RH 20.7 % | DHT22 sent 00 D0 00 BE 8E (19.0 C, 20.8 %) | firmware: 66.2 F, 20.8 %, sensor ok
+d1 07:17:32.005  up 0:07:02   SENSOR  room air 66.09 F, at sensor 66.16 F, RH 20.7 % | DHT22 sent 00 CE 00 BF 8D (19.1 C, 20.6 %) | firmware: 66.3 F, 20.6 %, sensor ok
+d1 07:17:37.005  up 0:07:07   SENSOR  room air 66.09 F, at sensor 66.16 F, RH 20.7 % | DHT22 sent 00 CF 00 BE 8D (19.0 C, 20.7 %) | firmware: 66.2 F, 20.7 %, sensor ok
+d1 07:17:42.005  up 0:07:12   SENSOR  room air 66.09 F, at sensor 66.15 F, RH 20.7 % | DHT22 sent 00 CE 00 BE 8C (19.0 C, 20.6 %) | firmware: 66.2 F, 20.6 %, sensor ok
+d1 07:17:47.005  up 0:07:17   SENSOR  room air 66.08 F, at sensor 66.15 F, RH 20.7 % | DHT22 sent 00 D2 00 BD 8F (18.9 C, 21.0 %) | firmware: 66.0 F, 21.0 %, sensor ok
+d1 07:17:52.004  up 0:07:22   SENSOR  room air 66.08 F, at sensor 66.15 F, RH 20.8 % | DHT22 sent 00 CD 00 BC 89 (18.8 C, 20.5 %) | firmware: 65.8 F, 20.5 %, sensor ok
+d1 07:17:57.004  up 0:07:27   SENSOR  room air 66.07 F, at sensor 66.14 F, RH 20.8 % | DHT22 sent 00 CB 00 BD 88 (18.9 C, 20.3 %) | firmware: 66.0 F, 20.3 %, sensor ok
+d1 07:18:02.005  up 0:07:32   SENSOR  room air 66.07 F, at sensor 66.14 F, RH 20.8 % | DHT22 sent 00 CD 00 BE 8B (19.0 C, 20.5 %) | firmware: 66.2 F, 20.5 %, sensor ok
+d1 07:18:07.005  up 0:07:37   SENSOR  room air 66.07 F, at sensor 66.14 F, RH 20.8 % | DHT22 sent 00 CF 00 BE 8D (19.0 C, 20.7 %) | firmware: 66.2 F, 20.7 %, sensor ok
+d1 07:18:12.004  up 0:07:42   SENSOR  room air 66.06 F, at sensor 66.13 F, RH 20.8 % | DHT22 sent 00 CE 00 BE 8C (19.0 C, 20.6 %) | firmware: 66.2 F, 20.6 %, sensor ok
+d1 07:18:17.004  up 0:07:47   SENSOR  room air 66.06 F, at sensor 66.13 F, RH 20.8 % | DHT22 sent 00 D0 00 BE 8E (19.0 C, 20.8 %) | firmware: 66.2 F, 20.8 %, sensor ok
+d1 07:18:22.005  up 0:07:52   SENSOR  room air 66.06 F, at sensor 66.12 F, RH 20.8 % | DHT22 sent 00 CE 00 BD 8B (18.9 C, 20.6 %) | firmware: 66.0 F, 20.6 %, sensor ok
+d1 07:18:27.004  up 0:07:57   SENSOR  room air 66.05 F, at sensor 66.12 F, RH 20.8 % | DHT22 sent 00 D0 00 BE 8E (19.0 C, 20.8 %) | firmware: 66.2 F, 20.8 %, sensor ok
+d1 07:18:32.004  up 0:08:02   SENSOR  room air 66.05 F, at sensor 66.12 F, RH 20.8 % | DHT22 sent 00 D4 00 BE 92 (19.0 C, 21.2 %) | firmware: 66.2 F, 21.2 %, sensor ok
+d1 07:18:37.005  up 0:08:07   SENSOR  room air 66.05 F, at sensor 66.11 F, RH 20.8 % | DHT22 sent 00 D6 00 BD 93 (18.9 C, 21.4 %) | firmware: 66.0 F, 21.4 %, sensor ok
+d1 07:18:42.004  up 0:08:12   SENSOR  room air 66.04 F, at sensor 66.11 F, RH 20.8 % | DHT22 sent 00 D0 00 BE 8E (19.0 C, 20.8 %) | firmware: 66.2 F, 20.8 %, sensor ok
+d1 07:18:47.004  up 0:08:17   SENSOR  room air 66.04 F, at sensor 66.11 F, RH 20.8 % | DHT22 sent 00 CE 00 BE 8C (19.0 C, 20.6 %) | firmware: 66.2 F, 20.6 %, sensor ok
+d1 07:18:52.005  up 0:08:22   SENSOR  room air 66.03 F, at sensor 66.10 F, RH 20.8 % | DHT22 sent 00 CF 00 BF 8E (19.1 C, 20.7 %) | firmware: 66.3 F, 20.7 %, sensor ok
+d1 07:18:57.004  up 0:08:27   SENSOR  room air 66.03 F, at sensor 66.10 F, RH 20.8 % | DHT22 sent 00 D3 00 BD 90 (18.9 C, 21.1 %) | firmware: 66.0 F, 21.1 %, sensor ok
+d1 07:19:02.004  up 0:08:32   SENSOR  room air 66.03 F, at sensor 66.09 F, RH 20.8 % | DHT22 sent 00 D0 00 BD 8D (18.9 C, 20.8 %) | firmware: 66.0 F, 20.8 %, sensor ok
+d1 07:19:07.004  up 0:08:37   SENSOR  room air 66.02 F, at sensor 66.09 F, RH 20.8 % | DHT22 sent 00 D4 00 BE 92 (19.0 C, 21.2 %) | firmware: 66.2 F, 21.2 %, sensor ok
+d1 07:19:12.004  up 0:08:42   SENSOR  room air 66.02 F, at sensor 66.09 F, RH 20.8 % | DHT22 sent 00 CE 00 BC 8A (18.8 C, 20.6 %) | firmware: 65.8 F, 20.6 %, sensor ok
+d1 07:19:17.004  up 0:08:47   SENSOR  room air 66.02 F, at sensor 66.08 F, RH 20.8 % | DHT22 sent 00 D0 00 BD 8D (18.9 C, 20.8 %) | firmware: 66.0 F, 20.8 %, sensor ok
+d1 07:19:22.004  up 0:08:52   SENSOR  room air 66.01 F, at sensor 66.08 F, RH 20.8 % | DHT22 sent 00 CB 00 BD 88 (18.9 C, 20.3 %) | firmware: 66.0 F, 20.3 %, sensor ok
+d1 07:19:27.005  up 0:08:57   SENSOR  room air 66.01 F, at sensor 66.08 F, RH 20.8 % | DHT22 sent 00 CF 00 BF 8E (19.1 C, 20.7 %) | firmware: 66.3 F, 20.7 %, sensor ok
+d1 07:19:32.005  up 0:09:02   SENSOR  room air 66.01 F, at sensor 66.07 F, RH 20.8 % | DHT22 sent 00 CF 00 BD 8C (18.9 C, 20.7 %) | firmware: 66.0 F, 20.7 %, sensor ok
+d1 07:19:37.005  up 0:09:07   SENSOR  room air 66.00 F, at sensor 66.07 F, RH 20.8 % | DHT22 sent 00 D6 00 BE 94 (19.0 C, 21.4 %) | firmware: 66.2 F, 21.4 %, sensor ok
+d1 07:19:42.004  up 0:09:12   SENSOR  room air 66.00 F, at sensor 66.06 F, RH 20.8 % | DHT22 sent 00 D1 00 BC 8D (18.8 C, 20.9 %) | firmware: 65.8 F, 20.9 %, sensor ok
+d1 07:19:47.005  up 0:09:17   SENSOR  room air 65.99 F, at sensor 66.06 F, RH 20.8 % | DHT22 sent 00 CD 00 BF 8C (19.1 C, 20.5 %) | firmware: 66.3 F, 20.5 %, sensor ok
+d1 07:19:52.004  up 0:09:22   SENSOR  room air 65.99 F, at sensor 66.06 F, RH 20.8 % | DHT22 sent 00 CD 00 BC 89 (18.8 C, 20.5 %) | firmware: 65.8 F, 20.5 %, sensor ok
+d1 07:19:57.004  up 0:09:27   SENSOR  room air 65.99 F, at sensor 66.05 F, RH 20.8 % | DHT22 sent 00 D1 00 BD 8E (18.9 C, 20.9 %) | firmware: 66.0 F, 20.9 %, sensor ok
+d1 07:20:00.000  up 0:09:30   EVENT   Wi-Fi access point DOWN
+d1 07:20:00.000  up 0:09:30   EVENT   POWER CUT for 0.50 min
+d1 07:20:00.000  up 0:09:30   RESET   POWER LOST: the Pico stops, every relay opens
+d1 07:20:30.000  up 0:00:00   BOOT    boot 3 (power restored)
+d1 07:20:30.000  up 0:00:00   GPIO    GP18 W1 (furnace heat call) mode OUTPUT: contact stays open | W1 open, Y1 open, G open
+d1 07:20:30.000  up 0:00:00   GPIO    GP18 W1 (furnace heat call) drive 12 mA
+d1 07:20:30.000  up 0:00:00   GPIO    GP18 W1 (furnace heat call) <- LOW: contact stays open | W1 open, Y1 open, G open
+d1 07:20:30.000  up 0:00:00   GPIO    GP17 Y1 (compressor) mode OUTPUT: contact stays open | W1 open, Y1 open, G open
+d1 07:20:30.000  up 0:00:00   GPIO    GP17 Y1 (compressor) drive 12 mA
+d1 07:20:30.000  up 0:00:00   GPIO    GP17 Y1 (compressor) <- LOW: contact stays open | W1 open, Y1 open, G open
+d1 07:20:30.000  up 0:00:00   GPIO    GP16 G (indoor blower) mode OUTPUT: contact stays open | W1 open, Y1 open, G open
+d1 07:20:30.000  up 0:00:00   GPIO    GP16 G (indoor blower) drive 12 mA
+d1 07:20:30.000  up 0:00:00   GPIO    GP16 G (indoor blower) <- LOW: contact stays open | W1 open, Y1 open, G open
+d1 07:20:30.000  up 0:00:00   WDOG    watchdog enabled, 8000 ms
+d1 07:20:30.000  up 0:00:00   WIFI    hostname SmartThermo
+d1 07:20:30.000  up 0:00:00   WIFI    join SimNetwork (attempt 5): no access point, gave up after 5000 ms (core 0 blocked, core 1 runs on)
+d1 07:20:30.000  up 0:00:00   HTTP    API server started on port 4000
+d1 07:20:30.000  up 0:00:00   FW      SmartThermo started, relays open
+d1 07:20:30.000  up 0:00:00   FW      settings restored: mode off, fan auto, setpoint 70 F
+d1 07:20:30.000  up 0:00:00   FW      heat and cool wait 300s after power-up
+d1 07:20:30.000  up 0:00:00   FW      connecting to Wi-Fi SimNetwork
+d1 07:20:32.005  up 0:00:02   FW      DHT22 reading: 66.3 F, 20.8 %
+d1 07:20:32.005  up 0:00:02   SENSOR  room air 65.96 F, at sensor 66.03 F, RH 20.8 % | DHT22 sent 00 D0 00 BF 8F (19.1 C, 20.8 %) | firmware: 66.3 F, 20.8 %, sensor ok
+d1 07:20:37.005  up 0:00:07   SENSOR  room air 65.96 F, at sensor 66.02 F, RH 20.8 % | DHT22 sent 00 CE 00 BD 8B (18.9 C, 20.6 %) | firmware: 66.0 F, 20.6 %, sensor ok
+d1 07:20:42.004  up 0:00:12   SENSOR  room air 65.96 F, at sensor 66.02 F, RH 20.8 % | DHT22 sent 00 CC 00 BE 8A (19.0 C, 20.4 %) | firmware: 66.2 F, 20.4 %, sensor ok
+d1 07:20:45.000  up 0:00:15   WIFI    hostname SmartThermo
+d1 07:20:45.000  up 0:00:15   WIFI    join SimNetwork (attempt 6): no access point, gave up after 5000 ms (core 0 blocked, core 1 runs on)
+d1 07:20:45.000  up 0:00:15   FW      Wi-Fi not connected yet: retrying every 15s until 5 min after boot
+d1 07:20:47.004  up 0:00:17   SENSOR  room air 65.95 F, at sensor 66.02 F, RH 20.8 % | DHT22 sent 00 CE 00 BC 8A (18.8 C, 20.6 %) | firmware: 65.8 F, 20.6 %, sensor ok
+d1 07:20:52.004  up 0:00:22   SENSOR  room air 65.95 F, at sensor 66.01 F, RH 20.8 % | DHT22 sent 00 D2 00 BB 8D (18.7 C, 21.0 %) | firmware: 65.6 F, 21.0 %, sensor ok
+d1 07:20:57.005  up 0:00:27   SENSOR  room air 65.94 F, at sensor 66.01 F, RH 20.8 % | DHT22 sent 00 CF 00 BE 8D (19.0 C, 20.7 %) | firmware: 66.2 F, 20.7 %, sensor ok
+d1 07:21:00.000  up 0:00:30   WIFI    hostname SmartThermo
+d1 07:21:00.000  up 0:00:30   WIFI    join SimNetwork (attempt 7): no access point, gave up after 5000 ms (core 0 blocked, core 1 runs on)
+d1 07:21:02.004  up 0:00:32   SENSOR  room air 65.94 F, at sensor 66.01 F, RH 20.9 % | DHT22 sent 00 D0 00 BD 8D (18.9 C, 20.8 %) | firmware: 66.0 F, 20.8 %, sensor ok
+d1 07:21:07.005  up 0:00:37   SENSOR  room air 65.94 F, at sensor 66.00 F, RH 20.9 % | DHT22 sent 00 CE 00 BE 8C (19.0 C, 20.6 %) | firmware: 66.2 F, 20.6 %, sensor ok
+d1 07:21:12.004  up 0:00:42   SENSOR  room air 65.93 F, at sensor 66.00 F, RH 20.9 % | DHT22 sent 00 CE 00 BC 8A (18.8 C, 20.6 %) | firmware: 65.8 F, 20.6 %, sensor ok
+d1 07:21:15.000  up 0:00:45   WIFI    hostname SmartThermo
+d1 07:21:15.000  up 0:00:45   WIFI    join SimNetwork (attempt 8): no access point, gave up after 5000 ms (core 0 blocked, core 1 runs on)
+d1 07:21:17.005  up 0:00:47   SENSOR  room air 65.93 F, at sensor 65.99 F, RH 20.9 % | DHT22 sent 00 CE 00 BD 8B (18.9 C, 20.6 %) | firmware: 66.0 F, 20.6 %, sensor ok
+d1 07:21:22.004  up 0:00:52   SENSOR  room air 65.93 F, at sensor 65.99 F, RH 20.9 % | DHT22 sent 00 D0 00 BC 8C (18.8 C, 20.8 %) | firmware: 65.8 F, 20.8 %, sensor ok
+d1 07:21:27.005  up 0:00:57   SENSOR  room air 65.92 F, at sensor 65.99 F, RH 20.9 % | DHT22 sent 00 CF 00 BC 8B (18.8 C, 20.7 %) | firmware: 65.8 F, 20.7 %, sensor ok
+d1 07:21:30.000  up 0:01:00   WIFI    hostname SmartThermo
+d1 07:21:30.000  up 0:01:00   WIFI    join SimNetwork (attempt 9): no access point, gave up after 5000 ms (core 0 blocked, core 1 runs on)
+d1 07:21:32.005  up 0:01:02   SENSOR  room air 65.92 F, at sensor 65.98 F, RH 20.9 % | DHT22 sent 00 D1 00 BD 8E (18.9 C, 20.9 %) | firmware: 66.0 F, 20.9 %, sensor ok
+d1 07:21:37.004  up 0:01:07   SENSOR  room air 65.92 F, at sensor 65.98 F, RH 20.9 % | DHT22 sent 00 D0 00 BE 8E (19.0 C, 20.8 %) | firmware: 66.2 F, 20.8 %, sensor ok
+d1 07:21:42.005  up 0:01:12   SENSOR  room air 65.91 F, at sensor 65.98 F, RH 20.9 % | DHT22 sent 00 CF 00 BD 8C (18.9 C, 20.7 %) | firmware: 66.0 F, 20.7 %, sensor ok
+d1 07:21:45.000  up 0:01:15   WIFI    hostname SmartThermo
+d1 07:21:45.000  up 0:01:15   WIFI    join SimNetwork (attempt 10): no access point, gave up after 5000 ms (core 0 blocked, core 1 runs on)
+d1 07:21:47.004  up 0:01:17   SENSOR  room air 65.91 F, at sensor 65.97 F, RH 20.9 % | DHT22 sent 00 CE 00 BC 8A (18.8 C, 20.6 %) | firmware: 65.8 F, 20.6 %, sensor ok
+d1 07:21:52.005  up 0:01:22   SENSOR  room air 65.91 F, at sensor 65.97 F, RH 20.9 % | DHT22 sent 00 D5 00 BE 93 (19.0 C, 21.3 %) | firmware: 66.2 F, 21.3 %, sensor ok
+d1 07:21:57.005  up 0:01:27   SENSOR  room air 65.90 F, at sensor 65.97 F, RH 20.9 % | DHT22 sent 00 D7 00 BC 93 (18.8 C, 21.5 %) | firmware: 65.8 F, 21.5 %, sensor ok
+d1 07:22:00.000  up 0:01:30   WIFI    hostname SmartThermo
+d1 07:22:00.000  up 0:01:30   WIFI    join SimNetwork (attempt 11): no access point, gave up after 5000 ms (core 0 blocked, core 1 runs on)
+d1 07:22:02.005  up 0:01:32   SENSOR  room air 65.90 F, at sensor 65.96 F, RH 20.9 % | DHT22 sent 00 CF 00 BC 8B (18.8 C, 20.7 %) | firmware: 65.8 F, 20.7 %, sensor ok
+d1 07:22:07.004  up 0:01:37   SENSOR  room air 65.90 F, at sensor 65.96 F, RH 20.9 % | DHT22 sent 00 D0 00 BC 8C (18.8 C, 20.8 %) | firmware: 65.8 F, 20.8 %, sensor ok
+d1 07:22:12.004  up 0:01:42   SENSOR  room air 65.89 F, at sensor 65.96 F, RH 20.9 % | DHT22 sent 00 D1 00 BD 8E (18.9 C, 20.9 %) | firmware: 66.0 F, 20.9 %, sensor ok
+d1 07:22:15.000  up 0:01:45   WIFI    hostname SmartThermo
+d1 07:22:15.000  up 0:01:45   WIFI    join SimNetwork (attempt 12): no access point, gave up after 5000 ms (core 0 blocked, core 1 runs on)
+d1 07:22:17.004  up 0:01:47   SENSOR  room air 65.89 F, at sensor 65.95 F, RH 20.9 % | DHT22 sent 00 CC 00 BB 87 (18.7 C, 20.4 %) | firmware: 65.6 F, 20.4 %, sensor ok
+d1 07:22:22.005  up 0:01:52   SENSOR  room air 65.88 F, at sensor 65.95 F, RH 20.9 % | DHT22 sent 00 D2 00 BD 8F (18.9 C, 21.0 %) | firmware: 66.0 F, 21.0 %, sensor ok
+d1 07:22:27.004  up 0:01:57   SENSOR  room air 65.88 F, at sensor 65.94 F, RH 20.9 % | DHT22 sent 00 CC 00 BD 89 (18.9 C, 20.4 %) | firmware: 66.0 F, 20.4 %, sensor ok
+d1 07:22:30.000  up 0:02:00   WIFI    hostname SmartThermo
+d1 07:22:30.000  up 0:02:00   WIFI    join SimNetwork (attempt 13): no access point, gave up after 5000 ms (core 0 blocked, core 1 runs on)
+d1 07:22:32.004  up 0:02:02   SENSOR  room air 65.88 F, at sensor 65.94 F, RH 20.9 % | DHT22 sent 00 D5 00 BC 91 (18.8 C, 21.3 %) | firmware: 65.8 F, 21.3 %, sensor ok
+d1 07:22:37.004  up 0:02:07   SENSOR  room air 65.87 F, at sensor 65.94 F, RH 20.9 % | DHT22 sent 00 CD 00 BC 89 (18.8 C, 20.5 %) | firmware: 65.8 F, 20.5 %, sensor ok
+d1 07:22:42.004  up 0:02:12   SENSOR  room air 65.87 F, at sensor 65.93 F, RH 20.9 % | DHT22 sent 00 D0 00 BD 8D (18.9 C, 20.8 %) | firmware: 66.0 F, 20.8 %, sensor ok
+d1 07:22:45.000  up 0:02:15   WIFI    hostname SmartThermo
+d1 07:22:45.000  up 0:02:15   WIFI    join SimNetwork (attempt 14): no access point, gave up after 5000 ms (core 0 blocked, core 1 runs on)
+d1 07:22:47.005  up 0:02:17   SENSOR  room air 65.87 F, at sensor 65.93 F, RH 20.9 % | DHT22 sent 00 CD 00 BE 8B (19.0 C, 20.5 %) | firmware: 66.2 F, 20.5 %, sensor ok
+d1 07:22:52.004  up 0:02:22   SENSOR  room air 65.86 F, at sensor 65.93 F, RH 20.9 % | DHT22 sent 00 D0 00 BC 8C (18.8 C, 20.8 %) | firmware: 65.8 F, 20.8 %, sensor ok
+d1 07:22:57.004  up 0:02:27   SENSOR  room air 65.86 F, at sensor 65.92 F, RH 20.9 % | DHT22 sent 00 D0 00 BC 8C (18.8 C, 20.8 %) | firmware: 65.8 F, 20.8 %, sensor ok
+d1 07:23:00.000  up 0:02:30   WIFI    hostname SmartThermo
+d1 07:23:00.000  up 0:02:30   WIFI    join SimNetwork (attempt 15): no access point, gave up after 5000 ms (core 0 blocked, core 1 runs on)
+d1 07:23:02.005  up 0:02:32   SENSOR  room air 65.86 F, at sensor 65.92 F, RH 20.9 % | DHT22 sent 00 D2 00 BD 8F (18.9 C, 21.0 %) | firmware: 66.0 F, 21.0 %, sensor ok
+d1 07:23:07.004  up 0:02:37   SENSOR  room air 65.85 F, at sensor 65.92 F, RH 20.9 % | DHT22 sent 00 D0 00 BC 8C (18.8 C, 20.8 %) | firmware: 65.8 F, 20.8 %, sensor ok
+d1 07:23:12.004  up 0:02:42   SENSOR  room air 65.85 F, at sensor 65.91 F, RH 20.9 % | DHT22 sent 00 D2 00 BC 8E (18.8 C, 21.0 %) | firmware: 65.8 F, 21.0 %, sensor ok
+d1 07:23:15.000  up 0:02:45   WIFI    hostname SmartThermo
+d1 07:23:15.000  up 0:02:45   WIFI    join SimNetwork (attempt 16): no access point, gave up after 5000 ms (core 0 blocked, core 1 runs on)
+d1 07:23:17.004  up 0:02:47   SENSOR  room air 65.85 F, at sensor 65.91 F, RH 20.9 % | DHT22 sent 00 D4 00 BC 90 (18.8 C, 21.2 %) | firmware: 65.8 F, 21.2 %, sensor ok
+d1 07:23:22.004  up 0:02:52   SENSOR  room air 65.84 F, at sensor 65.91 F, RH 20.9 % | DHT22 sent 00 CE 00 BC 8A (18.8 C, 20.6 %) | firmware: 65.8 F, 20.6 %, sensor ok
+d1 07:23:27.004  up 0:02:57   SENSOR  room air 65.84 F, at sensor 65.90 F, RH 20.9 % | DHT22 sent 00 D2 00 BB 8D (18.7 C, 21.0 %) | firmware: 65.6 F, 21.0 %, sensor ok
+d1 07:23:30.000  up 0:03:00   WIFI    hostname SmartThermo
+d1 07:23:30.000  up 0:03:00   WIFI    join SimNetwork (attempt 17): no access point, gave up after 5000 ms (core 0 blocked, core 1 runs on)
+d1 07:23:32.005  up 0:03:02   SENSOR  room air 65.84 F, at sensor 65.90 F, RH 20.9 % | DHT22 sent 00 CF 00 BC 8B (18.8 C, 20.7 %) | firmware: 65.8 F, 20.7 %, sensor ok
+d1 07:23:37.004  up 0:03:07   SENSOR  room air 65.83 F, at sensor 65.90 F, RH 20.9 % | DHT22 sent 00 D2 00 BD 8F (18.9 C, 21.0 %) | firmware: 66.0 F, 21.0 %, sensor ok
+d1 07:23:42.004  up 0:03:12   SENSOR  room air 65.83 F, at sensor 65.89 F, RH 20.9 % | DHT22 sent 00 D0 00 BC 8C (18.8 C, 20.8 %) | firmware: 65.8 F, 20.8 %, sensor ok
+d1 07:23:45.000  up 0:03:15   WIFI    hostname SmartThermo
+d1 07:23:45.000  up 0:03:15   WIFI    join SimNetwork (attempt 18): no access point, gave up after 5000 ms (core 0 blocked, core 1 runs on)
+d1 07:23:47.004  up 0:03:17   SENSOR  room air 65.83 F, at sensor 65.89 F, RH 20.9 % | DHT22 sent 00 CB 00 BD 88 (18.9 C, 20.3 %) | firmware: 66.0 F, 20.3 %, sensor ok
+d1 07:23:52.004  up 0:03:22   SENSOR  room air 65.82 F, at sensor 65.89 F, RH 20.9 % | DHT22 sent 00 CC 00 BD 89 (18.9 C, 20.4 %) | firmware: 66.0 F, 20.4 %, sensor ok
+d1 07:23:57.004  up 0:03:27   SENSOR  room air 65.82 F, at sensor 65.88 F, RH 20.9 % | DHT22 sent 00 D1 00 BD 8E (18.9 C, 20.9 %) | firmware: 66.0 F, 20.9 %, sensor ok
+d1 07:24:00.000  up 0:03:30   WIFI    hostname SmartThermo
+d1 07:24:00.000  up 0:03:30   WIFI    join SimNetwork (attempt 19): no access point, gave up after 5000 ms (core 0 blocked, core 1 runs on)
+d1 07:24:02.005  up 0:03:32   SENSOR  room air 65.82 F, at sensor 65.88 F, RH 20.9 % | DHT22 sent 00 D7 00 BC 93 (18.8 C, 21.5 %) | firmware: 65.8 F, 21.5 %, sensor ok
+d1 07:24:07.004  up 0:03:37   SENSOR  room air 65.81 F, at sensor 65.87 F, RH 20.9 % | DHT22 sent 00 CE 00 BC 8A (18.8 C, 20.6 %) | firmware: 65.8 F, 20.6 %, sensor ok
+d1 07:24:12.004  up 0:03:42   SENSOR  room air 65.81 F, at sensor 65.87 F, RH 20.9 % | DHT22 sent 00 D3 00 BE 91 (19.0 C, 21.1 %) | firmware: 66.2 F, 21.1 %, sensor ok
+d1 07:24:15.000  up 0:03:45   WIFI    hostname SmartThermo
+d1 07:24:15.000  up 0:03:45   WIFI    join SimNetwork (attempt 20): no access point, gave up after 5000 ms (core 0 blocked, core 1 runs on)
+d1 07:24:17.005  up 0:03:47   SENSOR  room air 65.81 F, at sensor 65.87 F, RH 20.9 % | DHT22 sent 00 CF 00 BD 8C (18.9 C, 20.7 %) | firmware: 66.0 F, 20.7 %, sensor ok
+d1 07:24:22.004  up 0:03:52   SENSOR  room air 65.80 F, at sensor 65.86 F, RH 21.0 % | DHT22 sent 00 D1 00 BC 8D (18.8 C, 20.9 %) | firmware: 65.8 F, 20.9 %, sensor ok
+d1 07:24:27.004  up 0:03:57   SENSOR  room air 65.80 F, at sensor 65.86 F, RH 21.0 % | DHT22 sent 00 D3 00 BD 90 (18.9 C, 21.1 %) | firmware: 66.0 F, 21.1 %, sensor ok
+d1 07:24:30.000  up 0:04:00   WIFI    hostname SmartThermo
+d1 07:24:30.000  up 0:04:00   WIFI    join SimNetwork (attempt 21): no access point, gave up after 5000 ms (core 0 blocked, core 1 runs on)
+d1 07:24:32.004  up 0:04:02   SENSOR  room air 65.80 F, at sensor 65.86 F, RH 21.0 % | DHT22 sent 00 D4 00 BC 90 (18.8 C, 21.2 %) | firmware: 65.8 F, 21.2 %, sensor ok
+d1 07:24:37.004  up 0:04:07   SENSOR  room air 65.79 F, at sensor 65.85 F, RH 21.0 % | DHT22 sent 00 D0 00 BC 8C (18.8 C, 20.8 %) | firmware: 65.8 F, 20.8 %, sensor ok
+d1 07:24:42.004  up 0:04:12   SENSOR  room air 65.79 F, at sensor 65.85 F, RH 21.0 % | DHT22 sent 00 D0 00 BD 8D (18.9 C, 20.8 %) | firmware: 66.0 F, 20.8 %, sensor ok
+d1 07:24:45.000  up 0:04:15   WIFI    hostname SmartThermo
+d1 07:24:45.000  up 0:04:15   WIFI    join SimNetwork (attempt 22): no access point, gave up after 5000 ms (core 0 blocked, core 1 runs on)
+d1 07:24:47.005  up 0:04:17   SENSOR  room air 65.79 F, at sensor 65.85 F, RH 21.0 % | DHT22 sent 00 D3 00 BC 8F (18.8 C, 21.1 %) | firmware: 65.8 F, 21.1 %, sensor ok
+d1 07:24:52.004  up 0:04:22   SENSOR  room air 65.78 F, at sensor 65.84 F, RH 21.0 % | DHT22 sent 00 CE 00 BB 89 (18.7 C, 20.6 %) | firmware: 65.6 F, 20.6 %, sensor ok
+d1 07:24:57.004  up 0:04:27   SENSOR  room air 65.78 F, at sensor 65.84 F, RH 21.0 % | DHT22 sent 00 D2 00 BC 8E (18.8 C, 21.0 %) | firmware: 65.8 F, 21.0 %, sensor ok
+d1 07:25:00.000  up 0:04:30   WIFI    hostname SmartThermo
+d1 07:25:00.000  up 0:04:30   WIFI    join SimNetwork (attempt 23): no access point, gave up after 5000 ms (core 0 blocked, core 1 runs on)
+d1 07:25:02.004  up 0:04:32   SENSOR  room air 65.78 F, at sensor 65.84 F, RH 21.0 % | DHT22 sent 00 D4 00 BC 90 (18.8 C, 21.2 %) | firmware: 65.8 F, 21.2 %, sensor ok
+d1 07:25:07.004  up 0:04:37   SENSOR  room air 65.77 F, at sensor 65.83 F, RH 21.0 % | DHT22 sent 00 CB 00 BA 85 (18.6 C, 20.3 %) | firmware: 65.4 F, 20.3 %, sensor ok
+d1 07:25:12.004  up 0:04:42   SENSOR  room air 65.77 F, at sensor 65.83 F, RH 21.0 % | DHT22 sent 00 D2 00 BC 8E (18.8 C, 21.0 %) | firmware: 65.8 F, 21.0 %, sensor ok
+d1 07:25:15.000  up 0:04:45   WIFI    hostname SmartThermo
+d1 07:25:15.000  up 0:04:45   WIFI    join SimNetwork (attempt 24): no access point, gave up after 5000 ms (core 0 blocked, core 1 runs on)
+d1 07:25:17.004  up 0:04:47   SENSOR  room air 65.77 F, at sensor 65.83 F, RH 21.0 % | DHT22 sent 00 D2 00 BB 8D (18.7 C, 21.0 %) | firmware: 65.6 F, 21.0 %, sensor ok
+d1 07:25:22.004  up 0:04:52   SENSOR  room air 65.76 F, at sensor 65.82 F, RH 21.0 % | DHT22 sent 00 D2 00 BC 8E (18.8 C, 21.0 %) | firmware: 65.8 F, 21.0 %, sensor ok
+d1 07:25:27.004  up 0:04:57   SENSOR  room air 65.76 F, at sensor 65.82 F, RH 21.0 % | DHT22 sent 00 D2 00 BC 8E (18.8 C, 21.0 %) | firmware: 65.8 F, 21.0 %, sensor ok
+d1 07:25:32.004  up 0:05:02   SENSOR  room air 65.76 F, at sensor 65.82 F, RH 21.0 % | DHT22 sent 00 D1 00 BA 8B (18.6 C, 20.9 %) | firmware: 65.4 F, 20.9 %, sensor ok
+d1 07:25:37.004  up 0:05:07   SENSOR  room air 65.75 F, at sensor 65.81 F, RH 21.0 % | DHT22 sent 00 D4 00 BD 91 (18.9 C, 21.2 %) | firmware: 66.0 F, 21.2 %, sensor ok
+d1 07:25:42.005  up 0:05:12   SENSOR  room air 65.75 F, at sensor 65.81 F, RH 21.0 % | DHT22 sent 00 CF 00 BD 8C (18.9 C, 20.7 %) | firmware: 66.0 F, 20.7 %, sensor ok
+d1 07:25:47.004  up 0:05:17   SENSOR  room air 65.75 F, at sensor 65.81 F, RH 21.0 % | DHT22 sent 00 CE 00 BC 8A (18.8 C, 20.6 %) | firmware: 65.8 F, 20.6 %, sensor ok
+d1 07:25:52.005  up 0:05:22   SENSOR  room air 65.74 F, at sensor 65.80 F, RH 21.0 % | DHT22 sent 00 CF 00 BC 8B (18.8 C, 20.7 %) | firmware: 65.8 F, 20.7 %, sensor ok
+d1 07:25:57.004  up 0:05:27   SENSOR  room air 65.74 F, at sensor 65.80 F, RH 21.0 % | DHT22 sent 00 D1 00 BB 8C (18.7 C, 20.9 %) | firmware: 65.6 F, 20.9 %, sensor ok
+d1 07:26:02.004  up 0:05:32   SENSOR  room air 65.74 F, at sensor 65.80 F, RH 21.0 % | DHT22 sent 00 D0 00 BB 8B (18.7 C, 20.8 %) | firmware: 65.6 F, 20.8 %, sensor ok
+d1 07:26:07.004  up 0:05:37   SENSOR  room air 65.73 F, at sensor 65.79 F, RH 21.0 % | DHT22 sent 00 D0 00 BC 8C (18.8 C, 20.8 %) | firmware: 65.8 F, 20.8 %, sensor ok
+d1 07:26:12.004  up 0:05:42   SENSOR  room air 65.73 F, at sensor 65.79 F, RH 21.0 % | DHT22 sent 00 D0 00 BC 8C (18.8 C, 20.8 %) | firmware: 65.8 F, 20.8 %, sensor ok
+d1 07:26:17.004  up 0:05:47   SENSOR  room air 65.73 F, at sensor 65.79 F, RH 21.0 % | DHT22 sent 00 D6 00 BC 92 (18.8 C, 21.4 %) | firmware: 65.8 F, 21.4 %, sensor ok
+d1 07:26:22.004  up 0:05:52   SENSOR  room air 65.72 F, at sensor 65.78 F, RH 21.0 % | DHT22 sent 00 D1 00 BD 8E (18.9 C, 20.9 %) | firmware: 66.0 F, 20.9 %, sensor ok
+d1 07:26:27.005  up 0:05:57   SENSOR  room air 65.72 F, at sensor 65.78 F, RH 21.0 % | DHT22 sent 00 CF 00 BB 8A (18.7 C, 20.7 %) | firmware: 65.6 F, 20.7 %, sensor ok
+d1 07:26:32.004  up 0:06:02   SENSOR  room air 65.72 F, at sensor 65.78 F, RH 21.0 % | DHT22 sent 00 D6 00 BC 92 (18.8 C, 21.4 %) | firmware: 65.8 F, 21.4 %, sensor ok
+d1 07:26:37.004  up 0:06:07   SENSOR  room air 65.71 F, at sensor 65.77 F, RH 21.0 % | DHT22 sent 00 D5 00 BB 90 (18.7 C, 21.3 %) | firmware: 65.6 F, 21.3 %, sensor ok
+d1 07:26:42.004  up 0:06:12   SENSOR  room air 65.71 F, at sensor 65.77 F, RH 21.0 % | DHT22 sent 00 CD 00 BC 89 (18.8 C, 20.5 %) | firmware: 65.8 F, 20.5 %, sensor ok
+d1 07:26:47.004  up 0:06:17   SENSOR  room air 65.71 F, at sensor 65.77 F, RH 21.0 % | DHT22 sent 00 CE 00 BC 8A (18.8 C, 20.6 %) | firmware: 65.8 F, 20.6 %, sensor ok
+d1 07:26:52.004  up 0:06:22   SENSOR  room air 65.70 F, at sensor 65.76 F, RH 21.0 % | DHT22 sent 00 D1 00 BC 8D (18.8 C, 20.9 %) | firmware: 65.8 F, 20.9 %, sensor ok
+d1 07:26:57.004  up 0:06:27   SENSOR  room air 65.70 F, at sensor 65.76 F, RH 21.0 % | DHT22 sent 00 CB 00 BC 87 (18.8 C, 20.3 %) | firmware: 65.8 F, 20.3 %, sensor ok
+d1 07:27:02.005  up 0:06:32   SENSOR  room air 65.70 F, at sensor 65.76 F, RH 21.0 % | DHT22 sent 00 CE 00 BD 8B (18.9 C, 20.6 %) | firmware: 66.0 F, 20.6 %, sensor ok
+d1 07:27:07.004  up 0:06:37   SENSOR  room air 65.69 F, at sensor 65.75 F, RH 21.0 % | DHT22 sent 00 D0 00 BA 8A (18.6 C, 20.8 %) | firmware: 65.4 F, 20.8 %, sensor ok
+d1 07:27:12.005  up 0:06:42   SENSOR  room air 65.69 F, at sensor 65.75 F, RH 21.0 % | DHT22 sent 00 CF 00 BB 8A (18.7 C, 20.7 %) | firmware: 65.6 F, 20.7 %, sensor ok
+d1 07:27:15.000  up 0:06:45   WIFI    hostname SmartThermo
+d1 07:27:15.000  up 0:06:45   WIFI    join SimNetwork (attempt 25): no access point, gave up after 5000 ms (core 0 blocked, core 1 runs on)
+d1 07:27:15.000  up 0:06:45   FW      Wi-Fi reconnect attempt 1 of 10
+d1 07:27:15.000  up 0:06:45   FW      connecting to Wi-Fi SimNetwork
+d1 07:27:17.005  up 0:06:47   SENSOR  room air 65.69 F, at sensor 65.75 F, RH 21.0 % | DHT22 sent 00 D7 00 BB 92 (18.7 C, 21.5 %) | firmware: 65.6 F, 21.5 %, sensor ok
+d1 07:27:22.004  up 0:06:52   SENSOR  room air 65.68 F, at sensor 65.74 F, RH 21.0 % | DHT22 sent 00 D3 00 BD 90 (18.9 C, 21.1 %) | firmware: 66.0 F, 21.1 %, sensor ok
+d1 07:27:27.005  up 0:06:57   SENSOR  room air 65.68 F, at sensor 65.74 F, RH 21.0 % | DHT22 sent 00 CF 00 BC 8B (18.8 C, 20.7 %) | firmware: 65.8 F, 20.7 %, sensor ok
+d1 07:27:32.004  up 0:07:02   SENSOR  room air 65.68 F, at sensor 65.74 F, RH 21.0 % | DHT22 sent 00 D0 00 BA 8A (18.6 C, 20.8 %) | firmware: 65.4 F, 20.8 %, sensor ok
+d1 07:27:36.000  up 0:07:06   EXPECT  ok: firmware logged "Wi-Fi reconnect attempt 1 of 10" (since minute 20.4)
+d1 07:27:36.000  up 0:07:06   EVENT   Wi-Fi access point back up
+d1 07:27:37.005  up 0:07:07   SENSOR  room air 65.68 F, at sensor 65.73 F, RH 21.0 % | DHT22 sent 00 CF 00 BB 8A (18.7 C, 20.7 %) | firmware: 65.6 F, 20.7 %, sensor ok
+d1 07:27:42.005  up 0:07:12   SENSOR  room air 65.67 F, at sensor 65.73 F, RH 21.0 % | DHT22 sent 00 CF 00 BB 8A (18.7 C, 20.7 %) | firmware: 65.6 F, 20.7 %, sensor ok
+d1 07:27:47.004  up 0:07:17   SENSOR  room air 65.67 F, at sensor 65.73 F, RH 21.0 % | DHT22 sent 00 CE 00 BB 89 (18.7 C, 20.6 %) | firmware: 65.6 F, 20.6 %, sensor ok
+d1 07:27:52.004  up 0:07:22   SENSOR  room air 65.67 F, at sensor 65.72 F, RH 21.1 % | DHT22 sent 00 D1 00 BC 8D (18.8 C, 20.9 %) | firmware: 65.8 F, 20.9 %, sensor ok
+d1 07:27:57.004  up 0:07:27   SENSOR  room air 65.66 F, at sensor 65.72 F, RH 21.1 % | DHT22 sent 00 CE 00 BB 89 (18.7 C, 20.6 %) | firmware: 65.6 F, 20.6 %, sensor ok
+d1 07:28:02.004  up 0:07:32   SENSOR  room air 65.66 F, at sensor 65.72 F, RH 21.1 % | DHT22 sent 00 D4 00 BC 90 (18.8 C, 21.2 %) | firmware: 65.8 F, 21.2 %, sensor ok
+d1 07:28:07.004  up 0:07:37   SENSOR  room air 65.66 F, at sensor 65.71 F, RH 21.1 % | DHT22 sent 00 D2 00 BA 8C (18.6 C, 21.0 %) | firmware: 65.4 F, 21.0 %, sensor ok
+d1 07:28:12.005  up 0:07:42   SENSOR  room air 65.65 F, at sensor 65.71 F, RH 21.1 % | DHT22 sent 00 D3 00 BC 8F (18.8 C, 21.1 %) | firmware: 65.8 F, 21.1 %, sensor ok
+d1 07:28:17.004  up 0:07:47   SENSOR  room air 65.65 F, at sensor 65.71 F, RH 21.1 % | DHT22 sent 00 D2 00 BC 8E (18.8 C, 21.0 %) | firmware: 65.8 F, 21.0 %, sensor ok
+d1 07:28:22.005  up 0:07:52   SENSOR  room air 65.65 F, at sensor 65.70 F, RH 21.1 % | DHT22 sent 00 CF 00 BB 8A (18.7 C, 20.7 %) | firmware: 65.6 F, 20.7 %, sensor ok
+d1 07:28:27.005  up 0:07:57   SENSOR  room air 65.64 F, at sensor 65.70 F, RH 21.1 % | DHT22 sent 00 CC 00 BB 87 (18.7 C, 20.4 %) | firmware: 65.6 F, 20.4 %, sensor ok
+d1 07:28:32.005  up 0:08:02   SENSOR  room air 65.64 F, at sensor 65.70 F, RH 21.1 % | DHT22 sent 00 D3 00 BB 8E (18.7 C, 21.1 %) | firmware: 65.6 F, 21.1 %, sensor ok
+d1 07:28:37.004  up 0:08:07   SENSOR  room air 65.64 F, at sensor 65.69 F, RH 21.1 % | DHT22 sent 00 D0 00 BC 8C (18.8 C, 20.8 %) | firmware: 65.8 F, 20.8 %, sensor ok
+d1 07:28:42.005  up 0:08:12   SENSOR  room air 65.63 F, at sensor 65.69 F, RH 21.1 % | DHT22 sent 00 CF 00 BB 8A (18.7 C, 20.7 %) | firmware: 65.6 F, 20.7 %, sensor ok
+d1 07:28:47.005  up 0:08:17   SENSOR  room air 65.63 F, at sensor 65.69 F, RH 21.1 % | DHT22 sent 00 D3 00 BB 8E (18.7 C, 21.1 %) | firmware: 65.6 F, 21.1 %, sensor ok
+d1 07:28:52.005  up 0:08:22   SENSOR  room air 65.63 F, at sensor 65.69 F, RH 21.1 % | DHT22 sent 00 D4 00 BB 8F (18.7 C, 21.2 %) | firmware: 65.6 F, 21.2 %, sensor ok
+d1 07:28:57.004  up 0:08:27   SENSOR  room air 65.62 F, at sensor 65.68 F, RH 21.1 % | DHT22 sent 00 D1 00 BA 8B (18.6 C, 20.9 %) | firmware: 65.4 F, 20.9 %, sensor ok
+d1 07:29:02.004  up 0:08:32   SENSOR  room air 65.62 F, at sensor 65.68 F, RH 21.1 % | DHT22 sent 00 D4 00 BC 90 (18.8 C, 21.2 %) | firmware: 65.8 F, 21.2 %, sensor ok
+d1 07:29:07.004  up 0:08:37   SENSOR  room air 65.62 F, at sensor 65.68 F, RH 21.1 % | DHT22 sent 00 D0 00 BB 8B (18.7 C, 20.8 %) | firmware: 65.6 F, 20.8 %, sensor ok
+d1 07:29:12.005  up 0:08:42   SENSOR  room air 65.62 F, at sensor 65.67 F, RH 21.1 % | DHT22 sent 00 D3 00 BC 8F (18.8 C, 21.1 %) | firmware: 65.8 F, 21.1 %, sensor ok
+d1 07:29:15.000  up 0:08:45   WIFI    hostname SmartThermo
+d1 07:29:15.000  up 0:08:45   WIFI    join SimNetwork (attempt 26): access point found, address in 2.5 s
+d1 07:29:15.000  up 0:08:45   FW      Wi-Fi reconnect attempt 2 of 10
+d1 07:29:15.000  up 0:08:45   FW      connecting to Wi-Fi SimNetwork
+d1 07:29:17.004  up 0:08:47   SENSOR  room air 65.61 F, at sensor 65.67 F, RH 21.1 % | DHT22 sent 00 D4 00 BC 90 (18.8 C, 21.2 %) | firmware: 65.8 F, 21.2 %, sensor ok
+d1 07:29:19.000  up 0:08:49   FW      Wi-Fi connected, IP 192.168.1.40, RSSI -61 dBm
+d1 07:29:22.004  up 0:08:52   SENSOR  room air 65.61 F, at sensor 65.67 F, RH 21.1 % | DHT22 sent 00 D0 00 BC 8C (18.8 C, 20.8 %) | firmware: 65.8 F, 20.8 %, sensor ok
+d1 07:29:27.004  up 0:08:57   SENSOR  room air 65.61 F, at sensor 65.66 F, RH 21.1 % | DHT22 sent 00 D0 00 BA 8A (18.6 C, 20.8 %) | firmware: 65.4 F, 20.8 %, sensor ok
+d1 07:29:32.004  up 0:09:02   SENSOR  room air 65.60 F, at sensor 65.66 F, RH 21.1 % | DHT22 sent 00 D2 00 BA 8C (18.6 C, 21.0 %) | firmware: 65.4 F, 21.0 %, sensor ok
+d1 07:29:37.004  up 0:09:07   SENSOR  room air 65.60 F, at sensor 65.66 F, RH 21.1 % | DHT22 sent 00 D1 00 BB 8C (18.7 C, 20.9 %) | firmware: 65.6 F, 20.9 %, sensor ok
+d1 07:29:42.004  up 0:09:12   SENSOR  room air 65.60 F, at sensor 65.65 F, RH 21.1 % | DHT22 sent 00 D4 00 BB 8F (18.7 C, 21.2 %) | firmware: 65.6 F, 21.2 %, sensor ok
+d1 07:29:47.004  up 0:09:17   SENSOR  room air 65.59 F, at sensor 65.65 F, RH 21.1 % | DHT22 sent 00 D3 00 BA 8D (18.6 C, 21.1 %) | firmware: 65.4 F, 21.1 %, sensor ok
+d1 07:29:52.004  up 0:09:22   SENSOR  room air 65.59 F, at sensor 65.65 F, RH 21.1 % | DHT22 sent 00 CF 00 B9 88 (18.5 C, 20.7 %) | firmware: 65.3 F, 20.7 %, sensor ok
+d1 07:29:57.004  up 0:09:27   SENSOR  room air 65.59 F, at sensor 65.64 F, RH 21.1 % | DHT22 sent 00 D2 00 BB 8D (18.7 C, 21.0 %) | firmware: 65.6 F, 21.0 %, sensor ok
+d1 07:30:00.000  up 0:09:30   WORLD   outdoor 22.3 F | indoor air 65.59 F, structure 66.91 F, at sensor 65.64 F, RH 21.1 % | mode off, fan auto, setpoint 70 F | W1 open, Y1 open, G open (idle) | sensor ok | furnace 0 %, coil 0 %
+d1 07:30:00.000  up 0:09:30   EXPECT  ok: firmware logged "Wi-Fi connected, IP 192.168.1.40" (since minute 27.5)
+d1 07:30:02.005  up 0:09:32   SENSOR  room air 65.58 F, at sensor 65.64 F, RH 21.1 % | DHT22 sent 00 D5 00 BA 8F (18.6 C, 21.3 %) | firmware: 65.4 F, 21.3 %, sensor ok
+d1 07:30:07.005  up 0:09:37   SENSOR  room air 65.58 F, at sensor 65.64 F, RH 21.1 % | DHT22 sent 00 CF 00 BD 8C (18.9 C, 20.7 %) | firmware: 66.0 F, 20.7 %, sensor ok
+d1 07:30:12.004  up 0:09:42   SENSOR  room air 65.58 F, at sensor 65.63 F, RH 21.1 % | DHT22 sent 00 D2 00 B9 8B (18.5 C, 21.0 %) | firmware: 65.3 F, 21.0 %, sensor ok
+d1 07:30:17.004  up 0:09:47   SENSOR  room air 65.58 F, at sensor 65.63 F, RH 21.1 % | DHT22 sent 00 D3 00 B9 8C (18.5 C, 21.1 %) | firmware: 65.3 F, 21.1 %, sensor ok
+d1 07:30:22.005  up 0:09:52   SENSOR  room air 65.57 F, at sensor 65.63 F, RH 21.1 % | DHT22 sent 00 D4 00 BB 8F (18.7 C, 21.2 %) | firmware: 65.6 F, 21.2 %, sensor ok
+d1 07:30:27.004  up 0:09:57   SENSOR  room air 65.57 F, at sensor 65.63 F, RH 21.1 % | DHT22 sent 00 D2 00 BA 8C (18.6 C, 21.0 %) | firmware: 65.4 F, 21.0 %, sensor ok
+d1 07:30:32.004  up 0:10:02   SENSOR  room air 65.57 F, at sensor 65.62 F, RH 21.1 % | DHT22 sent 00 D1 00 BA 8B (18.6 C, 20.9 %) | firmware: 65.4 F, 20.9 %, sensor ok
+d1 07:30:37.004  up 0:10:07   SENSOR  room air 65.56 F, at sensor 65.62 F, RH 21.1 % | DHT22 sent 00 CC 00 BA 86 (18.6 C, 20.4 %) | firmware: 65.4 F, 20.4 %, sensor ok
+d1 07:30:42.005  up 0:10:12   SENSOR  room air 65.56 F, at sensor 65.62 F, RH 21.1 % | DHT22 sent 00 D6 00 BB 91 (18.7 C, 21.4 %) | firmware: 65.6 F, 21.4 %, sensor ok
+d1 07:30:47.004  up 0:10:17   SENSOR  room air 65.56 F, at sensor 65.61 F, RH 21.1 % | DHT22 sent 00 D0 00 BB 8B (18.7 C, 20.8 %) | firmware: 65.6 F, 20.8 %, sensor ok
+d1 07:30:52.004  up 0:10:22   SENSOR  room air 65.55 F, at sensor 65.61 F, RH 21.1 % | DHT22 sent 00 CD 00 BA 87 (18.6 C, 20.5 %) | firmware: 65.4 F, 20.5 %, sensor ok
+d1 07:30:57.004  up 0:10:27   SENSOR  room air 65.55 F, at sensor 65.61 F, RH 21.1 % | DHT22 sent 00 D2 00 BA 8C (18.6 C, 21.0 %) | firmware: 65.4 F, 21.0 %, sensor ok
+d1 07:31:02.004  up 0:10:32   SENSOR  room air 65.55 F, at sensor 65.60 F, RH 21.1 % | DHT22 sent 00 D9 00 BA 93 (18.6 C, 21.7 %) | firmware: 65.4 F, 21.7 %, sensor ok
+d1 07:31:07.004  up 0:10:37   SENSOR  room air 65.54 F, at sensor 65.60 F, RH 21.1 % | DHT22 sent 00 D1 00 BC 8D (18.8 C, 20.9 %) | firmware: 65.8 F, 20.9 %, sensor ok
+d1 07:31:12.005  up 0:10:42   SENSOR  room air 65.54 F, at sensor 65.60 F, RH 21.1 % | DHT22 sent 00 D3 00 BB 8E (18.7 C, 21.1 %) | firmware: 65.6 F, 21.1 %, sensor ok
+d1 07:31:17.004  up 0:10:47   SENSOR  room air 65.54 F, at sensor 65.59 F, RH 21.1 % | DHT22 sent 00 D6 00 BB 91 (18.7 C, 21.4 %) | firmware: 65.6 F, 21.4 %, sensor ok
+d1 07:31:22.004  up 0:10:52   SENSOR  room air 65.54 F, at sensor 65.59 F, RH 21.1 % | DHT22 sent 00 CD 00 BB 88 (18.7 C, 20.5 %) | firmware: 65.6 F, 20.5 %, sensor ok
+d1 07:31:27.004  up 0:10:57   SENSOR  room air 65.53 F, at sensor 65.59 F, RH 21.1 % | DHT22 sent 00 D1 00 BB 8C (18.7 C, 20.9 %) | firmware: 65.6 F, 20.9 %, sensor ok
+d1 07:31:32.004  up 0:11:02   SENSOR  room air 65.53 F, at sensor 65.58 F, RH 21.2 % | DHT22 sent 00 CC 00 B9 85 (18.5 C, 20.4 %) | firmware: 65.3 F, 20.4 %, sensor ok
+d1 07:31:37.005  up 0:11:07   SENSOR  room air 65.53 F, at sensor 65.58 F, RH 21.2 % | DHT22 sent 00 D2 00 BB 8D (18.7 C, 21.0 %) | firmware: 65.6 F, 21.0 %, sensor ok
+d1 07:31:42.004  up 0:11:12   SENSOR  room air 65.52 F, at sensor 65.58 F, RH 21.2 % | DHT22 sent 00 D3 00 B9 8C (18.5 C, 21.1 %) | firmware: 65.3 F, 21.1 %, sensor ok
+d1 07:31:47.004  up 0:11:17   SENSOR  room air 65.52 F, at sensor 65.58 F, RH 21.2 % | DHT22 sent 00 D5 00 BB 90 (18.7 C, 21.3 %) | firmware: 65.6 F, 21.3 %, sensor ok
+d1 07:31:52.004  up 0:11:22   SENSOR  room air 65.52 F, at sensor 65.57 F, RH 21.2 % | DHT22 sent 00 D3 00 B9 8C (18.5 C, 21.1 %) | firmware: 65.3 F, 21.1 %, sensor ok
+d1 07:31:57.004  up 0:11:27   SENSOR  room air 65.51 F, at sensor 65.57 F, RH 21.2 % | DHT22 sent 00 D2 00 BA 8C (18.6 C, 21.0 %) | firmware: 65.4 F, 21.0 %, sensor ok
+d1 07:32:02.004  up 0:11:32   SENSOR  room air 65.51 F, at sensor 65.57 F, RH 21.2 % | DHT22 sent 00 D4 00 BA 8E (18.6 C, 21.2 %) | firmware: 65.4 F, 21.2 %, sensor ok
+d1 07:32:07.004  up 0:11:37   SENSOR  room air 65.51 F, at sensor 65.56 F, RH 21.2 % | DHT22 sent 00 D5 00 BC 91 (18.8 C, 21.3 %) | firmware: 65.8 F, 21.3 %, sensor ok
+d1 07:32:12.004  up 0:11:42   SENSOR  room air 65.51 F, at sensor 65.56 F, RH 21.2 % | DHT22 sent 00 D7 00 BA 91 (18.6 C, 21.5 %) | firmware: 65.4 F, 21.5 %, sensor ok
+d1 07:32:17.004  up 0:11:47   SENSOR  room air 65.50 F, at sensor 65.56 F, RH 21.2 % | DHT22 sent 00 D2 00 BA 8C (18.6 C, 21.0 %) | firmware: 65.4 F, 21.0 %, sensor ok
+d1 07:32:22.004  up 0:11:52   SENSOR  room air 65.50 F, at sensor 65.55 F, RH 21.2 % | DHT22 sent 00 CD 00 B9 86 (18.5 C, 20.5 %) | firmware: 65.3 F, 20.5 %, sensor ok
+d1 07:32:27.004  up 0:11:57   SENSOR  room air 65.50 F, at sensor 65.55 F, RH 21.2 % | DHT22 sent 00 D8 00 BB 93 (18.7 C, 21.6 %) | firmware: 65.6 F, 21.6 %, sensor ok
+d1 07:32:32.004  up 0:12:02   SENSOR  room air 65.49 F, at sensor 65.55 F, RH 21.2 % | DHT22 sent 00 D2 00 BA 8C (18.6 C, 21.0 %) | firmware: 65.4 F, 21.0 %, sensor ok
+d1 07:32:37.004  up 0:12:07   SENSOR  room air 65.49 F, at sensor 65.55 F, RH 21.2 % | DHT22 sent 00 D2 00 BC 8E (18.8 C, 21.0 %) | firmware: 65.8 F, 21.0 %, sensor ok
+d1 07:32:42.004  up 0:12:12   SENSOR  room air 65.49 F, at sensor 65.54 F, RH 21.2 % | DHT22 sent 00 D4 00 BA 8E (18.6 C, 21.2 %) | firmware: 65.4 F, 21.2 %, sensor ok
+d1 07:32:47.004  up 0:12:17   SENSOR  room air 65.49 F, at sensor 65.54 F, RH 21.2 % | DHT22 sent 00 D2 00 BA 8C (18.6 C, 21.0 %) | firmware: 65.4 F, 21.0 %, sensor ok
+d1 07:32:52.005  up 0:12:22   SENSOR  room air 65.48 F, at sensor 65.54 F, RH 21.2 % | DHT22 sent 00 D3 00 BB 8E (18.7 C, 21.1 %) | firmware: 65.6 F, 21.1 %, sensor ok
+d1 07:32:57.004  up 0:12:27   SENSOR  room air 65.48 F, at sensor 65.53 F, RH 21.2 % | DHT22 sent 00 CF 00 BA 89 (18.6 C, 20.7 %) | firmware: 65.4 F, 20.7 %, sensor ok
+d1 07:33:02.004  up 0:12:32   SENSOR  room air 65.48 F, at sensor 65.53 F, RH 21.2 % | DHT22 sent 00 D1 00 BA 8B (18.6 C, 20.9 %) | firmware: 65.4 F, 20.9 %, sensor ok
+d1 07:33:07.004  up 0:12:37   SENSOR  room air 65.47 F, at sensor 65.53 F, RH 21.2 % | DHT22 sent 00 CE 00 BB 89 (18.7 C, 20.6 %) | firmware: 65.6 F, 20.6 %, sensor ok
+d1 07:33:12.004  up 0:12:42   SENSOR  room air 65.47 F, at sensor 65.52 F, RH 21.2 % | DHT22 sent 00 D6 00 BA 90 (18.6 C, 21.4 %) | firmware: 65.4 F, 21.4 %, sensor ok
+d1 07:33:17.004  up 0:12:47   SENSOR  room air 65.47 F, at sensor 65.52 F, RH 21.2 % | DHT22 sent 00 D7 00 B9 90 (18.5 C, 21.5 %) | firmware: 65.3 F, 21.5 %, sensor ok
+d1 07:33:22.005  up 0:12:52   SENSOR  room air 65.46 F, at sensor 65.52 F, RH 21.2 % | DHT22 sent 00 D3 00 BA 8D (18.6 C, 21.1 %) | firmware: 65.4 F, 21.1 %, sensor ok
+d1 07:33:27.004  up 0:12:57   SENSOR  room air 65.46 F, at sensor 65.52 F, RH 21.2 % | DHT22 sent 00 D1 00 BA 8B (18.6 C, 20.9 %) | firmware: 65.4 F, 20.9 %, sensor ok
+d1 07:33:32.005  up 0:13:02   SENSOR  room air 65.46 F, at sensor 65.51 F, RH 21.2 % | DHT22 sent 00 D2 00 BB 8D (18.7 C, 21.0 %) | firmware: 65.6 F, 21.0 %, sensor ok
+d1 07:33:37.004  up 0:13:07   SENSOR  room air 65.46 F, at sensor 65.51 F, RH 21.2 % | DHT22 sent 00 D5 00 BB 90 (18.7 C, 21.3 %) | firmware: 65.6 F, 21.3 %, sensor ok
+d1 07:33:42.004  up 0:13:12   SENSOR  room air 65.45 F, at sensor 65.51 F, RH 21.2 % | DHT22 sent 00 D1 00 BA 8B (18.6 C, 20.9 %) | firmware: 65.4 F, 20.9 %, sensor ok
+d1 07:33:47.004  up 0:13:17   SENSOR  room air 65.45 F, at sensor 65.50 F, RH 21.2 % | DHT22 sent 00 D7 00 BA 91 (18.6 C, 21.5 %) | firmware: 65.4 F, 21.5 %, sensor ok
+d1 07:33:52.005  up 0:13:22   SENSOR  room air 65.45 F, at sensor 65.50 F, RH 21.2 % | DHT22 sent 00 D6 00 B9 8F (18.5 C, 21.4 %) | firmware: 65.3 F, 21.4 %, sensor ok
+d1 07:33:57.004  up 0:13:27   SENSOR  room air 65.44 F, at sensor 65.50 F, RH 21.2 % | DHT22 sent 00 D1 00 BA 8B (18.6 C, 20.9 %) | firmware: 65.4 F, 20.9 %, sensor ok
+d1 07:34:02.004  up 0:13:32   SENSOR  room air 65.44 F, at sensor 65.49 F, RH 21.2 % | DHT22 sent 00 D3 00 BA 8D (18.6 C, 21.1 %) | firmware: 65.4 F, 21.1 %, sensor ok
+d1 07:34:07.004  up 0:13:37   SENSOR  room air 65.44 F, at sensor 65.49 F, RH 21.2 % | DHT22 sent 00 D9 00 BB 94 (18.7 C, 21.7 %) | firmware: 65.6 F, 21.7 %, sensor ok
+d1 07:34:12.004  up 0:13:42   SENSOR  room air 65.44 F, at sensor 65.49 F, RH 21.2 % | DHT22 sent 00 D0 00 BA 8A (18.6 C, 20.8 %) | firmware: 65.4 F, 20.8 %, sensor ok
+d1 07:34:17.004  up 0:13:47   SENSOR  room air 65.43 F, at sensor 65.49 F, RH 21.2 % | DHT22 sent 00 D4 00 B9 8D (18.5 C, 21.2 %) | firmware: 65.3 F, 21.2 %, sensor ok
+d1 07:34:22.004  up 0:13:52   SENSOR  room air 65.43 F, at sensor 65.48 F, RH 21.2 % | DHT22 sent 00 D4 00 BA 8E (18.6 C, 21.2 %) | firmware: 65.4 F, 21.2 %, sensor ok
+d1 07:34:27.004  up 0:13:57   SENSOR  room air 65.43 F, at sensor 65.48 F, RH 21.2 % | DHT22 sent 00 D7 00 B9 90 (18.5 C, 21.5 %) | firmware: 65.3 F, 21.5 %, sensor ok
+d1 07:34:32.004  up 0:14:02   SENSOR  room air 65.42 F, at sensor 65.48 F, RH 21.2 % | DHT22 sent 00 D9 00 BB 94 (18.7 C, 21.7 %) | firmware: 65.6 F, 21.7 %, sensor ok
+d1 07:34:37.004  up 0:14:07   SENSOR  room air 65.42 F, at sensor 65.47 F, RH 21.2 % | DHT22 sent 00 CF 00 BA 89 (18.6 C, 20.7 %) | firmware: 65.4 F, 20.7 %, sensor ok
+d1 07:34:42.004  up 0:14:12   SENSOR  room air 65.42 F, at sensor 65.47 F, RH 21.2 % | DHT22 sent 00 D6 00 BA 90 (18.6 C, 21.4 %) | firmware: 65.4 F, 21.4 %, sensor ok
+d1 07:34:47.005  up 0:14:17   SENSOR  room air 65.42 F, at sensor 65.47 F, RH 21.2 % | DHT22 sent 00 D5 00 BA 8F (18.6 C, 21.3 %) | firmware: 65.4 F, 21.3 %, sensor ok
+d1 07:34:52.005  up 0:14:22   SENSOR  room air 65.41 F, at sensor 65.46 F, RH 21.2 % | DHT22 sent 00 D5 00 BA 8F (18.6 C, 21.3 %) | firmware: 65.4 F, 21.3 %, sensor ok
+d1 07:34:57.004  up 0:14:27   SENSOR  room air 65.41 F, at sensor 65.46 F, RH 21.2 % | DHT22 sent 00 D2 00 B9 8B (18.5 C, 21.0 %) | firmware: 65.3 F, 21.0 %, sensor ok
+d1 07:35:02.004  up 0:14:32   SENSOR  room air 65.41 F, at sensor 65.46 F, RH 21.2 % | DHT22 sent 00 CF 00 B9 88 (18.5 C, 20.7 %) | firmware: 65.3 F, 20.7 %, sensor ok
+d1 07:35:07.004  up 0:14:37   SENSOR  room air 65.40 F, at sensor 65.46 F, RH 21.2 % | DHT22 sent 00 D6 00 BA 90 (18.6 C, 21.4 %) | firmware: 65.4 F, 21.4 %, sensor ok
+d1 07:35:12.004  up 0:14:42   SENSOR  room air 65.40 F, at sensor 65.45 F, RH 21.2 % | DHT22 sent 00 D6 00 BA 90 (18.6 C, 21.4 %) | firmware: 65.4 F, 21.4 %, sensor ok
+d1 07:35:17.004  up 0:14:47   SENSOR  room air 65.40 F, at sensor 65.45 F, RH 21.2 % | DHT22 sent 00 D5 00 B9 8E (18.5 C, 21.3 %) | firmware: 65.3 F, 21.3 %, sensor ok
+d1 07:35:22.005  up 0:14:52   SENSOR  room air 65.40 F, at sensor 65.45 F, RH 21.2 % | DHT22 sent 00 D5 00 BA 8F (18.6 C, 21.3 %) | firmware: 65.4 F, 21.3 %, sensor ok
+d1 07:35:27.004  up 0:14:57   SENSOR  room air 65.39 F, at sensor 65.44 F, RH 21.3 % | DHT22 sent 00 D3 00 BA 8D (18.6 C, 21.1 %) | firmware: 65.4 F, 21.1 %, sensor ok
+d1 07:35:32.004  up 0:15:02   SENSOR  room air 65.39 F, at sensor 65.44 F, RH 21.3 % | DHT22 sent 00 D8 00 B9 91 (18.5 C, 21.6 %) | firmware: 65.3 F, 21.6 %, sensor ok
+d1 07:35:37.004  up 0:15:07   SENSOR  room air 65.39 F, at sensor 65.44 F, RH 21.3 % | DHT22 sent 00 D2 00 BA 8C (18.6 C, 21.0 %) | firmware: 65.4 F, 21.0 %, sensor ok
+d1 07:35:42.004  up 0:15:12   SENSOR  room air 65.38 F, at sensor 65.44 F, RH 21.3 % | DHT22 sent 00 D2 00 BA 8C (18.6 C, 21.0 %) | firmware: 65.4 F, 21.0 %, sensor ok
+d1 07:35:47.004  up 0:15:17   SENSOR  room air 65.38 F, at sensor 65.43 F, RH 21.3 % | DHT22 sent 00 D6 00 B9 8F (18.5 C, 21.4 %) | firmware: 65.3 F, 21.4 %, sensor ok
+d1 07:35:52.004  up 0:15:22   SENSOR  room air 65.38 F, at sensor 65.43 F, RH 21.3 % | DHT22 sent 00 D7 00 BA 91 (18.6 C, 21.5 %) | firmware: 65.4 F, 21.5 %, sensor ok
+d1 07:35:57.004  up 0:15:27   SENSOR  room air 65.38 F, at sensor 65.43 F, RH 21.3 % | DHT22 sent 00 D8 00 B9 91 (18.5 C, 21.6 %) | firmware: 65.3 F, 21.6 %, sensor ok
+d1 07:36:02.005  up 0:15:32   SENSOR  room air 65.37 F, at sensor 65.42 F, RH 21.3 % | DHT22 sent 00 D6 00 B9 8F (18.5 C, 21.4 %) | firmware: 65.3 F, 21.4 %, sensor ok
+d1 07:36:07.005  up 0:15:37   SENSOR  room air 65.37 F, at sensor 65.42 F, RH 21.3 % | DHT22 sent 00 D3 00 BA 8D (18.6 C, 21.1 %) | firmware: 65.4 F, 21.1 %, sensor ok
+d1 07:36:12.005  up 0:15:42   SENSOR  room air 65.37 F, at sensor 65.42 F, RH 21.3 % | DHT22 sent 00 D6 00 B9 8F (18.5 C, 21.4 %) | firmware: 65.3 F, 21.4 %, sensor ok
+d1 07:36:17.004  up 0:15:47   SENSOR  room air 65.36 F, at sensor 65.42 F, RH 21.3 % | DHT22 sent 00 D2 00 B8 8A (18.4 C, 21.0 %) | firmware: 65.1 F, 21.0 %, sensor ok
+d1 07:36:22.004  up 0:15:52   SENSOR  room air 65.36 F, at sensor 65.41 F, RH 21.3 % | DHT22 sent 00 CF 00 BA 89 (18.6 C, 20.7 %) | firmware: 65.4 F, 20.7 %, sensor ok
+d1 07:36:27.005  up 0:15:57   SENSOR  room air 65.36 F, at sensor 65.41 F, RH 21.3 % | DHT22 sent 00 D5 00 BA 8F (18.6 C, 21.3 %) | firmware: 65.4 F, 21.3 %, sensor ok
+d1 07:36:32.005  up 0:16:02   SENSOR  room air 65.36 F, at sensor 65.41 F, RH 21.3 % | DHT22 sent 00 D7 00 B8 8F (18.4 C, 21.5 %) | firmware: 65.1 F, 21.5 %, sensor ok
+d1 07:36:37.004  up 0:16:07   SENSOR  room air 65.35 F, at sensor 65.40 F, RH 21.3 % | DHT22 sent 00 D1 00 B9 8A (18.5 C, 20.9 %) | firmware: 65.3 F, 20.9 %, sensor ok
+d1 07:36:42.004  up 0:16:12   SENSOR  room air 65.35 F, at sensor 65.40 F, RH 21.3 % | DHT22 sent 00 D3 00 B9 8C (18.5 C, 21.1 %) | firmware: 65.3 F, 21.1 %, sensor ok
+d1 07:36:47.004  up 0:16:17   SENSOR  room air 65.35 F, at sensor 65.40 F, RH 21.3 % | DHT22 sent 00 D8 00 BA 92 (18.6 C, 21.6 %) | firmware: 65.4 F, 21.6 %, sensor ok
+d1 07:36:52.004  up 0:16:22   SENSOR  room air 65.35 F, at sensor 65.40 F, RH 21.3 % | DHT22 sent 00 D2 00 B9 8B (18.5 C, 21.0 %) | firmware: 65.3 F, 21.0 %, sensor ok
+d1 07:36:57.005  up 0:16:27   SENSOR  room air 65.34 F, at sensor 65.39 F, RH 21.3 % | DHT22 sent 00 D5 00 BA 8F (18.6 C, 21.3 %) | firmware: 65.4 F, 21.3 %, sensor ok
+d1 07:37:02.004  up 0:16:32   SENSOR  room air 65.34 F, at sensor 65.39 F, RH 21.3 % | DHT22 sent 00 D8 00 B9 91 (18.5 C, 21.6 %) | firmware: 65.3 F, 21.6 %, sensor ok
+d1 07:37:07.004  up 0:16:37   SENSOR  room air 65.34 F, at sensor 65.39 F, RH 21.3 % | DHT22 sent 00 D2 00 BA 8C (18.6 C, 21.0 %) | firmware: 65.4 F, 21.0 %, sensor ok
+d1 07:37:12.004  up 0:16:42   SENSOR  room air 65.33 F, at sensor 65.38 F, RH 21.3 % | DHT22 sent 00 D1 00 BA 8B (18.6 C, 20.9 %) | firmware: 65.4 F, 20.9 %, sensor ok
+d1 07:37:17.004  up 0:16:47   SENSOR  room air 65.33 F, at sensor 65.38 F, RH 21.3 % | DHT22 sent 00 D4 00 B9 8D (18.5 C, 21.2 %) | firmware: 65.3 F, 21.2 %, sensor ok
+d1 07:37:22.004  up 0:16:52   SENSOR  room air 65.33 F, at sensor 65.38 F, RH 21.3 % | DHT22 sent 00 D4 00 B9 8D (18.5 C, 21.2 %) | firmware: 65.3 F, 21.2 %, sensor ok
+d1 07:37:27.004  up 0:16:57   SENSOR  room air 65.33 F, at sensor 65.38 F, RH 21.3 % | DHT22 sent 00 D8 00 B8 90 (18.4 C, 21.6 %) | firmware: 65.1 F, 21.6 %, sensor ok
+d1 07:37:32.004  up 0:17:02   SENSOR  room air 65.32 F, at sensor 65.37 F, RH 21.3 % | DHT22 sent 00 D7 00 BA 91 (18.6 C, 21.5 %) | firmware: 65.4 F, 21.5 %, sensor ok
+d1 07:37:37.004  up 0:17:07   SENSOR  room air 65.32 F, at sensor 65.37 F, RH 21.3 % | DHT22 sent 00 D4 00 B9 8D (18.5 C, 21.2 %) | firmware: 65.3 F, 21.2 %, sensor ok
+d1 07:37:42.004  up 0:17:12   SENSOR  room air 65.32 F, at sensor 65.37 F, RH 21.3 % | DHT22 sent 00 D1 00 B9 8A (18.5 C, 20.9 %) | firmware: 65.3 F, 20.9 %, sensor ok
+d1 07:37:47.004  up 0:17:17   SENSOR  room air 65.31 F, at sensor 65.36 F, RH 21.3 % | DHT22 sent 00 D3 00 B9 8C (18.5 C, 21.1 %) | firmware: 65.3 F, 21.1 %, sensor ok
+d1 07:37:52.005  up 0:17:22   SENSOR  room air 65.31 F, at sensor 65.36 F, RH 21.3 % | DHT22 sent 00 D5 00 BA 8F (18.6 C, 21.3 %) | firmware: 65.4 F, 21.3 %, sensor ok
+d1 07:37:57.004  up 0:17:27   SENSOR  room air 65.31 F, at sensor 65.36 F, RH 21.3 % | DHT22 sent 00 D7 00 B9 90 (18.5 C, 21.5 %) | firmware: 65.3 F, 21.5 %, sensor ok
+d1 07:38:02.005  up 0:17:32   SENSOR  room air 65.31 F, at sensor 65.36 F, RH 21.3 % | DHT22 sent 00 D6 00 B9 8F (18.5 C, 21.4 %) | firmware: 65.3 F, 21.4 %, sensor ok
+d1 07:38:07.004  up 0:17:37   SENSOR  room air 65.30 F, at sensor 65.35 F, RH 21.3 % | DHT22 sent 00 D7 00 BA 91 (18.6 C, 21.5 %) | firmware: 65.4 F, 21.5 %, sensor ok
+d1 07:38:12.004  up 0:17:42   SENSOR  room air 65.30 F, at sensor 65.35 F, RH 21.3 % | DHT22 sent 00 D3 00 B8 8B (18.4 C, 21.1 %) | firmware: 65.1 F, 21.1 %, sensor ok
+d1 07:38:17.004  up 0:17:47   SENSOR  room air 65.30 F, at sensor 65.35 F, RH 21.3 % | DHT22 sent 00 D8 00 B8 90 (18.4 C, 21.6 %) | firmware: 65.1 F, 21.6 %, sensor ok
+d1 07:38:22.004  up 0:17:52   SENSOR  room air 65.30 F, at sensor 65.35 F, RH 21.3 % | DHT22 sent 00 D6 00 BB 91 (18.7 C, 21.4 %) | firmware: 65.6 F, 21.4 %, sensor ok
+d1 07:38:27.005  up 0:17:57   SENSOR  room air 65.29 F, at sensor 65.34 F, RH 21.3 % | DHT22 sent 00 D3 00 BB 8E (18.7 C, 21.1 %) | firmware: 65.6 F, 21.1 %, sensor ok
+d1 07:38:32.005  up 0:18:02   SENSOR  room air 65.29 F, at sensor 65.34 F, RH 21.3 % | DHT22 sent 00 D5 00 BA 8F (18.6 C, 21.3 %) | firmware: 65.4 F, 21.3 %, sensor ok
+d1 07:38:37.005  up 0:18:07   SENSOR  room air 65.29 F, at sensor 65.34 F, RH 21.3 % | DHT22 sent 00 DD 00 B9 96 (18.5 C, 22.1 %) | firmware: 65.3 F, 22.1 %, sensor ok
+d1 07:38:42.004  up 0:18:12   SENSOR  room air 65.28 F, at sensor 65.33 F, RH 21.3 % | DHT22 sent 00 D9 00 B9 92 (18.5 C, 21.7 %) | firmware: 65.3 F, 21.7 %, sensor ok
+d1 07:38:47.004  up 0:18:17   SENSOR  room air 65.28 F, at sensor 65.33 F, RH 21.3 % | DHT22 sent 00 D2 00 B9 8B (18.5 C, 21.0 %) | firmware: 65.3 F, 21.0 %, sensor ok
+d1 07:38:52.004  up 0:18:22   SENSOR  room air 65.28 F, at sensor 65.33 F, RH 21.3 % | DHT22 sent 00 D5 00 B8 8D (18.4 C, 21.3 %) | firmware: 65.1 F, 21.3 %, sensor ok
+d1 07:38:57.004  up 0:18:27   SENSOR  room air 65.28 F, at sensor 65.33 F, RH 21.3 % | DHT22 sent 00 D1 00 B8 89 (18.4 C, 20.9 %) | firmware: 65.1 F, 20.9 %, sensor ok
+d1 07:39:02.004  up 0:18:32   SENSOR  room air 65.27 F, at sensor 65.32 F, RH 21.3 % | DHT22 sent 00 D4 00 B8 8C (18.4 C, 21.2 %) | firmware: 65.1 F, 21.2 %, sensor ok
+d1 07:39:07.004  up 0:18:37   SENSOR  room air 65.27 F, at sensor 65.32 F, RH 21.3 % | DHT22 sent 00 D7 00 B9 90 (18.5 C, 21.5 %) | firmware: 65.3 F, 21.5 %, sensor ok
+d1 07:39:12.004  up 0:18:42   SENSOR  room air 65.27 F, at sensor 65.32 F, RH 21.3 % | DHT22 sent 00 D5 00 B9 8E (18.5 C, 21.3 %) | firmware: 65.3 F, 21.3 %, sensor ok
+d1 07:39:17.005  up 0:18:47   SENSOR  room air 65.27 F, at sensor 65.32 F, RH 21.3 % | DHT22 sent 00 D5 00 BA 8F (18.6 C, 21.3 %) | firmware: 65.4 F, 21.3 %, sensor ok
+d1 07:39:22.004  up 0:18:52   SENSOR  room air 65.26 F, at sensor 65.31 F, RH 21.3 % | DHT22 sent 00 D1 00 B9 8A (18.5 C, 20.9 %) | firmware: 65.3 F, 20.9 %, sensor ok
+d1 07:39:27.005  up 0:18:57   SENSOR  room air 65.26 F, at sensor 65.31 F, RH 21.3 % | DHT22 sent 00 DA 00 BB 95 (18.7 C, 21.8 %) | firmware: 65.6 F, 21.8 %, sensor ok
+d1 07:39:32.004  up 0:19:02   SENSOR  room air 65.26 F, at sensor 65.31 F, RH 21.4 % | DHT22 sent 00 D5 00 B9 8E (18.5 C, 21.3 %) | firmware: 65.3 F, 21.3 %, sensor ok
+d1 07:39:37.004  up 0:19:07   SENSOR  room air 65.26 F, at sensor 65.30 F, RH 21.4 % | DHT22 sent 00 D7 00 BA 91 (18.6 C, 21.5 %) | firmware: 65.4 F, 21.5 %, sensor ok
+d1 07:39:42.004  up 0:19:12   SENSOR  room air 65.25 F, at sensor 65.30 F, RH 21.4 % | DHT22 sent 00 CF 00 BA 89 (18.6 C, 20.7 %) | firmware: 65.4 F, 20.7 %, sensor ok
+d1 07:39:47.005  up 0:19:17   SENSOR  room air 65.25 F, at sensor 65.30 F, RH 21.4 % | DHT22 sent 00 D7 00 BA 91 (18.6 C, 21.5 %) | firmware: 65.4 F, 21.5 %, sensor ok
+d1 07:39:52.005  up 0:19:22   SENSOR  room air 65.25 F, at sensor 65.30 F, RH 21.4 % | DHT22 sent 00 D7 00 B8 8F (18.4 C, 21.5 %) | firmware: 65.1 F, 21.5 %, sensor ok
+d1 07:39:57.004  up 0:19:27   SENSOR  room air 65.24 F, at sensor 65.29 F, RH 21.4 % | DHT22 sent 00 D3 00 B9 8C (18.5 C, 21.1 %) | firmware: 65.3 F, 21.1 %, sensor ok
+d1 07:40:02.004  up 0:19:32   SENSOR  room air 65.24 F, at sensor 65.29 F, RH 21.4 % | DHT22 sent 00 D7 00 B9 90 (18.5 C, 21.5 %) | firmware: 65.3 F, 21.5 %, sensor ok
+d1 07:40:07.005  up 0:19:37   SENSOR  room air 65.24 F, at sensor 65.29 F, RH 21.4 % | DHT22 sent 00 D3 00 BA 8D (18.6 C, 21.1 %) | firmware: 65.4 F, 21.1 %, sensor ok
+d1 07:40:12.005  up 0:19:42   SENSOR  room air 65.24 F, at sensor 65.29 F, RH 21.4 % | DHT22 sent 00 D7 00 B8 8F (18.4 C, 21.5 %) | firmware: 65.1 F, 21.5 %, sensor ok
+d1 07:40:17.004  up 0:19:47   SENSOR  room air 65.23 F, at sensor 65.28 F, RH 21.4 % | DHT22 sent 00 D8 00 B9 91 (18.5 C, 21.6 %) | firmware: 65.3 F, 21.6 %, sensor ok
+d1 07:40:22.004  up 0:19:52   SENSOR  room air 65.23 F, at sensor 65.28 F, RH 21.4 % | DHT22 sent 00 D0 00 B9 89 (18.5 C, 20.8 %) | firmware: 65.3 F, 20.8 %, sensor ok
+d1 07:40:27.004  up 0:19:57   SENSOR  room air 65.23 F, at sensor 65.28 F, RH 21.4 % | DHT22 sent 00 D5 00 B9 8E (18.5 C, 21.3 %) | firmware: 65.3 F, 21.3 %, sensor ok
+d1 07:40:32.004  up 0:20:02   SENSOR  room air 65.23 F, at sensor 65.27 F, RH 21.4 % | DHT22 sent 00 D5 00 B8 8D (18.4 C, 21.3 %) | firmware: 65.1 F, 21.3 %, sensor ok
+d1 07:40:37.004  up 0:20:07   SENSOR  room air 65.22 F, at sensor 65.27 F, RH 21.4 % | DHT22 sent 00 D7 00 B9 90 (18.5 C, 21.5 %) | firmware: 65.3 F, 21.5 %, sensor ok
+d1 07:40:42.004  up 0:20:12   SENSOR  room air 65.22 F, at sensor 65.27 F, RH 21.4 % | DHT22 sent 00 D0 00 B9 89 (18.5 C, 20.8 %) | firmware: 65.3 F, 20.8 %, sensor ok
+d1 07:40:47.004  up 0:20:17   SENSOR  room air 65.22 F, at sensor 65.27 F, RH 21.4 % | DHT22 sent 00 D8 00 B9 91 (18.5 C, 21.6 %) | firmware: 65.3 F, 21.6 %, sensor ok
+d1 07:40:52.004  up 0:20:22   SENSOR  room air 65.22 F, at sensor 65.26 F, RH 21.4 % | DHT22 sent 00 D8 00 B9 91 (18.5 C, 21.6 %) | firmware: 65.3 F, 21.6 %, sensor ok
+d1 07:40:57.005  up 0:20:27   SENSOR  room air 65.21 F, at sensor 65.26 F, RH 21.4 % | DHT22 sent 00 D7 00 B8 8F (18.4 C, 21.5 %) | firmware: 65.1 F, 21.5 %, sensor ok
+d1 07:41:02.004  up 0:20:32   SENSOR  room air 65.21 F, at sensor 65.26 F, RH 21.4 % | DHT22 sent 00 D4 00 B9 8D (18.5 C, 21.2 %) | firmware: 65.3 F, 21.2 %, sensor ok
+d1 07:41:07.004  up 0:20:37   SENSOR  room air 65.21 F, at sensor 65.26 F, RH 21.4 % | DHT22 sent 00 D0 00 BA 8A (18.6 C, 20.8 %) | firmware: 65.4 F, 20.8 %, sensor ok
+d1 07:41:12.004  up 0:20:42   SENSOR  room air 65.21 F, at sensor 65.25 F, RH 21.4 % | DHT22 sent 00 D7 00 B9 90 (18.5 C, 21.5 %) | firmware: 65.3 F, 21.5 %, sensor ok
+d1 07:41:17.004  up 0:20:47   SENSOR  room air 65.20 F, at sensor 65.25 F, RH 21.4 % | DHT22 sent 00 D4 00 B8 8C (18.4 C, 21.2 %) | firmware: 65.1 F, 21.2 %, sensor ok
+d1 07:41:22.005  up 0:20:52   SENSOR  room air 65.20 F, at sensor 65.25 F, RH 21.4 % | DHT22 sent 00 D5 00 B9 8E (18.5 C, 21.3 %) | firmware: 65.3 F, 21.3 %, sensor ok
+d1 07:41:27.005  up 0:20:57   SENSOR  room air 65.20 F, at sensor 65.25 F, RH 21.4 % | DHT22 sent 00 D5 00 BA 8F (18.6 C, 21.3 %) | firmware: 65.4 F, 21.3 %, sensor ok
+d1 07:41:32.004  up 0:21:02   SENSOR  room air 65.20 F, at sensor 65.24 F, RH 21.4 % | DHT22 sent 00 D8 00 BA 92 (18.6 C, 21.6 %) | firmware: 65.4 F, 21.6 %, sensor ok
+d1 07:41:37.004  up 0:21:07   SENSOR  room air 65.19 F, at sensor 65.24 F, RH 21.4 % | DHT22 sent 00 D2 00 B9 8B (18.5 C, 21.0 %) | firmware: 65.3 F, 21.0 %, sensor ok
+d1 07:41:42.004  up 0:21:12   SENSOR  room air 65.19 F, at sensor 65.24 F, RH 21.4 % | DHT22 sent 00 D2 00 B8 8A (18.4 C, 21.0 %) | firmware: 65.1 F, 21.0 %, sensor ok
+d1 07:41:47.004  up 0:21:17   SENSOR  room air 65.19 F, at sensor 65.23 F, RH 21.4 % | DHT22 sent 00 D1 00 B9 8A (18.5 C, 20.9 %) | firmware: 65.3 F, 20.9 %, sensor ok
+d1 07:41:52.004  up 0:21:22   SENSOR  room air 65.19 F, at sensor 65.23 F, RH 21.4 % | DHT22 sent 00 D6 00 B8 8E (18.4 C, 21.4 %) | firmware: 65.1 F, 21.4 %, sensor ok
+d1 07:41:57.004  up 0:21:27   SENSOR  room air 65.18 F, at sensor 65.23 F, RH 21.4 % | DHT22 sent 00 DB 00 B8 93 (18.4 C, 21.9 %) | firmware: 65.1 F, 21.9 %, sensor ok
+d1 07:42:02.004  up 0:21:32   SENSOR  room air 65.18 F, at sensor 65.23 F, RH 21.4 % | DHT22 sent 00 D8 00 B8 90 (18.4 C, 21.6 %) | firmware: 65.1 F, 21.6 %, sensor ok
+d1 07:42:07.004  up 0:21:37   SENSOR  room air 65.18 F, at sensor 65.22 F, RH 21.4 % | DHT22 sent 00 D3 00 B8 8B (18.4 C, 21.1 %) | firmware: 65.1 F, 21.1 %, sensor ok
+d1 07:42:12.004  up 0:21:42   SENSOR  room air 65.17 F, at sensor 65.22 F, RH 21.4 % | DHT22 sent 00 D3 00 B9 8C (18.5 C, 21.1 %) | firmware: 65.3 F, 21.1 %, sensor ok
+d1 07:42:17.004  up 0:21:47   SENSOR  room air 65.17 F, at sensor 65.22 F, RH 21.4 % | DHT22 sent 00 D5 00 B9 8E (18.5 C, 21.3 %) | firmware: 65.3 F, 21.3 %, sensor ok
+d1 07:42:22.005  up 0:21:52   SENSOR  room air 65.17 F, at sensor 65.22 F, RH 21.4 % | DHT22 sent 00 D7 00 B8 8F (18.4 C, 21.5 %) | firmware: 65.1 F, 21.5 %, sensor ok
+d1 07:42:27.004  up 0:21:57   SENSOR  room air 65.17 F, at sensor 65.21 F, RH 21.4 % | DHT22 sent 00 D8 00 B8 90 (18.4 C, 21.6 %) | firmware: 65.1 F, 21.6 %, sensor ok
+d1 07:42:32.004  up 0:22:02   SENSOR  room air 65.16 F, at sensor 65.21 F, RH 21.4 % | DHT22 sent 00 DA 00 B8 92 (18.4 C, 21.8 %) | firmware: 65.1 F, 21.8 %, sensor ok
+d1 07:42:37.004  up 0:22:07   SENSOR  room air 65.16 F, at sensor 65.21 F, RH 21.4 % | DHT22 sent 00 D9 00 B8 91 (18.4 C, 21.7 %) | firmware: 65.1 F, 21.7 %, sensor ok
+d1 07:42:42.004  up 0:22:12   SENSOR  room air 65.16 F, at sensor 65.21 F, RH 21.4 % | DHT22 sent 00 D5 00 B9 8E (18.5 C, 21.3 %) | firmware: 65.3 F, 21.3 %, sensor ok
+d1 07:42:47.004  up 0:22:17   SENSOR  room air 65.16 F, at sensor 65.20 F, RH 21.4 % | DHT22 sent 00 DB 00 B8 93 (18.4 C, 21.9 %) | firmware: 65.1 F, 21.9 %, sensor ok
+d1 07:42:52.004  up 0:22:22   SENSOR  room air 65.15 F, at sensor 65.20 F, RH 21.4 % | DHT22 sent 00 D7 00 B9 90 (18.5 C, 21.5 %) | firmware: 65.3 F, 21.5 %, sensor ok
+d1 07:42:57.005  up 0:22:27   SENSOR  room air 65.15 F, at sensor 65.20 F, RH 21.4 % | DHT22 sent 00 D7 00 B8 8F (18.4 C, 21.5 %) | firmware: 65.1 F, 21.5 %, sensor ok
+d1 07:43:02.004  up 0:22:32   SENSOR  room air 65.15 F, at sensor 65.20 F, RH 21.4 % | DHT22 sent 00 D5 00 B9 8E (18.5 C, 21.3 %) | firmware: 65.3 F, 21.3 %, sensor ok
+d1 07:43:07.004  up 0:22:37   SENSOR  room air 65.15 F, at sensor 65.19 F, RH 21.4 % | DHT22 sent 00 D5 00 B8 8D (18.4 C, 21.3 %) | firmware: 65.1 F, 21.3 %, sensor ok
+d1 07:43:12.004  up 0:22:42   SENSOR  room air 65.14 F, at sensor 65.19 F, RH 21.4 % | DHT22 sent 00 D9 00 B8 91 (18.4 C, 21.7 %) | firmware: 65.1 F, 21.7 %, sensor ok
+d1 07:43:17.004  up 0:22:47   SENSOR  room air 65.14 F, at sensor 65.19 F, RH 21.4 % | DHT22 sent 00 D5 00 B9 8E (18.5 C, 21.3 %) | firmware: 65.3 F, 21.3 %, sensor ok
+d1 07:43:22.004  up 0:22:52   SENSOR  room air 65.14 F, at sensor 65.19 F, RH 21.4 % | DHT22 sent 00 DB 00 B9 94 (18.5 C, 21.9 %) | firmware: 65.3 F, 21.9 %, sensor ok
+d1 07:43:27.004  up 0:22:57   SENSOR  room air 65.14 F, at sensor 65.18 F, RH 21.4 % | DHT22 sent 00 D8 00 B9 91 (18.5 C, 21.6 %) | firmware: 65.3 F, 21.6 %, sensor ok
+d1 07:43:32.004  up 0:23:02   SENSOR  room air 65.13 F, at sensor 65.18 F, RH 21.4 % | DHT22 sent 00 D9 00 B8 91 (18.4 C, 21.7 %) | firmware: 65.1 F, 21.7 %, sensor ok
+d1 07:43:37.005  up 0:23:07   SENSOR  room air 65.13 F, at sensor 65.18 F, RH 21.4 % | DHT22 sent 00 DA 00 B7 91 (18.3 C, 21.8 %) | firmware: 64.9 F, 21.8 %, sensor ok
+d1 07:43:42.005  up 0:23:12   SENSOR  room air 65.13 F, at sensor 65.18 F, RH 21.4 % | DHT22 sent 00 D7 00 B8 8F (18.4 C, 21.5 %) | firmware: 65.1 F, 21.5 %, sensor ok
+d1 07:43:47.004  up 0:23:17   SENSOR  room air 65.13 F, at sensor 65.17 F, RH 21.4 % | DHT22 sent 00 D7 00 BA 91 (18.6 C, 21.5 %) | firmware: 65.4 F, 21.5 %, sensor ok
+d1 07:43:52.005  up 0:23:22   SENSOR  room air 65.12 F, at sensor 65.17 F, RH 21.5 % | DHT22 sent 00 D7 00 B8 8F (18.4 C, 21.5 %) | firmware: 65.1 F, 21.5 %, sensor ok
+d1 07:43:57.004  up 0:23:27   SENSOR  room air 65.12 F, at sensor 65.17 F, RH 21.5 % | DHT22 sent 00 D6 00 B8 8E (18.4 C, 21.4 %) | firmware: 65.1 F, 21.4 %, sensor ok
+d1 07:44:02.004  up 0:23:32   SENSOR  room air 65.12 F, at sensor 65.16 F, RH 21.5 % | DHT22 sent 00 D4 00 B9 8D (18.5 C, 21.2 %) | firmware: 65.3 F, 21.2 %, sensor ok
+d1 07:44:07.004  up 0:23:37   SENSOR  room air 65.12 F, at sensor 65.16 F, RH 21.5 % | DHT22 sent 00 D1 00 B8 89 (18.4 C, 20.9 %) | firmware: 65.1 F, 20.9 %, sensor ok
+d1 07:44:12.004  up 0:23:42   SENSOR  room air 65.11 F, at sensor 65.16 F, RH 21.5 % | DHT22 sent 00 D8 00 BA 92 (18.6 C, 21.6 %) | firmware: 65.4 F, 21.6 %, sensor ok
+d1 07:44:17.004  up 0:23:47   SENSOR  room air 65.11 F, at sensor 65.16 F, RH 21.5 % | DHT22 sent 00 DA 00 B8 92 (18.4 C, 21.8 %) | firmware: 65.1 F, 21.8 %, sensor ok
+d1 07:44:22.004  up 0:23:52   SENSOR  room air 65.11 F, at sensor 65.15 F, RH 21.5 % | DHT22 sent 00 D5 00 B8 8D (18.4 C, 21.3 %) | firmware: 65.1 F, 21.3 %, sensor ok
+d1 07:44:27.004  up 0:23:57   SENSOR  room air 65.11 F, at sensor 65.15 F, RH 21.5 % | DHT22 sent 00 D8 00 B8 90 (18.4 C, 21.6 %) | firmware: 65.1 F, 21.6 %, sensor ok
+d1 07:44:32.004  up 0:24:02   SENSOR  room air 65.10 F, at sensor 65.15 F, RH 21.5 % | DHT22 sent 00 D2 00 B7 89 (18.3 C, 21.0 %) | firmware: 64.9 F, 21.0 %, sensor ok
+d1 07:44:37.004  up 0:24:07   SENSOR  room air 65.10 F, at sensor 65.15 F, RH 21.5 % | DHT22 sent 00 D1 00 B9 8A (18.5 C, 20.9 %) | firmware: 65.3 F, 20.9 %, sensor ok
+d1 07:44:42.004  up 0:24:12   SENSOR  room air 65.10 F, at sensor 65.14 F, RH 21.5 % | DHT22 sent 00 D8 00 B8 90 (18.4 C, 21.6 %) | firmware: 65.1 F, 21.6 %, sensor ok
+d1 07:44:47.004  up 0:24:17   SENSOR  room air 65.10 F, at sensor 65.14 F, RH 21.5 % | DHT22 sent 00 D7 00 B9 90 (18.5 C, 21.5 %) | firmware: 65.3 F, 21.5 %, sensor ok
+d1 07:44:52.004  up 0:24:22   SENSOR  room air 65.09 F, at sensor 65.14 F, RH 21.5 % | DHT22 sent 00 D6 00 B8 8E (18.4 C, 21.4 %) | firmware: 65.1 F, 21.4 %, sensor ok
+d1 07:44:57.004  up 0:24:27   SENSOR  room air 65.09 F, at sensor 65.14 F, RH 21.5 % | DHT22 sent 00 D4 00 B9 8D (18.5 C, 21.2 %) | firmware: 65.3 F, 21.2 %, sensor ok
+d1 07:45:00.000  up 0:24:30   WORLD   outdoor 22.6 F | indoor air 65.09 F, structure 66.84 F, at sensor 65.14 F, RH 21.5 % | mode off, fan auto, setpoint 70 F | W1 open, Y1 open, G open (idle) | sensor ok | furnace 0 %, coil 0 %
+d1 07:45:02.004  up 0:24:32   SENSOR  room air 65.09 F, at sensor 65.13 F, RH 21.5 % | DHT22 sent 00 DB 00 B9 94 (18.5 C, 21.9 %) | firmware: 65.3 F, 21.9 %, sensor ok
+d1 07:45:07.005  up 0:24:37   SENSOR  room air 65.09 F, at sensor 65.13 F, RH 21.5 % | DHT22 sent 00 D8 00 B7 8F (18.3 C, 21.6 %) | firmware: 64.9 F, 21.6 %, sensor ok
+d1 07:45:12.005  up 0:24:42   SENSOR  room air 65.08 F, at sensor 65.13 F, RH 21.5 % | DHT22 sent 00 D7 00 B8 8F (18.4 C, 21.5 %) | firmware: 65.1 F, 21.5 %, sensor ok
+d1 07:45:17.004  up 0:24:47   SENSOR  room air 65.08 F, at sensor 65.13 F, RH 21.5 % | DHT22 sent 00 D8 00 B9 91 (18.5 C, 21.6 %) | firmware: 65.3 F, 21.6 %, sensor ok
+d1 07:45:22.005  up 0:24:52   SENSOR  room air 65.08 F, at sensor 65.12 F, RH 21.5 % | DHT22 sent 00 DE 00 B9 97 (18.5 C, 22.2 %) | firmware: 65.3 F, 22.2 %, sensor ok
+d1 07:45:27.004  up 0:24:57   SENSOR  room air 65.08 F, at sensor 65.12 F, RH 21.5 % | DHT22 sent 00 DA 00 B7 91 (18.3 C, 21.8 %) | firmware: 64.9 F, 21.8 %, sensor ok
+d1 07:45:32.004  up 0:25:02   SENSOR  room air 65.08 F, at sensor 65.12 F, RH 21.5 % | DHT22 sent 00 DB 00 B8 93 (18.4 C, 21.9 %) | firmware: 65.1 F, 21.9 %, sensor ok
+d1 07:45:37.004  up 0:25:07   SENSOR  room air 65.07 F, at sensor 65.12 F, RH 21.5 % | DHT22 sent 00 DA 00 B9 93 (18.5 C, 21.8 %) | firmware: 65.3 F, 21.8 %, sensor ok
+d1 07:45:42.005  up 0:25:12   SENSOR  room air 65.07 F, at sensor 65.11 F, RH 21.5 % | DHT22 sent 00 D8 00 B7 8F (18.3 C, 21.6 %) | firmware: 64.9 F, 21.6 %, sensor ok
+d1 07:45:47.004  up 0:25:17   SENSOR  room air 65.07 F, at sensor 65.11 F, RH 21.5 % | DHT22 sent 00 D9 00 B7 90 (18.3 C, 21.7 %) | firmware: 64.9 F, 21.7 %, sensor ok
+d1 07:45:52.005  up 0:25:22   SENSOR  room air 65.07 F, at sensor 65.11 F, RH 21.5 % | DHT22 sent 00 DB 00 B9 94 (18.5 C, 21.9 %) | firmware: 65.3 F, 21.9 %, sensor ok
+d1 07:45:57.004  up 0:25:27   SENSOR  room air 65.06 F, at sensor 65.11 F, RH 21.5 % | DHT22 sent 00 D1 00 B8 89 (18.4 C, 20.9 %) | firmware: 65.1 F, 20.9 %, sensor ok
+d1 07:46:02.004  up 0:25:32   SENSOR  room air 65.06 F, at sensor 65.10 F, RH 21.5 % | DHT22 sent 00 D2 00 B8 8A (18.4 C, 21.0 %) | firmware: 65.1 F, 21.0 %, sensor ok
+d1 07:46:07.004  up 0:25:37   SENSOR  room air 65.06 F, at sensor 65.10 F, RH 21.5 % | DHT22 sent 00 D4 00 B8 8C (18.4 C, 21.2 %) | firmware: 65.1 F, 21.2 %, sensor ok
+d1 07:46:12.004  up 0:25:42   SENSOR  room air 65.06 F, at sensor 65.10 F, RH 21.5 % | DHT22 sent 00 D9 00 B7 90 (18.3 C, 21.7 %) | firmware: 64.9 F, 21.7 %, sensor ok
+d1 07:46:17.004  up 0:25:47   SENSOR  room air 65.05 F, at sensor 65.10 F, RH 21.5 % | DHT22 sent 00 D4 00 B7 8B (18.3 C, 21.2 %) | firmware: 64.9 F, 21.2 %, sensor ok
+d1 07:46:22.004  up 0:25:52   SENSOR  room air 65.05 F, at sensor 65.09 F, RH 21.5 % | DHT22 sent 00 DA 00 B8 92 (18.4 C, 21.8 %) | firmware: 65.1 F, 21.8 %, sensor ok
+d1 07:46:27.004  up 0:25:57   SENSOR  room air 65.05 F, at sensor 65.09 F, RH 21.5 % | DHT22 sent 00 D6 00 B8 8E (18.4 C, 21.4 %) | firmware: 65.1 F, 21.4 %, sensor ok
+d1 07:46:32.004  up 0:26:02   SENSOR  room air 65.05 F, at sensor 65.09 F, RH 21.5 % | DHT22 sent 00 D8 00 B9 91 (18.5 C, 21.6 %) | firmware: 65.3 F, 21.6 %, sensor ok
+d1 07:46:37.004  up 0:26:07   SENSOR  room air 65.04 F, at sensor 65.09 F, RH 21.5 % | DHT22 sent 00 DA 00 B7 91 (18.3 C, 21.8 %) | firmware: 64.9 F, 21.8 %, sensor ok
+d1 07:46:42.005  up 0:26:12   SENSOR  room air 65.04 F, at sensor 65.09 F, RH 21.5 % | DHT22 sent 00 D5 00 B7 8C (18.3 C, 21.3 %) | firmware: 64.9 F, 21.3 %, sensor ok
+d1 07:46:47.004  up 0:26:17   SENSOR  room air 65.04 F, at sensor 65.08 F, RH 21.5 % | DHT22 sent 00 D1 00 B8 89 (18.4 C, 20.9 %) | firmware: 65.1 F, 20.9 %, sensor ok
+d1 07:46:52.004  up 0:26:22   SENSOR  room air 65.04 F, at sensor 65.08 F, RH 21.5 % | DHT22 sent 00 DB 00 B8 93 (18.4 C, 21.9 %) | firmware: 65.1 F, 21.9 %, sensor ok
+d1 07:46:57.005  up 0:26:27   SENSOR  room air 65.03 F, at sensor 65.08 F, RH 21.5 % | DHT22 sent 00 D8 00 B7 8F (18.3 C, 21.6 %) | firmware: 64.9 F, 21.6 %, sensor ok
+d1 07:47:02.005  up 0:26:32   SENSOR  room air 65.03 F, at sensor 65.08 F, RH 21.5 % | DHT22 sent 00 DF 00 B9 98 (18.5 C, 22.3 %) | firmware: 65.3 F, 22.3 %, sensor ok
+d1 07:47:07.005  up 0:26:37   SENSOR  room air 65.03 F, at sensor 65.07 F, RH 21.5 % | DHT22 sent 00 D6 00 B7 8D (18.3 C, 21.4 %) | firmware: 64.9 F, 21.4 %, sensor ok
+d1 07:47:12.005  up 0:26:42   SENSOR  room air 65.03 F, at sensor 65.07 F, RH 21.5 % | DHT22 sent 00 D7 00 B7 8E (18.3 C, 21.5 %) | firmware: 64.9 F, 21.5 %, sensor ok
+d1 07:47:17.004  up 0:26:47   SENSOR  room air 65.02 F, at sensor 65.07 F, RH 21.5 % | DHT22 sent 00 D8 00 B9 91 (18.5 C, 21.6 %) | firmware: 65.3 F, 21.6 %, sensor ok
+d1 07:47:22.005  up 0:26:52   SENSOR  room air 65.02 F, at sensor 65.07 F, RH 21.5 % | DHT22 sent 00 D7 00 B8 8F (18.4 C, 21.5 %) | firmware: 65.1 F, 21.5 %, sensor ok
+d1 07:47:27.004  up 0:26:57   SENSOR  room air 65.02 F, at sensor 65.06 F, RH 21.5 % | DHT22 sent 00 CF 00 B8 87 (18.4 C, 20.7 %) | firmware: 65.1 F, 20.7 %, sensor ok
+d1 07:47:32.004  up 0:27:02   SENSOR  room air 65.02 F, at sensor 65.06 F, RH 21.5 % | DHT22 sent 00 D4 00 B8 8C (18.4 C, 21.2 %) | firmware: 65.1 F, 21.2 %, sensor ok
+d1 07:47:37.005  up 0:27:07   SENSOR  room air 65.02 F, at sensor 65.06 F, RH 21.5 % | DHT22 sent 00 D7 00 B8 8F (18.4 C, 21.5 %) | firmware: 65.1 F, 21.5 %, sensor ok
+d1 07:47:42.004  up 0:27:12   SENSOR  room air 65.01 F, at sensor 65.06 F, RH 21.5 % | DHT22 sent 00 D4 00 BA 8E (18.6 C, 21.2 %) | firmware: 65.4 F, 21.2 %, sensor ok
+d1 07:47:47.005  up 0:27:17   SENSOR  room air 65.01 F, at sensor 65.05 F, RH 21.5 % | DHT22 sent 00 DC 00 B9 95 (18.5 C, 22.0 %) | firmware: 65.3 F, 22.0 %, sensor ok
+d1 07:47:52.004  up 0:27:22   SENSOR  room air 65.01 F, at sensor 65.05 F, RH 21.5 % | DHT22 sent 00 D9 00 B8 91 (18.4 C, 21.7 %) | firmware: 65.1 F, 21.7 %, sensor ok
+d1 07:47:57.004  up 0:27:27   SENSOR  room air 65.01 F, at sensor 65.05 F, RH 21.5 % | DHT22 sent 00 D6 00 B8 8E (18.4 C, 21.4 %) | firmware: 65.1 F, 21.4 %, sensor ok
+d1 07:48:02.005  up 0:27:32   SENSOR  room air 65.00 F, at sensor 65.05 F, RH 21.5 % | DHT22 sent 00 DD 00 B6 93 (18.2 C, 22.1 %) | firmware: 64.7 F, 22.1 %, sensor ok
+d1 07:48:07.004  up 0:27:37   SENSOR  room air 65.00 F, at sensor 65.04 F, RH 21.5 % | DHT22 sent 00 D6 00 B8 8E (18.4 C, 21.4 %) | firmware: 65.1 F, 21.4 %, sensor ok
+d1 07:48:12.004  up 0:27:42   SENSOR  room air 65.00 F, at sensor 65.04 F, RH 21.5 % | DHT22 sent 00 D5 00 B7 8C (18.3 C, 21.3 %) | firmware: 64.9 F, 21.3 %, sensor ok
+d1 07:48:17.004  up 0:27:47   SENSOR  room air 65.00 F, at sensor 65.04 F, RH 21.5 % | DHT22 sent 00 D8 00 B8 90 (18.4 C, 21.6 %) | firmware: 65.1 F, 21.6 %, sensor ok
+d1 07:48:22.004  up 0:27:52   SENSOR  room air 64.99 F, at sensor 65.04 F, RH 21.5 % | DHT22 sent 00 D4 00 B9 8D (18.5 C, 21.2 %) | firmware: 65.3 F, 21.2 %, sensor ok
+d1 07:48:27.004  up 0:27:57   SENSOR  room air 64.99 F, at sensor 65.03 F, RH 21.6 % | DHT22 sent 00 DC 00 B6 92 (18.2 C, 22.0 %) | firmware: 64.7 F, 22.0 %, sensor ok
+d1 07:48:32.004  up 0:28:02   SENSOR  room air 64.99 F, at sensor 65.03 F, RH 21.6 % | DHT22 sent 00 D6 00 B8 8E (18.4 C, 21.4 %) | firmware: 65.1 F, 21.4 %, sensor ok
+d1 07:48:37.005  up 0:28:07   SENSOR  room air 64.99 F, at sensor 65.03 F, RH 21.6 % | DHT22 sent 00 D7 00 B7 8E (18.3 C, 21.5 %) | firmware: 64.9 F, 21.5 %, sensor ok
+d1 07:48:42.004  up 0:28:12   SENSOR  room air 64.98 F, at sensor 65.03 F, RH 21.6 % | DHT22 sent 00 D6 00 B8 8E (18.4 C, 21.4 %) | firmware: 65.1 F, 21.4 %, sensor ok
+d1 07:48:47.004  up 0:28:17   SENSOR  room air 64.98 F, at sensor 65.03 F, RH 21.6 % | DHT22 sent 00 D9 00 B7 90 (18.3 C, 21.7 %) | firmware: 64.9 F, 21.7 %, sensor ok
+d1 07:48:52.004  up 0:28:22   SENSOR  room air 64.98 F, at sensor 65.02 F, RH 21.6 % | DHT22 sent 00 D1 00 B8 89 (18.4 C, 20.9 %) | firmware: 65.1 F, 20.9 %, sensor ok
+d1 07:48:57.004  up 0:28:27   SENSOR  room air 64.98 F, at sensor 65.02 F, RH 21.6 % | DHT22 sent 00 D5 00 B7 8C (18.3 C, 21.3 %) | firmware: 64.9 F, 21.3 %, sensor ok
+d1 07:49:02.004  up 0:28:32   SENSOR  room air 64.98 F, at sensor 65.02 F, RH 21.6 % | DHT22 sent 00 D8 00 B8 90 (18.4 C, 21.6 %) | firmware: 65.1 F, 21.6 %, sensor ok
+d1 07:49:07.005  up 0:28:37   SENSOR  room air 64.97 F, at sensor 65.02 F, RH 21.6 % | DHT22 sent 00 D7 00 B6 8D (18.2 C, 21.5 %) | firmware: 64.7 F, 21.5 %, sensor ok
+d1 07:49:12.004  up 0:28:42   SENSOR  room air 64.97 F, at sensor 65.01 F, RH 21.6 % | DHT22 sent 00 D5 00 B8 8D (18.4 C, 21.3 %) | firmware: 65.1 F, 21.3 %, sensor ok
+d1 07:49:17.005  up 0:28:47   SENSOR  room air 64.97 F, at sensor 65.01 F, RH 21.6 % | DHT22 sent 00 D7 00 B7 8E (18.3 C, 21.5 %) | firmware: 64.9 F, 21.5 %, sensor ok
+d1 07:49:22.004  up 0:28:52   SENSOR  room air 64.97 F, at sensor 65.01 F, RH 21.6 % | DHT22 sent 00 D4 00 B8 8C (18.4 C, 21.2 %) | firmware: 65.1 F, 21.2 %, sensor ok
+d1 07:49:27.004  up 0:28:57   SENSOR  room air 64.96 F, at sensor 65.01 F, RH 21.6 % | DHT22 sent 00 D5 00 B7 8C (18.3 C, 21.3 %) | firmware: 64.9 F, 21.3 %, sensor ok
+d1 07:49:32.004  up 0:29:02   SENSOR  room air 64.96 F, at sensor 65.00 F, RH 21.6 % | DHT22 sent 00 D3 00 B8 8B (18.4 C, 21.1 %) | firmware: 65.1 F, 21.1 %, sensor ok
+d1 07:49:37.004  up 0:29:07   SENSOR  room air 64.96 F, at sensor 65.00 F, RH 21.6 % | DHT22 sent 00 D5 00 B7 8C (18.3 C, 21.3 %) | firmware: 64.9 F, 21.3 %, sensor ok
+d1 07:49:42.004  up 0:29:12   SENSOR  room air 64.96 F, at sensor 65.00 F, RH 21.6 % | DHT22 sent 00 D9 00 B8 91 (18.4 C, 21.7 %) | firmware: 65.1 F, 21.7 %, sensor ok
+d1 07:49:47.004  up 0:29:17   SENSOR  room air 64.96 F, at sensor 65.00 F, RH 21.6 % | DHT22 sent 00 D6 00 B8 8E (18.4 C, 21.4 %) | firmware: 65.1 F, 21.4 %, sensor ok
+d1 07:49:52.005  up 0:29:22   SENSOR  room air 64.95 F, at sensor 64.99 F, RH 21.6 % | DHT22 sent 00 D8 00 B7 8F (18.3 C, 21.6 %) | firmware: 64.9 F, 21.6 %, sensor ok
+d1 07:49:57.005  up 0:29:27   SENSOR  room air 64.95 F, at sensor 64.99 F, RH 21.6 % | DHT22 sent 00 D8 00 B7 8F (18.3 C, 21.6 %) | firmware: 64.9 F, 21.6 %, sensor ok
+d1 07:50:02.004  up 0:29:32   SENSOR  room air 64.95 F, at sensor 64.99 F, RH 21.6 % | DHT22 sent 00 D6 00 B8 8E (18.4 C, 21.4 %) | firmware: 65.1 F, 21.4 %, sensor ok
+d1 07:50:07.004  up 0:29:37   SENSOR  room air 64.95 F, at sensor 64.99 F, RH 21.6 % | DHT22 sent 00 D9 00 B9 92 (18.5 C, 21.7 %) | firmware: 65.3 F, 21.7 %, sensor ok
+d1 07:50:12.005  up 0:29:42   SENSOR  room air 64.94 F, at sensor 64.99 F, RH 21.6 % | DHT22 sent 00 D8 00 B7 8F (18.3 C, 21.6 %) | firmware: 64.9 F, 21.6 %, sensor ok
+d1 07:50:17.005  up 0:29:47   SENSOR  room air 64.94 F, at sensor 64.98 F, RH 21.6 % | DHT22 sent 00 D7 00 B7 8E (18.3 C, 21.5 %) | firmware: 64.9 F, 21.5 %, sensor ok
+d1 07:50:22.005  up 0:29:52   SENSOR  room air 64.94 F, at sensor 64.98 F, RH 21.6 % | DHT22 sent 00 D7 00 B7 8E (18.3 C, 21.5 %) | firmware: 64.9 F, 21.5 %, sensor ok
+d1 07:50:27.005  up 0:29:57   SENSOR  room air 64.94 F, at sensor 64.98 F, RH 21.6 % | DHT22 sent 00 D6 00 B7 8D (18.3 C, 21.4 %) | firmware: 64.9 F, 21.4 %, sensor ok
+d1 07:50:32.004  up 0:30:02   SENSOR  room air 64.93 F, at sensor 64.98 F, RH 21.6 % | DHT22 sent 00 D9 00 B7 90 (18.3 C, 21.7 %) | firmware: 64.9 F, 21.7 %, sensor ok
+d1 07:50:37.005  up 0:30:07   SENSOR  room air 64.93 F, at sensor 64.97 F, RH 21.6 % | DHT22 sent 00 D7 00 B8 8F (18.4 C, 21.5 %) | firmware: 65.1 F, 21.5 %, sensor ok
+d1 07:50:42.004  up 0:30:12   SENSOR  room air 64.93 F, at sensor 64.97 F, RH 21.6 % | DHT22 sent 00 D7 00 B9 90 (18.5 C, 21.5 %) | firmware: 65.3 F, 21.5 %, sensor ok
+d1 07:50:47.004  up 0:30:17   SENSOR  room air 64.93 F, at sensor 64.97 F, RH 21.6 % | DHT22 sent 00 D9 00 B8 91 (18.4 C, 21.7 %) | firmware: 65.1 F, 21.7 %, sensor ok
+d1 07:50:52.004  up 0:30:22   SENSOR  room air 64.93 F, at sensor 64.97 F, RH 21.6 % | DHT22 sent 00 D8 00 B7 8F (18.3 C, 21.6 %) | firmware: 64.9 F, 21.6 %, sensor ok
+d1 07:50:57.004  up 0:30:27   SENSOR  room air 64.92 F, at sensor 64.96 F, RH 21.6 % | DHT22 sent 00 D8 00 B8 90 (18.4 C, 21.6 %) | firmware: 65.1 F, 21.6 %, sensor ok
+d1 07:51:02.004  up 0:30:32   SENSOR  room air 64.92 F, at sensor 64.96 F, RH 21.6 % | DHT22 sent 00 D9 00 B5 8E (18.1 C, 21.7 %) | firmware: 64.5 F, 21.7 %, sensor ok
+d1 07:51:07.005  up 0:30:37   SENSOR  room air 64.92 F, at sensor 64.96 F, RH 21.6 % | DHT22 sent 00 DC 00 B7 93 (18.3 C, 22.0 %) | firmware: 64.9 F, 22.0 %, sensor ok
+d1 07:51:12.004  up 0:30:42   SENSOR  room air 64.92 F, at sensor 64.96 F, RH 21.6 % | DHT22 sent 00 D9 00 B7 90 (18.3 C, 21.7 %) | firmware: 64.9 F, 21.7 %, sensor ok
+d1 07:51:17.004  up 0:30:47   SENSOR  room air 64.91 F, at sensor 64.96 F, RH 21.6 % | DHT22 sent 00 D3 00 B6 89 (18.2 C, 21.1 %) | firmware: 64.7 F, 21.1 %, sensor ok
+d1 07:51:22.004  up 0:30:52   SENSOR  room air 64.91 F, at sensor 64.95 F, RH 21.6 % | DHT22 sent 00 D5 00 B5 8A (18.1 C, 21.3 %) | firmware: 64.5 F, 21.3 %, sensor ok
+d1 07:51:27.005  up 0:30:57   SENSOR  room air 64.91 F, at sensor 64.95 F, RH 21.6 % | DHT22 sent 00 D4 00 B7 8B (18.3 C, 21.2 %) | firmware: 64.9 F, 21.2 %, sensor ok
+d1 07:51:32.005  up 0:31:02   SENSOR  room air 64.91 F, at sensor 64.95 F, RH 21.6 % | DHT22 sent 00 DD 00 B6 93 (18.2 C, 22.1 %) | firmware: 64.7 F, 22.1 %, sensor ok
+d1 07:51:37.005  up 0:31:07   SENSOR  room air 64.91 F, at sensor 64.95 F, RH 21.6 % | DHT22 sent 00 D8 00 B7 8F (18.3 C, 21.6 %) | firmware: 64.9 F, 21.6 %, sensor ok
+d1 07:51:42.004  up 0:31:12   SENSOR  room air 64.90 F, at sensor 64.94 F, RH 21.6 % | DHT22 sent 00 D4 00 B7 8B (18.3 C, 21.2 %) | firmware: 64.9 F, 21.2 %, sensor ok
+d1 07:51:47.004  up 0:31:17   SENSOR  room air 64.90 F, at sensor 64.94 F, RH 21.6 % | DHT22 sent 00 DA 00 B6 90 (18.2 C, 21.8 %) | firmware: 64.7 F, 21.8 %, sensor ok
+d1 07:51:52.005  up 0:31:22   SENSOR  room air 64.90 F, at sensor 64.94 F, RH 21.6 % | DHT22 sent 00 D8 00 B7 8F (18.3 C, 21.6 %) | firmware: 64.9 F, 21.6 %, sensor ok
+d1 07:51:57.004  up 0:31:27   SENSOR  room air 64.90 F, at sensor 64.94 F, RH 21.6 % | DHT22 sent 00 DA 00 B7 91 (18.3 C, 21.8 %) | firmware: 64.9 F, 21.8 %, sensor ok
+d1 07:52:02.004  up 0:31:32   SENSOR  room air 64.89 F, at sensor 64.93 F, RH 21.6 % | DHT22 sent 00 DB 00 B8 93 (18.4 C, 21.9 %) | firmware: 65.1 F, 21.9 %, sensor ok
+d1 07:52:07.005  up 0:31:37   SENSOR  room air 64.89 F, at sensor 64.93 F, RH 21.6 % | DHT22 sent 00 D7 00 B6 8D (18.2 C, 21.5 %) | firmware: 64.7 F, 21.5 %, sensor ok
+d1 07:52:12.005  up 0:31:42   SENSOR  room air 64.89 F, at sensor 64.93 F, RH 21.6 % | DHT22 sent 00 DD 00 B7 94 (18.3 C, 22.1 %) | firmware: 64.9 F, 22.1 %, sensor ok
+d1 07:52:17.005  up 0:31:47   SENSOR  room air 64.89 F, at sensor 64.93 F, RH 21.6 % | DHT22 sent 00 D7 00 B7 8E (18.3 C, 21.5 %) | firmware: 64.9 F, 21.5 %, sensor ok
+d1 07:52:22.004  up 0:31:52   SENSOR  room air 64.89 F, at sensor 64.93 F, RH 21.6 % | DHT22 sent 00 DA 00 B8 92 (18.4 C, 21.8 %) | firmware: 65.1 F, 21.8 %, sensor ok
+d1 07:52:27.004  up 0:31:57   SENSOR  room air 64.88 F, at sensor 64.92 F, RH 21.6 % | DHT22 sent 00 DC 00 B8 94 (18.4 C, 22.0 %) | firmware: 65.1 F, 22.0 %, sensor ok
+d1 07:52:32.004  up 0:32:02   SENSOR  room air 64.88 F, at sensor 64.92 F, RH 21.6 % | DHT22 sent 00 DB 00 B8 93 (18.4 C, 21.9 %) | firmware: 65.1 F, 21.9 %, sensor ok
+d1 07:52:37.004  up 0:32:07   SENSOR  room air 64.88 F, at sensor 64.92 F, RH 21.6 % | DHT22 sent 00 DA 00 B7 91 (18.3 C, 21.8 %) | firmware: 64.9 F, 21.8 %, sensor ok
+d1 07:52:42.004  up 0:32:12   SENSOR  room air 64.88 F, at sensor 64.92 F, RH 21.6 % | DHT22 sent 00 D2 00 B6 88 (18.2 C, 21.0 %) | firmware: 64.7 F, 21.0 %, sensor ok
+d1 07:52:47.005  up 0:32:17   SENSOR  room air 64.87 F, at sensor 64.91 F, RH 21.6 % | DHT22 sent 00 D7 00 B8 8F (18.4 C, 21.5 %) | firmware: 65.1 F, 21.5 %, sensor ok
+d1 07:52:52.004  up 0:32:22   SENSOR  room air 64.87 F, at sensor 64.91 F, RH 21.6 % | DHT22 sent 00 D9 00 B7 90 (18.3 C, 21.7 %) | firmware: 64.9 F, 21.7 %, sensor ok
+d1 07:52:57.004  up 0:32:27   SENSOR  room air 64.87 F, at sensor 64.91 F, RH 21.6 % | DHT22 sent 00 DD 00 B7 94 (18.3 C, 22.1 %) | firmware: 64.9 F, 22.1 %, sensor ok
+d1 07:53:02.004  up 0:32:32   SENSOR  room air 64.87 F, at sensor 64.91 F, RH 21.6 % | DHT22 sent 00 D8 00 B6 8E (18.2 C, 21.6 %) | firmware: 64.7 F, 21.6 %, sensor ok
+d1 07:53:07.004  up 0:32:37   SENSOR  room air 64.87 F, at sensor 64.91 F, RH 21.6 % | DHT22 sent 00 D5 00 B8 8D (18.4 C, 21.3 %) | firmware: 65.1 F, 21.3 %, sensor ok
+d1 07:53:12.004  up 0:32:42   SENSOR  room air 64.86 F, at sensor 64.90 F, RH 21.6 % | DHT22 sent 00 D4 00 B6 8A (18.2 C, 21.2 %) | firmware: 64.7 F, 21.2 %, sensor ok
+d1 07:53:17.005  up 0:32:47   SENSOR  room air 64.86 F, at sensor 64.90 F, RH 21.6 % | DHT22 sent 00 DA 00 B7 91 (18.3 C, 21.8 %) | firmware: 64.9 F, 21.8 %, sensor ok
+d1 07:53:22.004  up 0:32:52   SENSOR  room air 64.86 F, at sensor 64.90 F, RH 21.7 % | DHT22 sent 00 DA 00 B8 92 (18.4 C, 21.8 %) | firmware: 65.1 F, 21.8 %, sensor ok
+d1 07:53:27.005  up 0:32:57   SENSOR  room air 64.86 F, at sensor 64.90 F, RH 21.7 % | DHT22 sent 00 D6 00 B7 8D (18.3 C, 21.4 %) | firmware: 64.9 F, 21.4 %, sensor ok
+d1 07:53:32.005  up 0:33:02   SENSOR  room air 64.86 F, at sensor 64.89 F, RH 21.7 % | DHT22 sent 00 D7 00 B7 8E (18.3 C, 21.5 %) | firmware: 64.9 F, 21.5 %, sensor ok
+d1 07:53:37.004  up 0:33:07   SENSOR  room air 64.85 F, at sensor 64.89 F, RH 21.7 % | DHT22 sent 00 D9 00 B7 90 (18.3 C, 21.7 %) | firmware: 64.9 F, 21.7 %, sensor ok
+d1 07:53:42.005  up 0:33:12   SENSOR  room air 64.85 F, at sensor 64.89 F, RH 21.7 % | DHT22 sent 00 D7 00 B7 8E (18.3 C, 21.5 %) | firmware: 64.9 F, 21.5 %, sensor ok
+d1 07:53:47.004  up 0:33:17   SENSOR  room air 64.85 F, at sensor 64.89 F, RH 21.7 % | DHT22 sent 00 D4 00 B8 8C (18.4 C, 21.2 %) | firmware: 65.1 F, 21.2 %, sensor ok
+d1 07:53:52.005  up 0:33:22   SENSOR  room air 64.85 F, at sensor 64.89 F, RH 21.7 % | DHT22 sent 00 D9 00 B6 8F (18.2 C, 21.7 %) | firmware: 64.7 F, 21.7 %, sensor ok
+d1 07:53:57.004  up 0:33:27   SENSOR  room air 64.84 F, at sensor 64.88 F, RH 21.7 % | DHT22 sent 00 DB 00 B8 93 (18.4 C, 21.9 %) | firmware: 65.1 F, 21.9 %, sensor ok
+d1 07:54:02.005  up 0:33:32   SENSOR  room air 64.84 F, at sensor 64.88 F, RH 21.7 % | DHT22 sent 00 D9 00 B6 8F (18.2 C, 21.7 %) | firmware: 64.7 F, 21.7 %, sensor ok
+d1 07:54:07.004  up 0:33:37   SENSOR  room air 64.84 F, at sensor 64.88 F, RH 21.7 % | DHT22 sent 00 D5 00 B8 8D (18.4 C, 21.3 %) | firmware: 65.1 F, 21.3 %, sensor ok
+d1 07:54:12.005  up 0:33:42   SENSOR  room air 64.84 F, at sensor 64.88 F, RH 21.7 % | DHT22 sent 00 D8 00 B7 8F (18.3 C, 21.6 %) | firmware: 64.9 F, 21.6 %, sensor ok
+d1 07:54:17.005  up 0:33:47   SENSOR  room air 64.84 F, at sensor 64.88 F, RH 21.7 % | DHT22 sent 00 D7 00 B7 8E (18.3 C, 21.5 %) | firmware: 64.9 F, 21.5 %, sensor ok
+d1 07:54:22.005  up 0:33:52   SENSOR  room air 64.83 F, at sensor 64.87 F, RH 21.7 % | DHT22 sent 00 DC 00 B7 93 (18.3 C, 22.0 %) | firmware: 64.9 F, 22.0 %, sensor ok
+d1 07:54:27.005  up 0:33:57   SENSOR  room air 64.83 F, at sensor 64.87 F, RH 21.7 % | DHT22 sent 00 D9 00 B6 8F (18.2 C, 21.7 %) | firmware: 64.7 F, 21.7 %, sensor ok
+d1 07:54:32.005  up 0:34:02   SENSOR  room air 64.83 F, at sensor 64.87 F, RH 21.7 % | DHT22 sent 00 D7 00 B7 8E (18.3 C, 21.5 %) | firmware: 64.9 F, 21.5 %, sensor ok
+d1 07:54:37.004  up 0:34:07   SENSOR  room air 64.83 F, at sensor 64.87 F, RH 21.7 % | DHT22 sent 00 D8 00 B8 90 (18.4 C, 21.6 %) | firmware: 65.1 F, 21.6 %, sensor ok
+d1 07:54:42.004  up 0:34:12   SENSOR  room air 64.83 F, at sensor 64.86 F, RH 21.7 % | DHT22 sent 00 D4 00 B6 8A (18.2 C, 21.2 %) | firmware: 64.7 F, 21.2 %, sensor ok
+d1 07:54:47.004  up 0:34:17   SENSOR  room air 64.82 F, at sensor 64.86 F, RH 21.7 % | DHT22 sent 00 DD 00 B8 95 (18.4 C, 22.1 %) | firmware: 65.1 F, 22.1 %, sensor ok
+d1 07:54:52.005  up 0:34:22   SENSOR  room air 64.82 F, at sensor 64.86 F, RH 21.7 % | DHT22 sent 00 D8 00 B7 8F (18.3 C, 21.6 %) | firmware: 64.9 F, 21.6 %, sensor ok
+d1 07:54:57.005  up 0:34:27   SENSOR  room air 64.82 F, at sensor 64.86 F, RH 21.7 % | DHT22 sent 00 DD 00 B7 94 (18.3 C, 22.1 %) | firmware: 64.9 F, 22.1 %, sensor ok
+d1 07:55:02.005  up 0:34:32   SENSOR  room air 64.82 F, at sensor 64.86 F, RH 21.7 % | DHT22 sent 00 D7 00 B8 8F (18.4 C, 21.5 %) | firmware: 65.1 F, 21.5 %, sensor ok
+d1 07:55:07.005  up 0:34:37   SENSOR  room air 64.81 F, at sensor 64.85 F, RH 21.7 % | DHT22 sent 00 D8 00 B7 8F (18.3 C, 21.6 %) | firmware: 64.9 F, 21.6 %, sensor ok
+d1 07:55:12.004  up 0:34:42   SENSOR  room air 64.81 F, at sensor 64.85 F, RH 21.7 % | DHT22 sent 00 DA 00 B6 90 (18.2 C, 21.8 %) | firmware: 64.7 F, 21.8 %, sensor ok
+d1 07:55:17.004  up 0:34:47   SENSOR  room air 64.81 F, at sensor 64.85 F, RH 21.7 % | DHT22 sent 00 D8 00 B6 8E (18.2 C, 21.6 %) | firmware: 64.7 F, 21.6 %, sensor ok
+d1 07:55:22.005  up 0:34:52   SENSOR  room air 64.81 F, at sensor 64.85 F, RH 21.7 % | DHT22 sent 00 D6 00 B7 8D (18.3 C, 21.4 %) | firmware: 64.9 F, 21.4 %, sensor ok
+d1 07:55:27.004  up 0:34:57   SENSOR  room air 64.81 F, at sensor 64.84 F, RH 21.7 % | DHT22 sent 00 DC 00 B4 90 (18.0 C, 22.0 %) | firmware: 64.4 F, 22.0 %, sensor ok
+d1 07:55:32.004  up 0:35:02   SENSOR  room air 64.80 F, at sensor 64.84 F, RH 21.7 % | DHT22 sent 00 D4 00 B6 8A (18.2 C, 21.2 %) | firmware: 64.7 F, 21.2 %, sensor ok
+d1 07:55:37.004  up 0:35:07   SENSOR  room air 64.80 F, at sensor 64.84 F, RH 21.7 % | DHT22 sent 00 DB 00 B6 91 (18.2 C, 21.9 %) | firmware: 64.7 F, 21.9 %, sensor ok
+d1 07:55:42.005  up 0:35:12   SENSOR  room air 64.80 F, at sensor 64.84 F, RH 21.7 % | DHT22 sent 00 DC 00 B7 93 (18.3 C, 22.0 %) | firmware: 64.9 F, 22.0 %, sensor ok
+d1 07:55:47.004  up 0:35:17   SENSOR  room air 64.80 F, at sensor 64.84 F, RH 21.7 % | DHT22 sent 00 DA 00 B7 91 (18.3 C, 21.8 %) | firmware: 64.9 F, 21.8 %, sensor ok
+d1 07:55:52.004  up 0:35:22   SENSOR  room air 64.80 F, at sensor 64.83 F, RH 21.7 % | DHT22 sent 00 D7 00 B6 8D (18.2 C, 21.5 %) | firmware: 64.7 F, 21.5 %, sensor ok
+d1 07:55:57.005  up 0:35:27   SENSOR  room air 64.79 F, at sensor 64.83 F, RH 21.7 % | DHT22 sent 00 D8 00 B7 8F (18.3 C, 21.6 %) | firmware: 64.9 F, 21.6 %, sensor ok
+d1 07:56:02.004  up 0:35:32   SENSOR  room air 64.79 F, at sensor 64.83 F, RH 21.7 % | DHT22 sent 00 D8 00 B6 8E (18.2 C, 21.6 %) | firmware: 64.7 F, 21.6 %, sensor ok
+d1 07:56:07.005  up 0:35:37   SENSOR  room air 64.79 F, at sensor 64.83 F, RH 21.7 % | DHT22 sent 00 D7 00 B6 8D (18.2 C, 21.5 %) | firmware: 64.7 F, 21.5 %, sensor ok
+d1 07:56:12.004  up 0:35:42   SENSOR  room air 64.79 F, at sensor 64.83 F, RH 21.7 % | DHT22 sent 00 DC 00 B6 92 (18.2 C, 22.0 %) | firmware: 64.7 F, 22.0 %, sensor ok
+d1 07:56:17.004  up 0:35:47   SENSOR  room air 64.79 F, at sensor 64.82 F, RH 21.7 % | DHT22 sent 00 D8 00 B8 90 (18.4 C, 21.6 %) | firmware: 65.1 F, 21.6 %, sensor ok
+d1 07:56:22.005  up 0:35:52   SENSOR  room air 64.78 F, at sensor 64.82 F, RH 21.7 % | DHT22 sent 00 D7 00 B6 8D (18.2 C, 21.5 %) | firmware: 64.7 F, 21.5 %, sensor ok
+d1 07:56:27.004  up 0:35:57   SENSOR  room air 64.78 F, at sensor 64.82 F, RH 21.7 % | DHT22 sent 00 D8 00 B6 8E (18.2 C, 21.6 %) | firmware: 64.7 F, 21.6 %, sensor ok
+d1 07:56:32.005  up 0:36:02   SENSOR  room air 64.78 F, at sensor 64.82 F, RH 21.7 % | DHT22 sent 00 D8 00 B7 8F (18.3 C, 21.6 %) | firmware: 64.9 F, 21.6 %, sensor ok
+d1 07:56:37.005  up 0:36:07   SENSOR  room air 64.78 F, at sensor 64.81 F, RH 21.7 % | DHT22 sent 00 DC 00 B7 93 (18.3 C, 22.0 %) | firmware: 64.9 F, 22.0 %, sensor ok
+d1 07:56:42.004  up 0:36:12   SENSOR  room air 64.78 F, at sensor 64.81 F, RH 21.7 % | DHT22 sent 00 D7 00 B5 8C (18.1 C, 21.5 %) | firmware: 64.5 F, 21.5 %, sensor ok
+d1 07:56:47.004  up 0:36:17   SENSOR  room air 64.77 F, at sensor 64.81 F, RH 21.7 % | DHT22 sent 00 DB 00 B6 91 (18.2 C, 21.9 %) | firmware: 64.7 F, 21.9 %, sensor ok
+d1 07:56:52.004  up 0:36:22   SENSOR  room air 64.77 F, at sensor 64.81 F, RH 21.7 % | DHT22 sent 00 D8 00 B5 8D (18.1 C, 21.6 %) | firmware: 64.5 F, 21.6 %, sensor ok
+d1 07:56:57.004  up 0:36:27   SENSOR  room air 64.77 F, at sensor 64.81 F, RH 21.7 % | DHT22 sent 00 D6 00 B6 8C (18.2 C, 21.4 %) | firmware: 64.7 F, 21.4 %, sensor ok
+d1 07:57:02.005  up 0:36:32   SENSOR  room air 64.77 F, at sensor 64.80 F, RH 21.7 % | DHT22 sent 00 D6 00 B7 8D (18.3 C, 21.4 %) | firmware: 64.9 F, 21.4 %, sensor ok
+d1 07:57:07.004  up 0:36:37   SENSOR  room air 64.76 F, at sensor 64.80 F, RH 21.7 % | DHT22 sent 00 D4 00 B6 8A (18.2 C, 21.2 %) | firmware: 64.7 F, 21.2 %, sensor ok
+d1 07:57:12.004  up 0:36:42   SENSOR  room air 64.76 F, at sensor 64.80 F, RH 21.7 % | DHT22 sent 00 DE 00 B6 94 (18.2 C, 22.2 %) | firmware: 64.7 F, 22.2 %, sensor ok
+d1 07:57:17.004  up 0:36:47   SENSOR  room air 64.76 F, at sensor 64.80 F, RH 21.7 % | DHT22 sent 00 DC 00 B6 92 (18.2 C, 22.0 %) | firmware: 64.7 F, 22.0 %, sensor ok
+d1 07:57:22.005  up 0:36:52   SENSOR  room air 64.76 F, at sensor 64.80 F, RH 21.7 % | DHT22 sent 00 DC 00 B7 93 (18.3 C, 22.0 %) | firmware: 64.9 F, 22.0 %, sensor ok
+d1 07:57:27.004  up 0:36:57   SENSOR  room air 64.76 F, at sensor 64.79 F, RH 21.7 % | DHT22 sent 00 E1 00 B6 97 (18.2 C, 22.5 %) | firmware: 64.7 F, 22.5 %, sensor ok
+d1 07:57:32.004  up 0:37:02   SENSOR  room air 64.75 F, at sensor 64.79 F, RH 21.7 % | DHT22 sent 00 D9 00 B7 90 (18.3 C, 21.7 %) | firmware: 64.9 F, 21.7 %, sensor ok
+d1 07:57:37.004  up 0:37:07   SENSOR  room air 64.75 F, at sensor 64.79 F, RH 21.7 % | DHT22 sent 00 D4 00 B6 8A (18.2 C, 21.2 %) | firmware: 64.7 F, 21.2 %, sensor ok
+d1 07:57:42.005  up 0:37:12   SENSOR  room air 64.75 F, at sensor 64.79 F, RH 21.7 % | DHT22 sent 00 DF 00 B7 96 (18.3 C, 22.3 %) | firmware: 64.9 F, 22.3 %, sensor ok
+d1 07:57:47.004  up 0:37:17   SENSOR  room air 64.75 F, at sensor 64.79 F, RH 21.7 % | DHT22 sent 00 DA 00 B8 92 (18.4 C, 21.8 %) | firmware: 65.1 F, 21.8 %, sensor ok
+d1 07:57:52.005  up 0:37:22   SENSOR  room air 64.75 F, at sensor 64.78 F, RH 21.7 % | DHT22 sent 00 DA 00 B5 8F (18.1 C, 21.8 %) | firmware: 64.5 F, 21.8 %, sensor ok
+d1 07:57:57.004  up 0:37:27   SENSOR  room air 64.74 F, at sensor 64.78 F, RH 21.7 % | DHT22 sent 00 D2 00 B6 88 (18.2 C, 21.0 %) | firmware: 64.7 F, 21.0 %, sensor ok
+d1 07:58:02.004  up 0:37:32   SENSOR  room air 64.74 F, at sensor 64.78 F, RH 21.7 % | DHT22 sent 00 D8 00 B5 8D (18.1 C, 21.6 %) | firmware: 64.5 F, 21.6 %, sensor ok
+d1 07:58:07.004  up 0:37:37   SENSOR  room air 64.74 F, at sensor 64.78 F, RH 21.7 % | DHT22 sent 00 DC 00 B6 92 (18.2 C, 22.0 %) | firmware: 64.7 F, 22.0 %, sensor ok
+d1 07:58:12.005  up 0:37:42   SENSOR  room air 64.74 F, at sensor 64.78 F, RH 21.7 % | DHT22 sent 00 DA 00 B5 8F (18.1 C, 21.8 %) | firmware: 64.5 F, 21.8 %, sensor ok
+d1 07:58:17.004  up 0:37:47   SENSOR  room air 64.74 F, at sensor 64.77 F, RH 21.7 % | DHT22 sent 00 D6 00 B5 8B (18.1 C, 21.4 %) | firmware: 64.5 F, 21.4 %, sensor ok
+d1 07:58:22.004  up 0:37:52   SENSOR  room air 64.73 F, at sensor 64.77 F, RH 21.7 % | DHT22 sent 00 D9 00 B7 90 (18.3 C, 21.7 %) | firmware: 64.9 F, 21.7 %, sensor ok
+d1 07:58:27.004  up 0:37:57   SENSOR  room air 64.73 F, at sensor 64.77 F, RH 21.7 % | DHT22 sent 00 D6 00 B6 8C (18.2 C, 21.4 %) | firmware: 64.7 F, 21.4 %, sensor ok
+d1 07:58:32.004  up 0:38:02   SENSOR  room air 64.73 F, at sensor 64.77 F, RH 21.7 % | DHT22 sent 00 DC 00 B6 92 (18.2 C, 22.0 %) | firmware: 64.7 F, 22.0 %, sensor ok
+d1 07:58:37.004  up 0:38:07   SENSOR  room air 64.73 F, at sensor 64.77 F, RH 21.7 % | DHT22 sent 00 D8 00 B6 8E (18.2 C, 21.6 %) | firmware: 64.7 F, 21.6 %, sensor ok
+d1 07:58:42.004  up 0:38:12   SENSOR  room air 64.73 F, at sensor 64.76 F, RH 21.8 % | DHT22 sent 00 D8 00 B6 8E (18.2 C, 21.6 %) | firmware: 64.7 F, 21.6 %, sensor ok
+d1 07:58:47.004  up 0:38:17   SENSOR  room air 64.72 F, at sensor 64.76 F, RH 21.8 % | DHT22 sent 00 DA 00 B7 91 (18.3 C, 21.8 %) | firmware: 64.9 F, 21.8 %, sensor ok
+d1 07:58:52.004  up 0:38:22   SENSOR  room air 64.72 F, at sensor 64.76 F, RH 21.8 % | DHT22 sent 00 D9 00 B7 90 (18.3 C, 21.7 %) | firmware: 64.9 F, 21.7 %, sensor ok
+d1 07:58:57.004  up 0:38:27   SENSOR  room air 64.72 F, at sensor 64.76 F, RH 21.8 % | DHT22 sent 00 D8 00 B5 8D (18.1 C, 21.6 %) | firmware: 64.5 F, 21.6 %, sensor ok
+d1 07:59:02.004  up 0:38:32   SENSOR  room air 64.72 F, at sensor 64.75 F, RH 21.8 % | DHT22 sent 00 DC 00 B6 92 (18.2 C, 22.0 %) | firmware: 64.7 F, 22.0 %, sensor ok
+d1 07:59:07.005  up 0:38:37   SENSOR  room air 64.72 F, at sensor 64.75 F, RH 21.8 % | DHT22 sent 00 DD 00 B6 93 (18.2 C, 22.1 %) | firmware: 64.7 F, 22.1 %, sensor ok
+d1 07:59:12.005  up 0:38:42   SENSOR  room air 64.71 F, at sensor 64.75 F, RH 21.8 % | DHT22 sent 00 D8 00 B7 8F (18.3 C, 21.6 %) | firmware: 64.9 F, 21.6 %, sensor ok
+d1 07:59:17.004  up 0:38:47   SENSOR  room air 64.71 F, at sensor 64.75 F, RH 21.8 % | DHT22 sent 00 D8 00 B5 8D (18.1 C, 21.6 %) | firmware: 64.5 F, 21.6 %, sensor ok
+d1 07:59:22.004  up 0:38:52   SENSOR  room air 64.71 F, at sensor 64.75 F, RH 21.8 % | DHT22 sent 00 D4 00 B6 8A (18.2 C, 21.2 %) | firmware: 64.7 F, 21.2 %, sensor ok
+d1 07:59:27.004  up 0:38:57   SENSOR  room air 64.71 F, at sensor 64.74 F, RH 21.8 % | DHT22 sent 00 DA 00 B6 90 (18.2 C, 21.8 %) | firmware: 64.7 F, 21.8 %, sensor ok
+d1 07:59:32.004  up 0:39:02   SENSOR  room air 64.71 F, at sensor 64.74 F, RH 21.8 % | DHT22 sent 00 DB 00 B6 91 (18.2 C, 21.9 %) | firmware: 64.7 F, 21.9 %, sensor ok
+d1 07:59:37.005  up 0:39:07   SENSOR  room air 64.70 F, at sensor 64.74 F, RH 21.8 % | DHT22 sent 00 DE 00 B7 95 (18.3 C, 22.2 %) | firmware: 64.9 F, 22.2 %, sensor ok
+d1 07:59:42.005  up 0:39:12   SENSOR  room air 64.70 F, at sensor 64.74 F, RH 21.8 % | DHT22 sent 00 D9 00 B6 8F (18.2 C, 21.7 %) | firmware: 64.7 F, 21.7 %, sensor ok
+d1 07:59:47.004  up 0:39:17   SENSOR  room air 64.70 F, at sensor 64.74 F, RH 21.8 % | DHT22 sent 00 D4 00 B6 8A (18.2 C, 21.2 %) | firmware: 64.7 F, 21.2 %, sensor ok
+d1 07:59:52.004  up 0:39:22   SENSOR  room air 64.70 F, at sensor 64.73 F, RH 21.8 % | DHT22 sent 00 D6 00 B6 8C (18.2 C, 21.4 %) | firmware: 64.7 F, 21.4 %, sensor ok
+d1 07:59:57.005  up 0:39:27   SENSOR  room air 64.70 F, at sensor 64.73 F, RH 21.8 % | DHT22 sent 00 DA 00 B5 8F (18.1 C, 21.8 %) | firmware: 64.5 F, 21.8 %, sensor ok
+d1 08:00:00.000  up 0:39:30   WORLD   outdoor 22.9 F | indoor air 64.70 F, structure 66.76 F, at sensor 64.73 F, RH 21.8 % | mode off, fan auto, setpoint 70 F | W1 open, Y1 open, G open (idle) | sensor ok | furnace 0 %, coil 0 %
+d1 08:00:00.000  up 0:39:30   EXPECT  ok: status (?10,0,0~) contains "connected, IP 192.168.1.40"
+d1 08:00:00.000  up 0:39:30   STATUS  final status (?10,0,0~):
+d1 08:00:00.000  up 0:39:30   STATUS    | temperature:         64.5 F
+d1 08:00:00.000  up 0:39:30   STATUS    | humidity:            21.8 %
+d1 08:00:00.000  up 0:39:30   STATUS    | sensor:              ok, last reading 3s ago, 474 ok, 0 failed
+d1 08:00:00.000  up 0:39:30   STATUS    | hvac mode:           0 (off)
+d1 08:00:00.000  up 0:39:30   STATUS    | fan mode:            0 (auto)
+d1 08:00:00.000  up 0:39:30   STATUS    | setpoint:            70 F
+d1 08:00:00.000  up 0:39:30   STATUS    | text color:          0 (white)
+d1 08:00:00.000  up 0:39:30   STATUS    | EEPROM:              saved
+d1 08:00:00.000  up 0:39:30   STATUS    | running:             idle
+d1 08:00:00.000  up 0:39:30   STATUS    | relays:              W1 open, Y1 open, G open
+d1 08:00:00.000  up 0:39:30   STATUS    | heat:                off 2370s
+d1 08:00:00.000  up 0:39:30   STATUS    | cool:                off 2370s
+d1 08:00:00.000  up 0:39:30   STATUS    | compressor:          ready
+d1 08:00:00.000  up 0:39:30   STATUS    | starts last hour:    heat 0 of 6, cool 0 of 4
+d1 08:00:00.000  up 0:39:30   STATUS    | Wi-Fi:               connected, IP 192.168.1.40, RSSI -61 dBm
+d1 08:00:00.000  up 0:39:30   STATUS    | uptime:              +0d 00:39:30, after power-up or reset
+d1 08:00:00.000  up 0:39:30   STATUS    | errors:              none
+d1 08:00:00.000  power off    DAY     day 1 (winter): outdoor 21.8..22.9 F, indoor air 64.7..67.0 F (average 65.7), RH 20..22 %
+d1 08:00:00.000  power off    DAY     day 1: heat W1 0h00m (0 %), 0 starts | cool Y1 0h00m (0 %), 0 starts | blower G 0h00m
+d1 08:00:00.000  power off    DAY     day 1: comfort 100.0 % of 0h00m settled time | DHT22 708 reads, 0 faulted | EEPROM 1 writes | firmware log 24 lines | API 1 requests | boots 3
+d1 08:00:00.000  power off    DAY     run total (winter): outdoor 21.8..22.9 F, indoor air 64.7..67.0 F (average 65.7), RH 20..22 %
+d1 08:00:00.000  power off    DAY     run total: heat W1 0h00m (0 %), 0 starts | cool Y1 0h00m (0 %), 0 starts | blower G 0h00m
+d1 08:00:00.000  power off    DAY     run total: comfort 100.0 % of 0h00m settled time | DHT22 708 reads, 0 faulted | EEPROM 1 writes | firmware log 24 lines | API 1 requests | boots 3
+d1 08:00:00.000  power off    RUN     PASSED: 25488 rule checks, 0 failures, 7 scenario expectations, 0 failed

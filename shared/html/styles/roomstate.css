@@ -1,16 +1,8 @@
-/*
- *  Automate -- roomstate.css
- *
- *  Title-bar room status light: the SVG, its countdown ring, the refresh
- *  spinner and the idle hatch.
- *
- *  Split out of the old single styles.css. Loaded from index.html after
- *  styles/main.css, which holds the globals (palette, buttons, menus) these
- *  rules build on.
- */
+/* Automate: title-bar status light: SVG, countdown ring, refresh spinner, idle
+   hatch. */
 
 /*
- *  Titlebar Room Status 
+ *  Titlebar Room Status
  */
 
 .roomstatus-svgs {
@@ -26,14 +18,13 @@
   stroke: var(--main-40-white);
   stroke-width: 5px;
   stroke-dasharray: 100;
-  stroke-dashoffset: 100; 
+  stroke-dashoffset: 100;
   opacity: 0;
   visibility: hidden;
-  transition: opacity 0.5s ease, visibility 0.5s ease, stroke-dashoffset 0s; 
+  transition: opacity 0.5s ease, visibility 0.5s ease, stroke-dashoffset 0s;
 }
 
-/* the dot and the gap around it, so it is spaced as the icons beside it are.
-   The svg's ring is wider than the dot and overhangs a small gap. */
+/* the dot and its gap, spaced as the icons beside it; the ring overhangs */
 #status_anchor {
   position: relative;
   width: calc(var(--nav-icon-size) - -1 * var(--nav-icon-gap));
@@ -58,12 +49,9 @@
   fill: transparent;
 }
 
-/* Refresh spinner, drawn while a status request is in flight. It rides the
-   same circle the countdown ring does: of the 50-unit viewBox, the r=23 path
-   is a 46-unit centre-line and its stroke 5 units. A border ring is measured
-   outside-in, so the box is 46 + 5 = 51 units, 1.02 of the svg.
-   Centred with margins rather than a transform, because the shared rotation
-   keyframes animate transform and would otherwise throw the centring away. */
+/* Refresh spinner on the countdown ring's circle: 46-unit centre-line plus a 5-unit
+   stroke, 1.02 of the svg. Centred by margins, as the rotation keyframes animate
+   transform. */
 .roomstatus-spinner {
   --status-ring-size: calc(var(--nav-status-size) * 1.02);
   width: var(--status-ring-size);
@@ -73,15 +61,7 @@
   margin-left: calc(var(--status-ring-size) / -2);
   margin-top: calc(var(--status-ring-size) / -2);
   z-index: 1;
-  /* These two asked for 4.5px in the old single stylesheet and never got it:
-     the shared spinner rule (.btn-spinner, .right-nav-spinner,
-     .roomstatus-spinner, .bookmark-spinner in main.css) sits further down the
-     cascade at the same specificity, and its `border-top: 3px solid #fff`
-     shorthand re-set the width. The ring has therefore always drawn at 3px.
-     Splitting the file put this rule after that one, which would have handed
-     it the 4.5px and quietly changed the ring, so the value that has actually
-     been rendering is written here instead -- the split changes nothing on
-     screen. Raise both to 4.5px if the thicker ring is wanted. */
+  /* Equal to the shared spinner rule's 3px; raise both for a thicker ring. */
   border-top-width: 3px;
   border-right-width: 3px;
   opacity: 0;
@@ -94,32 +74,26 @@
   visibility: visible;
 }
 
-/* never both rings at once: the countdown drops out the moment a refresh
-   starts, without its usual half-second fade */
+/* only one ring: the countdown drops out as a refresh starts */
 #status_anchor.status-refreshing .spinner-path {
   opacity: 0;
   visibility: hidden;
   transition: none;
 }
 
-/* Refresh stopped: the light keeps the colour of the last state that was
-   read and takes a hatch over it, so a reading that is no longer current is
-   never mistaken for a live one. */
+/* Refresh stopped: the last state with a hatch over it, so it is not mistaken for
+   live. */
 #statusHatch {
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.5s ease;
 }
 
-/* Raised from 0.45: the hatch now carries a dark line as well as a light one
-   (see buildHTML in roomstate.js), and at the old opacity neither was doing
-   much. The light underneath still reads through at this level. */
 #trafficLightIcon.status-idle ~ #statusHatch {
   opacity: 0.7;
 }
 
-/* nothing has been read yet, so there is no state to hold: the dot falls
-   back to the global yellow, dimmed to half, as it always did */
+/* nothing read yet: the global yellow, dimmed */
 #trafficLightIcon.status-idle:not(.status-on):not(.status-off) {
   fill: var(--orange-ind);
   fill-opacity: 0.4;

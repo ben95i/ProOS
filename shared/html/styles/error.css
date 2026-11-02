@@ -1,14 +1,6 @@
-/*
- *  Automate -- error.css
- *
- *  The message popup (showPopup() in error.js) and its two error forms:
- *  Not connected and Exception has occurred. The popup's frame is main.css's
- *  .popup-alert, which the volume popup shares; an error widens it and lays
- *  out an icon and title, a sentence, then labelled rows of detail.
- *
- *  main.css gives every element (*) its own font size, so each text element
- *  here sets one rather than inheriting it from its box.
- */
+/* Automate: message popup (error.js) and its two error forms, on main.css's
+   .popup-alert. The * rule sizes every element, so each text element sets its own
+   size. */
 
 /*
  *  Message Popup

@@ -1,32 +1,12 @@
-/*
- *  Automate -- camera.css
- *
- *  The camera popup (CameraView in camera.js): #cam-popup holds #cam-stage,
- *  the box the picture is shown in, with the <video> and a status line
- *  laid over it. The popup's frame and its buttons are main.css's
- *  .popup-win / .popup-ctn / .popup-actions, unchanged.
- *
- *  The stage is shaped like the picture as it will be seen: camera.js sets
- *  --cam-aspect to the video's width / height, swapped for a quarter turn,
- *  and the stage is as wide as fits both --cam-max-width and
- *  --cam-max-height at that shape. A portrait camera gets a tall, narrow
- *  window instead of a wide one with a small picture in the middle.
- *
- *  --cam-max-height below is only the starting point: camera.js replaces it
- *  with the height actually free on screen once the popup is open, so the
- *  whole popup fits between a phone browser's bars.
- *
- *  Rotation is a CSS transform (--cam-rotation, set by camera.js), which the
- *  browser's compositor applies for free. A rotated element keeps its
- *  unrotated layout box, so for a quarter turn the video is laid out with
- *  the stage's height as its width and the stage's width as its height
- *  (container query units, cqh / cqw), and only then turned to fit.
- */
+/* Automate: camera popup (camera.js). #cam-stage holds the <video> and a status
+   line. camera.js sets --cam-aspect (swapped for a quarter turn), --cam-max-height
+   (the height free on screen) and --cam-rotation. A rotated element keeps its
+   unrotated box, so for a quarter turn the video is laid out with the stage's height
+   as its width (cqh / cqw) before turning. */
 
 :root {
   --cam-max-width: 88vw;   /* the picture's largest size in the popup */
-  /* room left for the popup's frame and button row (about 110px) and the
-     gaps above and below it; dvh where supported, vh before that */
+  /* room for the popup's frame and buttons (about 110px) and its gaps */
   --cam-max-height: calc(100vh - 140px);
   --cam-max-height: calc(100dvh - 140px);
 }
@@ -60,9 +40,8 @@
   height: 100cqw;
 }
 
-/* "Loading...", "Reconnecting...": a dark label in the middle of the
-   picture, readable over the still frame shown while the stream loads, out
-   of the way of taps, and gone when it is empty */
+/* status text: a dark label over the picture, out of the way of taps, gone when
+   empty */
 #cam-status {
   position: absolute;
   top: 50%;
@@ -82,9 +61,7 @@
   display: none;
 }
 
-/* Fullscreen API: the stage fills the screen. Two rules, not one with a
-   selector list: a browser that does not know one of the pseudo-classes
-   drops the whole rule it is in. */
+/* Fullscreen API: two rules, as an unknown pseudo-class drops a whole selector list */
 #cam-stage:fullscreen {
   width: 100vw;
   height: 100vh;
@@ -101,10 +78,8 @@
   border-radius: 0;
 }
 
-/* no Fullscreen API (iPhone Safari): the popup fills the browser window
-   instead. The transform has to go too -- a transformed popup would hold
-   the stage inside itself rather than let it cover the page. A tap on the
-   picture puts it back. */
+/* no Fullscreen API (iPhone Safari): the popup fills the window; a transform would
+   trap the stage, so it goes */
 #cam-popup.cam-popup--max {
   inset: 0;
   transform: none;

@@ -1,17 +1,16 @@
-// Automate Website - weather widget
-//
-// The title bar icon and the drop-down behind it. new WeatherWidget() then
-// .activate() to draw and start polling, .remove() to take it away.
+// Automate - weather icon in the title bar and the drop-down behind it.
+// new WeatherWidget() then .activate() to draw and poll, .remove() to take it away.
 // The API answers { location, temperature, condition, humidity, timeOfDay }.
 
 import { makeElement } from './utils.js';
 import { logError } from './error.js';
+import { removeDropdowns } from './dropdowns.js';
 
-const REFRESH_MS = 60 * 1000; // one minute
+const REFRESH_MS = 60 * 1000;
 const ANCHOR_ID = 'weather_anchor';
+const API_URL = '/api?var=&arg=weather&action=main';
 
-// condition text -> the icon that stands for it. Checked in order, so the
-// first match wins; day / night pairs pick by the reading's timeOfDay.
+// Condition text -> its icon, first match winning; day / night pairs pick by timeOfDay.
 const CONDITION_ICONS = [
   {
     match: ['sun', 'clear'],
@@ -28,37 +27,31 @@ const ERROR_ICON = 'fad fa-exclamation-triangle';
 
 export default class WeatherWidget {
 
-  constructor(apiUrl = '/api?var=&arg=weather&action=main') {
-    this.apiUrl = apiUrl;
-    this.refreshInterval = REFRESH_MS;
+  // set up by activate()
+  constructor() {
     this.timerId = null;
     this.weatherData = null;
     this.container = null;
     this.dropdown = null;
     this.isOpen = false;
-    // set by remove(); a reply that lands afterwards is dropped rather than
-    // written into elements the page has already taken away
+    // set by remove(); a late reply is dropped
     this.removed = false;
-    // bumped per request: the auto-refresh and opening the menu can each have
-    // one in the air, and the slower of the two used to repaint over the
-    // fresher answer
+    // bumped per request, so the slower of two cannot repaint over the fresher
     this.requestGen = 0;
     this._handleOutsideClick = this._handleOutsideClick.bind(this);
     this.toggleMenu = this.toggleMenu.bind(this);
   }
 
+  // draws the icon and starts polling
   activate() {
-    if (this.container) return;
     this._renderIcon();
-    // no anchor on this page: nothing was drawn, so nothing is polled either
-    if (!this.container) return;
-    this.removed = false;
     this._renderDropdown();
     this.fetchWeather();
-    this.timerId = setInterval(() => this.fetchWeather(), this.refreshInterval);
+    this.timerId = setInterval(() => this.fetchWeather(), REFRESH_MS);
     document.addEventListener('click', this._handleOutsideClick);
   }
 
+  // hides the drop-down
   closeMenu() {
     if (this.isOpen && this.dropdown) {
       this.dropdown.style.display = 'none';
@@ -66,9 +59,10 @@ export default class WeatherWidget {
     }
   }
 
+  // takes the widget away
   remove() {
     this.removed = true;
-    // anything still in flight is dropped by the generation check as well
+    // anything in flight is dropped by stale() as well
     this.requestGen++;
     if (this.timerId) {
       clearInterval(this.timerId);
@@ -85,13 +79,13 @@ export default class WeatherWidget {
     document.removeEventListener('click', this._handleOutsideClick);
   }
 
-  // this answer is no longer the current one: torn down, or overtaken
+  // is this answer overtaken: removed, or a newer request
   _stale(gen) {
     return this.removed || gen !== this.requestGen;
   }
 
+  // swaps the icon for its spinner
   _setSpinner(on) {
-    if (!this.iconElement || !this.spinnerElement) return;
     if (on === true) {
       this.iconElement.style.display = 'none';
       this.spinnerElement.style.display = 'inline-block';
@@ -101,12 +95,13 @@ export default class WeatherWidget {
     }
   }
 
+  // reads the weather and shows it, or the error
   async fetchWeather() {
     if (this.removed) return;
     const gen = ++this.requestGen;
     this._setSpinner(true);
     try {
-      const response = await fetch(this.apiUrl);
+      const response = await fetch(API_URL);
       if (!response.ok) throw new Error('API Network Error');
       const data = await response.json();
       if (this._stale(gen)) return;
@@ -116,17 +111,13 @@ export default class WeatherWidget {
       if (this._stale(gen)) return;
       logError('reading the weather', error);
       this._setSpinner(false);
-      if (this.iconElement) {
-        this.iconElement.className = ERROR_ICON;
-      }
-      if (this.badgeElement) {
-        this.badgeElement.style.display = 'none';
-      }
+      this.iconElement.className = ERROR_ICON;
+      this.badgeElement.style.display = 'none';
       this._updateDropdownContentError();
     }
   }
 
-  // the icon for the reading currently held
+  // the icon for the reading held
   _weatherIcon() {
     const condition = (this.weatherData.condition || '').toLowerCase();
     const time = this.weatherData.timeOfDay || 'day';
@@ -141,8 +132,8 @@ export default class WeatherWidget {
     return DEFAULT_ICON;
   }
 
+  // paints the reading on the icon, badge and drop-down
   _updateWeatherUI() {
-    if (!this.weatherData) return;
     this._setSpinner(false);
     this.iconElement.className = this._weatherIcon();
     if (this.weatherData.temperature !== undefined) {
@@ -152,12 +143,9 @@ export default class WeatherWidget {
     this._updateDropdownContent();
   }
 
+  // draws the icon, badge and spinner into the anchor
   _renderIcon() {
     this.container = document.getElementById(ANCHOR_ID);
-    if (!this.container) {
-      logError('drawing the weather icon', `${ANCHOR_ID} not found in the DOM.`);
-      return;
-    }
     this.iconElement = makeElement('i', DEFAULT_ICON);
     this.badgeElement = makeElement('span', 'weather-badge');
     this.badgeElement.style.display = 'none';
@@ -171,6 +159,7 @@ export default class WeatherWidget {
     this.container.addEventListener('click', this.toggleMenu);
   }
 
+  // draws the empty drop-down
   _renderDropdown() {
     this.dropdown = makeElement('div', 'dd-content dd-menu weather-dropdown',
       '<a>Loading...</a>');
@@ -179,14 +168,14 @@ export default class WeatherWidget {
     document.body.appendChild(this.dropdown);
   }
 
-  // one row of the drop-down: an icon and its text
+  // one drop-down row: an icon and its text
   _menuRow(icon, text) {
     return makeElement('a', '',
       `<i class="${icon}" style="width: 25px; text-align: center;"></i> ${text}`);
   }
 
+  // fills the drop-down from the reading held
   _updateDropdownContent() {
-    if (!this.dropdown || !this.weatherData) return;
     const reading = this.weatherData;
     this.dropdown.innerHTML = '';
     this.dropdown.appendChild(
@@ -197,8 +186,8 @@ export default class WeatherWidget {
       this._menuRow('fad fa-humidity', `${reading.humidity}% Humidity`));
   }
 
+  // fills the drop-down with the error
   _updateDropdownContentError() {
-    if (!this.dropdown) return;
     this.dropdown.innerHTML = '';
     this.dropdown.appendChild(makeElement('a', '',
       `<i class="${ERROR_ICON}" style="color: var(--red-ind);"></i> Error Loading Weather`));
@@ -216,22 +205,22 @@ export default class WeatherWidget {
     style.display = 'block';
   }
 
+  // the icon pressed: toggles the drop-down, reading the weather as it opens
   toggleMenu(event) {
-    if (event) event.stopPropagation();
+    event.stopPropagation();
     if (this.isOpen) {
       this.closeMenu();
       return;
     }
-    if (typeof window.removeDropdowns === 'function') {
-      window.removeDropdowns();
-    }
+    removeDropdowns();
     this.fetchWeather();
     this._placeDropdown();
     this.isOpen = true;
   }
 
+  // a click elsewhere closes the drop-down
   _handleOutsideClick(event) {
-    if (!this.isOpen || !this.container) return;
+    if (!this.isOpen) return;
     if (this.container.contains(event.target)) return;
     if (this.dropdown.contains(event.target)) return;
     this.closeMenu();

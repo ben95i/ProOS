@@ -1,26 +1,8 @@
-/*
- *  Automate -- thermo.css
- *
- *  The temperature and thermostat window (thermo.js): two panels (.btn-group,
- *  groups.css, drawn flat with the bathroom settings' thin grey edge) over a
- *  row of three buttons, with the settings view (its title over the display
- *  panel, the status box and its own row of buttons) standing in their place while it
- *  shows. The left panel holds the thermometers, the right one the thermostat's
- *  dot-matrix setpoint display, its mode and blower icons and the setpoint
- *  buttons.
- *
- *  Spacing: every space in the window -- its edge to what it holds, between
- *  the panels, the panels to the buttons, between the buttons, and between
- *  the things inside a panel -- is --thermo-gap. A .button's face sits
- *  --thermo-wall up and left of its box, its walls filling the rest, so each
- *  space runs from one thing's walls or edge to the next one's face or edge.
- *
- *  Loaded after main.css, dropdowns.css and groups.css: the rules below that
- *  resize a .button or a .btn-group win at equal specificity only by coming
- *  after them.
- *
- *  No "+" inside calc() (see groups.css).
- */
+/* Automate: temperature and thermostat window (thermo.js): two flat .btn-group
+   panels over three buttons, the settings view standing in their place. Every space
+   is --thermo-gap, from walls or edges to faces; a .button's face sits --thermo-wall
+   up and left. Resizing rules win by loading after main, dropdowns and groups. No
+   "+" inside calc(). */
 
 #temp__prompt {
   --thermo-window-height: 500px;     /* border included */
@@ -36,17 +18,14 @@
      height its panel has */
   --thermo-tube-min-height: 150px;
   --thermo-tube-border: 9px;
-  /* the bulb hangs this far below the tube: it is 45px tall and stands 40px
-     below the tube's inner edge, which is the 9px border above the bottom */
+  /* the bulb hangs this far below the tube */
   --thermo-bulb-drop: 31px;
-  /* the reading in its bubble: its text, and the space above and below it
-     (its line height is the text's own), so the bubble stands this tall */
+  /* the reading's bubble: its text and the space around it */
   --thermo-reading-font: 29px;
   --thermo-reading-padding: 5px;
   --thermo-reading-height: calc(var(--thermo-reading-font) - -2 * var(--thermo-reading-padding));
-  /* The bubble stands a half of itself below the top of the fill, so with
-     the tube empty it hangs one and a half bubbles below the tube's inner
-     edge, the border's depth below that edge being the tube's own. */
+  /* a half bubble below the fill's top, so an empty tube's reading hangs this far
+     below */
   --thermo-reading-drop: calc(1.5 * var(--thermo-reading-height) - var(--thermo-tube-border));
   /* the panels' own spacing, the same gap as everything else in here */
   --group-clear: var(--thermo-gap);
@@ -63,9 +42,7 @@
   color: #fff;
 }
 
-/* The panels and the log stand in the one cell, so the window keeps the
-   size of the panels whichever of the two shows. Each is its boxes over a
-   row of buttons; the boxes take the height the buttons leave. */
+/* Panels and log stand in one cell, so the window keeps its size. */
 #temp__prompt > * {
   grid-area: 1 / 1;
 }
@@ -74,8 +51,7 @@
   visibility: hidden;
 }
 
-/* .button transitions all (main.css), the visibility it inherits included,
-   which would leave a hidden panel's buttons on screen for a moment */
+/* .button transitions all, including inherited visibility, which would linger */
 .thermo__panel--hidden .button {
   transition: none;
 }
@@ -96,10 +72,8 @@
   gap: var(--thermo-gap);
 }
 
-/* Each panel is flat, edged like a bathroom settings box (bathrm.css) in
-   place of the raised outline, and keeps the group's fill. It spaces its rows
-   by the gap; its label's own gap below is dropped, as the row gap already
-   stands between the label and what follows. */
+/* Flat panels edged like a bathroom settings box; rows spaced by the gap, the
+   label's own gap dropped. */
 #temp__prompt .btn-group {
   margin: 0;
   row-gap: var(--thermo-gap);
@@ -108,10 +82,7 @@
   box-shadow: none;
 }
 
-/* Each label centred over its panel, in place of the group's indent from the
-   left. letter-spacing (groups.css) also puts its space after the last
-   letter, which would sit the text that much left of centre, so the text
-   gives it back. */
+/* labels centred; the text gives back letter-spacing's trailing space */
 #temp__prompt .btn-group-label {
   justify-content: center;
   padding-bottom: 0;
@@ -131,10 +102,7 @@
   grid-template-rows: auto 1fr auto;
 }
 
-/* The two thermometers, as tall as the panel leaves them. Under them, room
-   for whichever hangs lower, the bulb or an empty tube's reading, so the
-   reading keeps a gap's distance from the source line. A full tube's reading
-   stands inside the tube, so nothing is needed above. */
+/* As tall as the panel leaves; below, room for the bulb or an empty tube's reading. */
 #temp_therm_grid {
   display: flex;
   justify-content: center;
@@ -182,13 +150,10 @@
   background: linear-gradient(#e83535, #659df1) no-repeat bottom;
   width: 100%;
   border-radius: 20px;
-  /* the gradient spans the whole tube, however much of it is filled; the
-     first line is for a browser without container units */
+  /* the gradient spans the whole tube; the first line is for no container units */
   background-size: 100% var(--thermo-tube-min-height);
   background-size: 100% 100cqh;
-  /* the height alone: "all" would also hold the visibility it inherits, and
-     leave the fill and its reading over the log for a moment as the panels
-     hide */
+  /* the height alone: "all" would hold inherited visibility as panels hide */
   transition: height 0.2s ease-in-out;
 }
 
@@ -262,10 +227,8 @@ html.theme-light .thermometer .temperature:before {
   background-color: #000;
 }
 
-/* The mode's and the blower's boxes, which open the Mode and Fan menus.
-   dropdownButtonTemplate() draws them, so they are .buttons; the raised face
-   and its press are put back here to a flat box like the bathroom settings',
-   which sinks a little while pressed. */
+/* The mode and blower boxes: .buttons put back to a flat box that sinks when
+   pressed. */
 .thermo__controls .dropdown {
   display: block;
 }
@@ -370,17 +333,13 @@ html.theme-light .thermometer .temperature:before {
  *  Thermostat Setup and Display
  */
 
-/* The title over the panel, outside its border: the window's padding is
-   already the gap above it, and it stands as far from the panel as the box's
-   title does. */
+/* the title, as far from the panel as the box's title */
 #temp__prompt .thermo__setup-title {
   padding: 0;
   margin-bottom: -2px;
 }
 
-/* the swatches over the panel's width, a gap below the label and above the
-   panel's edge, which leaves the larger swatch room to stand clear of both,
-   on the grey behind the colour prompt's swatches (.color-grid) */
+/* swatches over the panel's width, on the colour prompt's grey */
 #temp__prompt .thermo__display {
   width: auto;
   background-color: var(--nav-menus-color);
@@ -410,9 +369,7 @@ html.theme-light .thermometer .temperature:before {
   transform: scale(var(--thermo-swatch-lift));
 }
 
-/* the Brightness circle, the size of the colour set's swatch:
-   dropdownButtonTemplate() draws it, so it is a .button, with its raised face
-   put back for a flat one in a lighter main colour, edged like the swatches */
+/* the Brightness circle: a .button put back to flat, in a lighter main colour */
 .thermo__swatches .dropdown {
   display: block;
 }
@@ -424,8 +381,7 @@ html.theme-light .thermometer .temperature:before {
   aspect-ratio: 1 / 1;
   margin: 0;
   padding: 0;
-  /* no line of the site's font size around the icon, which would stretch the
-     circle to an oval */
+  /* no font-sized line around the icon, which would stretch the circle */
   line-height: 0;
   transform: scale(var(--thermo-swatch-lift));
   border: 1px solid var(--border-color);
@@ -475,9 +431,7 @@ html.theme-light .thermometer .temperature:before {
  *  Status and log
  */
 
-/* The read-out, filling the panels' place: its title over the text box on
-   the window's black, with no edge, fill or padding of its own, so the text
-   box's edge frames it and spans the buttons' width. */
+/* the read-out on the window's black, the text box's edge framing it */
 #temp__prompt .thermo__log {
   border: none;
   border-radius: 0;
@@ -486,22 +440,17 @@ html.theme-light .thermometer .temperature:before {
   width: auto;
   grid-template-columns: 1fr;
   grid-template-rows: auto 1fr;
-  /* closer to the panel above and the text below than the window's gap, for
-     the text box's height, with the title centred between the two */
+  /* closer to the panel and text than the gap, with the title centred */
   margin-top: -2px;
   row-gap: 4px;
 }
 
-/* With no edge of its own, the window's padding is already the gap above
-   the title, so the title adds none: it stands a gap below the window's
-   edge and a gap (the row gap) above the text box. */
+/* no edge of its own, so the title adds no gap */
 #temp__prompt .thermo__log .btn-group-label {
   padding-top: 0;
 }
 
-/* The title is a button that opens the menu of the other read-out, drawn as the
-   plain label it stands in: dropdownButtonTemplate() draws it, so it is a
-   .button, with its face put back. */
+/* the title: a .button put back to a plain label, opening the other read-out's menu */
 #temp__prompt .button.thermo__view {
   width: auto;
   height: auto;
@@ -534,8 +483,7 @@ html.theme-light .thermometer .temperature:before {
   }
 }
 
-/* its icon and name at the label's size, which reaches only the label's own
-   children otherwise; the outer span gives back no letter-spacing, the name does */
+/* icon and name at the label's size; letter-spacing only on the name */
 #temp__prompt .thermo__view .button__text {
   display: flex;
   align-items: center;
@@ -547,8 +495,7 @@ html.theme-light .thermometer .temperature:before {
   font-size: var(--group-label-size);
 }
 
-/* the menu under the title, which is capitals in the title only. Its row is a
-   normal menu row, so the label's trimmed text box stays out of it. */
+/* the menu under the title: capitals in the title only */
 #temp__prompt #thermo__view-menu span {
   margin-right: 0;
   text-box: normal;
@@ -575,8 +522,7 @@ html.theme-light .thermometer .temperature:before {
   min-height: 0;
 }
 
-/* long lines wrap rather than scroll sideways, which the server log box
-   (.popup-ctn textarea, main.css) does */
+/* long lines wrap, unlike the server log box */
 .thermo__log textarea {
   font-size: 12px;
   text-align: left;

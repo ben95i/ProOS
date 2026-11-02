@@ -1,32 +1,17 @@
-// Automate Website - file uploader
-//
-// File upload, in 1MB chunks, with a progress window. Every file type is
-// accepted except the few in BLOCKED_EXT; the other limit is MAX_FILE_BYTES.
-//
-//   const uploader = new Uploader();
-//   uploader.pick();     // opens the file dialog
-//   uploader.destroy();  // page teardown
-//
-// One file at a time and one chunk at a time, in order: a phone on wifi
-// copes badly with several large uploads at once, and a single stream in
-// order is what lets the API append each chunk as it lands rather than
-// holding a whole video in memory.
-//
-// The API answers the folder the files land in; it is a constant on that
-// side, not something the browser gets to choose.
+// Automate - file uploader: 1MB chunks with a progress window, every type except
+// BLOCKED_EXT. new Uploader(); .pick() opens the file dialog, .destroy() is the teardown.
+// One file and one chunk at a time, in order, so the API can append each as it lands.
 
 import { html, makeElement, promptWindow, onButtons,
   removeWindow, base64URLSafeEncode, sleep,
   gridButtonTemplate } from './utils.js';
 import { showPopup, reportException } from './error.js';
 
-const CHUNK_BYTES = 1024 * 1024; // 1MB per request
-const MAX_FILE_BYTES = 1024 * 1024 * 1024; // 1GB, per file
-const CHUNK_ATTEMPTS = 3;    // tries per chunk before the file is given up on
-const RETRY_PAUSE_MS = 750;  // between those tries
-// File types the API refuses. Kept in step with BLOCKED_EXT in api/upload.js
-// and checked here as well, so a file is turned away before anything is sent
-// rather than after a round trip.
+const CHUNK_BYTES = 1024 * 1024;
+const MAX_FILE_BYTES = 1024 * 1024 * 1024;
+const CHUNK_ATTEMPTS = 3;
+const RETRY_PAUSE_MS = 750;
+// File types the API refuses (BLOCKED_EXT in nodeapi/upload.js), checked here to save a trip.
 const BLOCKED_EXT = [
   // executables and libraries
   '.exe', '.dll', '.com', '.scr', '.msi', '.so',
@@ -37,7 +22,7 @@ const BLOCKED_EXT = [
   // markup and scripts a browser runs
   '.html', '.htm', '.js', '.mjs'
 ];
-const MAX_SHOWN_NAME = 50; // longer filenames are cut with an ellipsis
+const MAX_SHOWN_NAME = 50;
 const VISIBLE_ROWS = 5;    // rows on screen at once; the rest slide up
 // element IDs
 const WIN_ID = 'upl__win';
@@ -46,8 +31,7 @@ const LIST_ID = 'upl__list';
 const BAR_ID = 'upl__bar';
 const PCT_ID = 'upl__pct';
 const CLOSE_BTN_ID = 'upl__btn-close';
-// The button's wording has a span of its own beside the icon, as it changes
-// from Cancel to Close once the uploads are done.
+// the button's wording changes from Cancel to Close once the uploads are done
 const CLOSE_LABEL_ID = 'upl__btn-close-label';
 // per-file row states
 const ROW_WAITING = 'waiting';
@@ -61,20 +45,18 @@ const ROW_ICONS = {
   failed: 'fad fa-exclamation-triangle'
 };
 
-// Is this one of the file types that will be refused?
-// isBlockedType('setup.EXE') -> true
+// is this a refused file type? isBlockedType('setup.EXE') -> true
 function isBlockedType(name) {
   const text = String(name);
   const lastDot = text.lastIndexOf('.');
   if (lastDot < 0) {
-    return false; // no extension at all, so nothing to match on
+    return false;
   }
   const ext = text.substring(lastDot).toLowerCase();
   return BLOCKED_EXT.includes(ext);
 }
 
-// A name too long for one row: cut, with an ellipsis marking the cut.
-// shortName('a very long filename.jpg') -> 'a very long filen...'
+// a name cut to fit a row: shortName('a very long filename.jpg') -> 'a very long filen...'
 function shortName(name) {
   const text = String(name);
   if (text.length <= MAX_SHOWN_NAME) {
@@ -85,12 +67,8 @@ function shortName(name) {
 
 export default class Uploader {
 
-  // options: onDone(summary), called once a run finishes
-  constructor(options = {}) {
-    this.onDone = function () {};
-    if (typeof options.onDone === 'function') {
-      this.onDone = options.onDone;
-    }
+  // set up by pick()
+  constructor() {
     this.input = null;        // the hidden file input
     this.queue = [];          // [{ file, state, sent }]
     this.running = false;
@@ -101,11 +79,8 @@ export default class Uploader {
     this.holdPage = null;     // beforeunload guard while a run is going
   }
 
-  //// picking files ////
-
-  // Opens the file dialog. The input is built on demand and thrown away
-  // afterwards: a re-used input keeps its last selection, and picking the
-  // same files again then fires no change event at all.
+  // Opens the file dialog on a fresh input, since a re-used one fires no change event
+  // for the same files.
   pick() {
     if (this.running === true) {
       showPopup("[upload] an upload is already running.");
@@ -115,8 +90,6 @@ export default class Uploader {
     const input = document.createElement('input');
     input.type = 'file';
     input.multiple = true;
-    // no accept list: everything the picker can see is offered, so nothing
-    // is greyed out because the browser did not recognise its type
     input.style.display = 'none';
     input.addEventListener('change', () => {
       const chosen = [...input.files];
@@ -130,6 +103,7 @@ export default class Uploader {
     input.click();
   }
 
+  // removes the file input
   dropInput() {
     if (this.input) {
       this.input.remove();
@@ -137,9 +111,7 @@ export default class Uploader {
     }
   }
 
-  //// running an upload ////
-
-  // Takes the chosen files and sends them one after another.
+  // Sends the chosen files one after another, after turning away refused ones.
   async start(files) {
     if (this.running === true) {
       return;
@@ -193,8 +165,7 @@ export default class Uploader {
       } else {
         entry.state = ROW_FAILED;
         failed += 1;
-        // the bytes of a file that failed part way are not counted, so the
-        // bar reads what actually reached the folder
+        // a file that failed part way is not counted in the bar
         this.sentBytes -= entry.sent;
         entry.sent = 0;
       }
@@ -206,15 +177,11 @@ export default class Uploader {
     this.finishRun(done, failed);
   }
 
-  // what the window says once the run is over, and the popup that goes with it
+  // the window's heading and the popup once the run is over
   finishRun(done, failed) {
-    const summary = {
-      done: done,
-      failed: failed,
-      cancelled: this.cancelled === true
-    };
+    const wasCancelled = this.cancelled === true;
     let heading = `Uploaded ${done} of ${this.queue.length}`;
-    if (summary.cancelled === true) {
+    if (wasCancelled) {
       heading = `Cancelled - ${done} of ${this.queue.length} uploaded`;
     }
     this.setTitle(heading);
@@ -222,17 +189,16 @@ export default class Uploader {
     if (failed > 0) {
       reportException('uploading files',
         `${failed} of ${this.queue.length} file(s) failed to upload.`);
-    } else if (summary.cancelled !== true && done > 0) {
+    } else if (!wasCancelled && done > 0) {
       showPopup(`[upload] ${done} file(s) uploaded.`);
     }
-    this.onDone(summary);
   }
 
-  // Cancel button. The request in flight is dropped and the API is told to
-  // throw away what it already holds for that file.
-  cancel() {
+  // The window's button: mid-run it drops the request in flight, and the API is told to
+  // discard what it holds for that file; otherwise it closes the window.
+  close() {
     if (this.running !== true) {
-      this.close();
+      removeWindow(WIN_ID);
       return;
     }
     this.cancelled = true;
@@ -241,14 +207,7 @@ export default class Uploader {
     }
   }
 
-  close() {
-    if (this.running === true) {
-      this.cancel();
-      return;
-    }
-    removeWindow(WIN_ID);
-  }
-
+  // ends the instance
   destroy() {
     this.cancelled = true;
     if (this.controller) {
@@ -260,9 +219,7 @@ export default class Uploader {
     this.running = false;
   }
 
-  // Warns before the page is torn down mid-upload. The chunks already sent
-  // are on the server as a part file, and nothing reassembles them if the
-  // browser never sends the rest.
+  // Warns before the page goes mid-upload: nothing reassembles the chunks already sent.
   guardPage(on) {
     if (on === true && this.holdPage === null) {
       this.holdPage = (event) => {
@@ -280,8 +237,8 @@ export default class Uploader {
 
   //// one file ////
 
-  // Opens a session, sends every chunk in order, then closes it. False when
-  // anything went wrong, and the API is told to drop what it has.
+  // Opens a session, sends every chunk in order and closes it. False when anything went
+  // wrong, and the API is told to drop what it has.
   async sendFile(entry) {
     const file = entry.file;
     const session = await this.call('start', {
@@ -317,8 +274,7 @@ export default class Uploader {
     return true;
   }
 
-  // One chunk, retried a few times: a phone that loses wifi for a moment
-  // should not lose the whole video with it.
+  // One chunk, retried a few times: wifi lost for a moment should not lose the whole file.
   async sendChunk(id, index, chunk) {
     for (let attempt = 0; attempt < CHUNK_ATTEMPTS; attempt++) {
       if (this.cancelled === true) {
@@ -335,8 +291,7 @@ export default class Uploader {
     return false;
   }
 
-  // One request to the upload API. Answers the parsed JSON, or null when the
-  // request failed -- the caller decides whether that is worth a retry.
+  // One request to the upload API: the parsed JSON, or null when it failed.
   async call(action, params, body = null) {
     const query = Object.keys(params)
       .map(name => `${name}=${params[name]}`)
@@ -359,7 +314,7 @@ export default class Uploader {
       }
       return await response.json();
     } catch (error) {
-      return null; // aborted, or the server could not be reached
+      return null;
     } finally {
       this.controller = null;
     }
@@ -367,6 +322,7 @@ export default class Uploader {
 
   //// the progress window ////
 
+  // draws the progress window
   drawWindow() {
     removeWindow(WIN_ID);
     const win = promptWindow(WIN_ID, html`
@@ -383,8 +339,7 @@ export default class Uploader {
         buttonClass: 'button__med'
       })}
     `);
-    // the window sits over the page, and a click inside it must not close
-    // the menus underneath
+    // a click inside must not close the menus underneath
     win.classList.add('nohide');
     onButtons(win, (button) => {
       if (button.id === CLOSE_BTN_ID) {
@@ -395,6 +350,7 @@ export default class Uploader {
     this.drawProgress();
   }
 
+  // sets the window's heading
   setTitle(text) {
     const title = document.getElementById(TITLE_ID);
     if (title) {
@@ -402,20 +358,15 @@ export default class Uploader {
     }
   }
 
+  // sets the button's wording
   setCloseLabel(text) {
-    const button = document.getElementById(CLOSE_BTN_ID);
-    if (!button) {
-      return;
-    }
     const label = document.getElementById(CLOSE_LABEL_ID);
     if (label) {
       label.innerText = text;
     }
   }
 
-  // One row per file, built once: an icon for where it has got to, and its
-  // name. Rows are changed in place afterwards, so the panel holds the place
-  // it is scrolled to instead of jumping back to the top on every file.
+  // One row per file, changed in place afterwards so the panel holds its scroll.
   drawRows() {
     const list = document.getElementById(LIST_ID);
     if (!list) {
@@ -428,7 +379,7 @@ export default class Uploader {
       row.appendChild(icon);
       const label = makeElement('span', 'upl__name');
       label.innerText = shortName(entry.file.name);
-      // the whole name is still there to hover over when it has been cut
+      // the whole name is there to hover over
       label.title = entry.file.name;
       row.appendChild(label);
       list.appendChild(row);
@@ -436,16 +387,14 @@ export default class Uploader {
     });
   }
 
-  // swaps one row's icon for the state it has just reached
+  // swaps one row's icon for its new state
   updateRow(entry) {
     if (entry.icon) {
       entry.icon.className = ROW_ICONS[entry.state];
     }
   }
 
-  // Keeps the file being sent on the bottom line of the visible rows, so the
-  // queue slides up as it is worked through. The row height is measured
-  // rather than assumed, so the stylesheet stays the one place it is set.
+  // Keeps the file being sent on the bottom visible row, so the queue slides up.
   scrollToActive(index) {
     const list = document.getElementById(LIST_ID);
     if (!list) {
@@ -459,15 +408,9 @@ export default class Uploader {
     const rowsAbove = index - (VISIBLE_ROWS - 1);
     let target = rowsAbove * rowHeight;
     if (target < 0) {
-      target = 0; // the first few files need no scrolling at all
+      target = 0;
     }
-    // scrollTo with a behaviour is not everywhere (older WebViews, and the
-    // test harness), so the plain property is the fallback
-    if (typeof list.scrollTo === 'function') {
-      list.scrollTo({ top: target, behavior: 'smooth' });
-      return;
-    }
-    list.scrollTop = target;
+    list.scrollTo({ top: target, behavior: 'smooth' });
   }
 
   // the bar and the percentage beneath it

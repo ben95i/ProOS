@@ -1,38 +1,29 @@
-// Automate Website - living room
-//
-// The living room's button grid and the menus behind its buttons: the lamp,
-// desktop and ceiling power menus, the stereo's volume buttons, its input
-// menu and its More... menu (subwoofer gain, low cut, volume limiter).
-// main.js lists LIVING_ROOM_CONFIG among its rooms and draws the grid.
+// Automate - living room: button grid and the menus behind it (power menus, stereo volume
+// and inputs, More...: subwoofer gain, low cut, volume limiter).
 
 import { registerListeners, gridButtonTemplate, dropdownButtonTemplate,
   isNumeric, menuRow, indicator } from './utils.js';
 import { volumeButtonsTemplate, volumeButtonListeners, registerVolumeButtons,
   sendVolume } from './volctrl.js';
-import { showPowerMenu, powerButtonTemplate, openDeviceMenu, showInputMenu,
+import { powerButtonTemplate, powerListeners, spinnerIds, openDeviceMenu, showInputMenu,
   menuErrorRow, menuOfflineRow } from './dropdowns.js';
 
-// the room transmitter every living room command goes through
+// the room transmitter every command goes through
 const LIVING_ROOM_TARGET = 'lrxmit';
 
-// What main.js needs to know about the room. key names its API commands
-// (lrstatus, lron, lroff); the stereo amp counts its volume 0-100. climate
-// is where the temperature window reads the room's temperature and
-// humidity: a command and the places of the two in its "~" reply.
+// The room's config. key names its API commands (lrstatus, lron, lroff); the amp counts
+// its volume 0-100; climate is the temperature window's source, the thermostat's status.
 export const LIVING_ROOM_CONFIG = {
   key: 'lr',
   name: 'Living Room',
   icon: 'fad fa-couch',
   voltarget: LIVING_ROOM_TARGET,
   volmax: 100,
-  // the temperature window reads the thermostat's one-line status
-  // (mode~fan~setpoint~temperature~humidity~…) for the room's climate
   climate: { target: LIVING_ROOM_TARGET, cmd: 'lr-thermo1', fields: [3, 4] },
   template: livingRoomGridTemplate
 };
 
-// Stereo amp inputs, in the order the menu lists them. code is what the amp
-// answers with when that input is live.
+// Amp inputs in menu order; code is the amp's answer while that input is live.
 const HIFI_INPUTS = [
   { code: '6', cmd: 'autodac', label: 'Auto' },
   { code: '1', cmd: 'usb', label: 'USB' },
@@ -42,12 +33,11 @@ const HIFI_INPUTS = [
   { code: '2', cmd: 'aux', label: 'Aux' }
 ];
 
-// what the amp answers in place of a state while it is switched off, and
-// while it is muted
+// the amp's answer in place of a state while off, and while muted
 const HIFI_OFF_CODE = -1;
 const HIFI_MUTED_CODE = 0;
 
-// the two amp menus, named once for their buttons, spinners and rows
+// the two amp menus
 const HIFI_INPUT_MENU = 'hfinmenu';
 const HIFI_MORE_MENU = 'hfmoremenu';
 
@@ -55,7 +45,7 @@ const HIFI_MORE_MENU = 'hfmoremenu';
 const VOLUME_STEP_DOWN_BUTTON = 'btn-vol-dwnc';
 const VOLUME_STEP_UP_BUTTON = 'btn-vol-upc';
 
-// the living room's button grid
+// the room's button grid
 function livingRoomGridTemplate() {
   return `
 <div>
@@ -87,8 +77,7 @@ function livingRoomGridTemplate() {
     buttonClass: 'btm-padding',
     icon: 'fad fa-sliders-v',
     label: 'Inputs',
-    textId: `${HIFI_INPUT_MENU}-text`,
-    spinnerId: `${HIFI_INPUT_MENU}-spinner`,
+    ...spinnerIds(HIFI_INPUT_MENU),
     menuId: HIFI_INPUT_MENU
   })}
   ${dropdownButtonTemplate({
@@ -96,61 +85,50 @@ function livingRoomGridTemplate() {
     buttonClass: 'btm-padding',
     icon: 'fad fa-list-music',
     label: 'More...',
-    textId: `${HIFI_MORE_MENU}-text`,
-    spinnerId: `${HIFI_MORE_MENU}-spinner`,
+    ...spinnerIds(HIFI_MORE_MENU),
     menuId: HIFI_MORE_MENU
   })}
 </div>`;
 }
 registerListeners({
-  'btn-power-wkststate':   () => showPowerMenu(LIVING_ROOM_TARGET, 'wkststate'),
-  'btn-power-wl1_dual':    () => showPowerMenu(LIVING_ROOM_TARGET, 'wl1_dual'),
-  'btn-power-clr1':        () => showPowerMenu(LIVING_ROOM_TARGET, 'clr1'),
+  ...powerListeners(LIVING_ROOM_TARGET, ['wkststate', 'wl1_dual', 'clr1', 'hifistate']),
   [VOLUME_STEP_DOWN_BUTTON]: () => sendVolume(LIVING_ROOM_CONFIG, 'dwnc'),
-  'btn-power-hifistate':   () => showPowerMenu(LIVING_ROOM_TARGET, 'hifistate'),
   [VOLUME_STEP_UP_BUTTON]: () => sendVolume(LIVING_ROOM_CONFIG, 'upc'),
   'btn-vol-display':       () => sendVolume(LIVING_ROOM_CONFIG, 'display'),
   'btn-show-hifi-amp':     () => showHiFiAmpInput(),
   'btn-show-hifi-more':    () => showHiFiMoreMenu()
 });
 registerListeners(volumeButtonListeners(LIVING_ROOM_CONFIG));
-// the two step buttons go red with the volume buttons in subwoofer mode
+// the step buttons go red with the volume buttons in subwoofer mode
 registerVolumeButtons(LIVING_ROOM_CONFIG.key, [
   VOLUME_STEP_DOWN_BUTTON,
   VOLUME_STEP_UP_BUTTON
 ]);
 
-// Inputs: the stereo amp's inputs, green on the one that is live
+// Inputs: the amp's inputs, green on the live one
 function showHiFiAmpInput() {
   showInputMenu({
     menu: HIFI_INPUT_MENU,
     target: LIVING_ROOM_TARGET,
     cmd: 'curinput',
-    textId: `${HIFI_INPUT_MENU}-text`,
-    spinnerId: `${HIFI_INPUT_MENU}-spinner`,
     offCode: HIFI_OFF_CODE,
     inputs: HIFI_INPUTS
   });
 }
 
-// More...: Subs Gain (turns the volume buttons into subwoofer controls), and
-// the low cut filter and volume limiter, each green while it is on
+// More...: Subs Gain (the volume buttons control the subwoofers), and the low cut and
+// volume limiter, each green while on
 function showHiFiMoreMenu() {
   openDeviceMenu({
     menu: HIFI_MORE_MENU,
     target: LIVING_ROOM_TARGET,
     cmd: 'curhpfvollim',
-    textId: `${HIFI_MORE_MENU}-text`,
-    spinnerId: `${HIFI_MORE_MENU}-spinner`,
     build: (reply) => {
-      // No reply at all (the API could not be reached) is an error like any
-      // other. It used to be asked whether it held a "~", which threw and
-      // left the button's spinner turning.
+      // no reply at all is an error too
       if (typeof reply !== 'string') {
         return menuErrorRow(HIFI_MORE_MENU);
       }
-      // the amp answers one number while it is off or muted, and
-      // volLimitState~hpfState while it is playing
+      // one number while off or muted, volLimitState~hpfState while playing
       const replyIsNumber = isNumeric(reply) === true;
       const replyIsStatePair = reply.includes('~');
       if (!replyIsNumber && !replyIsStatePair) {

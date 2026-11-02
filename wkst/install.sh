@@ -57,7 +57,7 @@ systemctl daemon-reload
 systemctl enable autofs.service
 systemctl enable share-watchdog.service
 
-cp "$SCRIPT_DIR/bashrc" /home/ben/.bashrc
+cp "$SCRIPT_DIR/bashrc.sh" /home/ben/.bashrc
 chmod +x /home/ben/.bashrc
 chown ben:ben /home/ben/.bashrc
 

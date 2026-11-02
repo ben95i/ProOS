@@ -1,39 +1,58 @@
-// Automate Website - colour picker prompt
-//
-// new ColorPrompt(anchorElementId, onColorChange, options) then .show().
-// onColorChange is handed the hex without its "#", throttled while dragging.
-// options: presets (swatches, hex strings or { color, name }), presetFile (a
-// palette file to read instead), name (put into the heading), onClose().
-
-//
-// openColorPrompt(command, argument, title, threeArguments) is the one-call
-// form the device buttons use: it opens the page's colour prompt and sends
-// each picked colour to a device.
+// Automate - colour picker prompt: saturation / value map, hue slider, palette swatches
+// and hex box, drawn into the page's color-popup element. Colours reach onColorChange as
+// hex without the "#", throttled while dragging.
 
 import { hexToRgb, rgbToHex, rgbToHexFromStyle, hsvToRgb, rgbToHsv,
     parsePalette, readFile, sendCmd,
     gridButtonTemplate } from './utils.js';
-import { reportError } from './error.js';
 
-// the element the page keeps for the device colour prompt (drawn by main.js)
-const DEVICE_PROMPT_ANCHOR_ID = 'color-popup';
-// what the prompt shows before a colour has been picked
-const DEVICE_PROMPT_START_HEX = '#000000';
+const PROMPT_ANCHOR_ID = 'color-popup';
+const HEX_COLOR = /^#[0-9A-F]{6}$/i;
+// the default palette file, hex|name per line
+const DEFAULT_PALETTE_FILE = 'colorpallet';
+// palette file -> its read, done once per page; an empty read is asked for again
+const paletteRequests = new Map();
 
-// Opens the colour prompt for a device and sends each colour picked in it.
-// By default the colour goes out as main / command / <argument>_<hex>; with
-// threeArguments it goes out as command / argument / <hex> instead.
-// openColorPrompt('brxmit', 'bed_leds_hex_set', 'Bed Lights')
-// openColorPrompt('leds', 'hex', 'Pixels', true)
-export function openColorPrompt(command, argument, title, threeArguments = false) {
-  // the previous prompt is destroyed rather than dropped: show() wipes the
-  // anchor's markup, and an instance left behind mid-drag still holds
-  // pointermove / pointerup listeners on window
+// Reads a palette file, at most once per page per file; [] when it cannot be read, and
+// the prompt then works without a grid.
+export function loadPaletteFile(file) {
+  if (!paletteRequests.has(file)) {
+    const request = readFile(file).then((fileText) => {
+      const palette = parsePalette(fileText);
+      if (palette.length === 0) {
+        paletteRequests.delete(file);
+      }
+      return palette;
+    });
+    paletteRequests.set(file, request);
+  }
+  return paletteRequests.get(file);
+}
+
+// Destroys an open prompt, as one left mid-drag holds listeners on window.
+export function closeColorPrompt() {
   if (App.colorPrompt) {
     App.colorPrompt.destroy();
     App.colorPrompt = null;
   }
-  const colorPrompt = new ColorPrompt(DEVICE_PROMPT_ANCHOR_ID, (strippedHex) => {
+}
+
+// Opens the page's one prompt on startHex, without sending that colour.
+// options: name (in the heading), presetFile, onClose
+export function showColorPrompt(startHex, onColorChange, options) {
+  closeColorPrompt();
+  const colorPrompt = new ColorPrompt(onColorChange, options);
+  colorPrompt.show();
+  colorPrompt.updateStateFromHex(startHex, false);
+  App.colorPrompt = colorPrompt;
+}
+
+// Opens the prompt for a device and sends each colour picked: main / command /
+// <argument>_<hex>, or with threeArguments command / argument / <hex>.
+// openColorPrompt('brxmit', 'bed_leds_hex_set', 'Bed Lights')
+// openColorPrompt('leds', 'hex', 'Pixels', true)
+export function openColorPrompt(command, argument, title, threeArguments = false) {
+  showColorPrompt('#000000', (strippedHex) => {
     let action = 'main';
     let firstArgument = command;
     let secondArgument = `${argument}_${strippedHex}`;
@@ -42,168 +61,40 @@ export function openColorPrompt(command, argument, title, threeArguments = false
       firstArgument = argument;
       secondArgument = strippedHex;
     }
-    sendCmd(action, firstArgument, secondArgument)
-      .catch(sendError => {
-        reportError(`sending the colour #${strippedHex}`, sendError);
-      });
+    sendCmd(action, firstArgument, secondArgument);
   }, {
     name: title
   });
-  colorPrompt.show();
-  colorPrompt.updateStateFromHex(DEVICE_PROMPT_START_HEX, true, false);
-  App.colorPrompt = colorPrompt;
 }
 
-export default class ColorPrompt {
+class ColorPrompt {
 
-  // The default palette is a file on the device, one colour per line as
-  // hex_value|display_name, so the swatches change without a deploy.
-  static PALETTE_FILE = 'colorpallet';
-  // Palette file -> the read for it, done once per page and held. A read that
-  // comes back empty is dropped from here again, so a file that was missing
-  // is asked for once more rather than written off for the session.
-  static paletteRequests = new Map();
   static THROTTLE_DELAY_MS = 50;
-  static TITLE_PLAIN = 'Select Color';
-  // the two faces of the box under the grid
   static HEX_LABEL = 'Hex:';
   static NAME_LABEL = 'Color:';
   static NAME_SHOWN_CLASS = 'color-name-shown';
 
-  // 'LED' -> "Select LED Color"; nothing -> "Select Color"
-  static titleFor(name) {
-    let trimmedName = '';
-    if (typeof name === 'string') {
-      trimmedName = name.trim();
-    }
-    if (trimmedName === '') {
-      return ColorPrompt.TITLE_PLAIN;
-    }
-    return `Select ${trimmedName} Color`;
-  }
-
-  // Reads a palette file, at most once per page per file. Answers [] when it
-  // cannot be read -- the grid is then left out and the map, the hue slider
-  // and the hex box carry the prompt on their own.
-  static loadPaletteFile(file) {
-    if (!ColorPrompt.paletteRequests.has(file)) {
-      const request = readFile(file)
-        .then((fileText) => {
-          const palette = parsePalette(fileText);
-          if (palette.length === 0) {
-            ColorPrompt.paletteRequests.delete(file); // ask again next time
-          }
-          return palette;
-        })
-        .catch(() => {
-          ColorPrompt.paletteRequests.delete(file);
-          return [];
-        });
-      ColorPrompt.paletteRequests.set(file, request);
-    }
-    return ColorPrompt.paletteRequests.get(file);
-  }
-
-  // Reads a palette file ahead of the prompt that will want it, so its
-  // swatches are already in hand when it opens. Nothing is drawn here.
-  static warmPalette(file) {
-    let wanted = ColorPrompt.PALETTE_FILE;
-    if (typeof file === 'string' && file !== '') {
-      wanted = file;
-    }
-    ColorPrompt.loadPaletteFile(wanted).catch(() => {});
-  }
-
-  // Takes a plain list of hex strings or a list of { color, name } entries
-  // and always answers the second shape. Anything that is not a six digit hex
-  // colour is dropped, so one bad line in a palette file cannot take the grid
-  // with it. null when nothing usable is left, which is the caller's cue to
-  // fall back to the default palette file.
-  static normalizePresets(presets) {
-    if (!Array.isArray(presets) || presets.length === 0) {
-      return null;
-    }
-    const cleanedPresets = [];
-    presets.forEach(entry => {
-      const isPlainString = typeof entry === 'string';
-      let rawColor = entry && entry.color;
-      if (isPlainString) {
-        rawColor = entry;
-      }
-      if (typeof rawColor !== 'string') {
-        return;
-      }
-      const trimmedColor = rawColor.trim();
-      let hexColor = `#${trimmedColor}`;
-      if (trimmedColor.startsWith('#')) {
-        hexColor = trimmedColor;
-      }
-      if (!/^#[0-9A-F]{6}$/i.test(hexColor)) {
-        return;
-      }
-      let displayName = '';
-      if (!isPlainString) {
-        displayName = (entry && entry.name) || '';
-      }
-      cleanedPresets.push({ color: hexColor.toUpperCase(), name: displayName });
-    });
-    if (cleanedPresets.length === 0) {
-      return null;
-    }
-    return cleanedPresets;
-  }
-
-  constructor(anchorElementId, onColorChangeCallback, options = {}) {
-    this.anchorElement = document.getElementById(anchorElementId);
-    if (!this.anchorElement) {
-      throw new Error("Anchor element for ColorPrompt not found.");
-    }
+  // options: see showColorPrompt()
+  constructor(onColorChangeCallback, options) {
+    this.anchorElement = document.getElementById(PROMPT_ANCHOR_ID);
     this.onColorChangeCallback = onColorChangeCallback;
-    const settings = options || {};
-    // the caller's palette if it gave one; otherwise the grid starts empty
-    // and show() fetches the default palette file into it
     this.presetColors = [];
-    // uppercase hex -> the palette's name for it, for the colours that have
-    // one. What the box under the grid shows is looked up in here.
+    // uppercase hex -> its palette name, for the box under the grid
     this.presetNames = new Map();
-    this.setPresets(settings.presets);
-    this.presetFile = ColorPrompt.PALETTE_FILE;
-    if (typeof settings.presetFile === 'string' && settings.presetFile !== '') {
-      this.presetFile = settings.presetFile;
+    this.presetFile = DEFAULT_PALETTE_FILE;
+    if (options.presetFile) {
+      this.presetFile = options.presetFile;
     }
-    this.promptTitle = ColorPrompt.titleFor(settings.name);
-    this.onCloseCallback = null;
-    if (typeof settings.onClose === 'function') {
-      this.onCloseCallback = settings.onClose;
-    }
-    // destroy() can be reached more than once; the close hook fires on the
-    // first of those and never again
-    this.isClosed = false;
-    // state
+    this.promptTitle = `Select ${options.name} Color`;
+    this.onCloseCallback = options.onClose;
     this.currentHue = 0;
     this.currentSaturation = 1;
     this.currentValue = 1;
     this.isDraggingMap = false;
     this.lastCommandTime = 0;
-    // DOM references, filled in by show()
-    this.popupContent = null;
-    this.colorMapElement = null;
-    this.colorMapBackgroundElement = null;
-    this.colorPointerElement = null;
-    this.hueSliderElement = null;
-    this.presetGridElement = null;
-    this.titleElement = null;
-    this.hexInputElement = null;
-    this.hexLabelElement = null;
-    this.closeButtonElement = null;
-    // bound handlers, kept so they can be removed again
-    this.boundHandleHexInput = this.handleHexInput.bind(this);
-    this.boundHandleHueInput = this.handleHueInput.bind(this);
-    this.boundHandleHueRelease = this.handleHueRelease.bind(this);
-    this.boundStartMapDrag = this.startMapDrag.bind(this);
+    // kept so destroy() can take them off window
     this.boundUpdateMapPointer = this.updateMapPointer.bind(this);
     this.boundStopMapDrag = this.stopMapDrag.bind(this);
-    this.boundClosePopup = this.closePopup.bind(this);
   }
 
   // builds the markup and puts it in the anchor element
@@ -240,7 +131,6 @@ export default class ColorPrompt {
         </div>
       </div>
     `;
-    this.popupContent              = this.anchorElement.querySelector('.color-popup-content');
     this.titleElement              = this.anchorElement.querySelector('#color-popup-title');
     this.colorMapElement           = this.anchorElement.querySelector('#color-map');
     this.colorMapBackgroundElement = this.anchorElement.querySelector('#color-map-bg');
@@ -249,32 +139,18 @@ export default class ColorPrompt {
     this.presetGridElement         = this.anchorElement.querySelector('#preset-color-grid');
     this.hexInputElement           = this.anchorElement.querySelector('#hex-color');
     this.hexLabelElement           = this.anchorElement.querySelector('#hex-color-label');
-    this.closeButtonElement        = this.anchorElement.querySelector('#btn-color-close');
-    // written in rather than built into the markup above, so a name never
-    // reaches innerHTML -- the heading is text, and only ever text
-    if (this.titleElement) {
-      this.titleElement.innerText = this.promptTitle;
-    }
+    this.titleElement.innerText = this.promptTitle;
     this.buildPresetGrid();
     this.bindEvents();
     this.anchorElement.style.display = 'flex';
-    // no palette from the caller: read one off the device
-    if (this.presetColors.length === 0) {
-      this.loadPresets();
-    }
+    this.loadPresets();
   }
 
-  // removes every listener and clears the markup
+  // Clears the markup and its listeners; onClose is told once, after the markup has gone.
   destroy() {
-    this.unbindEvents();
     this.releaseDragListeners();
     this.anchorElement.innerHTML = '';
     this.anchorElement.style.display = 'none';
-    // Told once, after the markup is gone, so a handler that opens something
-    // of its own is not doing it into a prompt that is half torn down. The
-    // reference is dropped before the call, so a handler that reaches back in
-    // here cannot come round again.
-    this.isClosed = true;
     if (this.onCloseCallback) {
       const closeCallback = this.onCloseCallback;
       this.onCloseCallback = null;
@@ -282,37 +158,40 @@ export default class ColorPrompt {
     }
   }
 
-  // Takes a palette in either accepted shape and keeps it, along with the
-  // name lookup the box under the grid reads. Does not draw.
+  // keeps a palette with its name lookup, dropping any colour that is not six digit hex
   setPresets(presets) {
-    this.presetColors = ColorPrompt.normalizePresets(presets) || [];
+    this.presetColors = [];
     this.presetNames.clear();
-    this.presetColors.forEach(preset => {
+    presets.forEach(preset => {
+      const hexColor = preset.color.trim();
+      if (!HEX_COLOR.test(hexColor)) {
+        return;
+      }
+      const upperColor = hexColor.toUpperCase();
+      this.presetColors.push({ color: upperColor, name: preset.name });
       if (preset.name) {
-        this.presetNames.set(preset.color, preset.name);
+        this.presetNames.set(upperColor, preset.name);
       }
     });
   }
 
-  // Fills an empty grid from the palette file. The prompt is already on
-  // screen and usable while this is in the air.
+  // Fills the grid from the palette file, with the prompt already usable.
   async loadPresets() {
-    const palette = await ColorPrompt.loadPaletteFile(this.presetFile);
-    // closed, or torn down and replaced, while the file was being read
-    if (this.isClosed === true || !this.presetGridElement
-        || !this.presetGridElement.isConnected) {
+    const palette = await loadPaletteFile(this.presetFile);
+    // closed, or replaced, while the file was being read
+    if (!this.presetGridElement.isConnected) {
       return;
     }
     if (palette.length === 0) {
-      return; // no file, no swatches -- the rest of the prompt stands alone
+      return;
     }
     this.setPresets(palette);
     this.buildPresetGrid();
-    // the swatch highlight and the name in the box both key off the palette,
-    // so both are re-read now there is one; no command goes out for it
+    // the highlight and the name key off the palette; no command goes out
     this.updateUIFromState(false);
   }
 
+  // draws the swatches; an empty grid stands down
   buildPresetGrid() {
     this.presetGridElement.innerHTML = '';
     this.presetColors.forEach(preset => {
@@ -321,12 +200,10 @@ export default class ColorPrompt {
       swatchElement.className = 'color-swatch';
       swatchElement.style.backgroundColor = colorHexCode;
       swatchElement.addEventListener('click', () => {
-        this.updateStateFromHex(colorHexCode, true, true);
+        this.updateStateFromHex(colorHexCode, true);
       });
       this.presetGridElement.appendChild(swatchElement);
     });
-    // an empty grid is a bordered box with nothing in it, so it stands down
-    // until there is a palette to put in it
     let gridDisplay = 'none';
     if (this.presetColors.length > 0) {
       gridDisplay = 'grid';
@@ -334,34 +211,20 @@ export default class ColorPrompt {
     this.presetGridElement.style.display = gridDisplay;
   }
 
+  // binds the prompt's own controls; they go with the markup
   bindEvents() {
-    this.hexInputElement.addEventListener('input', this.boundHandleHexInput);
-    this.hueSliderElement.addEventListener('input', this.boundHandleHueInput);
-    // 'change' fires once on release and forces the resting value through the
-    // throttle, the same thing stopMapDrag() does for the map. Without it a
-    // release inside the throttle window was dropped and the lights kept the
-    // second to last hue.
-    this.hueSliderElement.addEventListener('change', this.boundHandleHueRelease);
-    this.colorMapElement.addEventListener('pointerdown', this.boundStartMapDrag);
-    this.closeButtonElement.addEventListener('click', this.boundClosePopup);
+    this.hexInputElement.addEventListener('input', (event) => this.handleHexInput(event));
+    this.hueSliderElement.addEventListener('input', (event) => this.handleHueInput(event));
+    this.hueSliderElement.addEventListener('change', (event) => this.handleHueRelease(event));
+    this.colorMapElement.addEventListener('pointerdown', (event) => this.startMapDrag(event));
+    this.anchorElement.querySelector('#btn-color-close').addEventListener('click', () => this.destroy());
   }
 
-  unbindEvents() {
-    this.hexInputElement.removeEventListener('input', this.boundHandleHexInput);
-    this.hueSliderElement.removeEventListener('input', this.boundHandleHueInput);
-    this.hueSliderElement.removeEventListener('change', this.boundHandleHueRelease);
-    this.colorMapElement.removeEventListener('pointerdown', this.boundStartMapDrag);
-    this.closeButtonElement.removeEventListener('click', this.boundClosePopup);
-  }
-
+  // stops following the pointer
   releaseDragListeners() {
     window.removeEventListener('pointermove', this.boundUpdateMapPointer);
     window.removeEventListener('pointerup', this.boundStopMapDrag);
     window.removeEventListener('pointercancel', this.boundStopMapDrag);
-  }
-
-  closePopup() {
-    this.destroy();
   }
 
   // typing in the hex box; anything that is not a full colour is ignored
@@ -370,32 +233,31 @@ export default class ColorPrompt {
     if (!inputValue.startsWith('#')) {
       inputValue = '#' + inputValue;
     }
-    if (/^#[0-9A-F]{6}$/i.test(inputValue)) {
-      this.updateStateFromHex(inputValue, true, true);
+    if (HEX_COLOR.test(inputValue)) {
+      this.updateStateFromHex(inputValue, true);
     }
   }
 
-  // paints the map background for the hue currently held
+  // paints the map background for the hue held
   paintMapBackground() {
     this.colorMapBackgroundElement.style.background =
       `hsl(${this.currentHue}, 100%, 50%)`;
   }
 
+  // the hue slider moved
   handleHueInput(event) {
     this.currentHue = parseFloat(event.target.value);
     this.paintMapBackground();
     this.updateUIFromState(true);
   }
 
-  // the slider was released: send the resting value even if the last 'input'
-  // fell inside the throttle window
+  // the slider was released: the resting value goes out even inside the throttle
   handleHueRelease(event) {
-    this.currentHue = parseFloat(event.target.value);
-    this.paintMapBackground();
-    this.lastCommandTime = 0; // force the final colour through
-    this.updateUIFromState(true);
+    this.lastCommandTime = 0;
+    this.handleHueInput(event);
   }
 
+  // a press on the map: follows the pointer until release
   startMapDrag(event) {
     this.isDraggingMap = true;
     this.updateMapPointer(event);
@@ -426,35 +288,32 @@ export default class ColorPrompt {
     this.updateUIFromState(true);
   }
 
+  // the map was released: the final colour goes out even inside the throttle
   stopMapDrag() {
     this.isDraggingMap = false;
-    this.lastCommandTime = 0; // force the final colour through
+    this.lastCommandTime = 0;
     this.updateUIFromState(true);
     this.releaseDragListeners();
   }
 
-  // syncs the state, and optionally the map, from a hex colour
-  updateStateFromHex(hexString, updateMapUI = true, triggerCallback = true) {
+  // sets the state, the slider and the map pointer from a hex colour
+  updateStateFromHex(hexString, triggerCallback) {
     const rgbObject = hexToRgb(hexString);
     const hsvObject = rgbToHsv(rgbObject.red, rgbObject.green, rgbObject.blue);
     this.currentHue = hsvObject.hue;
     this.currentSaturation = hsvObject.saturation;
     this.currentValue = hsvObject.value;
-    if (updateMapUI) {
-      this.hueSliderElement.value = this.currentHue;
-      this.paintMapBackground();
-      const saturationPercentage = this.currentSaturation * 100;
-      const depthPercentage = (1 - this.currentValue) * 100;
-      this.colorPointerElement.style.left = `${saturationPercentage}%`;
-      this.colorPointerElement.style.top = `${depthPercentage}%`;
-    }
-    // the box is written by updateUIFromState(), which knows whether this
-    // colour has a name
+    this.hueSliderElement.value = this.currentHue;
+    this.paintMapBackground();
+    const saturationPercentage = this.currentSaturation * 100;
+    const depthPercentage = (1 - this.currentValue) * 100;
+    this.colorPointerElement.style.left = `${saturationPercentage}%`;
+    this.colorPointerElement.style.top = `${depthPercentage}%`;
     this.updateUIFromState(triggerCallback);
   }
 
   // repaints the box and the swatch highlight, and sends the colour on
-  updateUIFromState(triggerCallback = true) {
+  updateUIFromState(triggerCallback) {
     const rgbObject = hsvToRgb(this.currentHue, this.currentSaturation, this.currentValue);
     const hexString = rgbToHex(rgbObject.red, rgbObject.green, rgbObject.blue);
     this.showColorField(hexString);
@@ -468,10 +327,7 @@ export default class ColorPrompt {
     }
   }
 
-  // The box under the palette: the hex value, until the colour on screen is
-  // one the palette has a name for -- then the name is shown in its place and
-  // the label beside it changes with it. The map and the hue slider reach
-  // colours no palette has a name for, so the hex is what it falls back to.
+  // The box under the palette: the colour's palette name when it has one, or its hex.
   showColorField(hexString) {
     const presetName = this.presetNames.get(hexString.toUpperCase());
     const hasName = typeof presetName === 'string' && presetName !== '';
@@ -480,26 +336,18 @@ export default class ColorPrompt {
       fieldText = presetName;
     }
     this.hexInputElement.value = fieldText;
-    // sized to what it holds: a hex is always seven characters, a name is
-    // however long the palette file made it, and one spare character keeps
-    // the text off the border
+    // sized to its text, with one spare character off the border
     this.hexInputElement.size = fieldText.length + 1;
     this.hexInputElement.classList.toggle(ColorPrompt.NAME_SHOWN_CLASS, hasName);
-    if (this.hexLabelElement) {
-      let labelText = ColorPrompt.HEX_LABEL;
-      if (hasName) {
-        labelText = ColorPrompt.NAME_LABEL;
-      }
-      this.hexLabelElement.innerText = labelText;
+    let labelText = ColorPrompt.HEX_LABEL;
+    if (hasName) {
+      labelText = ColorPrompt.NAME_LABEL;
     }
+    this.hexLabelElement.innerText = labelText;
   }
 
-  // Throttled by timestamp rather than a timer, so a colour is only sent once
-  // per THROTTLE_DELAY_MS while the map or slider is being dragged.
+  // sends a colour at most once per THROTTLE_DELAY_MS
   dispatchColorCommand(hexString) {
-    if (typeof this.onColorChangeCallback !== 'function') {
-      return;
-    }
     const currentTime = Date.now();
     const timeSinceLastCommand = currentTime - this.lastCommandTime;
     if (timeSinceLastCommand < ColorPrompt.THROTTLE_DELAY_MS) {
