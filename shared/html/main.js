@@ -579,7 +579,7 @@ function textScrollTemplate(f) {
     ${textScrollMenuTemplate('speed', 'Speed', 'btn-tsspeed', TEXT_SCROLL_SPEEDS)}
     ${gridButtonTemplate({
       buttonId: 'btn-ts-close',
-      icon: 'fad fa-times-octagon',
+      icon: 'fas fa-times',
       buttonClass: TEXT_SCROLL_BUTTON_CLASS
     })}
     ${gridButtonTemplate({
@@ -616,7 +616,7 @@ function cameraPopupTemplate() {
     <div class="popup-actions">
       ${gridButtonTemplate({
         buttonId: 'btn-cam-close',
-        icon: 'fad fa-times-octagon',
+        icon: 'fas fa-times',
         buttonClass: 'button_left_txtwin'
       })}
       ${gridButtonTemplate({

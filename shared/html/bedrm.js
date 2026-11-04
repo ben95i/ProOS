@@ -156,7 +156,7 @@ function bedPrompt() {
     })}
     ${gridButtonTemplate({
       buttonId: 'bed__btn-close',
-      icon: 'fad fa-times-octagon right-padding',
+      icon: 'fas fa-times right-padding',
       label: 'Close'
     })}
   `);

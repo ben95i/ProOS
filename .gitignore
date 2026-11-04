@@ -7,8 +7,6 @@ esp32/*/output
 esp32/*/test/build
 esp32/*/test/output
 shared/fontawesome
-shared/html/styles/icons.min.css
-shared/html/fonts/fa-*.woff2
 pve/vmbkps
 pve/network
 .DS_Store

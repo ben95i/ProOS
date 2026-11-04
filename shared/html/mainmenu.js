@@ -205,7 +205,7 @@ export default class MainMenu {
     <div class="about__text">${curYear}.${curQtr} Release</div>
     ${gridButtonTemplate({
       buttonId: MainMenu.ABOUT_CLOSE_ID,
-      icon: 'fad fa-times-octagon right-padding',
+      icon: 'fas fa-times right-padding',
       label: 'Close'
     })}
   </div>

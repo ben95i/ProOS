@@ -68,7 +68,7 @@ export function openPixelsWindow() {
     <div class="popup-actions pixels__actions">
       ${gridButtonTemplate({
         buttonId: 'pixels__btn-close',
-        icon: 'fad fa-times-octagon',
+        icon: 'fas fa-times',
         buttonClass: PIXELS_BUTTON_CLASS
       })}
       ${gridButtonTemplate({

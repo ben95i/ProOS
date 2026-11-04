@@ -273,7 +273,7 @@ function thermoWindowTemplate() {
     <div class="thermo__actions">
       ${gridButtonTemplate({
         buttonId: 'temp__btn-close',
-        icon: 'fad fa-times-octagon'
+        icon: 'fas fa-times'
       })}
       ${gridButtonTemplate({
         buttonId: 'thermo__btn-refresh',
@@ -298,7 +298,7 @@ function thermoWindowTemplate() {
     <div class="thermo__actions">
       ${gridButtonTemplate({
         buttonId: 'thermo__btn-logclose',
-        icon: 'fad fa-times-octagon'
+        icon: 'fas fa-times'
       })}
       ${gridButtonTemplate({
         buttonId: 'thermo__btn-back',

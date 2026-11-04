@@ -107,7 +107,7 @@ function svrOptMainTemplate() {
       <a id="btn-svr-netscan"><i class="fad fa-chart-network"></i> LAN Scanner</a>`)}
   ${optionMenu('unifi', 'fad fa-router', 'UniFi', `
       <a id="btn-ext-unifi"><i class="fad fa-link"></i> Open</a>${startStopRows('unifi')}`)}
-  ${optionButton('btn-close-svr-opt1', 'fad fa-times-octagon', 'Close')}
+  ${optionButton('btn-close-svr-opt1', 'fas fa-times', 'Close')}
   ${optionButton('btn-svr-clearlog', 'fad fa-trash-alt', 'Clear')}
   ${optionButton('btn-upload', 'fad fa-cloud-upload', 'Upload')}
 </div>`;
@@ -137,7 +137,7 @@ function svrOptBackupTemplate() {
   ${optionButton('btn-pwd-unlock', 'fad fa-lock-open', 'Unlock')}
   ${optionButton('btn-svr-backupstd', '', 'Standard')}
   ${optionButton('btn-svr-detach_bkps', 'fad fa-eject', 'Eject')}
-  ${optionButton('btn-close-svr-opt2', 'fad fa-times-octagon', 'Close')}
+  ${optionButton('btn-close-svr-opt2', 'fas fa-times', 'Close')}
   ${optionButton('btn-svr-pve_listsnaps', '', 'Snapshots')}
   ${optionButton('btn-open-svr-opt1', 'fad fa-arrow-left', 'Back')}
 </div>`;
@@ -162,7 +162,7 @@ function svrOptRegionsTemplate() {
   ${optionMenu('ramdisk', '', 'RAM Disk', `
       <a id="btn-svr-mnt_ram_region"><i class="fad fa-link"></i> Attach</a>
       <a id="btn-svr-unmnt_ram_region"><i class="fad fa-eject"></i> Detach</a>`)}
-  ${optionButton('btn-close-svr-opt3', 'fad fa-times-octagon', 'Close')}
+  ${optionButton('btn-close-svr-opt3', 'fas fa-times', 'Close')}
   ${optionButton('btn-svr-unmnt_all', '', 'Detach All', 'dark_btn')}
   ${optionButton('btn-open-svr-opt2', 'fad fa-arrow-left', 'Back')}
 </div>`;
@@ -187,7 +187,7 @@ function piOptionsTemplate() {
       <a id="btn-svr-wifiscan"> WiFi Scanner</a>`)}
   ${optionButton('btn-svr-showwpa', '', 'Network')}
   ${optionButton('btn-svr-temp', '', 'Temperature')}
-  ${optionButton('btn-close-svr-opt4', 'fad fa-times-octagon', 'Close')}
+  ${optionButton('btn-close-svr-opt4', 'fas fa-times', 'Close')}
   ${optionButton('btn-svr-pi-clearlog', '', 'Clear Log')}
   ${optionButton('btn-svr-resetbt', 'fab fa-bluetooth', 'Reset')}
 </div>`;
@@ -209,7 +209,7 @@ export function logFormTemplate() {
     <div class="popup-actions">
       ${gridButtonTemplate({
         buttonId: 'btn-log-close',
-        icon: 'fad fa-times-octagon',
+        icon: 'fas fa-times',
         buttonClass: 'button_left_txtwin'
       })}
       ${gridButtonTemplate({

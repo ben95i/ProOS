@@ -948,7 +948,7 @@ export default class Lists {
   <div class="list__actions">
     ${gridButtonTemplate({
       buttonId: CLOSE_BTN_ID,
-      icon: 'fad fa-times-octagon',
+      icon: 'fas fa-times',
       buttonClass: 'button__sml list__btn'
     })}
     ${gridButtonTemplate({

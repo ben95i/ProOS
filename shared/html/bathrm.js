@@ -172,7 +172,7 @@ function bathroomSettingsPrompt() {
       <div class="popup-actions bthr__actions">
         ${gridButtonTemplate({
           buttonId: 'bthr__btn-close',
-          icon: 'fad fa-times-octagon',
+          icon: 'fas fa-times',
           buttonClass: BTHR_BUTTON_CLASS
         })}
         ${gridButtonTemplate({
@@ -202,7 +202,7 @@ function bathroomSettingsPrompt() {
         })}
         ${gridButtonTemplate({
           buttonId: 'bthr__btn-logclose',
-          icon: 'fad fa-times-octagon',
+          icon: 'fas fa-times',
           buttonClass: BTHR_BUTTON_CLASS
         })}
       </div>

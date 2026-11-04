@@ -334,7 +334,7 @@ export default class Uploader {
       <div class="upl__pct" id="${PCT_ID}">0%</div>
       ${gridButtonTemplate({
         buttonId: CLOSE_BTN_ID,
-        icon: 'fad fa-times-octagon right-padding',
+        icon: 'fas fa-times right-padding',
         label: `<span id="${CLOSE_LABEL_ID}">Cancel</span>`,
         buttonClass: 'button__med'
       })}

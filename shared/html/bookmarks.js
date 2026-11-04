@@ -50,12 +50,12 @@ const EDIT_BTN_IDS = {
   remove: 'editFav__btn-delete'
 };
 const EDIT_BTN_ICONS = {
-  up: 'fa-arrow-up',
-  lookup: 'fa-search',
-  down: 'fa-arrow-down',
-  save: 'fa-save',
-  cancel: 'fa-times-octagon',
-  remove: 'fa-trash-alt'
+  up: 'fad fa-arrow-up',
+  lookup: 'fad fa-search',
+  down: 'fad fa-arrow-down',
+  save: 'fad fa-save',
+  cancel: 'fas fa-times',
+  remove: 'fad fa-trash-alt'
 };
 const PREVIEW_EMPTY_CLASS = 'editFav__iconpreview--empty';
 const SELECTED_CLASS = 'dd-selected';
@@ -789,7 +789,7 @@ export default class Bookmarks {
       <input type="text" id="editFav__urlbox" class="editFav__textbox"
              autocorrect="off" autocapitalize="none">
       ${Object.keys(EDIT_BTN_IDS).map(key => `
-      <button class="editFav__button button fad ${EDIT_BTN_ICONS[key]}" type="button"
+      <button class="editFav__button button ${EDIT_BTN_ICONS[key]}" type="button"
               id="${EDIT_BTN_IDS[key]}"></button>`).join('')}
     `;
     const editFavText = editFavPrompt.querySelector(".editFav__toplabel");

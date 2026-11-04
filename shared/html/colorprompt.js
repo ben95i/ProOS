@@ -124,7 +124,7 @@ class ColorPrompt {
         <div class="color-popup-actions">
           ${gridButtonTemplate({
             buttonId: 'btn-color-close',
-            icon: 'fad fa-times-octagon',
+            icon: 'fas fa-times',
             label: 'Close',
             buttonClass: 'button_left_txtwin color-popup-btn'
           })}
