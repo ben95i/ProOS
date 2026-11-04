@@ -5,9 +5,12 @@
   <meta name="viewport" content="shrink-to-fit=no"/>
   <title id="title">Automate</title>
   <link href="img/automate.png" rel="icon" type="image/x-icon">
-  <link href="fonts/fa/css/all.min.css" rel="stylesheet" type="text/css">
   <!-- One sheet per component. Order matters: main.css first, as later rules override
-       it at equal specificity; lists.css last, for the drag handle the bookmarks share. -->
+       it at equal specificity; lists.css last, for the drag handle the bookmarks share.
+       icons.min.css is not in the repo: login.sh builds it on mgmt with
+       shared/fontawesome/build-icons.py and adds it to every deploy. The deploy combines
+       them all into one file in this order (nodeapi/www-minify.sh). -->
+  <link href="styles/icons.min.css" rel="stylesheet" type="text/css">
   <link href="styles/main.css" rel="stylesheet" type="text/css">
   <link href="styles/error.css" rel="stylesheet" type="text/css">
   <link href="styles/dropdowns.css" rel="stylesheet" type="text/css">
@@ -27,6 +30,23 @@
   <link href="styles/thermo.css" rel="stylesheet" type="text/css">
   <link href="styles/bookmarks.css" rel="stylesheet" type="text/css">
   <link href="styles/lists.css" rel="stylesheet" type="text/css">
+  <!-- What main.js imports at load, asked for at once rather than one import level at a
+       time. The feature windows load on demand. -->
+  <link rel="modulepreload" href="utils.js">
+  <link rel="modulepreload" href="error.js">
+  <link rel="modulepreload" href="volctrl.js">
+  <link rel="modulepreload" href="dropdowns.js">
+  <link rel="modulepreload" href="switch.js">
+  <link rel="modulepreload" href="livingrm.js">
+  <link rel="modulepreload" href="bedrm.js">
+  <link rel="modulepreload" href="bathrm.js">
+  <link rel="modulepreload" href="server.js">
+  <link rel="modulepreload" href="upload.js">
+  <link rel="modulepreload" href="wifi.js">
+  <link rel="modulepreload" href="roomstate.js">
+  <link rel="modulepreload" href="stars.js">
+  <link rel="modulepreload" href="mainmenu.js">
+  <link rel="modulepreload" href="weather.js">
   <script type="module" src="main.js"></script>
 </head>
 <body class="scroll-bar-style" ontouchstart="">

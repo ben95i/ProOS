@@ -643,6 +643,10 @@ const LCD_GLYPHS = {
 // Draws text on the display, one grid of dots per character; no glyph draws blank.
 // lcdShow(lcd, '72°')
 function lcdShow(lcdElement, text) {
+  // every status read lands here, and a character is 35 dots to rebuild
+  if (lcdElement.getAttribute('aria-label') === text) {
+    return;
+  }
   const glyphElements = [];
   for (const character of text) {
     let glyphRows = LCD_GLYPHS[character];

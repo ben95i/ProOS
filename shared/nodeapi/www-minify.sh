@@ -23,12 +23,14 @@ MIN_REUSED=0
 MIN_REMOVED=0
 MIN_ROWS=''
 MIN_RULE='--------------------------------------------------------------------'
+CSS_COMBINED="styles/site.css"
+CSS_INDEX="$WWWPATH/index.html"
 
 echo "Compressing website components."
 
 for MINFILE in "$WWWPATH"/styles/*.css "$WWWPATH"/*.js; do
   [ -e "$MINFILE" ] || continue
-  case "$MINFILE" in *.min.js|*.min.css) continue ;; esac
+  case "$MINFILE" in *.min.js|*.min.css|*/"$CSS_COMBINED") continue ;; esac
 
   MIN_NAME="${MINFILE#"$WWWPATH"/}"
   MIN_SRC="$MIN_SRCDIR/$MIN_NAME"
@@ -115,6 +117,42 @@ else
     printf "%-26s %10.1f %10.1f %10.1f   (%.1f%% smaller)\n", \
       "TOTAL", b/1024, a/1024, s, pct
     printf "%d changed file(s) compressed, %d reused from cache, %d removed\n", r, c, d }'
+fi
+
+## Combine the page's stylesheets into one, in the order index.html links them, so a page
+## load revalidates one file in place of twenty. If a linked sheet is missing or empty,
+## or the page already links the combined file, the page is left as it is.
+CSS_LINKS=$(grep -o 'href="styles/[^"]*\.css"' "$CSS_INDEX" | sed 's/^href="//; s/"$//')
+CSS_ALL_FOUND=1
+if [ -z "$CSS_LINKS" ]; then
+  CSS_ALL_FOUND=0
+fi
+: > "$WWWPATH/$CSS_COMBINED.tmp"
+for CSS_LINK in $CSS_LINKS; do
+  if [ "$CSS_LINK" = "$CSS_COMBINED" ] || [ ! -s "$WWWPATH/$CSS_LINK" ]; then
+    CSS_ALL_FOUND=0
+    break
+  fi
+  cat "$WWWPATH/$CSS_LINK" >> "$WWWPATH/$CSS_COMBINED.tmp"
+  echo >> "$WWWPATH/$CSS_COMBINED.tmp"
+done
+if [ "$CSS_ALL_FOUND" -eq 1 ]; then
+  mv -f "$WWWPATH/$CSS_COMBINED.tmp" "$WWWPATH/$CSS_COMBINED"
+  chmod 644 "$WWWPATH/$CSS_COMBINED"
+  awk -v combined="$CSS_COMBINED" '
+    /href="styles\/[^"]*\.css"/ {
+      if (written != 1) {
+        print "  <link href=\"" combined "\" rel=\"stylesheet\" type=\"text/css\">"
+        written = 1
+      }
+      next
+    }
+    { print }' "$CSS_INDEX" > "$CSS_INDEX.tmp"
+  # written through, so the page keeps its owner and mode
+  cat "$CSS_INDEX.tmp" > "$CSS_INDEX"
+  rm -f "$CSS_INDEX.tmp"
+else
+  rm -f "$WWWPATH/$CSS_COMBINED.tmp"
 fi
 
 chown -R "$WWW_NAME":"$WWW_GROUP" $WWWPATH/styles/*.css

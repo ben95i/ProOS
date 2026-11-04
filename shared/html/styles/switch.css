@@ -61,14 +61,14 @@
   border-radius: var(--local-height);
   background-color: var(--local-color-off);
   box-shadow: inset 0 2px 5px rgba(0,0,0,0.05);
-  backface-visibility: hidden;
-  transform: translateZ(0);
   position: relative;
 }
 
 .toggle-handle {
   --handle-size: calc(var(--local-height) * 0.85);
   --handle-padding: calc(var(--local-height) * 0.075);
+  /* from the off position to the on position: the switch less the handle and both pads */
+  --handle-travel: calc(var(--local-width) - var(--handle-size) - 2 * var(--handle-padding));
   width: var(--handle-size);
   height: var(--handle-size);
   padding-top: 5px;
@@ -81,10 +81,8 @@
   display: grid;
   place-items: center;
   z-index: 2;
-  transition: left 0.3s ease-in-out;
-  will-change: left;
-  transform: translateZ(0);
-  backface-visibility: hidden;
+  transition: transform 0.3s ease-in-out;
+  transform: translateX(0);
 }
 
 .toggle-text-on, .toggle-text-off {
@@ -96,8 +94,6 @@
   font-size: calc(var(--local-height) / 3);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  transform: translateZ(0);
-  backface-visibility: hidden;
   color: #000;
 }
 
@@ -114,7 +110,7 @@
 }
 
 .toggle-input:checked + .toggle-label .toggle-handle {
-  left: calc(100% - var(--handle-size) - var(--handle-padding));
+  transform: translateX(var(--handle-travel));
 }
 
 .toggle-input:checked + .toggle-label .toggle-handle .toggle-text-on { opacity: 1; }
@@ -130,7 +126,8 @@
 }
 
 .toggle-switch.is-dragging .toggle-handle {
-  left: var(--drag-x) !important;
+  /* --drag-x is measured from the switch's edge, and left already holds the pad */
+  transform: translateX(calc(var(--drag-x) - var(--handle-padding))) !important;
   transition: none !important;
 }
 

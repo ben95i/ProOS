@@ -101,6 +101,11 @@ function iconMimeType(icon) {
   return 'image/jpeg';
 }
 
+// A name as its row shows it, ready for the search box to match without asking the page.
+function rowFindText(name) {
+  return String(name).replace(/\s+/g, ' ').trim();
+}
+
 // the row's icon markup, or the info glyph with no icon
 function iconMarkup(icon) {
   if (icon === "") {
@@ -342,6 +347,7 @@ export default class Bookmarks {
     const label = makeElement('span', LABEL_CLASS);
     label.innerText = name;
     item.appendChild(label);
+    item.findText = rowFindText(name);
     // the favicon, also the row's edit button; its own holder leaves the spinner alone
     const editIcon = makeElement('span', EDIT_ICON_CLASS);
     editIcon.appendChild(makeElement('span', GLYPH_CLASS));
@@ -401,6 +407,7 @@ export default class Bookmarks {
   // sets a row's name
   setItemName(item, name) {
     this.labelElem(item).innerText = name;
+    item.findText = rowFindText(name);
   }
 
   // stores the icon on the row and redraws its edit button
@@ -475,12 +482,13 @@ export default class Bookmarks {
     }
   }
 
-  // hides the rows that do not match
+  // Hides the rows that do not match, from the text held on each row: reading a row's name
+  // back from the page would lay it out again for every row, on every key.
   filterItems(termIn) {
     const term = searchTerm(termIn);
     this.items().forEach(item => {
       let rowDisplay = "none";
-      if (searchMatches(this.itemName(item), term)) {
+      if (searchMatches(item.findText, term)) {
         rowDisplay = "";
       }
       item.style.display = rowDisplay;

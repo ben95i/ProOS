@@ -616,6 +616,39 @@ export function requestThrottle(func, limit) {
   return throttled;
 }
 
+//// modules loaded on demand ////
+
+// A module loaded by its first use, so the page starts on the code every model needs.
+// const loadLists = onDemandModule(() => import('./lists.js'), 'the lists window');
+//   await loadLists()  the module, or null with the failure reported; the next use tries again
+//   loadLists.loaded() the module if it is in, or null, without waiting
+//   loadLists.preload() loads it quietly ahead of its first use
+export function onDemandModule(importModule, what) {
+  let heldModule = null;
+  const load = async () => {
+    if (heldModule !== null) {
+      return heldModule;
+    }
+    try {
+      heldModule = await importModule();
+    } catch (error) {
+      reportError(`loading ${what}`, error);
+      return null;
+    }
+    return heldModule;
+  };
+  load.loaded = () => heldModule;
+  load.preload = () => {
+    importModule().then((loadedModule) => {
+      heldModule = loadedModule;
+    }).catch((error) => {
+      // the first use tries again and reports it
+      logError(`preloading ${what}`, error);
+    });
+  };
+  return load;
+}
+
 //// in-flight promises ////
 
 // Holds a started promise on owner[key] until it settles.

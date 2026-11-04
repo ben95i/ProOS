@@ -308,7 +308,7 @@ else
 fi
 
 ## Minify JS/CSS
-$API_PATH/www-minify.sh
+bash $API_PATH/www-minify.sh
 
 ## WWW Permissions
 usermod -aG audio "$WWW_NAME"

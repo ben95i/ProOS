@@ -8,11 +8,12 @@ Project reference imported from the Claude chat "Automate" project doc (Oct 11, 
 | --- | --- | --- |
 | `html/` | The UI: `index.html`, one ES module per feature, `styles/`, `menus/`, `img/`, `fonts/` | `/var/www/html` (staged via `/opt/rpi/config/html/`) |
 | `nodeapi/` | The node API (Express 5, CommonJS): `server.js` entry, `controller.js` dispatch, one module per service (see *Node API*) | `/opt/nodeapi`, run by `nodeapi.service` |
-| `nodeapi/www-minify.sh` | Minifies the deployed site in place, run by the installer | `/opt/nodeapi/www-minify.sh` |
+| `nodeapi/www-minify.sh` | Minifies the deployed site in place and combines its stylesheets, run by the installer | `/opt/nodeapi/www-minify.sh` |
+| `fontawesome/` | The Font Awesome Pro 5.15 kit (its `.woff2` fonts only) and `build-icons.py`, which builds the icons the site uses into the folder given with `--out` (never inside `html/`): `styles/icons.min.css`, and one font per style a page uses, `fonts/fa-solid`, `fa-regular`, `fa-light`, `fa-duotone` or `fa-brands.woff2` (`fas`, `far`, `fal`, `fad`, `fab`). The built files are not in the repo (git-ignored): `../login.sh` builds them on `mgmt` and adds them to every deploy | Not deployed |
 | `../automate/config/` | Host config: `installer.sh`, `lighttpd.conf`, `nodeapi.service`, `rc.local` | the Automate server |
 | `../login.sh` | Deploys from the repo root: rsyncs `shared/html/` and `shared/nodeapi/` to a host | |
 
-There is no build step, test suite or linter in the repo; `html/` is served as written and minified only on the host. On the host, menu files are read from `/var/www/html/menus/<name>.txt` and saved state (any `*.save` file, plus `sysout`) is read and written under `/var/www/html/ram/`.
+There is no build step, test suite or linter in the repo; `html/` is served as written and minified only on the host, apart from its icons, which are built at deploy (see *Testing the site* for a local copy). On the host, menu files are read from `/var/www/html/menus/<name>.txt` and saved state (any `*.save` file, plus `sysout`) is read and written under `/var/www/html/ram/`.
 
 ## Overview
 
@@ -43,7 +44,7 @@ Room transmitters answer the Automate API on port 80 (`callApi`), Pico controlle
 The page is drawn once from template functions in `main.js`, and every button reaches its handler through one click listener on `document`.
 
 1. **Load.** On `DOMContentLoaded`, `loadPage()` reads the model and injects the markup from `buildPageHTML()`.
-2. **Features.** `loadFeatures()` starts the server-only parts (the last room from `localStorage` key `ctls-mode`, `RoomStateManager`, `WeatherWidget`), then the main menu and theme colour, the stars background and the activity timer.
+2. **Features.** `loadFeatures()` starts the server-only parts (the last room from `localStorage` key `ctls-mode`, `RoomStateManager`, `WeatherWidget`, and once the page is idle the preload of the feature windows, which `main.js` otherwise loads on their first press: thermostat, Pixels, colour picker, lists, bookmarks, camera), then the main menu and theme colour, the stars background and the activity timer.
 3. **Buttons.** Each template is followed by `registerListeners({ id: handler })`, in `main.js`, in each room module and in `server.js` alike. The map and `dispatchRegisteredListener()` live in `utils.js`; one delegated listener walks up from the clicked element to the first id in that map, so markup drawn later (room grids, server panels) needs no binding.
 4. **Every click.** `handleClicks()` restarts the 50 s activity timer (on expiry the stars and the room status refresh pause) and closes open menus unless the click was on a `.button`, a bookmark or a `.nohide` element.
 5. **Teardown.** `removeDropdowns()` closes menus and destroys their toggle switches; `App.destroyAll()` on `beforeunload` ends every running service.
@@ -60,7 +61,7 @@ All of the menu code is in `dropdowns.js` (styles in `styles/dropdowns.css`). Mo
 | --- | --- | --- |
 | `grnind` · `blkind` · `redind` · `ylwind` · `noind` | Label with a green, black, red or yellow dot, or none | The row's command on click, for `cmd~` rows |
 | `toggle` | `ToggleSwitch` from the device's 1 / 0 | `<command>on` / `<command>off` |
-| `slider` | 0–255 slider | `<command>_set_<n>` while sliding, 75 ms throttle; the release value always sent last |
+| `slider` | 0–255 slider | `<command>_set_<n>` while sliding, 120 ms throttle (`SLIDER_MS`); the release value always sent last |
 | `slidercust` | 1–255 slider | As `slider` |
 | `on` · `off` · `pause` | Label with an icon | The row's command |
 | `chk` | Switch for a browser-side setting (stars animation) | Nothing; saved in `localStorage` |
@@ -175,7 +176,7 @@ The bathroom is left out of `lightson`, `lightsoff`, `allon` and `alloff`; APT's
 
 The bathroom's one device is the BathroomLight, a Pico W on 192.168.1.21:4000 (`bthrlight1` in the API's address table) driving a PWM LED and a C4002 mmWave motion sensor. Motion fades it in, and it fades off after the off delay with nobody detected. All of its controls live in `bathrm.js`, styled by `styles/bathrm.css`.
 
-- **Brightness** reads `bthr-light1`, 1–255: the level the light is at (or fading to) while it is on, and the level it will come on at while it is off. The slider is an ordinary `slider` row, so the light gets at most one level every 75 ms while it is dragged and the release value always lands last.
+- **Brightness** reads `bthr-light1`, 1–255: the level the light is at (or fading to) while it is on, and the level it will come on at while it is off. The slider is an ordinary `slider` row, so the light gets at most one level every 120 ms while it is dragged and the release value always lands last.
 - **Mode** reads `bthr-light1_mode` and marks Stay On (2), Automatic (1) or Always Off (0) green; a row sends `bthr-light1_mode_set_<n>`.
 - **Room status** reads `bthr-light1_state`, 1 or 0, which reports where a fade is heading from the moment it starts.
 
@@ -304,7 +305,7 @@ Each feature larger than a room button is a class in its own module, and anythin
 | `roomstate.js` | `RoomStateManager` | Room status light, 10 s refresh, device dropdown |
 | `colorprompt.js` | `ColorPrompt` | Colour window: saturation / value map, hue slider, palette swatches with names, hex box; `openColorPrompt()` opens it for a device, `showColorPrompt()` for any other caller |
 | `switch.js` | `ToggleSwitch` | Draggable on / off switch used in menus and windows |
-| `stars.js` | `AnimatedBackground` | Star canvas behind the page, paused when idle |
+| `stars.js` | `AnimatedBackground` | Star field behind the page, painted once on a canvas; six shooting stars, each a small canvas moved by a compositor animation, so nothing runs per frame. Paused when idle |
 | `weather.js` | `WeatherWidget` | Weather in the top bar and its menu |
 | `bookmarks.js` | `Bookmarks` | Bookmarks menu, add / edit window, file and lock |
 | `lists.js` | `Lists`, `ListStore` | Lists window: lists and items, drag re-order, multi-select delete, completed toggles, per-list encryption, edit lock, connection status |
@@ -319,6 +320,7 @@ Each feature larger than a room button is a class in its own module, and anythin
 | Area | Exports |
 | --- | --- |
 | Timing | `REFRESH_INTERVAL` 10 s, `TIMEOUT_INTERVAL` 50 s, `sleep`, `requestThrottle` (with `cancel()`), `trackPromise`, `singleFlight`, `awaitQuiet` |
+| Modules | `onDemandModule(importModule, what)`: a module loaded by its first use, with `.loaded()` and `.preload()` |
 | API | `sendCmd(action, arg, var, options)` → parsed JSON, or null with the failure reported (`{ quiet: true }` logs it to the console only); `loadMenu(url)`; `fetchAnswer(url)` → text, or throws `HttpError` |
 | Pico | `picoRequestQueue(target)` (one request at a time per Pico), `picoReplyError(reply, xmitPrefix, offlineText)` and its `PICO_REFUSED`, `PICO_NO_REPLY`, `PICO_CMD_ERROR`, `parsePicoNumber(reply, replyError)`, `readPicoLog(win, request, replyError, command, scrollToEnd)` |
 | Files | `fileURL`, `readFile`, `writeFile` (retried after 250 and 750 ms on a dropped connection or 502–504), `savePOST`, `sendFileBeacon`, `reportFileFailure(what)` (reports why the last file request failed) |
@@ -348,7 +350,7 @@ Files are pipe-delimited text, one row per line. Lists rows are `LIST_ID|LIST_NA
 
 ## Styling
 
-CSS is one sheet per component under `styles/`, and the order of the `<link>` tags in `index.html` matters: several component rules beat a `main.css` rule only by coming after it.
+CSS is one sheet per component under `styles/` (`icons.min.css`, built at deploy by `fontawesome/build-icons.py`, first of all), and the order of the `<link>` tags in `index.html` matters: several component rules beat a `main.css` rule only by coming after it.
 
 1. `main.css`: fonts (JosefinSans), the palette, buttons, prompts, popups, spinners. Must load first. `error.css` (the message popup and its error forms) comes straight after it.
 2. `dropdowns.css`, then `livingrm.css`, `bedrm.css`, `bathrm.css`, then `server.css`: the dropdown menus and their rows, each room's own rules (subwoofer mode, bed window, bathroom settings), and the Server window (log size, options panels, password and Wi-Fi prompts). Cut out of `main.css` and kept directly after it, in this order, so they meet every later sheet as they did before.
@@ -362,13 +364,26 @@ CSS is one sheet per component under `styles/`, and the order of the `<link>` ta
 
 The CSS rules to keep (`calc()`, `:hover`, translucency, the palette) are in `../CODESTYLE.md`.
 
+## Testing the site
+
+The repo holds no built icons, so a page served straight from `html/` shows every icon blank. An agent that tests the website (in the built-in browser with a mocked API) first builds them into its own folder under `/tmp`, its scratchpad when it has one, never into the repo:
+
+```bash
+python3 -m venv /tmp/fa && /tmp/fa/bin/pip install fonttools brotli
+/tmp/fa/bin/python shared/fontawesome/build-icons.py --out <scratchpad>/icons
+```
+
+Then its test server answers `styles/icons.min.css` and `fonts/fa-*.woff2` from `<scratchpad>/icons/styles/` and `<scratchpad>/icons/fonts/`, and everything else from `html/`. Build again after a page names a new icon (`--check` with the same `--out` says whether it is needed). The builder refuses an `--out` inside `html/`, and the built files are git-ignored there.
+
 ## Deployment and conventions
 
-`../login.sh` copies the site and API to the host, and `nodeapi/www-minify.sh` minifies the deployed site in place: yui-compressor for `styles/*.css`, `uglifyjs --compress` for the root `*.js`, with a cache under `/opt/www-mincache` so unchanged files are not recompressed. `installer.sh` on the host copies the staged site into `/var/www/html` (leaving `ram/` alone), installs the API and its service, and runs the minifier. The node API runs separately behind lighttpd and is not minified. lighttpd (`automate/config/lighttpd.conf`, `rpi/config/lighttpd.conf`) sends the page, `.js` and `.css` with `max-age=0`, so browsers revalidate them on every load: one stale cached ES module (iOS Safari keeps them otherwise) can fail to link against new ones and leave the page black.
+`../login.sh` copies the site and API to the host, and `nodeapi/www-minify.sh` minifies the deployed site in place, then combines the stylesheets into `styles/site.css` in the order `index.html` links them and points the deployed page at that one file: yui-compressor for `styles/*.css`, `uglifyjs --compress` for the root `*.js`, with a cache under `/opt/www-mincache` so unchanged files are not recompressed. `installer.sh` on the host copies the staged site into `/var/www/html` (leaving `ram/` alone), installs the API and its service, and runs the minifier. The node API runs separately behind lighttpd and is not minified. lighttpd (`automate/config/lighttpd.conf`, `rpi/config/lighttpd.conf`) sends the page, `.js` and `.css` with `max-age=0`, so browsers revalidate them on every load: one stale cached ES module (iOS Safari keeps them otherwise) can fail to link against new ones and leave the page black.
 
 Where new work goes (code style rules, including buttons, listeners and helpers, are in `../CODESTYLE.md`):
 
 - A room's template, listeners, menus and windows live in its own module and sheet; code two rooms share goes in `utils.js` (the volume controls in `volctrl.js`), and anything that draws or opens a menu in `dropdowns.js`. A new room exports its config and is added to `ROOM_CONFIGS` in `main.js`. A feature that stands on its own is a class in its own module with its own sheet.
+- Icons need no build step of their own: a page names any icon of the kit (`fad fa-bell`) and the next deploy builds it. The built sheet and fonts live only on `mgmt`, in the cache `/tmp/proos-fontcache`: before every deploy of the site (`automate` and every Pi), `../login.sh` checks the cache against the site with `build-icons.py --check`, builds into it when a page names an icon it lacks (or after a reboot cleared `/tmp`), and copies the cached sheet and fonts into the copy of the site it sends, logging each step under `Icons:`. A failed build sends the cache's older build (icons added since show blank), or, with no build at all, a site whose icons all show blank, with a warning. Never run the builder on the workstation into the repo, or commit its output; the kit stays out of `html/` so it is not deployed.
+- A feature window that only opens on a press loads on demand: `onDemandModule()` in the module that opens it, and in `SERVER_PRELOADS` in `main.js` if the server page uses it. `upload.js` stays a normal import, as a file dialog must open inside the press.
 - Imports go downwards only (`main.js` → rooms, `server.js` and `thermo.js` → `dropdowns.js` → `volctrl.js` → `utils.js` → `error.js`); a lower module that needs something from the page takes it as a parameter or through `configureMenus()`.
 - Read and write state files through the site's file API, never a separate store.
 - Report failures through `error.js` (`reportError` around a request, `reportFileFailure` after a failed `readFile` / `writeFile`), never a hand-written popup; `showPopup` is for notices.

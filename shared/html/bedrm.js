@@ -1,12 +1,14 @@
 // Automate - bedroom: button grid and what it opens (bed lights menu and adjustment
 // window, relax sounds, power menus, the amp's volume and inputs).
 
-import { registerListeners, dropdownButtonTemplate, sendCmd,
-  requestThrottle, promptWindow, onButtons, gridButtonTemplate } from './utils.js';
+import { registerListeners, dropdownButtonTemplate, sendCmd, requestThrottle, promptWindow,
+  onButtons, gridButtonTemplate, onDemandModule } from './utils.js';
 import { volumeButtonsTemplate, volumeButtonListeners } from './volctrl.js';
 import { showPowerMenu, powerButtonTemplate, powerListeners, spinnerIds, showDynAPIMenu,
   showInputMenu } from './dropdowns.js';
-import { openColorPrompt } from './colorprompt.js';
+
+// the colour picker, loaded by its first use
+const loadColorPrompt = onDemandModule(() => import('./colorprompt.js'), 'the colour picker');
 
 // the room transmitter, and the Bedroom Pi that drives the amp
 const BEDROOM_TARGET = 'brxmit';
@@ -89,7 +91,7 @@ function bedroomGridTemplate() {
 registerListeners({
   'btn-menu-br-bed':      () => showPowerMenu(BEDROOM_TARGET, BED_LEDS_MENU),
   'btn-bed-adjprompt':    () => bedPrompt(),
-  'bed_leds-colorprompt': () => openColorPrompt(BEDROOM_TARGET, 'bed_leds_hex_set', 'Bed Lights'),
+  'bed_leds-colorprompt': () => openBedColors(),
   'bed_leds-rainbow':     () => sendCmd('main', BEDROOM_TARGET, 'bed_leds_rb'),
   'bed_leds-colorcycle':  () => sendCmd('main', BEDROOM_TARGET, 'bed_leds_cy'),
   'bed_leds-sweep':       () => sendCmd('main', BEDROOM_TARGET, 'bed_leds_sw'),
@@ -99,6 +101,14 @@ registerListeners({
   ...powerListeners(BEDROOM_AMP_TARGET, ['ampstate'])
 });
 registerListeners(volumeButtonListeners(BEDROOM_CONFIG));
+
+// the Bed menu's Colors row: the colour prompt for the bed lights
+async function openBedColors() {
+  const colorPromptModule = await loadColorPrompt();
+  if (colorPromptModule) {
+    colorPromptModule.openColorPrompt(BEDROOM_TARGET, 'bed_leds_hex_set', 'Bed Lights');
+  }
+}
 
 // Inputs: the amp's inputs, green on the live one
 function showBedroomAmpInput() {

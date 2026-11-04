@@ -4,8 +4,8 @@
 
 import { classDisplay, cleanString, base64URLSafeEncode, sendCmd,
   TIMEOUT_INTERVAL, setSpinner, setDisplayById, menuRow, registerListeners,
-  dispatchRegisteredListener, gridButtonTemplate,
-  dropdownButtonTemplate, GoToExtPage } from './utils.js';
+  dispatchRegisteredListener, gridButtonTemplate, dropdownButtonTemplate,
+  GoToExtPage, onDemandModule, singleFlight } from './utils.js';
 import { clearVolumePopupTimer } from './volctrl.js';
 import { clearPopupTimer, installErrorHandlers } from './error.js';
 import { configureMenus, removeDropdowns, openDropdown, drawMenu,
@@ -14,19 +14,30 @@ import { configureMenus, removeDropdowns, openDropdown, drawMenu,
 import { LIVING_ROOM_CONFIG } from './livingrm.js';
 import { BEDROOM_CONFIG } from './bedrm.js';
 import { BATHROOM_CONFIG, closeBathroomSettings } from './bathrm.js';
-import { openPixelsWindow, closePixelsWindow } from './pixels.js';
-import { openThermoWindow, refreshThermoWindow,
-  closeThermoWindow } from './thermo.js';
 import { serverOptionsTemplate, logFormTemplate, showLogWindow,
   closeLogWindow } from './server.js';
 import RoomStateManager from './roomstate.js';
 import AnimatedBackground from './stars.js';
-import { openColorPrompt } from './colorprompt.js';
 import MainMenu from './mainmenu.js';
 import WeatherWidget from './weather.js';
-import Lists from './lists.js';
-import Bookmarks from './bookmarks.js';
-import CameraView from './camera.js';
+
+// The feature windows, loaded by their first use. A server page loads them once it is idle
+// (preloadFeatureWindows()), so a press does not wait on the network; a Pi loads only what
+// it opens.
+const loadThermo = onDemandModule(() => import('./thermo.js'), 'the temperature window');
+const loadPixels = onDemandModule(() => import('./pixels.js'), 'the Pixels window');
+const loadColorPrompt = onDemandModule(() => import('./colorprompt.js'), 'the colour picker');
+const loadLists = onDemandModule(() => import('./lists.js'), 'the lists window');
+const loadBookmarks = onDemandModule(() => import('./bookmarks.js'), 'the bookmarks menu');
+const loadCamera = onDemandModule(() => import('./camera.js'), 'the camera window');
+const SERVER_PRELOADS = [loadThermo, loadPixels, loadColorPrompt, loadLists, loadBookmarks, loadCamera];
+// the longest a server page waits for an idle moment before preloading them
+const PRELOAD_WAIT_MS = 2000;
+
+// openings in progress, so a second press while the module loads is not a second open
+const openingWindows = { lists: null, bookmarks: null };
+// bumped by closePopup(), so a camera still loading does not open over what came after
+let cameraOpenCount = 0;
 
 // The rooms, in room menu order; a browser with nothing saved opens on the first.
 const ROOM_CONFIGS = {
@@ -90,6 +101,27 @@ function serverFeatures() {
   App.weatherWidget.activate();
   // the Pixels window reaches every LED host through the server's API
   configureMenus({ openPixels: openPixelsWindow });
+  preloadFeatureWindows();
+}
+
+// loads the server page's windows ahead of their first use, once the page has gone idle
+function preloadFeatureWindows() {
+  const preloadAll = () => {
+    SERVER_PRELOADS.forEach(loadModule => loadModule.preload());
+  };
+  if (window.requestIdleCallback) {
+    window.requestIdleCallback(preloadAll, { timeout: PRELOAD_WAIT_MS });
+  } else {
+    setTimeout(preloadAll, PRELOAD_WAIT_MS);
+  }
+}
+
+// opens the Pixels window: the More... row of the Control menu
+async function openPixelsWindow() {
+  const pixelsModule = await loadPixels();
+  if (pixelsModule) {
+    pixelsModule.openPixelsWindow();
+  }
 }
 
 // Index.html is served as written, so the server's title is SERVER_MODEL. A Pi's installer
@@ -115,7 +147,7 @@ function buildPageHTML(model) {
     textScrollTemplate(select),
     logFormTemplate(),
     '<div id="color-popup"></div>',
-    CameraView.POPUP_HTML,
+    cameraPopupTemplate(),
     '<p class="pg-bottom"></p>'
   ].filter(Boolean).join('\n');
 }
@@ -209,7 +241,11 @@ function pickRoom(roomKey) {
   if (App.roomStateManager) {
     App.roomStateManager.restartRoomState();
   }
-  refreshThermoWindow();
+  // not loaded means not open
+  const thermoModule = loadThermo.loaded();
+  if (thermoModule) {
+    thermoModule.refreshThermoWindow();
+  }
 }
 
 // what dropdowns.js's rows and close need from the page
@@ -374,11 +410,19 @@ function mainGridTemplate(f) {
 }
 registerListeners({
   'btn-ledeffectmenu':     () => showDynFileMenu('ledeffectmenu', true),
-  'btn-ledcolorprompt':    () => openColorPrompt('leds', 'hex', 'Pixels', true),
+  'btn-ledcolorprompt':    () => openPixelColors(),
   'btn-power-fc_leds':     () => showPowerMenu('fc_leds'),
   'btn-cmd-leds-off':      () => sendLeds('stop'),
   'btn-cmd-leds-pause':    () => sendLeds('pause')
 });
+
+// the Colors button: the colour prompt for the LED pixels
+async function openPixelColors() {
+  const colorPromptModule = await loadColorPrompt();
+  if (colorPromptModule) {
+    colorPromptModule.openColorPrompt('leds', 'hex', 'Pixels', true);
+  }
+}
 
 // the On and Off rows of the three APT menus
 function onOffRowsTemplate(onRowId, offRowId) {
@@ -473,13 +517,21 @@ registerListeners({
   'btn-power-off':      () => sendCmd('main', 'alloff'),
   'btn-room-on':        () => sendCmd('main', `${App.currentRoom}on`),
   'btn-room-off':       () => sendCmd('main', `${App.currentRoom}off`),
-  'btn-show-temphumid': () => openThermoWindow(climateRoomConfig),
+  'btn-show-temphumid': () => openTemperatureWindow(),
   'btn-menu-lightmenu': () => openDropdown('lightmenu'),
   'btn-cmd-lightson':   () => sendCmd('main', 'lightson'),
   'btn-cmd-lightsoff':  () => sendCmd('main', 'lightsoff'),
   'btn-open-cam':       () => openCamWindow(),
   'btn-open-log-svr':   () => openLogWindow()
 });
+
+// the temperature / humidity button
+async function openTemperatureWindow() {
+  const thermoModule = await loadThermo();
+  if (thermoModule) {
+    thermoModule.openThermoWindow(climateRoomConfig);
+  }
+}
 
 // the text scroller's menus: [row id suffix, label, the value a row sets]
 const TEXT_SCROLL_COLORS = [['1', 'Green', '00FF00'], ['2', 'Red', 'FF0000'], ['3', 'Blue', '0000FF'],
@@ -551,6 +603,31 @@ registerListeners({
   'btn-ts-clear':             () => clearLEDsMessage(),
   'btn-ts-send':              () => sendTextScroll()
 });
+
+// the camera window, on the page from the start; CameraView fills and shows it
+function cameraPopupTemplate() {
+  return `
+<div class="popup-win" id="cam-popup">
+  <div class="popup-ctn">
+    <div id="cam-stage">
+      <video id="cam-video" muted autoplay playsinline disablepictureinpicture></video>
+      <div id="cam-status"></div>
+    </div>
+    <div class="popup-actions">
+      ${gridButtonTemplate({
+        buttonId: 'btn-cam-close',
+        icon: 'fad fa-times-octagon',
+        buttonClass: 'button_left_txtwin'
+      })}
+      ${gridButtonTemplate({
+        buttonId: 'btn-cam-fullscreen',
+        label: 'Fullscreen',
+        buttonClass: 'button_right_txtwin'
+      })}
+    </div>
+  </div>
+</div>`;
+}
 
 // the log and camera windows close together, as closePopup() closes both
 registerListeners({
@@ -631,20 +708,34 @@ function sendTextScroll() {
 // opens the lists window, or closes it when open
 function showLists() {
   removeDropdowns();
-  if (!App.lists) {
-    App.lists = new Lists();
-  }
-  App.lists.activate();
+  singleFlight(openingWindows, 'lists', async () => {
+    const listsModule = await loadLists();
+    if (!listsModule) {
+      return;
+    }
+    if (!App.lists) {
+      App.lists = new listsModule.default();
+    }
+    App.lists.activate();
+  });
 }
 
 //// Bookmarks Menu ////
 
 // star button: toggles the bookmarks menu
 function showBookmarks() {
-  if (!App.bookmarks) {
-    App.bookmarks = new Bookmarks();
-  }
-  App.bookmarks.toggle();
+  singleFlight(openingWindows, 'bookmarks', async () => {
+    // a menu opened or a press elsewhere while it loaded stands
+    const token = beginMenuRequest();
+    const bookmarksModule = await loadBookmarks();
+    if (!bookmarksModule || !menuRequestCurrent(token)) {
+      return;
+    }
+    if (!App.bookmarks) {
+      App.bookmarks = new bookmarksModule.default();
+    }
+    App.bookmarks.toggle();
+  });
 }
 
 // the stats button: probes the network's hosts into its menu
@@ -673,16 +764,22 @@ function openLogWindow() {
 }
 
 // Doorway button: the camera's live stream
-function openCamWindow() {
+async function openCamWindow() {
   closePopup();
+  const openCount = cameraOpenCount;
+  const cameraModule = await loadCamera();
+  if (!cameraModule || openCount !== cameraOpenCount) {
+    return;
+  }
   if (!App.cameraView) {
-    App.cameraView = new CameraView('doorway');
+    App.cameraView = new cameraModule.default('doorway');
   }
   App.cameraView.open();
 }
 
 // closes the log and camera windows
 function closePopup() {
+  cameraOpenCount += 1;
   closeLogWindow();
   setDisplayById("cam-popup", "none");
   if (App.cameraView) {
@@ -715,8 +812,15 @@ App.destroyAll = function() {
   endService('uploader', 'destroy');
   endService('colorPrompt', 'destroy');
   closeBathroomSettings();
-  closeThermoWindow();
-  closePixelsWindow();
+  // not loaded means not open
+  const thermoModule = loadThermo.loaded();
+  if (thermoModule) {
+    thermoModule.closeThermoWindow();
+  }
+  const pixelsModule = loadPixels.loaded();
+  if (pixelsModule) {
+    pixelsModule.closePixelsWindow();
+  }
   endService('bookmarks', 'close');
   endService('cameraView', 'close');
   endService('weatherWidget', 'remove');

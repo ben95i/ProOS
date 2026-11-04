@@ -1,4 +1,4 @@
-/* Automate: the star field's full-screen canvas. */
+/* Automate: the star field's full-screen canvas and the shooting stars over it. */
 
 #star-canvas {
   position: fixed;
@@ -8,4 +8,22 @@
   height: 100%;
   z-index: -1;
   display: block;
+}
+
+/* after the canvas, so at the same z-index it draws over the field */
+#shooting-star-layer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.shooting-star {
+  position: absolute;
+  top: 0;
+  left: 0;
 }

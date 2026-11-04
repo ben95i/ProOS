@@ -38,6 +38,9 @@ export default class WeatherWidget {
     this.removed = false;
     // bumped per request, so the slower of two cannot repaint over the fresher
     this.requestGen = 0;
+    // when the last read went out, so a page coming back can tell if it missed one
+    this.lastReadTime = 0;
+    this._handleVisibility = this._handleVisibility.bind(this);
     this._handleOutsideClick = this._handleOutsideClick.bind(this);
     this.toggleMenu = this.toggleMenu.bind(this);
   }
@@ -47,8 +50,27 @@ export default class WeatherWidget {
     this._renderIcon();
     this._renderDropdown();
     this.fetchWeather();
-    this.timerId = setInterval(() => this.fetchWeather(), REFRESH_MS);
+    this.timerId = setInterval(() => this._pollWeather(), REFRESH_MS);
+    document.addEventListener('visibilitychange', this._handleVisibility);
     document.addEventListener('click', this._handleOutsideClick);
+  }
+
+  // the minute's read; nobody sees it while the page is hidden
+  _pollWeather() {
+    if (!document.hidden) {
+      this.fetchWeather();
+    }
+  }
+
+  // the page came back: reads now if it missed its minute
+  _handleVisibility() {
+    if (document.hidden) {
+      return;
+    }
+    const readAge = Date.now() - this.lastReadTime;
+    if (readAge >= REFRESH_MS) {
+      this.fetchWeather();
+    }
   }
 
   // hides the drop-down
@@ -76,6 +98,7 @@ export default class WeatherWidget {
       this.dropdown.remove();
       this.dropdown = null;
     }
+    document.removeEventListener('visibilitychange', this._handleVisibility);
     document.removeEventListener('click', this._handleOutsideClick);
   }
 
@@ -99,6 +122,7 @@ export default class WeatherWidget {
   async fetchWeather() {
     if (this.removed) return;
     const gen = ++this.requestGen;
+    this.lastReadTime = Date.now();
     this._setSpinner(true);
     try {
       const response = await fetch(API_URL);

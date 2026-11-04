@@ -31,7 +31,7 @@ const ERROR_KINDS = {
 
 // What browsers say when a request got no answer (Safari, Chrome, Firefox, older Safari)
 const NETWORK_ERROR_TEXT =
-  /load failed|failed to fetch|networkerror|network connection was lost|network request failed/i;
+  /load failed|failed to fetch|networkerror|network connection was lost|network request failed|importing a module script failed|error loading dynamically imported module/i;
 
 // lighttpd answers these itself while the node API is down
 const PROXY_DOWN_STATUS = [502, 503, 504];

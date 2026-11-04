@@ -40,7 +40,8 @@
   opacity: 1;
   visibility: visible;
   stroke-dashoffset: 0;
-  transition: stroke-dashoffset var(--spin-duration, 2s) linear, opacity 0.5s ease, visibility 0.5s ease;
+  /* a step is about a pixel of ring, so it looks smooth and repaints ten times a second */
+  transition: stroke-dashoffset var(--spin-duration, 2s) steps(100), opacity 0.5s ease, visibility 0.5s ease;
 }
 
 #trafficLightIcon {

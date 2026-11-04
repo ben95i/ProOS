@@ -1128,21 +1128,26 @@ export default class Lists {
     const searching = oldBox !== null && document.activeElement === oldBox;
     const items = this.view === VIEW_ITEMS;
     this.renderHeader(items);
-    list.innerHTML = "";
+    this.clearAroundRows(list);
     if (this.busy === true && this.store.loaded !== true) {
       // waiting on the first read: no rows yet, and the ring says so
+      list.innerHTML = "";
       this.renderActions();
       this.updateDot();
       return;
     }
     // the search box, on a list long enough, above the rows
+    let searchRow = null;
     if (this.searchable()) {
-      list.appendChild(this.searchRow());
+      searchRow = this.searchRow();
     } else {
       this.query = "";
     }
     this.renderRows(list, items);
-    // the rows are new, so what is in the box goes over them
+    if (searchRow !== null) {
+      list.insertBefore(searchRow, list.firstChild);
+    }
+    // the rows may have changed, so what is in the box goes over them
     this.applyFilter();
     this.clampScroll(list);
     this.renderActions();
@@ -1172,6 +1177,7 @@ export default class Lists {
   renderRows(list, items) {
     const rows = this.visibleRows();
     if (rows.length === 0) {
+      this.rowElements().forEach(row => row.remove());
       const empty = makeElement('div', "list__empty");
       let emptyText = "No lists yet";
       if (items) {
@@ -1182,8 +1188,7 @@ export default class Lists {
       return;
     }
     // which rows drag is worked out once per view
-    const movable = this.movableRule();
-    rows.forEach(entry => list.appendChild(this.createRow(entry, movable(entry))));
+    this.syncRows(list, rows, this.movableRule());
     // stands in while a search matches nothing; shown by applyFilter()
     if (this.searchable()) {
       const none = makeElement('div', "list__empty");
@@ -1202,6 +1207,68 @@ export default class Lists {
     const total = makeElement('div', "list__total");
     total.innerText = this.totalText(count, noun);
     list.appendChild(total);
+  }
+
+  // Takes down what is drawn around the rows, and any row a press has changed since it was
+  // drawn, which is the row with its name box open. Removing that box can blur it, which
+  // commits and re-draws, so it goes before this draw works anything out.
+  clearAroundRows(list) {
+    this.rowElements().forEach(row => {
+      if (row.rowKey === null) {
+        row.remove();
+      }
+    });
+    [...list.children].forEach(child => {
+      if (!child.classList.contains(ROW_CLASS)) {
+        child.remove();
+      }
+    });
+  }
+
+  // Puts these entries on screen in order, keeping the element of any row that would be
+  // drawn the same, so a tick on a long list touches one row rather than all of them.
+  syncRows(list, entries, movable) {
+    const heldRows = new Map();
+    this.rowElements().forEach(row => heldRows.set(Number(row.dataset.id), row));
+    const orderedRows = entries.map(entry => {
+      const entryMovable = movable(entry);
+      const rowKey = this.rowKey(entry, entryMovable);
+      const heldRow = heldRows.get(entry.id);
+      if (heldRow && heldRow.rowKey === rowKey) {
+        heldRows.delete(entry.id);
+        // applyFilter() hides it again if the search still does
+        heldRow.classList.remove(ROW_HIDE_CLASS);
+        return heldRow;
+      }
+      const newRow = this.createRow(entry, entryMovable);
+      newRow.rowKey = rowKey;
+      return newRow;
+    });
+    // gone first, so what stays is not moved past them
+    heldRows.forEach(row => row.remove());
+    let nextChild = list.firstChild;
+    orderedRows.forEach(row => {
+      if (row === nextChild) {
+        nextChild = nextChild.nextSibling;
+      } else {
+        list.insertBefore(row, nextChild);
+      }
+    });
+  }
+
+  // Everything createRow() draws a row from; a row with the same key looks the same.
+  rowKey(entry, movable) {
+    const select = this.mode === MODE_SELECT;
+    const parts = [this.view, select, movable, this.rowsLocked(), entry.name, entry.pending === true];
+    if (select) {
+      parts.push(this.selected.has(entry.id));
+    }
+    if (this.view === VIEW_ITEMS) {
+      parts.push(entry.checked === true);
+    } else {
+      parts.push(entry.enc === true, this.openCount(entry));
+    }
+    return JSON.stringify(parts);
   }
 
   // puts the caret back in the search box after a re-draw
@@ -1591,6 +1658,8 @@ export default class Lists {
     if (round) {
       round.classList.toggle(ROUND_ON_CLASS, on);
     }
+    // it no longer looks as it was drawn
+    row.rowKey = null;
     this.renderActions();
   }
 
@@ -1635,6 +1704,8 @@ export default class Lists {
       return;
     }
     this.editing = true;
+    // it no longer looks as it was drawn
+    row.rowKey = null;
     const multi = this.view === VIEW_ITEMS;
     // a placeholder opens empty: its words are a prompt, not a name
     const pending = entry.pending === true;

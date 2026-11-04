@@ -141,7 +141,7 @@ chmod -R g+rx /var/www/uploads
 chown -R "$WWW_NAME":"$WWW_GROUP" /var/www/uploads
 
 ## Minify JS/CSS
-$API_PATH/www-minify.sh
+bash $API_PATH/www-minify.sh
 
 ## Website permissions
 rm -f /etc/sudoers.d/www-perms

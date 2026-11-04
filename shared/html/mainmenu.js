@@ -2,9 +2,11 @@
 // new MainMenu({ isServer }) then .load() applies the saved colour; showMenu() opens the
 // menu. The stars row is a 'chk' row drawn by drawMenu().
 
-import { hexToRgb, gridButtonTemplate, registerListeners } from './utils.js';
+import { hexToRgb, gridButtonTemplate, registerListeners, onDemandModule } from './utils.js';
 import { openDropdown, drawMenu } from './dropdowns.js';
-import { showColorPrompt, closeColorPrompt, loadPaletteFile } from './colorprompt.js';
+
+// the colour picker, loaded by its first use
+const loadColorPrompt = onDemandModule(() => import('./colorprompt.js'), 'the colour picker');
 
 export default class MainMenu {
 
@@ -126,8 +128,15 @@ export default class MainMenu {
     const colorRow = this.colorRow();
     menuElement.querySelector('#btn-about').after(colorRow, starsRow);
     App.dynMenuNodes.push(colorRow);
-    // the picker's palette, so it is usually in by the time the row is pressed
-    loadPaletteFile(MainMenu.PALETTE_FILE);
+    this.readPalette();
+  }
+
+  // the picker's palette, so it is usually in by the time the row is pressed
+  async readPalette() {
+    const colorPromptModule = await loadColorPrompt();
+    if (colorPromptModule) {
+      colorPromptModule.loadPaletteFile(MainMenu.PALETTE_FILE);
+    }
   }
 
   // The colour row: drawn in the theme colour, and opens the picker.
@@ -151,11 +160,15 @@ export default class MainMenu {
   }
 
   // opens the picker on the kept colour, painting the page live as it moves
-  openPrompt() {
-    closeColorPrompt();
+  async openPrompt() {
+    const colorPromptModule = await loadColorPrompt();
+    if (!colorPromptModule) {
+      return;
+    }
+    colorPromptModule.closeColorPrompt();
     const startColor = this.current();
     this.pending = startColor;
-    showColorPrompt(startColor, (strippedHex) => {
+    colorPromptModule.showColorPrompt(startColor, (strippedHex) => {
       this.pending = `#${strippedHex}`;
       this.apply(this.pending);
     }, {

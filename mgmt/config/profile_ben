@@ -4,12 +4,13 @@ PROS_PATH='/mnt/Projects/ProOS'
 
 ## Command aliases
 alias matrix='/usr/bin/cmatrix'
-alias login="$PROS_PATH/login.sh"
-alias logon="$PROS_PATH/login.sh"
+alias login="bash $PROS_PATH/login.sh"
+alias logon="bash $PROS_PATH/login.sh"
 alias less='less --RAW-CONTROL-CHARS'
 
 ## Forget the SSH keys login.sh unlocked for this terminal when the shell exits
-trap "$PROS_PATH/login.sh clearkeys > /dev/null" EXIT
+## (through bash, so it runs whatever the script's file mode)
+trap "bash $PROS_PATH/login.sh clearkeys > /dev/null" EXIT
 
 ## Colorized lists
 export LS_OPTS='--color=auto'

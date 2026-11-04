@@ -11,7 +11,8 @@ apt-get --yes update
 apt-get install -y --no-upgrade --ignore-missing unzip wget \
  rsync curl screen tmux scrub ethtool aptitude sudo sshpass htop \
  libdbus-1-dev libdbus-glib-1-dev bc git locales neofetch \
- apt-transport-https nmap bpytop binutils iperf3 
+ apt-transport-https nmap bpytop binutils iperf3 \
+ python3 python3-fonttools python3-brotli
 
 ## Set Locale
 if [ ! -e "/etc/locales.generated" ]; then

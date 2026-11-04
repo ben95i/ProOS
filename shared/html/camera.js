@@ -9,8 +9,6 @@
 //
 // new CameraView(name) then .open() / .close() / .toggleFullscreen().
 
-import { gridButtonTemplate } from './utils.js';
-
 export default class CameraView {
 
   static STREAM_PATH = 'api/camera';
@@ -54,28 +52,6 @@ export default class CameraView {
 
   static DEGREES_PER_TURN = 360;
   static DEGREES_PER_QUARTER = 90;
-
-  static POPUP_HTML = `
-<div class="popup-win" id="cam-popup">
-  <div class="popup-ctn">
-    <div id="cam-stage">
-      <video id="cam-video" muted autoplay playsinline disablepictureinpicture></video>
-      <div id="cam-status"></div>
-    </div>
-    <div class="popup-actions">
-      ${gridButtonTemplate({
-        buttonId: 'btn-cam-close',
-        icon: 'fad fa-times-octagon',
-        buttonClass: 'button_left_txtwin'
-      })}
-      ${gridButtonTemplate({
-        buttonId: 'btn-cam-fullscreen',
-        label: 'Fullscreen',
-        buttonClass: 'button_right_txtwin'
-      })}
-    </div>
-  </div>
-</div>`;
 
   // set up by open()
   constructor(cameraName) {

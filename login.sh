@@ -27,7 +27,8 @@ AGENT_ROOT="$RUNTIME_BASE/ssh-agents"
 AGENT_LOCK="$AGENT_ROOT/.lock"
 ## lifetime of the unlocked keys in a session agent
 AGENT_LIFE="8h"
-## this script's own path, handed to ssh-add as its passphrase prompter
+## this script's own path, run through bash by the tiles and the passphrase prompter, so it
+## needs no execute bit (files rewritten over SMB lose it)
 SCRIPT_PATH=$(readlink -f "$0")
 ## command line arguments: login <module> <command> <init host>
 MODULE="$1"
@@ -55,6 +56,12 @@ SERVER_UPDATE_CMD="apt-get update; apt-get upgrade"
 PI_UPDATE_CMD="rpi update"
 SVR_INSTALL_CMD="cd /tmp/; tar -xmf config.tar; rm -f config.tar; chmod +x /tmp/config/installer.sh; /tmp/config/installer.sh"
 PI_INSTALL_CMD="cd /opt/rpi/config; echo $MODULE > ./hostname; chmod +x ./installer.sh; ./installer.sh"
+## the Automate site, sent by the automate and Pi deploys, and its icon builder
+SITE_DIR="$ROOT_DIR/shared/html"
+ICON_BUILDER="$ROOT_DIR/shared/fontawesome/build-icons.py"
+## where the builder writes on mgmt (the repo is read-only), kept between deploys
+ICON_CACHE_DIR="/tmp/proos-fontcache"
+ICON_CACHE_LOCK="$ICON_CACHE_DIR/.lock"
 
 ######## Variables ########
 
@@ -72,6 +79,8 @@ sshIdentity=()
 keysLoaded=""
 ## server deploy work folder, removed on exit by REMOVE_WORK_FOLDER
 workFolder=""
+## the site folder a Pi deploy sends, set by PREPARE_PI_SITE
+siteSource=""
 
 ######## General Helpers ########
 
@@ -142,7 +151,7 @@ HOST_KEY_FILE(){
   fi
 }
 
-## Removes the server deploy work folder, if any.
+## Removes the deploy work folder (a server's, or a Pi's site copy), if any.
 REMOVE_WORK_FOLDER(){
   if [ -n "$workFolder" ] && [ -d "$workFolder" ]; then
     rm -r "$workFolder"
@@ -216,17 +225,28 @@ AGENT_ROOT_INIT(){
   done
 }
 
-## Runs a command holding the agent lock, so terminals never start, reap or stop agents at once.
-## Example: WITH_AGENT_LOCK AGENT_REAP
-WITH_AGENT_LOCK(){
+## Runs a command holding a lock file, so other terminals running it wait their turn.
+## Returns the command's status, or 1 when the lock file cannot be opened.
+## Example: WITH_LOCK "$ICON_CACHE_LOCK" UPDATE_ICON_CACHE
+WITH_LOCK(){
+  local lockFile="$1"
+  shift
   local lockFd
   local result
-  exec {lockFd}>"$AGENT_LOCK"
+  if ! exec {lockFd}>"$lockFile"; then
+    return 1
+  fi
   flock "$lockFd"
   "$@"
   result=$?
   exec {lockFd}>&-
   return "$result"
+}
+
+## Runs a command holding the agent lock, so terminals never start, reap or stop agents at once.
+## Example: WITH_AGENT_LOCK AGENT_REAP
+WITH_AGENT_LOCK(){
+  WITH_LOCK "$AGENT_LOCK" "$@"
 }
 
 ## Stops one session agent and removes its folder. Example: AGENT_STOP "$AGENT_ROOT/3955"
@@ -394,6 +414,16 @@ KEY_NEEDS_PASS(){
   return 1
 }
 
+## Writes the program ssh-add runs as its passphrase prompter into the session folder and prints
+## its path: a two-line script that runs this one through bash, as ssh-add can only run an
+## executable file. Example: WRITE_ASKPASS  ->  /run/user/1000/ssh-agents/3955/askpass
+WRITE_ASKPASS(){
+  local askpassFile="$sessionDir/askpass"
+  printf '#!/bin/bash\nexec bash %q "$@"\n' "$SCRIPT_PATH" > "$askpassFile"
+  chmod 700 "$askpassFile"
+  echo "$askpassFile"
+}
+
 ## Passphrase prompt that ssh-add runs instead of its own (which names the key file).
 ## ssh-add passes its prompt as $1 and reads the answer from stdout.
 ASKPASS(){
@@ -421,6 +451,7 @@ AGENT_LOAD_KEYS(){
   local publicKey
   local keyName
   local unlockedList
+  local askpassFile
   if [ "$keysLoaded" == "1" ]; then
     return
   fi
@@ -441,7 +472,8 @@ AGENT_LOAD_KEYS(){
     return
   fi
   echo "Unlocking ${#missingKeys[@]} SSH key(s) for this terminal session (Enter skips a key)..."
-  PROOS_ASKPASS=1 SSH_ASKPASS="$SCRIPT_PATH" SSH_ASKPASS_REQUIRE=force ssh-add "${missingKeys[@]}" 2>&1 | grep -v "^Identity added"
+  askpassFile=$(WRITE_ASKPASS)
+  PROOS_ASKPASS=1 SSH_ASKPASS="$askpassFile" SSH_ASKPASS_REQUIRE=force ssh-add "${missingKeys[@]}" 2>&1 | grep -v "^Identity added"
   for keyFile in "${missingKeys[@]}"; do
     publicKey=$(AGENT_PUBLIC_KEY "$keyFile")
     if [ -z "$publicKey" ]; then
@@ -622,9 +654,173 @@ UPDATE_ALL_SVRS(){
   EXIT_PRGM
 }
 
+######## Site Icons ########
+## The Automate site draws only the Font Awesome icons build-icons.py builds for it, and the repo
+## holds none of them: they are built here into the cache folder ICON_CACHE_DIR and copied into
+## the copy of the site every deploy sends (automate and every Pi). The cache stays after a
+## deploy, so it is built again only when a page names an icon it lacks, or after a reboot
+## clears /tmp.
+
+## Prints the builder's check of the cache against the repo's site, indented, and returns its
+## status: 0 the cache holds every icon the site names, 1 it does not, 2 the check could not run.
+SITE_ICONS_BUILT(){
+  local checkStatus
+  if ! command -v python3 > /dev/null; then
+    echo "  Icons: python3 not found, so the icons were not checked."
+    return 2
+  fi
+  if [ ! -f "$ICON_BUILDER" ]; then
+    echo "  Icons: $ICON_BUILDER not found, so the icons were not checked."
+    return 2
+  fi
+  python3 "$ICON_BUILDER" --check --site "$SITE_DIR" --out "$ICON_CACHE_DIR" 2>&1 | sed 's/^/  /'
+  checkStatus=${PIPESTATUS[0]}
+  return "$checkStatus"
+}
+
+## Makes the cache folder when missing; returns 1, printing why, when it cannot be used.
+PREPARE_ICON_CACHE(){
+  if [ -L "$ICON_CACHE_DIR" ]; then
+    echo "  Icons: cache $ICON_CACHE_DIR is a symlink, so it is not used."
+    return 1
+  fi
+  if [ ! -d "$ICON_CACHE_DIR" ]; then
+    echo "  Icons: creating the cache $ICON_CACHE_DIR"
+    if ! mkdir -p "$ICON_CACHE_DIR"; then
+      echo "  Icons: could not create the cache $ICON_CACHE_DIR."
+      return 1
+    fi
+  fi
+  if [ ! -w "$ICON_CACHE_DIR" ]; then
+    echo "  Icons: cache $ICON_CACHE_DIR is not writable by $(whoami)."
+    return 1
+  fi
+  return 0
+}
+
+## Prints when the cache's icon sheet was built. Example: ICON_CACHE_DATE  ->  2026-11-04 10:51
+ICON_CACHE_DATE(){
+  date -r "$ICON_CACHE_DIR/styles/icons.min.css" '+%Y-%m-%d %H:%M'
+}
+
+## Checks the cache against the repo's site and builds the icons into it when it lacks one.
+## Returns 0 when the cache holds a build to send: the current one, or, when the build fails,
+## the older one it kept (icons added since show blank). Run holding ICON_CACHE_LOCK.
+UPDATE_ICON_CACHE(){
+  local checkStatus
+  local buildStatus
+  echo "  Icons: checking the cache $ICON_CACHE_DIR..."
+  SITE_ICONS_BUILT
+  checkStatus=$?
+  if [ "$checkStatus" -eq 0 ]; then
+    echo "  Icons: the cache is up to date (built $(ICON_CACHE_DATE)), so nothing is built."
+    return 0
+  fi
+  if [ "$checkStatus" -eq 1 ]; then
+    echo "  Icons: building into the cache $ICON_CACHE_DIR..."
+    python3 "$ICON_BUILDER" --site "$SITE_DIR" --out "$ICON_CACHE_DIR" 2>&1 | sed 's/^/  /'
+    buildStatus=${PIPESTATUS[0]}
+    if [ "$buildStatus" -eq 0 ]; then
+      echo "  Icons: built into the cache."
+      return 0
+    fi
+    echo "  Icons: build failed (status $buildStatus)."
+  fi
+  if [ -f "$ICON_CACHE_DIR/styles/icons.min.css" ]; then
+    echo "  Icons: WARNING: sending the cache's older build (built $(ICON_CACHE_DATE)); icons added since show blank."
+    return 0
+  fi
+  return 1
+}
+
+## Copies one file from the cache into a site copy, printing it and its size. Returns cp's status.
+## Example: INJECT_ICON_FILE "fonts/fa-brands.woff2" "$workFolder/html"
+INJECT_ICON_FILE(){
+  local relativePath="$1"
+  local siteFolder="$2"
+  local fileBytes
+  if ! cp -f "$ICON_CACHE_DIR/$relativePath" "$siteFolder/$relativePath"; then
+    echo "  Icons: could not copy $relativePath into $siteFolder."
+    return 1
+  fi
+  fileBytes=$(stat -c %s "$siteFolder/$relativePath")
+  echo "  Icons:   $relativePath ($fileBytes bytes)"
+  return 0
+}
+
+## Copies the cache's fonts and icon sheet into a site copy. The fonts go first, so the sheet
+## never names a font not there. Returns 0 when all are copied. Run holding ICON_CACHE_LOCK.
+## Example: INJECT_SITE_ICONS "$workFolder/html"
+INJECT_SITE_ICONS(){
+  local siteFolder="$1"
+  local cachedFont
+  local fontName
+  echo "  Icons: injecting the cache into the deploy copy $siteFolder:"
+  for cachedFont in "$ICON_CACHE_DIR"/fonts/fa-*.woff2; do
+    if [ ! -f "$cachedFont" ]; then
+      continue
+    fi
+    fontName=$(basename "$cachedFont")
+    if ! INJECT_ICON_FILE "fonts/$fontName" "$siteFolder"; then
+      return 1
+    fi
+  done
+  INJECT_ICON_FILE "styles/icons.min.css" "$siteFolder"
+}
+
+## Brings the cache up to date and injects it into a site copy. Run holding ICON_CACHE_LOCK, so
+## parallel deploys (tmux tiles) never build into the cache, or copy from it, at once.
+## Example: WITH_LOCK "$ICON_CACHE_LOCK" CACHED_SITE_ICONS "$workFolder/html"
+CACHED_SITE_ICONS(){
+  local siteFolder="$1"
+  if ! UPDATE_ICON_CACHE; then
+    return 1
+  fi
+  INJECT_SITE_ICONS "$siteFolder"
+}
+
+## Puts the site's icons into a copy of it from the cache, building them first when needed, and
+## prints every step. Returns 0 when the copy holds them. Example: ICONS_INTO_SITE "$workFolder/html"
+ICONS_INTO_SITE(){
+  local siteFolder="$1"
+  echo "Preparing site icons..."
+  if ! PREPARE_ICON_CACHE; then
+    echo "  Icons: WARNING: no icons to send, so every icon on the site shows blank."
+    return 1
+  fi
+  ## the copy keeps the repo's file modes, which may be read-only
+  chmod -R u+w "$siteFolder"
+  if ! WITH_LOCK "$ICON_CACHE_LOCK" CACHED_SITE_ICONS "$siteFolder"; then
+    echo "  Icons: WARNING: no icons to send, so every icon on the site shows blank."
+    return 1
+  fi
+  echo "  Icons: injected into this deploy."
+  return 0
+}
+
+## Picks the site folder a Pi deploy sends: a copy in a work folder with the icons injected, or
+## the repo's own (with no icons) when the copy cannot be made. Sets siteSource.
+## Example: PREPARE_PI_SITE  ->  siteSource="/opt/deploy/.ptmp/Ab12Cd34E/html"
+PREPARE_PI_SITE(){
+  siteSource="$SITE_DIR"
+  if [ ! -e "$WORK_DIR" ]; then
+    echo "Icons: WARNING: scratch path $WORK_DIR not found, so the site goes without icons."
+    return
+  fi
+  REMOVE_WORK_FOLDER
+  mkdir -p "$TEMP_ROOT"
+  workFolder=$(mktemp -d "$TEMP_ROOT/XXXXXXXXX")
+  echo "Copying the site to work folder $workFolder..."
+  cp -rp "$SITE_DIR" "$workFolder/html"
+  if ICONS_INTO_SITE "$workFolder/html"; then
+    siteSource="$workFolder/html"
+  fi
+}
+
 ######## Deployment ########
 
-## Deploys the module to a Pi: switches it to read/write if needed, rsyncs base, shared and module, runs the installer.
+## Deploys the module to a Pi: switches it to read/write if needed, rsyncs base, shared (a copy of
+## the site with the icons injected from the cache) and module, runs the installer.
 DEPLOY_PI(){
   local diskReport
   CHECK_HOST_ONLINE "yes"
@@ -643,16 +839,19 @@ DEPLOY_PI(){
   fi
   echo "Downloading base software..."
   RSYNC_TO_HOST "$ROOT_DIR/rpi" "/opt/" "${RSYNC_EXCLUDES[@]}"
+  PREPARE_PI_SITE
   echo "Downloading shared software..."
-  RSYNC_TO_HOST "$ROOT_DIR/shared/html/" "/opt/rpi/config/html/" --mkpath
+  RSYNC_TO_HOST "$siteSource/" "/opt/rpi/config/html/" --mkpath
   RSYNC_TO_HOST "$ROOT_DIR/shared/nodeapi/" "/opt/nodeapi/" --mkpath
   echo "Downloading module-specific software..."
   RSYNC_TO_HOST "$ROOT_DIR/$MODULE/" "/opt/rpi/" "${RSYNC_EXCLUDES[@]}"
   echo "Starting installer..."
   REMOTE_RUN "$PI_INSTALL_CMD"
+  REMOVE_WORK_FOLDER
 }
 
-## Deploys a server: tars its config folder (plus the Automate site for automate), uploads it and runs installer.sh.
+## Deploys a server: tars its config folder (plus the Automate site for automate, with the icons
+## injected from the cache), uploads it and runs installer.sh.
 DEPLOY_SERVER(){
   if [ ! -e "$WORK_DIR" ]; then
     echo "Scratch path not found, exiting!"
@@ -664,8 +863,9 @@ DEPLOY_SERVER(){
   cp -rf "$ROOT_DIR/$MODULE/config" "$workFolder/"
   if [ "$MODULE" == "automate" ]; then
     echo "Copying shared software..."
-    cp -rf "$ROOT_DIR/shared/html" "$workFolder/config/"
+    cp -rf "$SITE_DIR" "$workFolder/config/"
     cp -rf "$ROOT_DIR/shared/nodeapi" "$workFolder/config/"
+    ICONS_INTO_SITE "$workFolder/config/html"
   fi
   echo "Compressing files..."
   COPYFILE_DISABLE=true tar -C "$workFolder" -cf "$workFolder/config.tar" config
@@ -800,7 +1000,7 @@ TILE_LOGIN(){
   for hostName in "${tileHosts[@]}"; do
     SSH_IDENTITY "$(HOST_KEY_FILE "$hostName")"
   done
-  ## Each tile runs this script directly (no shell), with its settings passed through env
+  ## Each tile runs this script through bash (no login shell), with its settings passed through env
   tileEnvironment=(env "PROOS_TILE=1")
   if [ -n "$sessionDir" ]; then
     tileEnvironment+=("PROOS_AGENT_DIR=$sessionDir")
@@ -808,7 +1008,7 @@ TILE_LOGIN(){
   windowName=$(JOIN_BY "," "${tileHosts[@]}")
   for (( hostIndex = 0; hostIndex < ${#tileHosts[@]}; hostIndex++ )); do
     hostName="${tileHosts[$hostIndex]}"
-    tileCommand=("${tileEnvironment[@]}" "$SCRIPT_PATH" "$hostName")
+    tileCommand=("${tileEnvironment[@]}" bash "$SCRIPT_PATH" "$hostName")
     if [ -n "$CMD" ]; then
       tileCommand+=("$CMD")
     fi

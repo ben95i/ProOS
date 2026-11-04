@@ -38,3 +38,4 @@ These are the code style rules for everything in ProOS. Project structure (where
 - Wrap every `:hover` rule in `@media (hover: hover) and (pointer: fine)`, or iOS keeps the last tapped row lit.
 - Put translucency in the background colour, not `opacity`, on menus; iOS Safari repaints opacity layers poorly.
 - The palette lives once on `:root`, never on `*`.
+- No `backdrop-filter`, and no `transition: all`, on anything drawn many times: with the stars moving behind it, each blurred element is blurred again on every frame.

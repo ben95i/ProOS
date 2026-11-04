@@ -51,11 +51,6 @@
   visibility: hidden;
 }
 
-/* .button transitions all, including inherited visibility, which would linger */
-.thermo__panel--hidden .button {
-  transition: none;
-}
-
 /* the two panels over the row of buttons */
 .thermo__main {
   display: grid;
@@ -243,8 +238,6 @@ html.theme-light .thermometer .temperature:before {
   background-color: var(--nav-menus-color);
   background-image: none;
   box-shadow: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
 }
 
 #temp__prompt .button.thermo__state:active {
@@ -388,8 +381,6 @@ html.theme-light .thermometer .temperature:before {
   border-radius: 50%;
   background-color: var(--main-white-20);
   background-image: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
 }
 
@@ -461,8 +452,6 @@ html.theme-light .thermometer .temperature:before {
   border-radius: 0;
   background: none;
   box-shadow: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
   color: inherit;
   font: inherit;
   letter-spacing: inherit;

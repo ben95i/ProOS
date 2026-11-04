@@ -138,12 +138,19 @@ input[type="checkbox"] {
   outline: none;
   border-radius: 10px;
   position: relative;
-  transition: all 0.15s cubic-bezier(0.23, 1, 0.32, 1);
+  /* what a button changes, named rather than "all": a theme change or a hidden panel
+     should not start transitions no one sees */
+  --button-ease: cubic-bezier(0.23, 1, 0.32, 1);
+  transition:
+    transform 0.15s var(--button-ease),
+    box-shadow 0.15s var(--button-ease),
+    background-color 0.15s var(--button-ease),
+    color 0.15s var(--button-ease),
+    opacity 0.15s var(--button-ease);
   cursor: default;
-  /* glass material */
+  /* glass material: no backdrop-filter, as the stars moving behind would make every
+     button blur again on every frame */
   background-color: var(--main-trans-35);
-  backdrop-filter: blur(2px);
-  -webkit-backdrop-filter: blur(2px);
   background-image: linear-gradient(
     165deg,
     rgba(255, 255, 255, 0.15) 0%,
@@ -164,7 +171,6 @@ input[type="checkbox"] {
     6px 6px 3px rgba(0, 0, 0, 0.4),
     10px 10px 20px rgba(0, 0, 0, 0.3);
   transform: translate(-5px, -5px);
-  backface-visibility: hidden;
 }
 
 .button:active {
@@ -176,7 +182,12 @@ input[type="checkbox"] {
     1px 1px 0 var(--main-black-40),
     1px 1px 0 1px rgba(255, 255, 255, 0.05),
     2px 2px 5px rgba(0, 0, 0, 0.6);
-  transition: all 0.05s ease;
+  transition:
+    transform 0.05s ease,
+    box-shadow 0.05s ease,
+    background-color 0.05s ease,
+    color 0.05s ease,
+    opacity 0.05s ease;
 }
 
 .dark_btn {

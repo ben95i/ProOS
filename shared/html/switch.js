@@ -59,14 +59,6 @@ export default class ToggleSwitch {
     this.parent.appendChild(this.wrapper);
     this.checkbox = this.wrapper.querySelector('.toggle-input');
     this.label = this.wrapper.querySelector('.toggle-label');
-    // paints the "on" colour once with transitions off, so a switch drawn on does not
-    // animate into it
-    const track = this.wrapper.querySelector('.toggle-track');
-    track.style.transition = 'none';
-    track.style.backgroundColor = 'var(--local-color-on)';
-    void track.offsetHeight;
-    track.style.backgroundColor = '';
-    track.style.transition = '';
   }
 
   // binds the switch's events
