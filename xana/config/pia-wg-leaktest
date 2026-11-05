@@ -318,6 +318,16 @@ def check_services(rep, cfg):
     dev = dev.group(1) if dev else "?"
     rep.item("PASS" if dev == IF else "FAIL", "Default route for internet traffic", f"1.1.1.1 -> dev {dev}")
 
+    # Replies to inbound clients carry mark 0x1 and must leave by the router, not the tunnel
+    # (wg-quick's rules ahead of the service-reply rule send them into the tunnel).
+    for net in cfg.get("REMOTE_SUBNETS", "").replace(",", " ").split():
+        host = str(next(ipaddress.ip_network(net, strict=False).hosts()))
+        _, out, _ = run(["ip", "-4", "route", "get", host, "mark", "0x1"])
+        reply_dev = re.search(r"\bdev (\S+)", out)
+        reply_dev = reply_dev.group(1) if reply_dev else "?"
+        rep.item("FAIL" if reply_dev in (IF, "?") else "PASS", f"Service replies to {net} skip the tunnel",
+                 f"{host} mark 0x1 -> dev {reply_dev}")
+
     rc, _, _ = run(["ping", "-c", "2", "-W", "3", "1.1.1.1"])
     rep.item("PASS" if rc == 0 else "FAIL", "Internet reachable through tunnel", "ping 1.1.1.1 ok" if rc == 0 else "ping failed")
     return True
@@ -475,7 +485,8 @@ def check_probes(rep, cfg, lanif, real_ip):
     other = pick_lan_host(cfg)
     if other:
         probes.append((f"TCP 22 to other LAN host {other}", lambda: tcp_probe(other, 22)))
-    for net in cfg.get("SERVICE_SUBNETS", "").replace(",", " ").split():
+    inbound_subnets = (cfg.get("SERVICE_SUBNETS", "") + "," + cfg.get("REMOTE_SUBNETS", "")).replace(",", " ")
+    for net in inbound_subnets.split():
         if not ipaddress.ip_network(net, strict=False).overlaps(
                 ipaddress.ip_network(cfg.get("LAN_SUBNET", "192.168.1.0/24"), strict=False)):
             host = str(next(ipaddress.ip_network(net, strict=False).hosts()))
@@ -568,8 +579,12 @@ def check_pf(rep, cfg):
 
 def check_listeners(rep, cfg, pf_port=None):
     rep.section("Listening services (inbound exposure)")
-    ports = set(cfg.get("SERVICE_TCP_PORTS", "").split(","))
-    subnets = cfg.get("SERVICE_SUBNETS", "").replace(",", ", ")
+    # port -> subnets allowed to reach it, e.g. {"22": ["192.168.1.0/24"], "5901": [..., "192.168.2.0/24"]}
+    port_subnets = {}
+    for ports_key, subnets_key in (("SERVICE_TCP_PORTS", "SERVICE_SUBNETS"), ("REMOTE_TCP_PORTS", "REMOTE_SUBNETS")):
+        for allowed_port in filter(None, cfg.get(ports_key, "").split(",")):
+            for subnet in filter(None, cfg.get(subnets_key, "").split(",")):
+                port_subnets.setdefault(allowed_port, []).append(subnet)
     _, out, _ = run(["ss", "-Hlntu"])
     seen = set()
     for line in out.splitlines():
@@ -587,8 +602,8 @@ def check_listeners(rep, cfg, pf_port=None):
         seen.add(key)
         if pf_port and port == str(pf_port):
             rep.item("INFO", f"{proto}/{port} (Transmission)", "open via tunnel only (PIA port forward)")
-        elif proto == "tcp" and port in ports:
-            rep.item("INFO", f"tcp/{port}", f"allowed from {subnets}")
+        elif proto == "tcp" and port in port_subnets:
+            rep.item("INFO", f"tcp/{port}", f"allowed from {', '.join(port_subnets[port])}")
         elif proto == "udp" and port == "5353":
             rep.item("INFO", "udp/5353 (mDNS)", f"allowed from {cfg.get('LAN_SUBNET')}"
                      if cfg.get("ALLOW_MDNS", "yes") == "yes" else "blocked by firewall")

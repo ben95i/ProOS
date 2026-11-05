@@ -119,7 +119,13 @@ AllowedIPs = 0.0.0.0/0
 PersistentKeepalive = 25
 EOF
 
-wg-quick up "$IF"
+# wg-quick's rules must sit behind the service-reply rule (see pia-wg-firewall).
+/usr/local/sbin/pia-wg-firewall svc-route off
+if ! wg-quick up "$IF"; then
+  /usr/local/sbin/pia-wg-firewall svc-route on
+  die "wg-quick up $IF failed"
+fi
+/usr/local/sbin/pia-wg-firewall svc-route on
 
 # All DNS -> PIA's resolver through the tunnel; router DNS and DoT blocked.
 /usr/local/sbin/pia-wg-dns up "$dns"

@@ -36,6 +36,9 @@ const LED_STATE_PAUSED = "paused";
 const LED_STATE_COLOR = "color";
 const HEX_COLOR_PATTERN = /^[0-9A-Fa-f]{6}$/;
 const BLACK_HEX_COLOR = "000000";
+// Effect names executeEffectProcess starts without logging: the colour
+// picker sends a colour many times a second while it is dragged.
+const UNLOGGED_EFFECT_NAMES = ["hex_color"];
 
 let ledStatus = {
     state: LED_STATE_OFF,
@@ -136,7 +139,10 @@ async function executeEffectProcess(binaryPath, binaryArguments, effectName) {
 
     try {
         await stopActiveEffect();
-        console.log(`executeEffectProcess: ${effectName}`);
+        const isLoggedEffect = !UNLOGGED_EFFECT_NAMES.includes(effectName);
+        if (isLoggedEffect) {
+            console.log(`executeEffectProcess: ${effectName}`);
+        }
 
         const newProcess = spawn(binaryPath, binaryArguments, { stdio: 'ignore', detached: false, cwd: EFFECTS_DIRECTORY_PATH });
         

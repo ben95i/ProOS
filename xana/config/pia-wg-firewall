@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # Kill switch + routing for inbound services. Idempotent; runs before networking.
+#   pia-wg-firewall                 load everything (pia-wg-firewall.service)
+#   pia-wg-firewall svc-route off   remove the service-reply rule (pia-wg-connect, before wg-quick up)
+#   pia-wg-firewall svc-route on    put it back ahead of wg-quick's rules (after wg-quick up)
 set -euo pipefail
 source /etc/pia-wg/pia-wg.conf
 
@@ -8,8 +11,38 @@ id piawg >/dev/null 2>&1 || { echo "pia-wg-firewall: user 'piawg' missing (re-ru
 IF=pia
 WG_MARK=51820   # FwMark carried by WireGuard's own encrypted UDP packets (set in pia.conf)
 SVC_MARK=0x1    # connections that arrived from outside on the service ports
-PORTS=$SERVICE_TCP_PORTS
-SUBNETS=${SERVICE_SUBNETS//,/ }
+SVC_RULE_PRIO=100
+REMOTE_TCP_PORTS=${REMOTE_TCP_PORTS:-}
+REMOTE_SUBNETS=${REMOTE_SUBNETS:-}
+
+## Inbound service access, one "SUBNET PORTS" pair per line, e.g.
+##   192.168.1.0/24 22,5901,9091   (SERVICE_SUBNETS get SERVICE_TCP_PORTS)
+##   192.168.2.0/24 5901           (REMOTE_SUBNETS get REMOTE_TCP_PORTS)
+SERVICE_ACCESS() {
+  local net
+  for net in ${SERVICE_SUBNETS//,/ }; do echo "$net $SERVICE_TCP_PORTS"; done
+  if [[ -n $REMOTE_TCP_PORTS ]]; then
+    for net in ${REMOTE_SUBNETS//,/ }; do echo "$net $REMOTE_TCP_PORTS"; done
+  fi
+}
+serviceAccess=$(SERVICE_ACCESS)
+
+## Service-reply rule: "on" routes tagged replies with the main table (router),
+## "off" removes it. An "ip rule add" without a priority lands just ahead of the
+## first rule after "local", so wg-quick's rules would go in front of this one
+## and send the replies of off-LAN clients (REMOTE_SUBNETS) into the tunnel;
+## pia-wg-connect takes it off while wg-quick adds its rules, then puts it back.
+SVC_ROUTE() {
+  while ip rule del priority "$SVC_RULE_PRIO" 2>/dev/null; do :; done
+  if [[ $1 == on ]]; then
+    ip rule add priority "$SVC_RULE_PRIO" fwmark "$SVC_MARK" lookup main
+  fi
+}
+
+if [[ ${1:-} == svc-route ]]; then
+  SVC_ROUTE "${2:-on}"
+  exit 0
+fi
 
 # Loose reverse-path filtering: with the tunnel up the "best" route back to an
 # outside SSH/VNC client is the tunnel, so strict mode would drop their packets.
@@ -18,10 +51,10 @@ sysctl -qw net.ipv4.conf.all.rp_filter=2 net.ipv4.conf.default.rp_filter=2
 # --- inbound service routing (set up first so open SSH sessions survive) ----
 # Tag connections that arrive (not via the tunnel) on the service ports...
 iptables -t mangle -N PIA_SVC_IN 2>/dev/null || iptables -t mangle -F PIA_SVC_IN
-for net in $SUBNETS; do
-  iptables -t mangle -A PIA_SVC_IN -s "$net" -p tcp -m multiport --dports "$PORTS" \
+while read -r net ports; do
+  iptables -t mangle -A PIA_SVC_IN -s "$net" -p tcp -m multiport --dports "$ports" \
            -j CONNMARK --set-mark "$SVC_MARK"
-done
+done <<<"$serviceAccess"
 iptables -t mangle -C PREROUTING ! -i "$IF" -j PIA_SVC_IN 2>/dev/null ||
   iptables -t mangle -I PREROUTING ! -i "$IF" -j PIA_SVC_IN
 
@@ -32,8 +65,7 @@ iptables -t mangle -C OUTPUT -j PIA_SVC_OUT 2>/dev/null ||
   iptables -t mangle -I OUTPUT -j PIA_SVC_OUT
 
 # ...and route tagged replies with the main table (router), ahead of wg-quick's rules.
-while ip rule del priority 100 2>/dev/null; do :; done
-ip rule add priority 100 fwmark "$SVC_MARK" lookup main
+SVC_ROUTE on
 
 # --- DNS redirect chains (filled by pia-wg-connect while the tunnel is up) ---
 iptables -t nat -N PIA_DNS 2>/dev/null || true
@@ -56,9 +88,9 @@ lan_rules=""
 for h in ${LAN_ALLOW_HOSTS//,/ }; do lan_rules+="-A OUTPUT -d $h -j ACCEPT"$'\n'; done
 
 in4=""; out4=""; in6=""; out6=""
-for net in $SUBNETS; do
-  in4+="-A INPUT ! -i $IF -s $net -p tcp -m multiport --dports $PORTS -j ACCEPT"$'\n'
-done
+while read -r net ports; do
+  in4+="-A INPUT ! -i $IF -s $net -p tcp -m multiport --dports $ports -j ACCEPT"$'\n'
+done <<<"$serviceAccess"
 if [[ ${ALLOW_MDNS:-yes} == yes ]]; then
   in4+="-A INPUT ! -i $IF -s $LAN_SUBNET -p udp --dport 5353 -j ACCEPT"$'\n'
   out4+="-A OUTPUT -d 224.0.0.251 -p udp --dport 5353 -j ACCEPT"$'\n'
@@ -118,4 +150,4 @@ EOF
 # Start in "tunnel down" DNS state; pia-wg-connect switches it once the tunnel is up.
 /usr/local/sbin/pia-wg-dns down
 
-echo "pia-wg-firewall: kill switch active (tcp $PORTS from $SUBNETS; LAN hosts $LAN_ALLOW_HOSTS; mDNS ${ALLOW_MDNS:-yes})"
+echo "pia-wg-firewall: kill switch active (tcp $SERVICE_TCP_PORTS from $SERVICE_SUBNETS; tcp ${REMOTE_TCP_PORTS:-none} from ${REMOTE_SUBNETS:-none}; LAN hosts $LAN_ALLOW_HOSTS; mDNS ${ALLOW_MDNS:-yes})"

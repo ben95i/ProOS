@@ -26,7 +26,7 @@ One Proxmox server (`pve`) runs the network's services as LXC containers and KVM
   ┌─────────────────────────── pve (Proxmox, 192.168.1.8) ──────────────────────────┐
   │  automate LXC 106 ── lighttpd → node API ──┬─ HTTP → Pis (port 80 /api)          │
   │      /var/www/html/ram  ═══ bind ═══╗      ├─ HTTP → Pico W lamps (port 4000)    │
-  │                                     ║      └─ LED hosts (mainmenu.txt)           │
+  │                                     ║      └─ LED hosts (ledhosts.txt)           │
   │  host tmpfs /mnt/ramdisk ◄══════════╝                                            │
   │      ▲ file-monitor.sh → apicmds.sh (backups, regions, start/stop VMs)           │
   │  files LXC 101 (SMB) · mgmt LXC 102 · legacy LXC 104 · media LXC 108             │
@@ -79,7 +79,7 @@ DNS domain `home`, LAN 192.168.1.0/24, gateway and DNS the router at 192.168.1.1
 | `lrthermo1` | Pico W | .3 | SmartThermo, the living room's HVAC thermostat (firmware in `automate/devices/SmartThermo/`) |
 | `wkst` | Workstation | | This machine: mounts the `files` shares under `/mnt/*` with autofs (`auto.files`), detached while `files` is down by `share-watchdog.sh` (so this repo, `/mnt/Data/Projects/ProOS`, is the Data share) |
 
-The Automate status menu (`shared/html/menus/statsmenu.txt`) and the LED host list (`menus/mainmenu.txt`) are the living lists of hosts the website talks to.
+The Automate status menu (`shared/html/menus/statsmenu.txt`) and the LED host list (`menus/ledhosts.txt`) are the living lists of hosts the website talks to.
 
 ## Deployment: `login.sh`
 

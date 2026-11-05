@@ -1,4 +1,4 @@
-// Automate - Pixels window (server page only): one box per LED host in the mainmenu file,
+// Automate - Pixels window (server page only): one box per LED host in the ledhosts file,
 // with its name, status line, page link and brightness slider. Every host is asked at
 // once, so one that is off shows "Not available" without holding up the rest. State is
 // on App.pixelsWindow while open.
@@ -8,7 +8,7 @@ import { sendCmd, readFile, splitMenuData, promptWindow, onButtons,
 import { removeDropdowns, SLIDER_MS } from './dropdowns.js';
 
 // the LED hosts, URL|NAME per line; nodeapi/ledparser.js uses the same list
-const PIXELS_HOST_FILE = 'mainmenu';
+const PIXELS_HOST_FILE = 'ledhosts';
 // the Animated menu's effects, effect|Name per line
 const PIXELS_EFFECT_FILE = 'ledeffectmenu';
 
@@ -122,7 +122,7 @@ export function closePixelsWindow() {
   pixelsWindow.win.remove();
 }
 
-// mainmenu file text -> [{ url, name }]. The name is the line's last field, so an older
+// ledhosts file text -> [{ url, name }]. The name is the line's last field, so an older
 // URL|link|NAME line reads the same; a line with no name goes by its URL.
 // 'http://ledwall.home:80|LEDwall' -> { url: 'http://ledwall.home:80', name: 'LEDwall' }
 function parsePixelHosts(fileText) {

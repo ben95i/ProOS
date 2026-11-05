@@ -1,6 +1,6 @@
 const fsPromises = require('fs/promises');
 
-const LED_MENU_FILE = "/menus/mainmenu.txt";
+const LED_MENU_FILE = "/menus/ledhosts.txt";
 // The effects Shuffle picks from, one per line. The Pis read the same file
 // from their own copy of the site (rpi/ledparser.js).
 const SHUFFLE_FILE = "/menus/ledshuffle.txt";
@@ -20,7 +20,7 @@ const ANSWER_WAIT = 1500; // in (ms)
 const NO_ANSWER_PREFIX = "No answer from";
 
 // The Pixels window's commands for one host, which is named in the second
-// argument as its NAME in mainmenu.txt: its status, and setting its level.
+// argument as its NAME in ledhosts.txt: its status, and setting its level.
 const HOST_STATUS_COMMAND = "fc_host_status";
 const HOST_SET_PREFIX = "fc_host_set_"; // followed by the level, 0-255
 
@@ -33,7 +33,7 @@ const LEVEL_MAX = 255;
 // One send queue per host, kept for the life of the API, by host URL.
 const hostLanes = new Map();
 
-// Reads the LED hosts out of mainmenu.txt, one per line as URL|NAME. The
+// Reads the LED hosts out of ledhosts.txt, one per line as URL|NAME. The
 // name is the line's last field, so an older URL|link|NAME line reads the
 // same; a line with no name goes by its URL.
 // 'http://ledwall.home:80|LEDwall' -> { url: 'http://ledwall.home:80', name: 'LEDwall' }
@@ -129,7 +129,7 @@ function laneFor(host) {
         lane = new HostLane(host);
         hostLanes.set(host.url, lane);
     }
-    // a name edited in mainmenu.txt is picked up without a restart
+    // a name edited in ledhosts.txt is picked up without a restart
     lane.host = host;
     return lane;
 }
@@ -260,7 +260,7 @@ async function pickShuffleEffect(baseWWW) {
 }
 
 /**
- * Sends an LED command to every host in mainmenu.txt, or reads the level
+ * Sends an LED command to every host in ledhosts.txt, or reads the level
  * back when varA is "fc_leds". The fc_host_ commands reach one host only,
  * named in varB.
  *
@@ -279,7 +279,7 @@ async function OPCLEDparser(baseWWW, varA, varB = "") {
     try {
         const hosts = await readLEDHosts(baseWWW);
         if (hosts.length === 0) {
-            return "no LED hosts in mainmenu.txt";
+            return "no LED hosts in ledhosts.txt";
         }
         if (varA === "fc_leds") {
             return await readLevel(hosts);
@@ -294,7 +294,7 @@ async function OPCLEDparser(baseWWW, varA, varB = "") {
         return await sendToAllHosts(hosts, command, varB);
     } catch (error) {
         if (error.code === 'ENOENT') {
-            return "mainmenu.txt not found.";
+            return "ledhosts.txt not found.";
         }
         return `An error occurred while parsing LED configuration: ${error.message}`;
     }
