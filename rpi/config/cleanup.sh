@@ -58,9 +58,9 @@ PURGE_INSTALLED xserver-xorg xorg xserver-xorg-input-evdev xserver-xorg-legacy x
 rm -rf /home/pi/.config/lxsession
 
 ## Arduino: arduino-cli brings its own avr-gcc and avrdude, and only a module
-## whose modinit installs arduino-cli (brpi) keeps it
+## whose installer installs arduino-cli (brpi) keeps it
 PURGE_INSTALLED arduino avrdude gcc-avr avr-libc binutils-avr
-if ! grep -q "arduino-cli" /opt/rpi/modconf/modinit 2>/dev/null; then
+if ! grep -q "arduino-cli" /opt/rpi/config/module/installer.sh 2>/dev/null; then
   rm -f /usr/bin/arduino-cli
   rm -rf /root/.arduino15
   rm -rf /root/Arduino

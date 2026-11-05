@@ -44,7 +44,7 @@ Every top-level folder is one of four kinds. `login.sh` tells them apart by the 
 | Kind | Folders | Layout | Deployed by |
 | --- | --- | --- | --- |
 | Pi base | `rpi/` | Programs, `config/` (installer, systemd units, system configs), `effects/` (LED programs) | Copied to every Pi first, to `/opt/rpi` |
-| Pi module | `brpi` `btpi` `doorway` `homepi` `ledgrid` `ledstrip` `ledwall` `lrpi` | `boot.sh`, `modconf/` (`brand.txt`, `modinit`, `config.txt`, other configs), extra programs or firmware | Overlaid onto `/opt/rpi` after the base |
+| Pi module | `brpi` `btpi` `doorway` `homepi` `ledgrid` `ledstrip` `ledwall` `lrpi` | `boot.sh`, `config/` (`installer.sh`, `brand.txt`, `config.txt`, other configs), extra programs or firmware | Overlaid onto `/opt/rpi` after the base, with `config/` sent to `/opt/rpi/config/module/` |
 | Server (LXC / VM / PC) | `automate` `files` `legacy` `media` `mgmt` (LXC); `appletalk` `xana` (VM); `pve` (the Proxmox host); `brpc` (a physical PC) | `config/installer.sh` plus the files it installs; `lxc.conf` / `qemu.conf` / `pc.conf` marker | Tarred to `/tmp/config` and `installer.sh` run |
 | Not deployed | `shared/` (Automate site, deployed with `automate` and every Pi), `wkst/` (this workstation, `install.sh` run by hand) | | |
 
@@ -91,9 +91,10 @@ The Automate status menu (`shared/html/menus/statsmenu.txt`) and the LED host li
 | `login <host> sync` | Deploy: server → `DEPLOY_SERVER`, Pi → `DEPLOY_PI` |
 | `login <pi> reset` | Deploy a Pi after deleting `/etc/rpi-conf.done`, so the installer's first-run phase runs again |
 | `login <module> init <host>` | Deploy module `<module>` onto the Pi currently reachable as `<host>` (renames it to `<module>`) |
+| `login <host> update` | Updates the host's packages: `apt-get update; apt-get upgrade` on a server, `rpi update` on a Pi. Given a host list (`login pve,files,automate update`), every host updates at once in its own tile |
+| `login <host> reboot` | Reboots a server or a Pi after a 3 s Ctrl+C countdown (a Pi keeps its read-only or read-write mode); `login files,legacy reboot` reboots each in its own tile |
 | `login <pi> <cmd>` | Runs `rpi <cmd>` on the Pi (see `rpi/rpi.sh`) |
 | `login <host1>,<host2>,… [<cmd>]` | Opens one tmux tile per host (a new window when already inside tmux), each running `login <host> [<cmd>]` with the same `<cmd>` (not `init`). The keys are unlocked once before the tiles open and the tiles share that terminal's agent (`PROOS_AGENT_DIR`); each tile waits for a key before it closes. `mgmt` installs `/etc/tmux.conf` with `mouse on`, so a click selects a tile |
-| `login update-server` | `apt upgrade` on every folder with an `lxc.conf` / `qemu.conf` |
 | `login clearkeys` | Forget this terminal's unlocked keys (stops its agent) |
 | `login cmds` · `login rmtmp` | Command cheat sheet · delete deploy temp files and stop every session agent |
 
@@ -105,9 +106,9 @@ After a deploy a menu offers re-deploy, update packages, reboot (a Pi reboots in
 
 **Site icons.** The Automate site's Font Awesome sheet and fonts (`styles/icons.min.css`, `fonts/fa-*.woff2`) are not in the repo; they live only in the cache `/tmp/proos-fontcache` on `mgmt` (the repo is read-only there). Before every deploy of the site (`automate` and every Pi), `login.sh` checks the cache against the site with `shared/fontawesome/build-icons.py --check`, builds into it with `build-icons.py --out` when a page names an icon it lacks (or after a reboot cleared `/tmp`), and copies the cached files into the deploy's copy of the site (a work folder under `/opt/deploy` for a Pi), each step printed as an `Icons:` line. The cache stays after a deploy, so later deploys reuse it, and a lock file in it makes parallel deploys (tmux tiles) take turns. A failed build sends the cache's older build with a warning (icons added since show blank); with no build at all, or a cache that cannot be written, the site goes with every icon blank, also with a warning. The build needs `python3-fonttools` and `python3-brotli`, which `mgmt/config/installer.sh` installs.
 
-**Pi deploy.** If the root filesystem is an overlay it first runs `rpi rw` and waits for the reboot. Then it rsyncs, in order: `rpi/` → `/opt/rpi`, a copy of `shared/html/` with the icons from the cache → `/opt/rpi/config/html/`, `shared/nodeapi/` → `/opt/nodeapi/`, and `<module>/` → `/opt/rpi/` (excluding `photos` and `sources`), writes the module name to `/opt/rpi/config/hostname` and runs `/opt/rpi/config/installer.sh`.
+**Pi deploy.** If the root filesystem is an overlay it first runs `rpi rw` and waits for the reboot. Then it rsyncs, in order: `rpi/` → `/opt/rpi`, a copy of `shared/html/` with the icons from the cache → `/opt/rpi/config/html/`, `shared/nodeapi/` → `/opt/nodeapi/`, `<module>/` → `/opt/rpi/` (excluding `config`, `photos` and `sources`), and `<module>/config/` → `/opt/rpi/config/module/` (replacing what an earlier deploy left there), writes the module name to `/opt/rpi/config/hostname` and runs `/opt/rpi/config/installer.sh`.
 
-Because the module is copied over the base, **a module's files replace the base's files of the same name**: `<module>/boot.sh` replaces `rpi/boot.sh`, and `modconf/` lands at `/opt/rpi/modconf/`.
+Because the module is copied over the base, **a module's files replace the base's files of the same name**: `<module>/boot.sh` replaces `rpi/boot.sh`. The one exception is the module's `config/`, which lands beside the base's as `/opt/rpi/config/module/`, so its `installer.sh` and `config.txt` do not replace the base's.
 
 ## Raspberry Pi platform (`rpi/`)
 
@@ -120,10 +121,10 @@ Requires Raspberry Pi OS on Debian **trixie**; the installer refuses anything el
 3. **Node API**: moves `rpi/controller.js`, `rpi/ledparser.js` and `rpi/custom.js` over the shared ones in `/opt/nodeapi` (`npm install` only when `package.json` changed, tracked in `.deps.hash`).
 4. **Website**: rsyncs the staged html into `/var/www/html` (keeping `ram/`), replaces the title `>Automate<` with the module's `brand.txt` name (this is how `main.js` picks the Pi or LED Pi page model), minifies, and gives `www-data` sudo on `servercmds.sh` and `relaxrun.sh` only.
 5. Bluetooth, ALSA, Samba USB share, udev USB automount, motion defaults, hostname and `/etc/hosts`.
-6. **`config/cleanup.sh`**, once per Pi (skipped while `/etc/rpi-cleanup.done` exists; delete it and deploy to run it again), so the system fits an 8 GB card: swaps `libopencv-dev` for `libopencv-core-dev` + `libopencv-videoio-dev`; purges the X11 desktop, the `arduino` apt package and its AVR toolchain, USB Wi-Fi dongle firmware, the `v6` kernels, every kernel but the running and newest, and all kernel headers; deletes `arduino-cli` and `~/.arduino15` unless the module's `modinit` installs it (only `brpi` does); installs `config/dpkg-nodoc.conf` as `/etc/dpkg/dpkg.cfg.d/01-nodoc` and deletes docs, man pages and non-English translations; clears the apt lists and npm cache.
+6. **`config/cleanup.sh`**, once per Pi (skipped while `/etc/rpi-cleanup.done` exists; delete it and deploy to run it again), so the system fits an 8 GB card: swaps `libopencv-dev` for `libopencv-core-dev` + `libopencv-videoio-dev`; purges the X11 desktop, the `arduino` apt package and its AVR toolchain, USB Wi-Fi dongle firmware, the `v6` kernels, every kernel but the running and newest, and all kernel headers; deletes `arduino-cli` and `~/.arduino15` unless the module's `config/installer.sh` installs it (only `brpi` does); installs `config/dpkg-nodoc.conf` as `/etc/dpkg/dpkg.cfg.d/01-nodoc` and deletes docs, man pages and non-English translations; clears the apt lists and npm cache.
 7. **`config/compile.sh`**: builds the C/C++ programs (below).
 8. First run: enables `ssh avahi-daemon proinit NetworkManager timesyncd`, disables the rest (lighttpd, bluetooth, smbd, hostapd …), touches `/etc/rpi-conf.done`.
-9. Runs `/opt/rpi/modconf/modinit` (the module's own installer), then **deletes `/opt/rpi/modconf`**; restarts lighttpd and nodeapi; links `/usr/bin/rpi` → `rpi.sh`; deletes `/opt/rpi/config`.
+9. Runs `/opt/rpi/config/module/installer.sh` (the module's own installer, from `<module>/config/installer.sh`), then **deletes `/opt/rpi/config/module`**; restarts lighttpd and nodeapi; links `/usr/bin/rpi` → `rpi.sh`; deletes `/opt/rpi/config`.
 
 ### Boot sequence
 
@@ -143,10 +144,10 @@ Pis run with an OverlayFS root, so writes go to RAM and the Pi can be unplugged 
 
 ### Pi-side node API
 
-The Pis run the same `shared/nodeapi/server.js`, but `rpi/controller.js` replaces the server's command dispatch: `server <cmd>` → `sudo servercmds.sh <cmd>`, `confwpa` → Wi-Fi setup, everything else → `exeCustom()` in `custom.js`. The base `rpi/custom.js` is a stub; a module with real commands ships `modconf/custom.js`, which `modinit` copies over it:
+The Pis run the same `shared/nodeapi/server.js`, but `rpi/controller.js` replaces the server's command dispatch: `server <cmd>` → `sudo servercmds.sh <cmd>`, `confwpa` → Wi-Fi setup, everything else → `exeCustom()` in `custom.js`. The base `rpi/custom.js` is a stub; a module with real commands ships `config/custom.js`, which its `config/installer.sh` copies over it:
 
-- `brpi/modconf/custom.js`: serial via `ztermcom` (one FIFO queue, at most 8 waiting) to the amp on `/dev/ttyUSB0` and the bedroom hub on `/dev/ttyAMA0` (`hwcom`, `usbcom`), amp power/inputs/volume, `bed_leds_hex_set`, relax sounds (`relaxmenu.txt`, `relaxrun.sh` → `rpi-relaxloop.service`), activity LED flash.
-- `ledwall/modconf/custom.js`: `extcom` (serial), `front_btn` (LED shuffle), white LED, `pc_power`.
+- `brpi/config/custom.js`: serial via `ztermcom` (one FIFO queue, at most 8 waiting) to the amp on `/dev/ttyUSB0` and the bedroom hub on `/dev/ttyAMA0` (`hwcom`, `usbcom`), amp power/inputs/volume, `bed_leds_hex_set`, relax sounds (`relaxmenu.txt`, `relaxrun.sh` → `rpi-relaxloop.service`), activity LED flash.
+- `ledwall/config/custom.js`: `extcom` (serial), `front_btn` (LED shuffle), white LED, `pc_power`.
 
 `rpi/ledparser.js` replaces the server's LED fan-out with the local effect runner: it spawns one effect binary from `/opt/rpi/effects`, plays videos through `mp4toleds`, and sets brightness through the proxy. Shuffle picks from `menus/ledshuffle.txt`. Each command also records what the pixels show, which `fc_status` (`/api?action=leds&arg=fc_status`) answers as JSON with the brightness: `{ effect, state, color, brightness }`, state `off` (stopped, or black), `active`, `paused` (also an effect that ended on its own) or `color` (RRGGBB); the server's Pixels window reads it.
 
@@ -166,7 +167,7 @@ The Pis run the same `shared/nodeapi/server.js`, but `rpi/controller.js` replace
 | `ztermcom` (`ztermcom.c`) | CLI | serial | Framed serial request/response to Arduino hubs |
 | node API · lighttpd | `nodeapi`, `lighttpd` | :3000 · :80 | Same as the Automate server |
 
-`ledtype.txt` (written by a LED module's `modinit`) names the layout: `93ringinv` (ledwall), `3x60strips` (ledstrip), `16x16grid` (ledgrid).
+`ledtype.txt` (written by a LED module's `config/installer.sh`) names the layout: `93ringinv` (ledwall), `3x60strips` (ledstrip), `16x16grid` (ledgrid).
 
 ### Compiling (`rpi/config/compile.sh`)
 
@@ -214,7 +215,7 @@ This is how the Automate Server window controls the host:
 Code style rules (naming, comments, shell, JavaScript and CSS) live only in [`CODESTYLE.md`](CODESTYLE.md), imported at the end of this file. This section covers how the repo is organised and worked on.
 
 - A new Pi service is a `rpi-<name>.service` in `rpi/config/systemd/`, not enabled, started from the module's `boot.sh` with settings passed by `systemctl set-environment`.
-- A new Pi module is a folder with `boot.sh` and `modconf/{brand.txt,modinit,config.txt}`; `brand.txt` becomes the page title, AirPlay/Bluetooth/Samba name.
+- A new Pi module is a folder with `boot.sh` and `config/{installer.sh,brand.txt,config.txt}`, the same `config/installer.sh` layout as a server (its installer runs after the base's, from `/opt/rpi/config/module/`); `brand.txt` becomes the page title, AirPlay/Bluetooth/Samba name.
 - A new server is a folder with `config/installer.sh` and a marker file; add its key as `mgmt/keys/<name>.rsa`, plus an empty `<name>/ssh.pwd` if the key has the shared passphrase.
 - Secrets are git-ignored and must stay out of commits and docs: `mgmt/keys/`, `*.rsa`, `*.pub`, `*.pem`, `*.crt`, `*.key`, `authorized_keys`, `auto.creds`, `creds.h`, `sasl_passwd`, `pia-wg.conf`. Don't print their contents.
 - `._*` and `.DS_Store` files are macOS metadata, ignored by git; leave them alone.

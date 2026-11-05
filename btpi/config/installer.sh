@@ -6,7 +6,7 @@ HOSTNAME=`cat /opt/rpi/config/hostname`
 ## Set Module Path
 BIN=/opt/rpi
 # Import Brand name
-MODNAME=`cat $BIN/modconf/brand.txt`
+MODNAME=`cat $BIN/config/module/brand.txt`
 
 if [ ! -e "/opt/rpi/rpi.sh" ]; then
 echo "Core components missing or corrupted."
@@ -20,11 +20,11 @@ echo "Starting $MODNAME configuration..."
 
 ## Copy Boot Config
 mount -o remount,rw /boot/firmware
-cp -f $BIN/modconf/config.txt /boot/firmware/
+cp -f $BIN/config/module/config.txt /boot/firmware/
 mount -o remount,ro /boot/firmware
 
 ## ALSA Configuration
-cp -f $BIN/modconf/asound.conf /etc
+cp -f $BIN/config/module/asound.conf /etc
 chmod 644 /etc/asound.conf
 chown root:root /etc/asound.conf
 

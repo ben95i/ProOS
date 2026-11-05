@@ -2,20 +2,22 @@
 ### Raspberry Pi / Server Communication Script - ProOS
 ### by Ben Provenzano III
 ###
-### Usage: login <host> [sync | reset | <rpi command>]
-###        login <host1,host2,...> [sync | reset | <rpi command>]   (one tmux tile per host)
+### Usage: login <host> [sync | reset | update | reboot | <rpi command>]
+###        login <host1,host2,...> [sync | reset | update | reboot | <rpi command>]   (one tmux tile per host)
 ###        login <module> init <host>
-###        login update-server | clearkeys | cmds | rmtmp
+###        login clearkeys | cmds | rmtmp
 
 ######## Constants ########
 
 ## DNS domain appended to host names, e.g. ".home" (empty uses the bare name)
 DOMAIN=""
+
 ## repo root on mgmt, the SSH keys folder and the scratch folder for server archives
 ROOT_DIR="/mnt/Projects/ProOS"
 KEYS_DIR="/mnt/ssh/keys"
 WORK_DIR="/opt/deploy"
 TEMP_ROOT="$WORK_DIR/.ptmp"
+
 ## RAM-only folder holding one ssh-agent per terminal session (tmpfs, never on disk)
 USER_ID=$(id -u)
 if [ -n "$XDG_RUNTIME_DIR" ]; then
@@ -25,40 +27,49 @@ else
 fi
 AGENT_ROOT="$RUNTIME_BASE/ssh-agents"
 AGENT_LOCK="$AGENT_ROOT/.lock"
+
 ## lifetime of the unlocked keys in a session agent
 AGENT_LIFE="8h"
+
 ## this script's own path, run through bash by the tiles and the passphrase prompter, so it
 ## needs no execute bit (files rewritten over SMB lose it)
 SCRIPT_PATH=$(readlink -f "$0")
+
 ## command line arguments: login <module> <command> <init host>
 MODULE="$1"
 CMD="$2"
 INIT_HOST="$3"
+
 ## names that are folders in the repo but not hosts
-DENIED_NAMES=("logon" "login" "rpi" "wkst" "shared" "router")
+DENIED_NAMES=("logon" "login" "rpi" "pico" "esp32" "wkst" "shared" "router")
+
 ## commands given in place of a host name, handled by HANDLE_STANDALONE_COMMANDS
-STANDALONE_COMMANDS=("cmds" "clearkeys" "update-server" "rmtmp")
+STANDALONE_COMMANDS=("cmds" "clearkeys" "rmtmp")
+
 ## connection settings
 SSH_PORT="22"
 SSH_TIMEOUT="450ms"
 SSH_KEEPALIVE=(-o "ServerAliveInterval=5" -o "ServerAliveCountMax=5")
 RSYNC_OPTIONS=(--stats --human-readable --recursive --times --checksum)
 RSYNC_EXCLUDES=(--exclude=photos --exclude=sources)
+
 ## waits while a Pi reboots into read/write mode, and before a deploy starts
 REBOOT_WAIT_SECONDS=25
 RETRY_COUNT=4
 RETRY_WAIT_SECONDS=10
 CANCEL_WAIT_SECONDS=3
+
 ## remote commands
 SPACER="*********************"
-UPDATE_CMDS="apt update; apt upgrade; apt full-upgrade; apt autoremove; apt clean"
-SERVER_UPDATE_CMD="apt-get update; apt-get upgrade"
+SERVER_UPDATE_CMD="apt-get update; apt-get full-upgrade; apt-get upgrade"
 PI_UPDATE_CMD="rpi update"
 SVR_INSTALL_CMD="cd /tmp/; tar -xmf config.tar; rm -f config.tar; chmod +x /tmp/config/installer.sh; /tmp/config/installer.sh"
 PI_INSTALL_CMD="cd /opt/rpi/config; echo $MODULE > ./hostname; chmod +x ./installer.sh; ./installer.sh"
+
 ## the Automate site, sent by the automate and Pi deploys, and its icon builder
 SITE_DIR="$ROOT_DIR/shared/html"
 ICON_BUILDER="$ROOT_DIR/shared/fontawesome/build-icons.py"
+
 ## where the builder writes on mgmt (the repo is read-only), kept between deploys
 ICON_CACHE_DIR="/tmp/proos-fontcache"
 ICON_CACHE_LOCK="$ICON_CACHE_DIR/.lock"
@@ -635,23 +646,14 @@ SSH_LOGIN(){
   SSH_AS "root"
 }
 
-## Runs the apt upgrades on every server folder (one with an lxc.conf or qemu.conf), one at a time.
-UPDATE_ALL_SVRS(){
-  local serverNames
-  local serverName
-  mapfile -t serverNames < <(find "$ROOT_DIR" -type f \( -name "lxc.conf" -o -name "qemu.conf" \) -printf '%P\n' | sed 's#/[^/]*$##' | sort -u)
-  for serverName in "${serverNames[@]}"; do
-    echo " "
-    echo "$SPACER Connecting to $serverName $SPACER"
-    targetHost="$serverName$DOMAIN"
-    CHECK_HOST_ONLINE "no"
-    if [ "$hostStatus" == "online" ]; then
-      SSH_IDENTITY "$KEYS_DIR/$serverName.rsa"
-      echo "$SPACER Running APT on $serverName $SPACER"
-      REMOTE_RUN "$UPDATE_CMDS"
-    fi
-  done
-  EXIT_PRGM
+## Updates targetHost's packages: apt update and upgrade on a server, "rpi update" on a Pi.
+UPDATE_HOST(){
+  echo "$SPACER Updating $targetHost $SPACER"
+  if [ "$hostMode" == "nonpi" ]; then
+    REMOTE_RUN "$SERVER_UPDATE_CMD"
+  else
+    REMOTE_RUN "$PI_UPDATE_CMD"
+  fi
 }
 
 ######## Site Icons ########
@@ -844,7 +846,10 @@ DEPLOY_PI(){
   RSYNC_TO_HOST "$siteSource/" "/opt/rpi/config/html/" --mkpath
   RSYNC_TO_HOST "$ROOT_DIR/shared/nodeapi/" "/opt/nodeapi/" --mkpath
   echo "Downloading module-specific software..."
-  RSYNC_TO_HOST "$ROOT_DIR/$MODULE/" "/opt/rpi/" "${RSYNC_EXCLUDES[@]}"
+  RSYNC_TO_HOST "$ROOT_DIR/$MODULE/" "/opt/rpi/" "${RSYNC_EXCLUDES[@]}" --exclude=/config
+  ## the module's config folder goes beside the base's, so its installer.sh and configs
+  ## do not replace the base's files of the same name
+  RSYNC_TO_HOST "$ROOT_DIR/$MODULE/config/" "/opt/rpi/config/module/" --mkpath --delete
   echo "Starting installer..."
   REMOTE_RUN "$PI_INSTALL_CMD"
   REMOVE_WORK_FOLDER
@@ -910,12 +915,7 @@ POST_DEPLOY_MENU(){
       fi
       ;;
     [Uu])
-      echo "Updating $targetHost..."
-      if [ "$hostMode" == "nonpi" ]; then
-        REMOTE_RUN "$SERVER_UPDATE_CMD"
-      else
-        REMOTE_RUN "$PI_UPDATE_CMD"
-      fi
+      UPDATE_HOST
       ;;
   esac
   EXIT_PRGM
@@ -1050,17 +1050,20 @@ by Ben Provenzano III
 Logon to ProOS Pi / Server
 login "Hostname"
 
-Update Server (All LXCs/VMs)
-login update-server
-
 Sync ProOS (quick run config script) Pi / Server
 login "Hostname" sync
 
 Reset ProOS (full config script) Pi Only
 login "Hostname" reset
 
+Update packages (apt update / upgrade on a server, rpi update on a Pi)
+login "Hostname" update
+
+Reboot Pi / Server (a Pi keeps its read/only or read/write mode)
+login "Hostname" reboot
+
 Several hosts at once, one tmux tile each (same option for every host)
-login "Host1,Host2,Host3" [sync | reset | "rpi command"]
+login "Host1,Host2,Host3" [sync | reset | update | reboot | "rpi command"]
 
 Initialize ProOS (configure a base Pi or reconfigure one) Pi Only
 login "Module" init "Hostname"
@@ -1129,9 +1132,6 @@ HANDLE_STANDALONE_COMMANDS(){
       AGENT_CLEAR
       exit
       ;;
-    update-server)
-      UPDATE_ALL_SVRS
-      ;;
     rmtmp)
       REMOVE_TEMP_FILES
       exit
@@ -1151,10 +1151,22 @@ PRGM_INIT(){
     hostMode="pi"
   fi
   SSH_IDENTITY "$(HOST_KEY_FILE "$MODULE")"
+  if [ "$CMD" == "reboot" ]; then
+    targetHost="$MODULE$DOMAIN"
+    CHECK_HOST_ONLINE "yes"
+    CANCEL_COUNTDOWN
+    REBOOT_HOST
+    EXIT_PRGM
+  fi
   if [ "$hostMode" == "nonpi" ]; then
     targetHost="$MODULE$DOMAIN"
     if [ "$CMD" == "sync" ]; then
       DEPLOY_HOST
+    fi
+    if [ "$CMD" == "update" ]; then
+      CHECK_HOST_ONLINE "yes"
+      UPDATE_HOST
+      EXIT_PRGM
     fi
   else
     if [ "$CMD" == "init" ]; then

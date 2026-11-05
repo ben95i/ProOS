@@ -1,12 +1,12 @@
 #!/bin/sh
-## LEDwall Configuration Script
+## Stereo Pi Configuration Script
 
 # Import Host name
 HOSTNAME=`cat /opt/rpi/config/hostname`
 ## Set Module Path
 BIN=/opt/rpi
 # Import Brand name
-MODNAME=`cat $BIN/modconf/brand.txt`
+MODNAME=`cat $BIN/config/module/brand.txt`
 
 if [ ! -e "/opt/rpi/rpi.sh" ]; then
   echo "Core components missing or corrupted."
@@ -17,16 +17,12 @@ echo "Starting $MODNAME configuration..."
 
 ## Copy Boot Config
 mount -o remount,rw /boot/firmware
-cp -f $BIN/modconf/config.txt /boot/firmware/
+cp -f $BIN/config/module/config.txt /boot/firmware/
 mount -o remount,ro /boot/firmware
 
-## Set LED Type
-rm -f /opt/rpi/ledtype.txt
-echo "93ringinv" > /opt/rpi/ledtype.txt
-
-## Custom Node API
-cp -f $BIN/modconf/custom.js /opt/nodeapi/
-chmod 644 /opt/nodeapi/custom.js
-chown www-data:www-data /opt/nodeapi/custom.js
+## ALSA Configuration
+cp -f $BIN/config/module/asound.conf /etc/
+chmod 644 /etc/asound.conf
+chown root:root /etc/asound.conf
 
 exit

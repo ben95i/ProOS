@@ -4,10 +4,12 @@
 
 # Installer Files Path
 TMPDIR="/opt/rpi/config"
+# Module Installer Files Path (the module's config folder, sent here by login.sh)
+MODDIR="$TMPDIR/module"
 # Import Hostname
 NEWHOST=`cat $TMPDIR/hostname`
 # Import Module Name
-MODNAME=`cat /opt/rpi/modconf/brand.txt`
+MODNAME=`cat $MODDIR/brand.txt`
 ## Installer Command Line Arguments
 APTARGS="install -y --no-upgrade --ignore-missing"
 
@@ -251,7 +253,7 @@ ln -sf /usr/bin/fastfetch /usr/bin/neofetch
 
 ## ShairPort AirPlay Support
 rm -f /etc/init.d/shairport-sync
-if [ ! -e "/opt/rpi/modconf/brand.txt" ]; then
+if [ ! -e "$MODDIR/brand.txt" ]; then
   echo "Skipping module modification."
 else
   ## ShairPort
@@ -299,7 +301,7 @@ chown -R "$WWW_NAME":"$WWW_GROUP" /var/www/sessions
 mkdir -p /var/www/uploads
 chmod -R g+rx /var/www/uploads
 chown -R "$WWW_NAME":"$WWW_GROUP" /var/www/uploads
-if [ ! -e "/opt/rpi/modconf/brand.txt" ]; then
+if [ ! -e "$MODDIR/brand.txt" ]; then
   ## No module selected
   sed -i "s/>Automate</>RaspberryPi</g" "$WWWPATH/index.html"
 else
@@ -340,7 +342,7 @@ usermod -a -G video pi
 
 ## Bluetooth
 cp -f $TMPDIR/btmain.conf /etc/bluetooth/main.conf
-if [ ! -e "/opt/rpi/modconf/brand.txt" ]; then
+if [ ! -e "$MODDIR/brand.txt" ]; then
 echo "Skip module naming."
 else
 ## Set module name to bluetooth config
@@ -423,7 +425,7 @@ chown root:root /lib/modprobe.d/aliases.conf
 cp -f $TMPDIR/smb.conf /etc/samba
 chmod 644 /etc/samba/smb.conf
 chown root:root /etc/samba/smb.conf
-if [ ! -e "/opt/rpi/modconf/brand.txt" ]; then
+if [ ! -e "$MODDIR/brand.txt" ]; then
 echo "Skipping module modification."
 else
 ## Set module name to file share config
@@ -486,14 +488,14 @@ else
   echo "Skipping services."
 fi
 
-## Run module script if found
-if [ ! -e "/opt/rpi/modconf/modinit" ]; then
-  echo "Module script not found."
+## Run module installer if found
+if [ ! -e "$MODDIR/installer.sh" ]; then
+  echo "Module installer not found."
 else
-  echo "Running Module Script..."
-  chmod +x /opt/rpi/modconf/modinit
-  sh /opt/rpi/modconf/modinit
-  rm -rf /opt/rpi/modconf
+  echo "Running module installer..."
+  chmod +x "$MODDIR/installer.sh"
+  sh "$MODDIR/installer.sh"
+  rm -rf "$MODDIR"
 fi
 
 ## Regenerate Update Database
