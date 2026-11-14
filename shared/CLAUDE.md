@@ -85,7 +85,7 @@ On a phone or tablet the page's scale is the width its viewport tag names, which
 | The same phone held sideways | `width=<long side / scale>` (1060 on a 390 × 844 phone) | The same as upright |
 | Short side of 490 points or more (a tablet) | `width=device-width, initial-scale=1` | 1: one CSS px per point |
 
-The width comes from `screen.width` and `screen.height` alone (and `screen.orientation`, since iOS reports both as they are upright), never from the page's own size, so the resize a new width causes changes nothing. Pinch zoom is left on.
+The width comes from `screen.width` and `screen.height` alone (and `screen.orientation`, since iOS reports both as they are upright), never from the page's own size, so the resize a new width causes changes nothing. While the browser reports no screen size (0 × 0), the tag is left as it is. Pinch zoom is left on.
 
 ### Top bar
 
@@ -317,7 +317,7 @@ Each feature larger than a room button is a class in its own module, and anythin
 | `roomstate.js` | `RoomStateManager` | Room status light, 10 s refresh, device dropdown |
 | `colorprompt.js` | `ColorPrompt` | Colour window: saturation / value map, hue slider, palette swatches with names, hex box; `openColorPrompt()` opens it for a device, `showColorPrompt()` for any other caller |
 | `switch.js` | `ToggleSwitch` | Draggable on / off switch used in menus and windows |
-| `stars.js` | `AnimatedBackground` | Star field behind the page, painted once on a canvas; six shooting stars, each a small canvas moved by a compositor animation, so nothing runs per frame. Paused when idle |
+| `stars.js` | `AnimatedBackground` | Star field behind the page: two square tiles of stars (509 and 383 px, so the pattern does not visibly repeat), each drawn once into a PNG and repeated as the `#star-field` background, drawn again only when the pixel ratio changes. Six shooting stars, each a small SVG line moved by a compositor animation, so nothing runs per frame. No canvas stays on the page, so the field cannot come back blank (a prerendered or background tab, a GPU reset). Paused when idle |
 | `weather.js` | `WeatherWidget` | Weather in the top bar and its menu |
 | `bookmarks.js` | `Bookmarks` | Bookmarks menu, add / edit window, file and lock |
 | `lists.js` | `Lists`, `ListStore` | Lists window: lists and items, drag re-order, multi-select delete, completed toggles, per-list encryption, edit lock, connection status |

@@ -89,7 +89,7 @@ function loadFeatures() {
   if (serverMode) serverFeatures();
   App.mainMenu = new MainMenu({ isServer: serverMode });
   App.mainMenu.load();
-  App.starBackground = new AnimatedBackground('star-canvas', starsAnimationEnabled());
+  App.starBackground = new AnimatedBackground('star-field', starsAnimationEnabled());
   App.starBackground.activate();
   document.addEventListener('click', handleClicks);
   resetActivityTimer();
@@ -140,7 +140,7 @@ function buildPageHTML(model) {
     isLedCapable: serverMode || ledPi
   };
   return [
-    '<canvas id="star-canvas"></canvas>',
+    '<div id="star-field"></div>',
     topNavTemplate(select),
     navDropdownsTemplate(),
     '<p class="pg-top"></p>',

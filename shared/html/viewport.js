@@ -24,10 +24,16 @@ function deviceIsLandscape() {
 
 // The viewport tag's content for this screen, as it is held now. The scale is the
 // screen's short side over MOBILE_PAGE_WIDTH, and stays the same when the device turns.
-// A 390 x 844 phone: 'width=490, …' upright, 'width=1060, …' sideways.
+// A 390 x 844 phone: 'width=490, …' upright, 'width=1060, …' sideways. Null while the
+// browser reports no screen size (0 x 0, as a page loaded out of view can be), which
+// would work out as a width of NaN.
 function viewportContent() {
   const shortSide = Math.min(window.screen.width, window.screen.height);
   const longSide = Math.max(window.screen.width, window.screen.height);
+  const screenSizeKnown = Number.isFinite(shortSide) && Number.isFinite(longSide) && shortSide > 0;
+  if (!screenSizeKnown) {
+    return null;
+  }
   if (shortSide >= MOBILE_PAGE_WIDTH) {
     return NATIVE_VIEWPORT;
   }
@@ -40,14 +46,18 @@ function viewportContent() {
   return `width=${layoutWidth}, shrink-to-fit=no`;
 }
 
-// Writes the viewport tag when its content has to change. The content comes from the
-// screen alone, never from the page's own size, so the resize it causes changes nothing.
+// Writes the viewport tag when its content has to change, and leaves it as it is while
+// the screen size is not known. The content comes from the screen alone, never from the
+// page's own size, so the resize it causes changes nothing.
 function applyViewport() {
   const viewportTag = document.querySelector('meta[name="viewport"]');
   if (!viewportTag) {
     return;
   }
   const content = viewportContent();
+  if (content === null) {
+    return;
+  }
   if (viewportTag.getAttribute('content') !== content) {
     viewportTag.setAttribute('content', content);
   }
