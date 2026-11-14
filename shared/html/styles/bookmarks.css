@@ -27,6 +27,7 @@
   flex: 1 1 auto;
   min-width: 0px;
   overflow: hidden;
+  padding-left: 6px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -148,11 +149,15 @@
   margin: 0;
 }
 
+#bookmark__search .search-row__box {
+  margin-left: 15px;
+}
+
 /* the icon past the menu's column rules; the values are lists.css's */
 #bookmark__search .search-row__icon {
     width: 25px;
     margin: 0;
-    padding-right: 3px;
+    padding-left: 8px;
     font-size: 20px;
     text-align: center;
 }

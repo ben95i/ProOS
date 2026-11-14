@@ -12,13 +12,13 @@
 // it is stopped STOP_DELAY_MS after the last viewer leaves -- which in turn
 // lets the camera release its own sensor and encoder.
 //
-// The video is sent one group of pictures at a time: a fragment starting at
-// each keyframe (one second with rtspcam -i 15 at 15 fps). That adds about
-// a second of delay but gives the browser whole seconds of evenly timed
-// video to play, which it does far more smoothly than single frames.
+// The video is sent a frame at a time, each frame its own MP4 fragment, as
+// soon as ffmpeg has it; camera.js keeps a short cushion of it, so playback
+// stays smooth while frames arrive unevenly over Wi-Fi.
 //
-// The last fragment is kept, so a new viewer sees a picture at once instead
-// of waiting for the next keyframe. A viewer
+// The last two groups of pictures are kept (a keyframe every second with
+// rtspcam -i 15 at 15 fps), so a viewer joining a running relay gets at least
+// a second of video at once: enough to start playing straight away. A viewer
 // whose connection cannot keep up is skipped forward to the next keyframe
 // rather than buffered for, so a slow phone never grows the server's memory.
 //
@@ -44,13 +44,19 @@ const CAMERAS = {
 const ROUTE = '/api/camera/:name';
 const FFMPEG_PATH = 'ffmpeg';
 const RTSP_TIMEOUT_US = 5000000;   // drop a camera that goes silent for 5 s
-const ANALYZE_US = 1000000;        // how long ffmpeg may probe the stream
+// How long ffmpeg probes the stream before it starts writing. The camera's
+// SDP already carries the H.264 setup (sprop-parameter-sets), so a short
+// probe is enough; frames read during it are still sent.
+const ANALYZE_US = 100000;
 const START_TIMEOUT_MS = 15000;    // no keyframe by then: give up and retry
 const STOP_DELAY_MS = 5000;        // keep running this long after the last viewer
-const MAX_CACHED_FRAGMENTS = 30;   // cap on the kept group of pictures
+const MAX_CACHED_FRAGMENTS = 64;   // cap on the kept frames (two groups are 30)
+// Unsent data allowed to wait for one viewer before it is skipped to the next
+// keyframe: several seconds of video, more than the kept groups.
+const MAX_VIEWER_BACKLOG_BYTES = 1024 * 1024;
 
 // ffmpeg reads the camera over TCP (no lost packets on Wi-Fi), copies the
-// video untouched and writes one MP4 fragment per keyframe, flushed at once.
+// video untouched and writes one MP4 fragment per frame, flushed at once.
 const ffmpegArgs = (url) => [
     '-hide_banner', '-loglevel', 'error', '-nostdin',
     '-rtsp_transport', 'tcp',
@@ -60,7 +66,7 @@ const ffmpegArgs = (url) => [
     '-i', url,
     '-map', '0:v:0', '-c', 'copy', '-an', '-sn', '-dn',
     '-f', 'mp4',
-    '-movflags', '+frag_keyframe+empty_moov+default_base_moof',
+    '-movflags', '+frag_every_frame+empty_moov+default_base_moof',
     '-flush_packets', '1',
     'pipe:1'
 ];
@@ -84,7 +90,8 @@ class CameraRelay {
         this.initSegment = null;
         this.videoConfig = null;
         this.pendingMoof = null;
-        this.groupOfPictures = [];
+        this.previousGroup = [];   // the group of pictures before the newest
+        this.currentGroup = [];    // the newest keyframe and the frames after it
         this.rotation = null;
         this.isReady = false;
     }
@@ -101,8 +108,7 @@ class CameraRelay {
         const viewer = {
             res,
             isAdmitted: false,     // headers and init segment sent
-            needsKeyframe: true,   // waiting to start (or restart) at a keyframe
-            isCongested: false     // its connection is full; skip until drained
+            needsKeyframe: true    // waiting to start (or restart) at a keyframe
         };
         this.viewers.add(viewer);
         res.on('close', () => this.removeViewer(viewer));
@@ -136,7 +142,7 @@ class CameraRelay {
         }, STOP_DELAY_MS);
     }
 
-    // Sends the headers, the init segment and the kept group of pictures,
+    // Sends the headers, the init segment and the kept groups of pictures,
     // after which the viewer gets every new frame live.
     admitViewer(viewer) {
         viewer.isAdmitted = true;
@@ -153,35 +159,36 @@ class CameraRelay {
         if (!this.send(viewer, this.initSegment)) {
             return;
         }
-        if (this.groupOfPictures.length === 0) {
+        const keptFragments = this.previousGroup.concat(this.currentGroup);
+        if (keptFragments.length === 0) {
             return; // nothing kept: it starts at the next keyframe
         }
         viewer.needsKeyframe = false;
-        for (const fragment of this.groupOfPictures) {
+        for (const fragment of keptFragments) {
             if (!this.send(viewer, fragment)) {
                 return;
             }
         }
     }
 
-    // Writes to one viewer. When its connection is full the data just
-    // written still goes out, but nothing more is queued for it: once it
-    // drains it picks up again at the next keyframe.
+    // Writes to one viewer; false when skipped. While more than
+    // MAX_VIEWER_BACKLOG_BYTES still wait to go out to it, nothing more is
+    // queued for it, and it picks up again at the first keyframe after its
+    // connection has caught up.
     send(viewer, data) {
-        if (viewer.res.write(data)) {
-            return true;
-        }
-        viewer.isCongested = true;
-        viewer.res.once('drain', () => {
-            viewer.isCongested = false;
+        if (viewer.res.writableLength > MAX_VIEWER_BACKLOG_BYTES) {
             viewer.needsKeyframe = true;
-        });
-        return false;
+            return false;
+        }
+        viewer.res.write(data);
+        return true;
     }
 
+    // Passes one new fragment to every admitted viewer; one waiting for a
+    // keyframe gets nothing until this is one.
     broadcast(fragment, isKeyframe) {
         for (const viewer of this.viewers) {
-            if (!viewer.isAdmitted || viewer.isCongested) {
+            if (!viewer.isAdmitted) {
                 continue;
             }
             if (viewer.needsKeyframe) {
@@ -310,9 +317,8 @@ class CameraRelay {
         }
     }
 
-    // One fragment (moof + mdat): a keyframe and the frames after it. Looks
-    // at it once for everyone, keeps it if it belongs to the current group
-    // of pictures, and passes it on.
+    // One fragment (moof + mdat): one frame. Looks at it once for everyone,
+    // keeps it for viewers still to come, and passes it on.
     handleFrame(mdat) {
         const moof = this.pendingMoof;
         this.pendingMoof = null;
@@ -326,15 +332,7 @@ class CameraRelay {
         }
 
         const fragment = Buffer.concat([moof, mdat]);
-        if (frameInfo.isKeyframe) {
-            this.groupOfPictures = [fragment];
-        } else if (this.groupOfPictures.length > 0) {
-            if (this.groupOfPictures.length < MAX_CACHED_FRAGMENTS) {
-                this.groupOfPictures.push(fragment);
-            } else {
-                this.groupOfPictures = []; // too long to keep; start at keyframes
-            }
-        }
+        this.keepFragment(fragment, frameInfo.isKeyframe);
 
         if (!this.isReady) {
             if (frameInfo.isKeyframe) {
@@ -343,6 +341,28 @@ class CameraRelay {
             return;
         }
         this.broadcast(fragment, frameInfo.isKeyframe);
+    }
+
+    // Keeps the last two groups of pictures, each from a keyframe on, for
+    // admitViewer(). Frames before the first keyframe are not kept, as
+    // nothing can decode them; groups too long to keep are dropped, and new
+    // viewers then start at the next keyframe.
+    keepFragment(fragment, isKeyframe) {
+        if (isKeyframe) {
+            this.previousGroup = this.currentGroup;
+            this.currentGroup = [fragment];
+            return;
+        }
+        if (this.currentGroup.length === 0) {
+            return;
+        }
+        const keptCount = this.previousGroup.length + this.currentGroup.length;
+        if (keptCount >= MAX_CACHED_FRAGMENTS) {
+            this.previousGroup = [];
+            this.currentGroup = [];
+            return;
+        }
+        this.currentGroup.push(fragment);
     }
 
     // The first keyframe is in: the codec and the rotation are known, so

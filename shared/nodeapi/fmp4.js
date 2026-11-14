@@ -1,7 +1,7 @@
 //// fMP4 helpers for the camera relay ////
 //
 // ffmpeg hands camstream.js a fragmented MP4: an init segment (ftyp + moov)
-// and then one moof + mdat pair per group of pictures. This file reads just
+// and then one moof + mdat pair per frame. This file reads just
 // enough of it for the relay to work without decoding anything:
 //
 //   BoxReader         cuts the byte stream from ffmpeg into whole boxes

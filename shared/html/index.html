@@ -2,7 +2,10 @@
 <html lang="en-US" class="notranslate" translate="no">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="shrink-to-fit=no"/>
+  <!-- The page's scale on a phone or tablet: laid out 490px wide and fitted to the screen,
+       as a phone held upright needs. viewport.js sets the width for a phone held sideways
+       and for a tablet. A desktop browser ignores the tag. -->
+  <meta name="viewport" content="width=490, shrink-to-fit=no"/>
   <title id="title">Automate</title>
   <link href="img/automate.png" rel="icon" type="image/x-icon">
   <!-- One sheet per component. Order matters: main.css first, as later rules override
@@ -34,6 +37,7 @@
        time. The feature windows load on demand. -->
   <link rel="modulepreload" href="utils.js">
   <link rel="modulepreload" href="error.js">
+  <link rel="modulepreload" href="viewport.js">
   <link rel="modulepreload" href="volctrl.js">
   <link rel="modulepreload" href="dropdowns.js">
   <link rel="modulepreload" href="switch.js">

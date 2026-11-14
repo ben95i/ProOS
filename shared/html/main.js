@@ -8,6 +8,7 @@ import { classDisplay, cleanString, base64URLSafeEncode, sendCmd,
   GoToExtPage, onDemandModule, singleFlight } from './utils.js';
 import { clearVolumePopupTimer } from './volctrl.js';
 import { clearPopupTimer, installErrorHandlers } from './error.js';
+import { installViewportScale } from './viewport.js';
 import { configureMenus, removeDropdowns, openDropdown, drawMenu,
   destroyActiveSwitches, beginMenuRequest, menuRequestCurrent,
   showDynFileMenu, showPowerMenu, sendLeds } from './dropdowns.js';
@@ -72,6 +73,7 @@ window.App = {
 // entry point
 window.addEventListener("DOMContentLoaded", () => {
   installErrorHandlers();
+  installViewportScale();
   loadPage();
   loadFeatures();
 });

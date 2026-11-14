@@ -3,9 +3,14 @@
 // while it loads; the camera's rotation is a CSS transform; the stream stops while the tab
 // is hidden, and only a few seconds of video are held.
 //
-// Video arrives a second at a time and unevenly over Wi-Fi, so playback sits TARGET_DELAY_S
-// behind the newest frame. It (re)starts only once that cushion is in, corrects drift by
-// playing a few percent off speed on an averaged lag, and seeks only when far behind.
+// Video arrives a frame at a time but unevenly over Wi-Fi, so playback sits TARGET_DELAY_S
+// behind the newest frame. It (re)starts as soon as that cushion is in, checked on every
+// append, corrects drift by playing a few percent off speed on an averaged lag, and seeks
+// only when far behind.
+//
+// Until the video first plays, a black cover hides it, as iPhone Safari in Low Power Mode
+// draws its own play button there, under the status. Where the browser refuses to play
+// without a tap, the status asks for one and a tap on the picture starts it.
 //
 // new CameraView(name) then .open() / .close() / .toggleFullscreen().
 
@@ -20,19 +25,22 @@ export default class CameraView {
 
   // on the stage for a quarter turn, which swaps the video's width and height
   static QUARTER_CLASS = 'cam-stage--quarter';
+  // on the stage from a reset of the video until it first plays: covers Safari's play button
+  static COVER_CLASS = 'cam-stage--cover';
   // the popup filling the window where there is no Fullscreen API (iPhone Safari)
   static MAXIMIZED_CLASS = 'cam-popup--max';
 
   static STATUS_LOADING = 'Loading...';
   static STATUS_RECONNECTING = 'Reconnecting...';
+  static STATUS_TAP_TO_PLAY = 'Tap to play';
   static STATUS_UNSUPPORTED = 'This browser cannot play the camera stream';
 
   static RETRY_MS = 3000;
   static TICK_MS = 500;
-  // How far behind the newest frame playback sits: higher for a poor connection, not
-  // below 2, as the API delivers a second of video at a time.
-  static TARGET_DELAY_S = 3;
-  static DELAY_TOLERANCE_S = 1;    // averaged drift allowed before the speed changes
+  // How far behind the newest frame playback sits, and the video it waits for before
+  // playing: higher for a poor connection.
+  static TARGET_DELAY_S = 1;
+  static DELAY_TOLERANCE_S = 0.5;  // averaged drift allowed before the speed changes
   static LAG_SMOOTHING = 0.1;      // weight of each new reading in the average
   static CATCH_UP_RATE = 1.05;
   static SLOW_DOWN_RATE = 0.95;
@@ -46,7 +54,8 @@ export default class CameraView {
   static VIEWPORT_MARGIN_PX = 10;
   static MIN_STAGE_HEIGHT_PX = 120;
 
-  // the shape until the first frame says otherwise
+  // the frame's shape, before any turn, until the first frame says otherwise; before the
+  // stream answers, camera.css shows the turned picture's shape (9 / 16)
   static DEFAULT_WIDTH = 16;
   static DEFAULT_HEIGHT = 9;
 
@@ -67,6 +76,7 @@ export default class CameraView {
     this.queuedBytes = 0;
     this.hasStarted = false;
     this.isBuffering = false;  // paused until the cushion has filled
+    this.needsTap = false;     // the browser refused to play until the user taps
     this.averageLag = null;
     this.rotation = 0;
     this.retryTimer = null;
@@ -76,7 +86,7 @@ export default class CameraView {
     this.onPlaying = () => this.startedPlaying();
     this.onViewportResize = () => this.fitToViewport();
     this.onWaiting = () => this.ranDry();
-    this.onStageClick = () => this.restoreFromMaximized();
+    this.onStageClick = () => this.stageTapped();
   }
 
   // the popup element
@@ -237,6 +247,7 @@ export default class CameraView {
     this.queuedBytes = 0;
     this.hasStarted = false;
     this.isBuffering = false;
+    this.needsTap = false;
     this.averageLag = null;
     if (this.mediaSource && this.mediaSource.readyState === 'open') {
       try {
@@ -252,6 +263,11 @@ export default class CameraView {
       video.pause();
       video.removeAttribute('src');
       video.load();
+    }
+    // the reset video has not played, so Safari may draw its play button again
+    const stage = this.stage();
+    if (stage) {
+      stage.classList.add(CameraView.COVER_CLASS);
     }
     if (this.objectURL) {
       URL.revokeObjectURL(this.objectURL);
@@ -349,7 +365,8 @@ export default class CameraView {
   }
 
   // After every append or trim: the first video goes up as a still while the cushion
-  // fills; then trims what has been watched and appends what came in.
+  // fills, and playback starts the moment it is in; then trims what has been watched and
+  // appends what came in.
   bufferUpdated(session) {
     if (session !== this.session || !this.sourceBuffer) {
       return;
@@ -361,6 +378,12 @@ export default class CameraView {
       // a paused video may not paint the frame it was moved to (Safari), so it is set
       // playing and startedPlaying() stops it once the frame is up
       this.playVideo();
+    }
+    if (this.isBuffering) {
+      const live = this.liveLag();
+      if (live) {
+        this.playWhenCushioned(live.lag);
+      }
     }
     if (this.trimBuffer(CameraView.KEEP_BUFFER_S)) {
       return; // its updateend comes back here
@@ -401,9 +424,10 @@ export default class CameraView {
     this.setPlaybackRate(CameraView.NORMAL_RATE);
   }
 
-  // The video began to play: while filling the cushion only to paint the first frame, so
-  // it stops there; otherwise the real start, and the message goes.
+  // The video began to play, so the cover goes: while filling the cushion only to paint the
+  // first frame, so it stops there; otherwise the real start, and the message goes.
   startedPlaying() {
+    this.stage().classList.remove(CameraView.COVER_CLASS);
     if (this.isBuffering) {
       this.video().pause();
       return;
@@ -424,32 +448,50 @@ export default class CameraView {
   // Every TICK_MS: starts playback once the cushion is in, then holds it near the target
   // with small speed changes. Seeks only when far behind, or stuck before a gap.
   keepLive() {
-    const sourceBuffer = this.sourceBuffer;
-    const video = this.video();
-    if (!this.hasStarted || !sourceBuffer || sourceBuffer.buffered.length === 0) {
+    const live = this.liveLag();
+    if (!this.hasStarted || !live) {
       return;
     }
-    const lastRange = sourceBuffer.buffered.length - 1;
-    const rangeStart = sourceBuffer.buffered.start(lastRange);
-    const liveEdge = sourceBuffer.buffered.end(lastRange);
-    const lag = liveEdge - video.currentTime;
-    const isBeforeNewestRange = video.currentTime < rangeStart;
-    if (lag > CameraView.MAX_LAG_S || isBeforeNewestRange) {
+    if (live.lag > CameraView.MAX_LAG_S || live.isBeforeNewestRange) {
       this.jumpToLive();
       return;
     }
     if (this.isBuffering) {
-      if (lag >= CameraView.TARGET_DELAY_S) {
-        this.isBuffering = false;
-        this.playVideo();
-      }
+      this.playWhenCushioned(live.lag);
       return;
     }
-    this.averageLag = this.smoothLag(lag);
+    const video = this.video();
+    this.averageLag = this.smoothLag(live.lag);
     this.setPlaybackRate(this.rateForLag(this.averageLag, video.playbackRate));
     if (video.paused) {
       this.playVideo();
     }
+  }
+
+  // How far playback is behind the newest frame, in seconds, and whether it is before the
+  // newest buffered range (stuck at a gap); null with nothing buffered.
+  // e.g. { lag: 1.2, isBeforeNewestRange: false }
+  liveLag() {
+    const sourceBuffer = this.sourceBuffer;
+    if (!sourceBuffer || sourceBuffer.buffered.length === 0) {
+      return null;
+    }
+    const currentTime = this.video().currentTime;
+    const lastRange = sourceBuffer.buffered.length - 1;
+    const rangeStart = sourceBuffer.buffered.start(lastRange);
+    const liveEdge = sourceBuffer.buffered.end(lastRange);
+    const lag = liveEdge - currentTime;
+    const isBeforeNewestRange = currentTime < rangeStart;
+    return { lag, isBeforeNewestRange };
+  }
+
+  // While waiting for the cushion: (re)starts playback once lag seconds are in.
+  playWhenCushioned(lag) {
+    if (lag < CameraView.TARGET_DELAY_S) {
+      return;
+    }
+    this.isBuffering = false;
+    this.playVideo();
   }
 
   // Running average of the lag, as one reading swings with video landing a second at a time.
@@ -490,12 +532,37 @@ export default class CameraView {
     }
   }
 
-  // plays, ignoring a refusal: the next tick tries again
+  // Plays; a refusal that needs a tap asks for one, any other is retried by the next tick.
   playVideo() {
+    const session = this.session;
     const playing = this.video().play();
     if (playing && typeof playing.catch === 'function') {
-      playing.catch(() => {});
+      playing.catch((err) => this.playRefused(err, session));
     }
+  }
+
+  // play() was refused. NotAllowedError means the browser wants a tap first (iPhone Safari
+  // in Low Power Mode), so the status asks for one; a pause() interrupting play() is an
+  // AbortError and is left alone.
+  playRefused(err, session) {
+    const isNotAllowed = Boolean(err) && err.name === 'NotAllowedError';
+    if (!isNotAllowed || session !== this.session || !this.isOpen) {
+      return;
+    }
+    this.needsTap = true;
+    this.setStatus(CameraView.STATUS_TAP_TO_PLAY);
+  }
+
+  // A tap on the picture: plays it when the browser is waiting for a tap (play() runs inside
+  // the tap, which the browser accepts), otherwise brings it back from filling the window.
+  stageTapped() {
+    if (this.needsTap) {
+      this.needsTap = false;
+      this.setStatus(CameraView.STATUS_LOADING);
+      this.playVideo();
+      return;
+    }
+    this.restoreFromMaximized();
   }
 
   //// rotation and shape ////

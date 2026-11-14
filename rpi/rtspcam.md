@@ -281,7 +281,7 @@ Every consumer shares the same encode, so adding viewers costs the Pi only netwo
 | Consumer | Where | What it relies on from rtspcam |
 | --- | --- | --- |
 | Motion recorder (`rpi-motion.service`) | Doorway Pi | RTSP over TCP; starts after rtspcam |
-| Automate API relay (`camstream.js` + `fmp4.js`) | Automate server, route `/api/camera/doorway` | 1-second GOPs (one MP4 fragment per keyframe); the display orientation SEI to detect rotation; TCP |
+| Automate API relay (`camstream.js` + `fmp4.js`) | Automate server, route `/api/camera/doorway` | 1-second GOPs (it keeps the last two, so a joining viewer starts at once; sent one MP4 fragment per frame); SPS/PPS in the SDP (its ffmpeg probes only 0.1 s); the display orientation SEI to detect rotation; TCP |
 | Browser camera window (`camera.js`) | Any browser via the Automate site | Rotation from the relay's `X-Camera-Rotation` header; codec from `X-Camera-Codec` |
 | mpv, ffplay, ffmpeg | Any LAN machine | Honour the SEI rotation |
 

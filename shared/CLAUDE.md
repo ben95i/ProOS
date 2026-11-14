@@ -43,7 +43,7 @@ Room transmitters answer the Automate API on port 80 (`callApi`), Pico controlle
 
 The page is drawn once from template functions in `main.js`, and every button reaches its handler through one click listener on `document`.
 
-1. **Load.** On `DOMContentLoaded`, `loadPage()` reads the model and injects the markup from `buildPageHTML()`.
+1. **Load.** On `DOMContentLoaded`, `installViewportScale()` (`viewport.js`) sets the page's scale for a phone or tablet (see *Page scale*), then `loadPage()` reads the model and injects the markup from `buildPageHTML()`.
 2. **Features.** `loadFeatures()` starts the server-only parts (the last room from `localStorage` key `ctls-mode`, `RoomStateManager`, `WeatherWidget`, and once the page is idle the preload of the feature windows, which `main.js` otherwise loads on their first press: thermostat, Pixels, colour picker, lists, bookmarks, camera), then the main menu and theme colour, the stars background and the activity timer.
 3. **Buttons.** Each template is followed by `registerListeners({ id: handler })`, in `main.js`, in each room module and in `server.js` alike. The map and `dispatchRegisteredListener()` live in `utils.js`; one delegated listener walks up from the clicked element to the first id in that map, so markup drawn later (room grids, server panels) needs no binding.
 4. **Every click.** `handleClicks()` restarts the 50 s activity timer (on expiry the stars and the room status refresh pause) and closes open menus unless the click was on a `.button`, a bookmark or a `.nohide` element.
@@ -74,6 +74,18 @@ All of the menu code is in `dropdowns.js` (styles in `styles/dropdowns.css`). Mo
 ## The page
 
 The server page is a top bar over three outlined button groups: Pixels and APT in the left column, the current room on the right. In portrait the room group sits under the others; under 700 px of height it stands beside them, both columns ending level.
+
+### Page scale
+
+On a phone or tablet the page's scale is the width its viewport tag names, which the browser fits to the screen; a desktop browser ignores the tag and shows the page at its own size. `index.html` names 490 px (`width=490`), the width of a button group and its margin, so on a phone held upright the groups fill the screen from edge to edge. `viewport.js` (`MOBILE_PAGE_WIDTH`) then rewrites the tag for the screen, before the page is drawn and again when the device is turned:
+
+| Screen | Viewport tag | Scale |
+| --- | --- | --- |
+| Short side under 490 points (a phone), upright | `width=490` | Short side / 490 (0.8 on a 390-point phone) |
+| The same phone held sideways | `width=<long side / scale>` (1060 on a 390 × 844 phone) | The same as upright |
+| Short side of 490 points or more (a tablet) | `width=device-width, initial-scale=1` | 1: one CSS px per point |
+
+The width comes from `screen.width` and `screen.height` alone (and `screen.orientation`, since iOS reports both as they are upright), never from the page's own size, so the resize a new width causes changes nothing. Pinch zoom is left on.
 
 ### Top bar
 
@@ -241,7 +253,7 @@ Every query value has to match `[A-Za-z0-9_.#%@&-]*`, or the route answers 400 w
 | `sitelookup.js` · `favicon.js` | `runSiteLookup` · `runFaviconLookup` | For a new bookmark: a page's title and its favicon as a 24 × 24, 32-colour PNG in URL-safe base64; `{ title: "", icon: "" }` on any failure |
 | `netscan.js` | `runScanNetwork` | `nmap -sn` over 192.168.1.0/24, as a table of address, hostname, vendor and MAC |
 | `upload.js` | `registerUploadRoutes` | Appends 1 MB chunks to a `.part` file under `/mnt/upload/.part` and renames it into `/mnt/upload` on finish; 1 GB per file, 8 uploads at once, executable types refused, abandoned uploads swept after 30 minutes |
-| `camstream.js` · `fmp4.js` | `registerCameraRoutes` | One `ffmpeg -c copy` per camera in `CAMERAS` (`doorway`: `rtsp://doorway.home:8554/cam`), started by the first viewer, shared by the rest and stopped 5 s after the last leaves; `fmp4.js` cuts the stream into boxes and reads the codec, keyframes and rotation |
+| `camstream.js` · `fmp4.js` | `registerCameraRoutes` | One `ffmpeg -c copy` per camera in `CAMERAS` (`doorway`: `rtsp://doorway.home:8554/cam`), started by the first viewer, shared by the rest and stopped 5 s after the last leaves. It sends one MP4 fragment per frame and keeps the last two groups of pictures, so a viewer joining a running relay starts at once; `camera.js` plays 1 s behind live. `fmp4.js` cuts the stream into boxes and reads the codec, keyframes and rotation |
 
 ### Commands
 
@@ -313,6 +325,7 @@ Each feature larger than a room button is a class in its own module, and anythin
 | `upload.js` | `Uploader` | Photo and video upload in 1 MB chunks to `nodeapi/upload.js`, rebuilt under `/mnt/upload` |
 | `camera.js` | `CameraView` | Doorway live stream relayed by `nodeapi/camstream.js` (`/api/camera/<name>`), full screen |
 | `wifi.js` | `SSIDpwd()` | Guest Wi-Fi password for the QR window |
+| `viewport.js` | (functions) | The page's scale on a phone or tablet: `installViewportScale()` writes the viewport tag's width for the screen (see *Page scale*) |
 | `error.js` | `HttpError` | The message popup and every failure report (see *Errors* below) |
 
 ### utils.js
@@ -384,7 +397,7 @@ Where new work goes (code style rules, including buttons, listeners and helpers,
 - A room's template, listeners, menus and windows live in its own module and sheet; code two rooms share goes in `utils.js` (the volume controls in `volctrl.js`), and anything that draws or opens a menu in `dropdowns.js`. A new room exports its config and is added to `ROOM_CONFIGS` in `main.js`. A feature that stands on its own is a class in its own module with its own sheet.
 - Icons need no build step of their own: a page names any icon of the kit (`fad fa-bell`) and the next deploy builds it. The built sheet and fonts live only on `mgmt`, in the cache `/tmp/proos-fontcache`: before every deploy of the site (`automate` and every Pi), `../login.sh` checks the cache against the site with `build-icons.py --check`, builds into it when a page names an icon it lacks (or after a reboot cleared `/tmp`), and copies the cached sheet and fonts into the copy of the site it sends, logging each step under `Icons:`. A failed build sends the cache's older build (icons added since show blank), or, with no build at all, a site whose icons all show blank, with a warning. Never run the builder on the workstation into the repo, or commit its output; the kit stays out of `html/` so it is not deployed.
 - A feature window that only opens on a press loads on demand: `onDemandModule()` in the module that opens it, and in `SERVER_PRELOADS` in `main.js` if the server page uses it. `upload.js` stays a normal import, as a file dialog must open inside the press.
-- Imports go downwards only (`main.js` → rooms, `server.js` and `thermo.js` → `dropdowns.js` → `volctrl.js` → `utils.js` → `error.js`); a lower module that needs something from the page takes it as a parameter or through `configureMenus()`.
+- Imports go downwards only (`main.js` → rooms, `server.js` and `thermo.js` → `dropdowns.js` → `volctrl.js` → `utils.js` → `error.js`; `viewport.js` imports nothing and is used by `main.js` alone); a lower module that needs something from the page takes it as a parameter or through `configureMenus()`.
 - Read and write state files through the site's file API, never a separate store.
 - Report failures through `error.js` (`reportError` around a request, `reportFileFailure` after a failed `readFile` / `writeFile`), never a hand-written popup; `showPopup` is for notices.
 - A new API command is a case in `executeMain()`, or an entry in a room's code table; a service with its own route registers it from its own module, as `upload.js` and `camstream.js` do. Query values must fit the API's character set, so free text goes as URL-safe base64.

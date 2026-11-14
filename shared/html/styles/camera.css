@@ -12,7 +12,9 @@
 }
 
 #cam-stage {
-  --cam-aspect: 16 / 9;    /* replaced by camera.js from the video itself */
+  /* the doorway's picture as seen (landscape frames turned 90°) while it loads;
+     replaced by camera.js from the video itself */
+  --cam-aspect: 9 / 16;
   --cam-rotation: 0deg;
   position: relative;
   width: min(var(--cam-max-width), calc(var(--cam-max-height) * var(--cam-aspect)));
@@ -34,6 +36,19 @@
   transform: translate(-50%, -50%) rotate(var(--cam-rotation));
 }
 
+/* Until the video first plays (camera.js): a black cover over it, under the status,
+   hiding the play button iPhone Safari draws in Low Power Mode, which CSS on the
+   video cannot remove. The video stays visible to Safari underneath, as one it
+   counts as hidden is paused. */
+#cam-stage.cam-stage--cover::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background-color: #000;
+  pointer-events: none;
+}
+
 /* a quarter turn: laid out sideways so that, once turned, it fills the stage */
 #cam-stage.cam-stage--quarter #cam-video {
   width: 100cqh;
@@ -47,6 +62,7 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
+  z-index: 2;              /* over the cover */
   max-width: 80%;
   padding: 8px 16px;
   border-radius: 10px;
