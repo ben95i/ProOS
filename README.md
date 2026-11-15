@@ -57,7 +57,7 @@ DNS domain `home`, LAN 192.168.1.0/24, gateway and DNS the router at 192.168.1.1
 | Host | Kind | Address | What it is |
 | --- | --- | --- | --- |
 | `router` | VM 100 | 192.168.1.1 | The router, with two NICs passed through over PCIe (`hostpci0/1`); login is `admin@router`, not root. Configs in `pve/network/` (pfSense, EdgeRouter, UniFi backups) |
-| `files` | LXC 101 | .4 | Samba file server (SMB2+): shares Data, Media, Scratch, Cameras, Games, MP3s, Regions, External |
+| `files` | LXC 101 | .4 | Samba file server (SMB2+): shares Data, Media, Scratch, Cameras, Games, MP3s, Regions, External, GSync (Google Drive, mounted on `pve`) |
 | `mgmt` | LXC 102 | .7 | Management box: holds the SSH keys (`mgmt/keys/`, git-ignored) and runs `login.sh`; mounts the Projects share read-only at `/mnt/Projects` |
 | `pve` | Proxmox host | .8 | Hypervisor; 4 NICs bonded 802.3ad into `vmbr0` |
 | `appletalk` | VM 103 | | Netatalk 4 AFP server (built from `netatalk-4.4.3.tar.xz`) for vintage Macs |
@@ -71,8 +71,8 @@ DNS domain `home`, LAN 192.168.1.0/24, gateway and DNS the router at 192.168.1.1
 | `ledwall` | Pi | .12 (`lrxmit` in the API) | LEDwall: the 93-pixel LED ring (Fadecandy) and the living room's command host. Its `custom.js` serves `extcom` (living room stereo codes over serial on `/dev/ttyAMA0`), the white LED, the front button and the desktop PC power relay (`pc_power`) |
 | `ledgrid` | Pi Zero | | WS2812 grid driven directly (`opcserver`) |
 | `ledstrip` | Pi | | 3×60 strips (Fadecandy) |
-| `doorway` | Pi | | IMX462 IR camera: `rtspcam` (RTSP on :8554/cam), `minimotion` recorder, `ldrdetect` day/night, rclone to Google Drive, Cameras share |
-| `homepi` | Pi | | Family-home camera hub: `motion` with two cameras, uploads via rclone |
+| `doorway` | Pi | | IMX462 IR camera: `rtspcam` (RTSP on :8554/cam), `minimotion` recorder, `ldrdetect` day/night; clips go to the files server's Cameras and GSync (Google Drive) shares at once, over autofs, with no fallback (`fallback_dir = off`); `camcleanup.sh` keeps `GSync/Cameras/Doorway` under 14.5 GB, oldest first (settings in `doorway/config/camcleanup.conf`) |
+| `homepi` | Pi | | Family-home camera hub: `motion` with two cameras, uploads via rclone; `camcleanup.sh` keeps the flash drive and Google Drive camera folders under their limits (settings in `homepi/config/camcleanup.conf`) |
 | `btpi` · `lrpi` | Pi | | Audio receivers: AirPlay (shairport-sync) and Bluetooth (BlueALSA) into a stereo; `btpi` adds Bluetooth to a vintage stereo, `lrpi` (formerly `stereo`) is the living room's, branded "Living Room" |
 | `desk` | PC | .14 | Living room desktop, pinged by `wkststate` |
 | `lrmlamp1` · `bthrlight1` | Pico W | .18 · .21 | Living room lamp, bathroom light (firmware in `automate/devices/`) |
@@ -116,7 +116,7 @@ Requires Raspberry Pi OS on Debian **trixie**; the installer refuses anything el
 
 ### Installer (`rpi/config/installer.sh`)
 
-1. **First run only** (no `/etc/rpi-conf.done`): locale, time zone, `pi` user, a long apt package list (build tools, GStreamer, ffmpeg, Bluetooth, node, lighttpd, motion; no X11 desktop), purges cron, logrotate, swap, PulseAudio/PipeWire, cups and others, deletes old `rpi-*` units.
+1. **First run only** (no `/etc/rpi-conf.done`): locale, time zone, `pi` user, a long apt package list (build tools, GStreamer, ffmpeg, Bluetooth, node, lighttpd, motion; no X11 desktop), purges cron, logrotate, swap, PulseAudio/PipeWire, cups and others, deletes old `rpi-*` units and `/etc/camcleanup.conf`.
 2. **Every run**: read-only boot partition, `config.txt`, sshd and key, `sysctl`, NetworkManager, journald (to RAM), systemd units from `config/systemd/` into `/etc/systemd/system/`, `/etc/netmode.sh` and `/etc/preinit.sh`.
 3. **Node API**: moves `rpi/controller.js`, `rpi/ledparser.js` and `rpi/custom.js` over the shared ones in `/opt/nodeapi` (`npm install` only when `package.json` changed, tracked in `.deps.hash`).
 4. **Website**: rsyncs the staged html into `/var/www/html` (keeping `ram/`), replaces the title `>Automate<` with the module's `brand.txt` name (this is how `main.js` picks the Pi or LED Pi page model), minifies, and gives `www-data` sudo on `servercmds.sh` and `relaxrun.sh` only.
@@ -163,7 +163,7 @@ The Pis run the same `shared/nodeapi/server.js`, but `rpi/controller.js` replace
 | `mp4toleds` | `rpi-mp4toleds` | OPC client, HTTP :7860 `/api?video=` | Plays `effects/videos/*.mp4` on the pixels |
 | Effects: `textscroll maze oscope spectro noise orbits miami stripes chase writecolor` | spawned by `ledparser.js` | OPC client → :7890 | One running at a time; share `ledlayout.cpp` and `opcclient.cpp` |
 | `rtspcam` | `rpi-rtspcam` | RTSP :8554/cam | IMX462 hardware H.264 (doorway; notes in `rtspcam.md`) |
-| `minimotion` | `rpi-minimotion` | | Motion recorder: reads the RTSP stream, records in `/mnt/ramdisk`, copies clips out (`doorway/minimotion.conf`) |
+| `minimotion` | `rpi-minimotion` | | Motion recorder: reads the RTSP stream, records in `/mnt/ramdisk`, copies clips to every `copy_to` folder at once; a failed copy goes to `fallback_dir`, or with `fallback_dir = off` is only logged and the clip still leaves the RAM disk (`doorway/minimotion.conf`) |
 | `ztermcom` (`ztermcom.c`) | CLI | serial | Framed serial request/response to Arduino hubs |
 | node API · lighttpd | `nodeapi`, `lighttpd` | :3000 · :80 | Same as the Automate server |
 
@@ -205,6 +205,10 @@ This is how the Automate Server window controls the host:
 
 `apicmds.sh` commands: `backupstd`, `backupchk` (rsync to external pools, lock `backupsvr.lock`), `last_backup_dates`, `attach_bkps`, `detach_bkps`, region mounts (`mnt_/unmnt_arch_region` gocryptfs Archive, `mnt_/unmnt_ram_region`, `mnt_/unmnt_snap_region`, `unmnt_all`), `pve_listsnaps`, `start/stop` for `legacy` (LXC 104), `xana` (105, plus `restorexana`), `unifi` (107), `atalk` (103), `rebootrouter`, `syslog` (`sys-check`), `pve_vmsbkp`, `clearlog`. A new server command needs a case here and an option in `shared/html/server.js`.
 
+### Google Drive mount (`rclone-gsync`)
+
+`rclone-gsync.service` mounts the rclone remote `gsync` at `/mnt/rclone/gsync` on the host as `tank:shared` (the unit is based on a plain `rclone mount` service, with its VFS cache on the scratch SSD at `/mnt/pve/scratch/rclone`). Because `tank` owns the datastore, the AppArmor profile `pve/config/apparmor-rclone-gsync` (installed as `/etc/apparmor.d/rclone-gsync`) confines rclone and its `fusermount` to the config `/etc/rclone/rclone.conf`, the cache and the mountpoint. systemd's own sandboxing cannot do this: its namespacing options would hide the mount from the host, and its seccomp options imply `NoNewPrivileges=`, which stops the setuid `fusermount`. `pve/config/fuse.conf` adds `user_allow_other` so the mount can be shared. The files LXC gets `/mnt/rclone` through an `lxc.mount.entry` rbind added by hand to `/etc/pve/lxc/101.conf` and shares it as GSync; running rclone on the host also keeps a vzdump freeze of the LXC from deadlocking on the FUSE mount. The service waits for its config, and the setup steps are in `pve/README.txt`.
+
 ### Persistent state and backups
 
 - **Website state** (`bookmarks.save.txt`, `lists.save.txt`, their lock and password files) lives only in the RAM disk. `hourly.sh` (`hourlyjob.timer`, and `hourlyjob-sd.service` on shutdown) copies them to `/mnt/datastore/data/Documents/` (`Bookmarks.txt`, `Lists.txt`, keeping a `.bak`), and restores them into the RAM disk when they are missing after a reboot.
@@ -214,6 +218,7 @@ This is how the Automate Server window controls the host:
 
 Code style rules (naming, comments, shell, JavaScript and CSS) live only in [`CODESTYLE.md`](CODESTYLE.md), imported at the end of this file. This section covers how the repo is organised and worked on.
 
+- Camera cleanup (`rpi/camcleanup.sh`, `rpi-camcleanup.timer`) takes every setting from `/etc/camcleanup.conf`, which a module's `config/installer.sh` copies from its `config/camcleanup.conf` (`doorway`, `homepi`); a Pi without one never runs it, and an installer reset deletes it before the module's installer runs. A location (flash drive, Google Drive) is cleaned only when its `*_PATH` is set.
 - A new Pi service is a `rpi-<name>.service` in `rpi/config/systemd/`, not enabled, started from the module's `boot.sh` with settings passed by `systemctl set-environment`.
 - A new Pi module is a folder with `boot.sh` and `config/{installer.sh,brand.txt,config.txt}`, the same `config/installer.sh` layout as a server (its installer runs after the base's, from `/opt/rpi/config/module/`); `brand.txt` becomes the page title, AirPlay/Bluetooth/Samba name.
 - A new server is a folder with `config/installer.sh` and a marker file; add its key as `mgmt/keys/<name>.rsa`, plus an empty `<name>/ssh.pwd` if the key has the shared passphrase.

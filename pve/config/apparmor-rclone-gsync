@@ -1,0 +1,67 @@
+## AppArmor profile for rclone-gsync.service
+## by Ben Provenzano III
+##
+## rclone runs as tank, which owns the datastore: this profile limits it
+## to its config, its cache and its mountpoint. Every Exec line of the
+## unit runs under it, fusermount included.
+## Denials are logged to the kernel log: journalctl -k -g apparmor
+
+abi <abi/3.0>,
+
+include <tunables/global>
+
+profile rclone-gsync flags=(attach_disconnected) {
+  include <abstractions/base>
+  include <abstractions/nameservice>
+  include <abstractions/ssl_certs>
+
+  ## Google Drive over HTTPS, readiness to systemd
+  network inet stream,
+  network inet6 stream,
+  network inet dgram,
+  network inet6 dgram,
+  network netlink raw,
+  unix,
+  /run/systemd/notify w,
+
+  ## The program and what it reads at start
+  /usr/bin/rclone mr,
+  /etc/mime.types r,
+  /usr/share/mime/globs2 r,
+  /sys/kernel/mm/transparent_hugepage/hpage_pmd_size r,
+  /sys/fs/cgroup/{,**/}cpu.max r,
+  @{PROC}/sys/net/core/somaxconn r,
+  @{PROC}/sys/fs/pipe-max-size r,
+  @{PROC}/@{pid}/{cgroup,mountinfo,mounts,stat,status} r,
+
+  ## Config (rclone rewrites it to keep the OAuth token current)
+  /etc/rclone/ r,
+  /etc/rclone/rclone.conf* rwk,
+
+  ## VFS cache on the scratch SSD
+  /mnt/pve/scratch/rclone/ rw,
+  /mnt/pve/scratch/rclone/** rwk,
+
+  ## The mount, made by the setuid fusermount. rclone itself runs
+  ## without capabilities as tank, so only fusermount can use these.
+  /mnt/rclone/gsync/ r,
+  /dev/fuse rw,
+  /etc/fuse.conf r,
+  /etc/mtab r,
+  /{usr/,}bin/fusermount{,3} mrix,
+  capability sys_admin,
+  capability setuid,
+  capability setgid,
+  capability dac_override,
+  capability dac_read_search,
+  mount fstype=(fuse, fuse.rclone) -> /mnt/rclone/gsync/,
+  umount /mnt/rclone/gsync/,
+
+  ## fusermount (fuse 2) records the mount with mount -f and unmounts
+  ## with umount(8); both keep their entries in /run/mount/utab
+  /{usr/,}bin/{mount,umount} mrix,
+  /etc/fstab r,
+  @{PROC}/filesystems r,
+  /run/mount/ rw,
+  /run/mount/utab* rwk,
+}

@@ -25,6 +25,7 @@ mkdir -p /mnt/Regions
 mkdir -p /mnt/Games
 mkdir -p /mnt/MP3s
 mkdir -p /mnt/External
+mkdir -p /mnt/GSync
 
 ## Network shares: autofs mounts the files server's shares on access
 apt-get install -y --no-upgrade --ignore-missing autofs cifs-utils sshfs sshpass

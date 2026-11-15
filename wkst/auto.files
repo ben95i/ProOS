@@ -15,3 +15,4 @@
 /mnt/Games     -fstype=cifs,rw,credentials=/root/smb.credentials,iocharset=utf8,vers=3.0,soft,echo_interval=5,handletimeout=5000,uid=1000,gid=1000,dir_mode=0700   ://files.home/Games
 /mnt/MP3s      -fstype=cifs,rw,credentials=/root/smb.credentials,iocharset=utf8,vers=3.0,soft,echo_interval=5,handletimeout=5000,uid=1000,gid=1000,dir_mode=0700   ://files.home/MP3s
 /mnt/External  -fstype=cifs,rw,credentials=/root/smb.credentials,iocharset=utf8,vers=3.0,soft,echo_interval=5,handletimeout=5000,uid=1000,gid=1000,dir_mode=0700   ://files.home/External
+/mnt/GSync     -fstype=cifs,rw,credentials=/root/smb.credentials,iocharset=utf8,vers=3.0,soft,echo_interval=5,handletimeout=5000,uid=1000,gid=1000,dir_mode=0700   ://files.home/GSync

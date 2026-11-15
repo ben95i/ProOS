@@ -1,0 +1,36 @@
+## rclone gsync: Google Drive mounted at /mnt/rclone/gsync,
+## passed into the files LXC and shared as GSync
+## by Ben Provenzano III
+
+[Unit]
+Description=rclone: Remote FUSE filesystem
+Wants=network-online.target
+After=network-online.target apparmor.service
+RequiresMountsFor=/mnt/pve/scratch
+ConditionPathExists=/etc/rclone/rclone.conf
+
+[Service]
+User=tank
+Group=shared
+Type=notify
+
+# tank owns the datastore, so the AppArmor profile is what keeps rclone
+# inside its config, its cache and its mountpoint. systemd's own sandbox
+# options cannot be used: the namespacing ones (ProtectSystem=, BindPaths=)
+# would hide the mount from the host, and the seccomp ones imply
+# NoNewPrivileges=, which stops the setuid fusermount from mounting.
+AppArmorProfile=rclone-gsync
+
+# clears a mount left behind by a crash
+ExecStartPre=-/bin/fusermount -uz /mnt/rclone/gsync
+ExecStart=/usr/bin/rclone --config /etc/rclone/rclone.conf \
+  mount --allow-other --no-modtime --dir-cache-time=30m --umask=0 --bwlimit=10M \
+  --vfs-cache-mode=writes --vfs-cache-max-age=30m --vfs-read-chunk-size=16M \
+  --cache-dir=/mnt/pve/scratch/rclone \
+  --drive-use-trash=false gsync:/ /mnt/rclone/gsync
+ExecStop=/bin/fusermount -uz /mnt/rclone/gsync
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

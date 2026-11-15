@@ -244,4 +244,28 @@ dir: scratch
 	prune-backups keep-all=1
 	shared 0
 
+###################################################################### rclone gsync (Google Drive for the files LXC)
+
+rclone-gsync.service mounts the 'gsync' remote at /mnt/rclone/gsync
+as tank:shared (ben:shared inside the files LXC), confined by the
+AppArmor profile /etc/apparmor.d/rclone-gsync to its config
+(/etc/rclone/rclone.conf), its cache (/mnt/pve/scratch/rclone) and
+its mountpoint. The service does not start until the config exists.
+
+# Create the config (answer 'n' to auto config, then run
+# 'rclone authorize "drive"' on a machine with a browser)
+runuser -u tank -- rclone --config /etc/rclone/rclone.conf config
+systemctl restart rclone-gsync
+
+# Pass /mnt/rclone into the files LXC: add this line to the main
+# section of /etc/pve/lxc/101.conf (above any [snapshot] section),
+# then 'pct reboot 101'. rbind (unlike an mpN mount point) carries
+# the rclone mount whether it starts before or after the container.
+lxc.mount.entry: /mnt/rclone mnt/rclone none rbind,create=dir 0 0
+
+# Status and AppArmor denials
+systemctl status rclone-gsync
+journalctl -u rclone-gsync
+journalctl -k -g apparmor
+
 ####################################################################

@@ -135,6 +135,12 @@ apt-get clean -y
 rm -fr /etc/systemd/system/rpi-*
 rm -f /etc/systemd/system/usbplug.service
 
+## Delete camera cleanup settings (a module that cleans copies its own back)
+if [ -e "/etc/camcleanup.conf" ]; then
+  echo "Removing /etc/camcleanup.conf..."
+  rm -f /etc/camcleanup.conf
+fi
+
 ## Recompile All Programs
 rm -rf /opt/source-backup
 

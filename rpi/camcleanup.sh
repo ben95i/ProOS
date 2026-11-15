@@ -9,8 +9,8 @@
 #   - a cleanup starts when the folder uses more than (limit - reserve),
 #     or when the disk holding it has less than "reserve" free space
 #   - the oldest files are deleted until the folder is at least
-#     FREE_SPACE_RESERVE_GB (default 2 GB) below its limit and the disk
-#     has at least FREE_SPACE_RESERVE_GB free
+#     FREE_SPACE_RESERVE_GB below its limit and the disk has at least
+#     FREE_SPACE_RESERVE_GB free
 #   - files modified in the last MIN_FILE_AGE_MINUTES are never deleted,
 #     because the camera or rclone may still be writing them
 #   - a location is only cleaned when its mount point is mounted and its
@@ -18,8 +18,14 @@
 #
 # Run as root user only! (started by rpi-camcleanup.timer / rpi-camcleanup.service)
 #
-# All settings are configured in rpi-camcleanup.service (Environment= lines).
-# The defaults below are only used when the script is run by hand.
+# Usage: camcleanup.sh [settings file]   (default /etc/camcleanup.conf)
+#
+# Every setting comes from the settings file, which a module's installer
+# copies from its config/camcleanup.conf. Without the file nothing is cleaned.
+# A location is only cleaned when its *_PATH setting is set, e.g.
+#   GDRIVE_PATH=/mnt/smb/GSync
+#   GDRIVE_CAMERA_FOLDER=/mnt/smb/GSync/Cameras/Doorway
+#   GDRIVE_LIMIT_GB=14.5
 
 set -o nounset
 set -o pipefail
@@ -28,46 +34,56 @@ set -o pipefail
 export LC_ALL=C
 
 ###############################################################################
-## Configuration
+## Settings (read from the settings file by loadConfiguration)
 ###############################################################################
 
-## Mount points of the two storage locations
-readonly FLASH_PATH="${FLASH_PATH:-/media/usb0}"
-readonly GDRIVE_PATH="${GDRIVE_PATH:-/mnt/gsync}"
+## Settings file used when none is given on the command line
+readonly DEFAULT_CONFIG_FILE="/etc/camcleanup.conf"
 
-## Folders that are managed. Only files inside these folders are ever deleted.
-## (Write them without a trailing slash.)
-readonly FLASH_CAMERA_FOLDER="${FLASH_CAMERA_FOLDER:-$FLASH_PATH/cameras}"
-readonly GDRIVE_CAMERA_FOLDER="${GDRIVE_CAMERA_FOLDER:-$GDRIVE_PATH/Current}"
+## Every setting the file may hold. Paths are written without a trailing slash.
+##   FLASH_PATH                   flash drive mount point (empty = not cleaned)
+##   FLASH_CAMERA_FOLDER          flash drive folder kept under the limit
+##   FLASH_LIMIT_GB               its maximum size in GB (decimals allowed)
+##   FLASH_LOG_FILE               cleanup log kept on the flash drive
+##   FLASH_LOG_MAX_SIZE           its maximum size (truncate size, e.g. 5MB)
+##   GDRIVE_PATH                  Google Drive mount point (empty = not cleaned)
+##   GDRIVE_CAMERA_FOLDER         Google Drive folder kept under the limit
+##   GDRIVE_LIMIT_GB              its maximum size in GB (decimals allowed)
+##   RCLONE_SERVICE_NAME          rclone service restarted when the Drive mount
+##                                hangs (empty = the mount is not this Pi's own
+##                                rclone, e.g. an SMB share; nothing is restarted)
+##   FREE_SPACE_RESERVE_GB        GB left free below each limit, and on each disk
+##   MIN_FILE_AGE_MINUTES         files modified within this time are never deleted
+##   MOUNT_CHECK_TIMEOUT_SECONDS  wait for a mount check before treating it as hung
+##   COMMAND_TIMEOUT_SECONDS      time allowed for scanning a folder / free space
+##   FALLBACK_LOG_FILE            cleanup log used without a flash drive
+##   FALLBACK_LOG_MAX_SIZE        its maximum size (truncate size, e.g. 128KB)
+readonly SETTING_NAMES=(
+  FLASH_PATH FLASH_CAMERA_FOLDER FLASH_LIMIT_GB FLASH_LOG_FILE FLASH_LOG_MAX_SIZE
+  GDRIVE_PATH GDRIVE_CAMERA_FOLDER GDRIVE_LIMIT_GB RCLONE_SERVICE_NAME
+  FREE_SPACE_RESERVE_GB MIN_FILE_AGE_MINUTES MOUNT_CHECK_TIMEOUT_SECONDS
+  COMMAND_TIMEOUT_SECONDS FALLBACK_LOG_FILE FALLBACK_LOG_MAX_SIZE
+)
 
-## Maximum size of each managed folder in GB (decimals allowed, e.g. 14.5)
-readonly FLASH_LIMIT_GB="${FLASH_LIMIT_GB:-28}"
-readonly GDRIVE_LIMIT_GB="${GDRIVE_LIMIT_GB:-14}"
-
-## Space (GB, decimals allowed) left free below the limit, and on the disk,
-## after a cleanup
-readonly FREE_SPACE_RESERVE_GB="${FREE_SPACE_RESERVE_GB:-2}"
-
-## Files modified more recently than this are never deleted
-readonly MIN_FILE_AGE_MINUTES="${MIN_FILE_AGE_MINUTES:-10}"
-
-## rclone service that provides the Google Drive mount (restarted when it hangs)
-readonly RCLONE_SERVICE_NAME="${RCLONE_SERVICE_NAME:-rpi-rclone}"
-
-## Maximum seconds to wait for the mount check (a hung rclone mount blocks it)
-readonly MOUNT_CHECK_TIMEOUT_SECONDS="${MOUNT_CHECK_TIMEOUT_SECONDS:-10}"
-
-## Maximum run time for commands that scan the (possibly hung) mounts
-readonly COMMAND_TIMEOUT_SECONDS="${COMMAND_TIMEOUT_SECONDS:-500}"
-
-## Log files and their maximum sizes
-readonly FLASH_LOG_FILE="${FLASH_LOG_FILE:-$FLASH_CAMERA_FOLDER/camcleanup.log}"
-readonly FALLBACK_LOG_FILE="${FALLBACK_LOG_FILE:-/tmp/camcleanup.log}"
-readonly FLASH_LOG_MAX_SIZE="${FLASH_LOG_MAX_SIZE:-5MB}"
-readonly FALLBACK_LOG_MAX_SIZE="${FALLBACK_LOG_MAX_SIZE:-128KB}"
+## Every setting starts empty, so a setting missing from the file stays unset
+FLASH_PATH=""
+FLASH_CAMERA_FOLDER=""
+FLASH_LIMIT_GB=""
+FLASH_LOG_FILE=""
+FLASH_LOG_MAX_SIZE=""
+GDRIVE_PATH=""
+GDRIVE_CAMERA_FOLDER=""
+GDRIVE_LIMIT_GB=""
+RCLONE_SERVICE_NAME=""
+FREE_SPACE_RESERVE_GB=""
+MIN_FILE_AGE_MINUTES=""
+MOUNT_CHECK_TIMEOUT_SECONDS=""
+COMMAND_TIMEOUT_SECONDS=""
+FALLBACK_LOG_FILE=""
+FALLBACK_LOG_MAX_SIZE=""
 
 ## Lock file that stops two cleanups from running at the same time
-readonly LOCK_FILE="${LOCK_FILE:-/run/camcleanup.lock}"
+readonly LOCK_FILE="/run/camcleanup.lock"
 readonly LOCK_FILE_DESCRIPTOR=9
 
 ## Fixed values (not configurable)
@@ -220,8 +236,98 @@ validateFolderLimit() {
   return "$RESULT_OK"
 }
 
-## Checks all numeric settings before anything is deleted
+## Prints the text without its leading and trailing whitespace
+##   "  GDRIVE_LIMIT_GB " -> "GDRIVE_LIMIT_GB"
+trimWhitespace() {
+  local text="$1"
+  local leadingWhitespace="${text%%[![:space:]]*}"
+  text="${text#"$leadingWhitespace"}"
+  local trailingWhitespace="${text##*[![:space:]]}"
+  text="${text%"$trailingWhitespace"}"
+  echo "$text"
+}
+
+## Succeeds when the name is one of SETTING_NAMES
+isSettingName() {
+  local candidateName="$1"
+  local settingName
+  for settingName in "${SETTING_NAMES[@]}"; do
+    if [[ "$settingName" == "$candidateName" ]]; then
+      return "$RESULT_OK"
+    fi
+  done
+  return "$RESULT_ERROR"
+}
+
+## Reads the settings file into the setting variables, one KEY=value per
+## line. Blank lines and lines starting with # are skipped, and a value is
+## taken as written (no quotes, nothing expanded), e.g.
+##   GDRIVE_LIMIT_GB=14.5
+##   RCLONE_SERVICE_NAME=
+## Fails when the file is missing or holds a line it does not understand.
+loadConfiguration() {
+  local configPath="$1"
+  if [[ ! -f "$configPath" ]]; then
+    echo "No settings file $configPath, cleanup not run" >&2
+    return "$RESULT_ERROR"
+  fi
+
+  local configLine
+  local lineNumber=0
+  local trimmedLine
+  local settingName
+  local settingValue
+  while IFS= read -r configLine || [[ -n "$configLine" ]]; do
+    lineNumber=$(( lineNumber + 1 ))
+    trimmedLine="$(trimWhitespace "$configLine")"
+    if [[ -z "$trimmedLine" || "$trimmedLine" == \#* ]]; then
+      continue
+    fi
+    if [[ "$trimmedLine" != *=* ]]; then
+      echo "$configPath line $lineNumber is not KEY=value: '$trimmedLine'" >&2
+      return "$RESULT_ERROR"
+    fi
+    settingName="$(trimWhitespace "${trimmedLine%%=*}")"
+    settingValue="$(trimWhitespace "${trimmedLine#*=}")"
+    if ! isSettingName "$settingName"; then
+      echo "$configPath line $lineNumber: unknown setting '$settingName'" >&2
+      return "$RESULT_ERROR"
+    fi
+    printf -v "$settingName" '%s' "$settingValue"
+  done < "$configPath"
+  return "$RESULT_OK"
+}
+
+## Fails when the named setting is empty
+requireSetting() {
+  local settingName="$1"
+  local settingValue="${!settingName}"
+  if [[ -z "$settingValue" ]]; then
+    echo "$settingName must be set in the settings file" >&2
+    return "$RESULT_ERROR"
+  fi
+  return "$RESULT_OK"
+}
+
+## Succeeds when the settings file names a flash drive to clean
+isFlashDriveEnabled() {
+  [[ -n "$FLASH_PATH" ]]
+}
+
+## Succeeds when the settings file names a Google Drive mount to clean
+isGoogleDriveEnabled() {
+  [[ -n "$GDRIVE_PATH" ]]
+}
+
+## Checks all settings before anything is deleted: the shared ones always,
+## each location's own only when that location is enabled
 validateConfiguration() {
+  if ! isFlashDriveEnabled && ! isGoogleDriveEnabled; then
+    echo "Neither FLASH_PATH nor GDRIVE_PATH is set, nothing to clean" >&2
+    return "$RESULT_ERROR"
+  fi
+  requireSetting "FALLBACK_LOG_FILE" || return "$RESULT_ERROR"
+  requireSetting "FALLBACK_LOG_MAX_SIZE" || return "$RESULT_ERROR"
   if ! isGbAmount "$FREE_SPACE_RESERVE_GB"; then
     echo "FREE_SPACE_RESERVE_GB must be a number of GB like 2 or 1.5, got '$FREE_SPACE_RESERVE_GB'" >&2
     return "$RESULT_ERROR"
@@ -238,8 +344,16 @@ validateConfiguration() {
     echo "COMMAND_TIMEOUT_SECONDS must be a whole number, got '$COMMAND_TIMEOUT_SECONDS'" >&2
     return "$RESULT_ERROR"
   fi
-  validateFolderLimit "FLASH_LIMIT_GB" "$FLASH_LIMIT_GB" || return "$RESULT_ERROR"
-  validateFolderLimit "GDRIVE_LIMIT_GB" "$GDRIVE_LIMIT_GB" || return "$RESULT_ERROR"
+  if isFlashDriveEnabled; then
+    requireSetting "FLASH_CAMERA_FOLDER" || return "$RESULT_ERROR"
+    requireSetting "FLASH_LOG_FILE" || return "$RESULT_ERROR"
+    requireSetting "FLASH_LOG_MAX_SIZE" || return "$RESULT_ERROR"
+    validateFolderLimit "FLASH_LIMIT_GB" "$FLASH_LIMIT_GB" || return "$RESULT_ERROR"
+  fi
+  if isGoogleDriveEnabled; then
+    requireSetting "GDRIVE_CAMERA_FOLDER" || return "$RESULT_ERROR"
+    validateFolderLimit "GDRIVE_LIMIT_GB" "$GDRIVE_LIMIT_GB" || return "$RESULT_ERROR"
+  fi
   return "$RESULT_OK"
 }
 
@@ -271,23 +385,16 @@ removeTemporaryFiles() {
 ## Storage availability
 ###############################################################################
 
-## Checks that a managed folder is usable: its mount point is mounted and the
-## camera folder exists. Both checks run under a timeout, because looking at a
-## hung rclone (FUSE) mount blocks forever.
+## Checks that a managed folder is usable: the camera folder exists and its
+## mount point is mounted. Both checks run under a timeout, because looking at
+## a hung rclone (FUSE) mount blocks forever. The folder is checked first:
+## reaching it mounts an autofs share (e.g. /mnt/smb/GSync), which the mount
+## point check alone would not, so a share idle-unmounted by autofs is found.
 ## Returns RESULT_OK, RESULT_ERROR (not mounted / folder missing) or
 ## RESULT_TIMEOUT (the mount did not answer in time).
 isStorageAvailable() {
   local mountPath="$1"
   local folderPath="$2"
-
-  timeout "$MOUNT_CHECK_TIMEOUT_SECONDS" mountpoint -q -- "$mountPath"
-  local mountCheckStatus=$?
-  if [[ "$mountCheckStatus" -eq "$TIMEOUT_EXIT_CODE" ]]; then
-    return "$RESULT_TIMEOUT"
-  fi
-  if [[ "$mountCheckStatus" -ne 0 ]]; then
-    return "$RESULT_ERROR"
-  fi
 
   ## External "test" (not the shell builtin) so that timeout can stop it
   timeout "$MOUNT_CHECK_TIMEOUT_SECONDS" test -d "$folderPath"
@@ -296,6 +403,15 @@ isStorageAvailable() {
     return "$RESULT_TIMEOUT"
   fi
   if [[ "$folderCheckStatus" -ne 0 ]]; then
+    return "$RESULT_ERROR"
+  fi
+
+  timeout "$MOUNT_CHECK_TIMEOUT_SECONDS" mountpoint -q -- "$mountPath"
+  local mountCheckStatus=$?
+  if [[ "$mountCheckStatus" -eq "$TIMEOUT_EXIT_CODE" ]]; then
+    return "$RESULT_TIMEOUT"
+  fi
+  if [[ "$mountCheckStatus" -ne 0 ]]; then
     return "$RESULT_ERROR"
   fi
   return "$RESULT_OK"
@@ -311,14 +427,25 @@ isGoogleDriveMounted() {
   isStorageAvailable "$GDRIVE_PATH" "$GDRIVE_CAMERA_FOLDER"
 }
 
-## Restarts the rclone service that provides the Google Drive mount
+## Restarts the rclone service that provides the Google Drive mount, when one
+## is set, and logs which it did
+##   problemMessage  what went wrong, e.g. "Google Drive did not respond"
 restartRcloneService() {
+  local problemMessage="$1"
+  if [[ -z "$RCLONE_SERVICE_NAME" ]]; then
+    printStatus "$problemMessage, no rclone service to restart"
+    writeLogEntry "$problemMessage, no rclone service to restart"
+    return
+  fi
+  printStatus "$problemMessage, restarting $RCLONE_SERVICE_NAME"
+  writeLogEntry "$problemMessage, restarting $RCLONE_SERVICE_NAME"
   systemctl restart "$RCLONE_SERVICE_NAME"
 }
 
-## Logs to the flash drive when it is connected, otherwise to /tmp
+## Logs to the flash drive when one is set and connected, otherwise to
+## FALLBACK_LOG_FILE
 selectLogFile() {
-  if isFlashDriveConnected; then
+  if isFlashDriveEnabled && isFlashDriveConnected; then
     logFile="$FLASH_LOG_FILE"
   else
     logFile="$FALLBACK_LOG_FILE"
@@ -560,15 +687,16 @@ enforceFolderLimit() {
 ## Per-location cleanups
 ###############################################################################
 
-## Cleans the Google Drive folder when its rclone mount is available;
+## Cleans the Google Drive folder when one is set and its mount is available;
 ## restarts rclone when the mount hangs
 cleanupGoogleDrive() {
+  if ! isGoogleDriveEnabled; then
+    return
+  fi
   isGoogleDriveMounted
   local mountStatus=$?
   if [[ "$mountStatus" -eq "$RESULT_TIMEOUT" ]]; then
-    printStatus "Timeout exceeded restarting rclone"
-    writeLogEntry "Google Drive mount did not respond within $MOUNT_CHECK_TIMEOUT_SECONDS seconds, restarting rclone"
-    restartRcloneService
+    restartRcloneService "Google Drive mount did not respond within $MOUNT_CHECK_TIMEOUT_SECONDS seconds"
     return
   fi
   if [[ "$mountStatus" -ne "$RESULT_OK" ]]; then
@@ -580,14 +708,16 @@ cleanupGoogleDrive() {
   enforceFolderLimit "Google Drive" "$GDRIVE_CAMERA_FOLDER" "$GDRIVE_LIMIT_GB" ""
   local cleanupStatus=$?
   if [[ "$cleanupStatus" -eq "$RESULT_TIMEOUT" ]]; then
-    printStatus "Timeout exceeded restarting rclone"
-    writeLogEntry "Google Drive did not respond within $COMMAND_TIMEOUT_SECONDS seconds, restarting rclone"
-    restartRcloneService
+    restartRcloneService "Google Drive did not respond within $COMMAND_TIMEOUT_SECONDS seconds"
   fi
 }
 
-## Cleans the flash drive camera folder when the drive is connected
+## Cleans the flash drive camera folder when one is set and the drive is
+## connected
 cleanupFlashDrive() {
+  if ! isFlashDriveEnabled; then
+    return
+  fi
   isFlashDriveConnected
   local mountStatus=$?
   if [[ "$mountStatus" -eq "$RESULT_TIMEOUT" ]]; then
@@ -614,7 +744,11 @@ cleanupFlashDrive() {
 ###############################################################################
 
 main() {
+  local configPath="${1:-$DEFAULT_CONFIG_FILE}"
   if ! requireRootUser; then
+    exit "$RESULT_ERROR"
+  fi
+  if ! loadConfiguration "$configPath"; then
     exit "$RESULT_ERROR"
   fi
   if ! validateConfiguration; then

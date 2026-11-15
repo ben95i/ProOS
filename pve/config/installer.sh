@@ -38,7 +38,7 @@ apt-get --yes update
 apt-get install -y --no-upgrade --ignore-missing rsync cron zip screen \
  libsasl2-modules intel-microcode postfix ethtool htop apt-transport-https \
  lm-sensors zfs-auto-snapshot smartmontools apcupsd chrony mailutils \
- fastfetch fuse gocryptfs inotify-tools nmap curl
+ fastfetch fuse gocryptfs inotify-tools nmap curl rclone
 
 ## Ethernet Interface Pinning
 cp -fR $TMPDIR/50-pve-*.link /usr/local/lib/systemd/network/
@@ -161,6 +161,44 @@ chmod +x /usr/bin/file-monitor.sh
 chown root:root /usr/bin/file-monitor.sh
 systemctl enable file-monitor
 
+## rclone gsync Mount (Google Drive for the files LXC, runs as tank:shared)
+cp -f $TMPDIR/fuse.conf /etc/fuse.conf
+chmod 644 /etc/fuse.conf
+chown root:root /etc/fuse.conf
+mkdir -p /etc/rclone
+chmod 700 /etc/rclone
+chown tank:shared /etc/rclone
+if [ -e "/mnt/rclone.conf" ] && [ ! -e "/etc/rclone/rclone.conf" ]; then
+  echo "Moving /mnt/rclone.conf to /etc/rclone/rclone.conf..."
+  mv /mnt/rclone.conf /etc/rclone/rclone.conf
+fi
+if [ -e "/etc/rclone/rclone.conf" ]; then
+  chmod 600 /etc/rclone/rclone.conf
+  chown tank:shared /etc/rclone/rclone.conf
+else
+  echo "No rclone config, gsync will not mount. Create its 'gsync' remote with:"
+  echo "runuser -u tank -- rclone --config /etc/rclone/rclone.conf config"
+fi
+mkdir -p /mnt/rclone/gsync
+chmod 755 /mnt/rclone
+chown root:root /mnt/rclone
+if ! mountpoint -q /mnt/rclone/gsync; then
+  chmod 775 /mnt/rclone/gsync
+  chown tank:shared /mnt/rclone/gsync
+fi
+if mountpoint -q /mnt/pve/scratch; then
+  mkdir -p /mnt/pve/scratch/rclone
+  chmod 700 /mnt/pve/scratch/rclone
+  chown tank:shared /mnt/pve/scratch/rclone
+fi
+cp -f $TMPDIR/apparmor-rclone-gsync /etc/apparmor.d/rclone-gsync
+chmod 644 /etc/apparmor.d/rclone-gsync
+chown root:root /etc/apparmor.d/rclone-gsync
+apparmor_parser -r /etc/apparmor.d/rclone-gsync
+cp -f $TMPDIR/rclone-gsync.service /etc/systemd/system/
+chmod 644 /etc/systemd/system/rclone-gsync.service
+chown root:root /etc/systemd/system/rclone-gsync.service
+
 ## APC UPS Configuration
 cp -f $TMPDIR/apcupsd.conf /etc/apcupsd/
 chmod 644 /etc/apcupsd/apcupsd.conf
@@ -271,6 +309,9 @@ systemctl enable apcupsd
 systemctl enable file-monitor.service
 systemctl enable --now hourlyjob.timer
 systemctl enable --now hourlyjob-sd.service
+systemctl enable rclone-gsync.service
+## skipped by the unit until /etc/rclone/rclone.conf exists
+systemctl restart rclone-gsync.service
 
 ## Clean-up
 apt-get --yes autoremove

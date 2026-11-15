@@ -20,18 +20,6 @@ mount -o remount,rw /boot/firmware
 cp -f $BIN/config/module/config.txt /boot/firmware/
 mount -o remount,ro /boot/firmware
 
-## Google Drive Support
-if [ ! -e "/media/usb0/rclone/rclone.conf" ]; then
-  rm -f /root/.config/rclone/rclone.conf
-  echo "API key not found on flash drive, running setup..."
-  echo "Create new remote named 'gsync' and attach to Google Drive"
-  rclone config
-  mkdir -p /media/usb0/rclone
-  cp -f /root/.config/rclone/rclone.conf /media/usb0/rclone/
-  cat /media/usb0/rclone/rclone.conf
-  chmod -R 777 /media/usb0/rclone
-fi
-
 ## Pi Permissions
 rm -f /etc/sudoers.d/010_pi-perms
 rm -f /etc/sudoers.d/010_pi-nopasswd
@@ -53,7 +41,13 @@ chmod 400 /etc/auto.creds
 chown root:root /etc/auto.creds
 mkdir -p /mnt/smb
 
-## Script Symlink(s)
-ln -sf /opt/rpi/cpusb.sh /usr/bin/cpusb
+## Cameras Cleanup Settings (size limit for the clips on Google Drive)
+cp -f $BIN/config/module/camcleanup.conf /etc/camcleanup.conf
+chmod 644 /etc/camcleanup.conf
+chown root:root /etc/camcleanup.conf
+
+## Remove the USB flash drive copy script (the drive was removed)
+rm -f /usr/bin/cpusb
+rm -f /opt/rpi/cpusb.sh
 
 exit

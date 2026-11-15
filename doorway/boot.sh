@@ -9,26 +9,11 @@ systemctl start rpi-gposerver
 ## RAM Disk
 systemctl start rpi-ramdisk
 
-## Attach Flash Drive (and enable swap on it)
-mkdir -p /media/usb0
-if mountpoint -q /media/usb0 || mount /dev/sda1 /media/usb0; then
-  /opt/rpi/swapspace.sh /media/usb0/swapfile
-else
-  echo "flash drive not mounted, swap not enabled."
-fi
-
 ## Attach SMB Share
 FILES_IP="192.168.1.4"
 if ping -c 1 $FILES_IP > /dev/null 2> /dev/null
 then
   systemctl start autofs
-fi
-
-## Google Drive
-if [ ! -e "/media/usb0/rclone" ]; then
-  echo "flash drive not connected, not starting rclone."
-else
-  systemctl start rpi-rclone
 fi
 
 ## Camera RTSP Server
@@ -57,7 +42,10 @@ systemctl start rpi-minimotion
 ## Network Watchdog
 systemctl start rpi-netwatchdog
 
-## Cameras Cleanup Timer
+## Cameras Cleanup (Google Drive size limit, settings in
+## rpi-camcleanup.service.d/doorway.conf). The timer counts from the last
+## run, so one run is started now, in the background.
+systemctl start --no-block rpi-camcleanup.service
 systemctl start rpi-camcleanup.timer
 
 exit

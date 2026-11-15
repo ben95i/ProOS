@@ -7,7 +7,8 @@
 // the picture, and each event is recorded to an MP4 named after its start
 // time, in one sub-folder per day, e.g. 2025-03-05/2025-03-05_19.00.26.mp4.
 // Finished movies can be copied to several destinations (e.g. SMB mounts);
-// if a destination cannot be written, an optional fallback folder gets a copy.
+// if a destination cannot be written, an optional fallback folder gets a copy
+// (fallback_dir = off only logs the failure and frees temp_dir).
 //
 // Configuration (like Motion):
 //   /opt/rpi/minimotion.conf       global settings, defaults for every camera
@@ -324,7 +325,8 @@ struct DecoderSettings {
 // Where finished movies are copied, and what happens when a copy fails.
 struct CopySettings {
     std::vector<std::string> destinations;
-    std::string fallbackDirectory;   // empty = fallback disabled
+    std::string fallbackDirectory;   // empty = no fallback; an uncopied movie stays in temp_dir
+    bool fallbackOff = false;        // fallback_dir = off: a movie leaves temp_dir once every copy was tried
     int timeoutSeconds = 120;        // a copy taking longer counts as failed
 };
 
@@ -504,6 +506,26 @@ static OptionDefinition makeDirectoryOption(const char *key, Group CameraConfig:
     return OptionDefinition{key, OptionScope::ANY_FILE, parser, OptionClearer()};
 }
 
+// Builds the definition of fallback_dir: a folder, or "off" to turn the
+// fallback off so a movie is removed from temp_dir after its copies, e.g.
+//   fallback_dir = /mnt/usb/minimotion   failed copies go here
+//   fallback_dir = off                   failed copies are only logged
+static OptionDefinition makeFallbackOption(const char *key) {
+    OptionParser parser = [](ConfigurationTarget &target, const std::string &text) {
+        CopySettings &copySettings = target.camera->copy;
+        const bool turnedOff = (text == "off");
+        if (turnedOff) {
+            copySettings.fallbackDirectory.clear();
+            copySettings.fallbackOff = true;
+            return true;
+        }
+        copySettings.fallbackDirectory = normalizeDirectoryPath(text);
+        copySettings.fallbackOff = false;
+        return true;
+    };
+    return OptionDefinition{key, OptionScope::ANY_FILE, parser, OptionClearer()};
+}
+
 // Builds the definition of a repeatable directory option collected into a list.
 template <class Group>
 static OptionDefinition makeDirectoryListOption(const char *key, Group CameraConfig::*group,
@@ -632,7 +654,7 @@ static const std::vector<OptionDefinition> &optionDefinitions() {
         makeBooleanOption("fast_decode", &CameraConfig::decoder, &DecoderSettings::skipDeblocking),
 
         makeDirectoryListOption("copy_to", &CameraConfig::copy, &CopySettings::destinations),
-        makeDirectoryOption("fallback_dir", &CameraConfig::copy, &CopySettings::fallbackDirectory),
+        makeFallbackOption("fallback_dir"),
         makeNumberOption("copy_timeout", &CameraConfig::copy, &CopySettings::timeoutSeconds, 5, 3600),
     };
     return OPTION_DEFINITIONS;
@@ -3216,7 +3238,8 @@ private:
 
 // Handles every finished movie: copies it to all copy_to destinations in
 // parallel, waits up to copy_timeout for them, writes it to fallback_dir if
-// any destination could not be written, optionally removes the local file,
+// any destination could not be written (or only logs it when fallback_dir is
+// off), removes the local file once it is stored or fallback_dir is off,
 // and finally runs on_movie_end. One coordinator thread does the waiting and
 // finishing; one DestinationWorker per distinct folder does the copying.
 class MovieCopyService : public MovieSaveHandler {
@@ -3405,15 +3428,26 @@ private:
             }
             logMessage(LogLevel::WARNING, "%zu of %zu destination(s) not writable for %s: %s", failureCount,
                        destinationCount, movie.relativePath.c_str(), failureList.c_str());
-            fallbackStored = storeInFallback(movie, firstStoredCopy);
+            if (!movie.copy.fallbackOff) {
+                fallbackStored = storeInFallback(movie, firstStoredCopy);
+            }
         }
 
         // temp_dir only holds a movie until it is safely stored elsewhere:
         // every destination succeeded, or the fallback copy did. Otherwise it
-        // stays, so a movie is never deleted without a copy existing.
+        // stays, so a movie is never deleted without a copy existing. With
+        // fallback_dir = off it leaves temp_dir once every copy was tried, so
+        // a destination that is down cannot fill the RAM disk.
+        const bool noCopyStored = firstStoredCopy.empty();
+        const bool discardedUncopied = (hasDestinations && movie.copy.fallbackOff && noCopyStored);
+        if (discardedUncopied) {
+            logMessage(LogLevel::ERROR, "no destination could be written and fallback_dir is off; %s discarded",
+                       movie.relativePath.c_str());
+        }
         std::string pathForCommand = movie.localPath;
-        const bool storedElsewhere = (hasDestinations && (allCopied || fallbackStored));
-        if (storedElsewhere) {
+        const bool storedElsewhere = (allCopied || fallbackStored);
+        const bool leavesTemporaryDirectory = (hasDestinations && (storedElsewhere || movie.copy.fallbackOff));
+        if (leavesTemporaryDirectory) {
             const int unlinkResult = unlink(movie.localPath.c_str());
             if (unlinkResult == 0) {
                 pathForCommand = firstStoredCopy;
@@ -3423,7 +3457,11 @@ private:
                            describeErrno(unlinkErrno).c_str());
             }
         }
-        runMovieEndCommand(movie.onMovieEndCommand, pathForCommand);
+        // A discarded movie has no file left for on_movie_end to use.
+        const bool movieFileExists = !pathForCommand.empty();
+        if (movieFileExists) {
+            runMovieEndCommand(movie.onMovieEndCommand, pathForCommand);
+        }
         setLogContext(COPY_COORDINATOR_LOG_CONTEXT);
     }
 

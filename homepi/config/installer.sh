@@ -46,6 +46,11 @@ cp -f $BIN/config/module/rpi-motionping.timer /etc/systemd/system/
 chmod -f 644 /etc/systemd/system/rpi-motionping.timer
 chown -f root:root /etc/systemd/system/rpi-motionping.timer
 
+## Cameras Cleanup Settings (flash drive and Google Drive size limits)
+cp -f $BIN/config/module/camcleanup.conf /etc/camcleanup.conf
+chmod 644 /etc/camcleanup.conf
+chown root:root /etc/camcleanup.conf
+
 ## AutoFS Configuration
 cp -f $BIN/config/module/auto.master /etc/
 chmod 644 /etc/auto.master
