@@ -163,7 +163,7 @@ The Pis run the same `shared/nodeapi/server.js`, but `rpi/controller.js` replace
 | `mp4toleds` | `rpi-mp4toleds` | OPC client, HTTP :7860 `/api?video=` | Plays `effects/videos/*.mp4` on the pixels |
 | Effects: `textscroll maze oscope spectro noise orbits miami stripes chase writecolor` | spawned by `ledparser.js` | OPC client → :7890 | One running at a time; share `ledlayout.cpp` and `opcclient.cpp` |
 | `rtspcam` | `rpi-rtspcam` | RTSP :8554/cam | IMX462 hardware H.264 (doorway; notes in `rtspcam.md`) |
-| `minimotion` | `rpi-minimotion` | | Motion recorder: reads the RTSP stream, records in `/mnt/ramdisk`, copies clips to every `copy_to` folder at once; a failed copy goes to `fallback_dir`, or with `fallback_dir = off` is only logged and the clip still leaves the RAM disk (`doorway/minimotion.conf`) |
+| `minimotion` | `rpi-minimotion` | | Motion recorder: reads the RTSP stream, records in `/mnt/ramdisk`, copies clips to every `copy_to` folder at once; a failed copy goes to `fallback_dir`, or with `fallback_dir = off` is only logged and the clip still leaves the RAM disk; a clip that stays there (or that an earlier run left) is deleted after `temp_max_age`, or oldest first while the RAM disk has less than `temp_min_free` free, so it never fills (`doorway/minimotion.conf`) |
 | `ztermcom` (`ztermcom.c`) | CLI | serial | Framed serial request/response to Arduino hubs |
 | node API · lighttpd | `nodeapi`, `lighttpd` | :3000 · :80 | Same as the Automate server |
 

@@ -74,9 +74,11 @@
 #include <utility>
 #include <vector>
 
+#include <dirent.h>
 #include <fcntl.h>
 #include <spawn.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -122,6 +124,7 @@ static constexpr int CONFIG_LINE_BUFFER_SIZE = 2048;
 // ---- Copying --------------------------------------------------------------
 static constexpr int COPY_SHUTDOWN_GRACE_SECONDS = 20;
 static constexpr int COORDINATOR_POLL_MILLISECONDS = 1000;
+static constexpr int KEPT_MOVIE_SWEEP_SECONDS = 10;          // how often movies left in temp_dir are checked
 static constexpr int64_t WORKER_IDLE_MARKER = -1;
 static constexpr int64_t NO_DEADLINE_MARKER = -1;
 static constexpr int64_t MILLISECONDS_PER_SECOND = 1000;
@@ -328,6 +331,10 @@ struct CopySettings {
     std::string fallbackDirectory;   // empty = no fallback; an uncopied movie stays in temp_dir
     bool fallbackOff = false;        // fallback_dir = off: a movie leaves temp_dir once every copy was tried
     int timeoutSeconds = 120;        // a copy taking longer counts as failed
+    // A movie left in temp_dir is deleted once it has been there this long,
+    // or sooner (oldest first) while its disk has less than the free space.
+    int temporaryMaximumAgeSeconds = 3600;          // temp_max_age
+    long long temporaryMinimumFreeBytes = 32000000; // temp_min_free
 };
 
 // Everything one camera needs.
@@ -656,6 +663,8 @@ static const std::vector<OptionDefinition> &optionDefinitions() {
         makeDirectoryListOption("copy_to", &CameraConfig::copy, &CopySettings::destinations),
         makeFallbackOption("fallback_dir"),
         makeNumberOption("copy_timeout", &CameraConfig::copy, &CopySettings::timeoutSeconds, 5, 3600),
+        makeNumberOption("temp_max_age", &CameraConfig::copy, &CopySettings::temporaryMaximumAgeSeconds, 60, 604800),
+        makeNumberOption("temp_min_free", &CameraConfig::copy, &CopySettings::temporaryMinimumFreeBytes, 0, 100000000000.0),
     };
     return OPTION_DEFINITIONS;
 }
@@ -877,8 +886,8 @@ static bool validateCameras(const std::vector<CameraConfig> &cameras) {
 
         const bool hasDestinations = !camera.copy.destinations.empty();
         if (!hasDestinations) {
-            logMessage(LogLevel::WARNING, "camera %s: no copy_to set; movies stay in temp_dir %s",
-                       camera.name.c_str(), temporaryDirectory.c_str());
+            logMessage(LogLevel::WARNING, "camera %s: no copy_to set; movies stay in temp_dir %s for up to %d s",
+                       camera.name.c_str(), temporaryDirectory.c_str(), camera.copy.temporaryMaximumAgeSeconds);
         }
         const bool fallbackIsTemporary = (camera.copy.fallbackDirectory == temporaryDirectory);
         if (fallbackIsTemporary) {
@@ -1206,6 +1215,46 @@ static bool copyFileContents(const std::string &sourcePath, const std::string &d
     return copySucceeded;
 }
 
+// True when the file name ends in the movie extension and has a name before
+// it, e.g. "2025-03-05_19.00.26.mp4" but not ".mp4" or "notes.txt".
+static bool hasMovieFileExtension(const std::string &fileName) {
+    const std::string extension = MOVIE_FILE_EXTENSION;
+    const bool longEnough = (fileName.size() > extension.size());
+    if (!longEnough) {
+        return false;
+    }
+    const size_t extensionStart = fileName.size() - extension.size();
+    const int comparison = fileName.compare(extensionStart, extension.size(), extension);
+    return comparison == 0;
+}
+
+// The folder holding a file: "/mnt/ramdisk/cam/2025-03-05/a.mp4" ->
+// "/mnt/ramdisk/cam/2025-03-05" (or "." for a bare file name).
+static std::string parentFolderPath(const std::string &filePath) {
+    const size_t lastSlash = filePath.rfind('/');
+    if (lastSlash == std::string::npos) {
+        return ".";
+    }
+    if (lastSlash == 0) {
+        return "/";
+    }
+    return filePath.substr(0, lastSlash);
+}
+
+// Free bytes an ordinary user may still write on the disk holding `path`, or
+// -1 if that cannot be read, e.g. 31457280 with 30 MiB left on the RAM disk.
+static long long readFreeBytes(const std::string &path) {
+    struct statvfs fileSystemStatus;
+    const int statResult = statvfs(path.c_str(), &fileSystemStatus);
+    if (statResult != 0) {
+        return -1;
+    }
+    const long long blockSizeBytes = static_cast<long long>(fileSystemStatus.f_frsize);
+    const long long availableBlocks = static_cast<long long>(fileSystemStatus.f_bavail);
+    const long long freeBytes = blockSizeBytes * availableBlocks;
+    return freeBytes;
+}
+
 // Copies a movie to <destinationRoot>/<relativePath>, creating the day folder.
 // The data goes to a ".part" file first and is renamed into place once
 // complete, so nobody ever sees a half-written movie. If the name is taken,
@@ -1239,8 +1288,7 @@ static bool copyMovieToDirectory(const std::string &sourcePath, const std::strin
 
     const std::string extension = MOVIE_FILE_EXTENSION;
     std::string fileStemName = fileName;
-    const bool hasMovieExtension = (fileName.size() > extension.size() &&
-                                    fileName.compare(fileName.size() - extension.size(), extension.size(), extension) == 0);
+    const bool hasMovieExtension = hasMovieFileExtension(fileName);
     if (hasMovieExtension) {
         const size_t stemLength = fileName.size() - extension.size();
         fileStemName = fileName.substr(0, stemLength);
@@ -3236,10 +3284,85 @@ private:
     bool threadFinished = false;
 };
 
+// A movie left in temp_dir after its copies: a destination failed with no
+// fallback, the fallback failed, the camera has no copy_to, the removal
+// failed, or it was found there at start-up. MovieCopyService deletes it once
+// it is older than temp_max_age, or sooner while the disk is low.
+struct KeptMovie {
+    std::string cameraName;
+    std::string localPath;
+    int64_t keptSinceMilliseconds = 0;   // monotonic, so a clock change at boot cannot age it
+    int maximumAgeSeconds = 0;
+    long long minimumFreeBytes = 0;
+};
+
+// Finds the movies an earlier run left in the camera's temp_dir
+// (<temp_dir>/<day>/<name>.mp4) and adds them to `leftovers`, skipping paths
+// already in `seenPaths` (two cameras may share a temp_dir). Nothing is
+// recording yet when this runs, so every movie found is finished or abandoned.
+static void collectLeftoverMovies(const CameraConfig &camera, int64_t currentMilliseconds,
+                                  std::set<std::string> &seenPaths, std::vector<KeptMovie> &leftovers) {
+    const std::string &temporaryDirectory = camera.events.temporaryDirectory;
+    DIR *temporaryFolder = opendir(temporaryDirectory.c_str());
+    if (temporaryFolder == nullptr) {
+        return;
+    }
+    struct dirent *dayEntry = readdir(temporaryFolder);
+    while (dayEntry != nullptr) {
+        const std::string dayName = dayEntry->d_name;
+        dayEntry = readdir(temporaryFolder);
+        const bool isFolderLink = (dayName == "." || dayName == "..");
+        if (isFolderLink) {
+            continue;
+        }
+        const std::string dayFolderPath = temporaryDirectory + "/" + dayName;
+        struct stat dayStatus;
+        const int dayStatResult = stat(dayFolderPath.c_str(), &dayStatus);
+        const bool isDayFolder = (dayStatResult == 0 && S_ISDIR(dayStatus.st_mode));
+        if (!isDayFolder) {
+            continue;
+        }
+        DIR *dayFolder = opendir(dayFolderPath.c_str());
+        if (dayFolder == nullptr) {
+            continue;
+        }
+        struct dirent *movieEntry = readdir(dayFolder);
+        while (movieEntry != nullptr) {
+            const std::string fileName = movieEntry->d_name;
+            movieEntry = readdir(dayFolder);
+            const bool isMovieName = hasMovieFileExtension(fileName);
+            if (!isMovieName) {
+                continue;
+            }
+            const std::string moviePath = dayFolderPath + "/" + fileName;
+            struct stat movieStatus;
+            const int movieStatResult = stat(moviePath.c_str(), &movieStatus);
+            const bool isMovieFile = (movieStatResult == 0 && S_ISREG(movieStatus.st_mode));
+            if (!isMovieFile) {
+                continue;
+            }
+            const bool firstSeen = seenPaths.insert(moviePath).second;
+            if (!firstSeen) {
+                continue;
+            }
+            KeptMovie leftover;
+            leftover.cameraName = camera.name;
+            leftover.localPath = moviePath;
+            leftover.keptSinceMilliseconds = currentMilliseconds;
+            leftover.maximumAgeSeconds = camera.copy.temporaryMaximumAgeSeconds;
+            leftover.minimumFreeBytes = camera.copy.temporaryMinimumFreeBytes;
+            leftovers.push_back(leftover);
+        }
+        closedir(dayFolder);
+    }
+    closedir(temporaryFolder);
+}
+
 // Handles every finished movie: copies it to all copy_to destinations in
 // parallel, waits up to copy_timeout for them, writes it to fallback_dir if
 // any destination could not be written (or only logs it when fallback_dir is
 // off), removes the local file once it is stored or fallback_dir is off,
+// keeps any other in temp_dir only until temp_max_age or temp_min_free,
 // and finally runs on_movie_end. One coordinator thread does the waiting and
 // finishing; one DestinationWorker per distinct folder does the copying.
 class MovieCopyService : public MovieSaveHandler {
@@ -3255,6 +3378,23 @@ public:
                     workersByPath[destination] =
                         std::make_unique<DestinationWorker>(destination);
                 }
+            }
+        }
+
+        // Movies an earlier run left in temp_dir are kept like uncopied ones,
+        // so they too are deleted by age or when the disk runs low.
+        const int64_t currentMilliseconds = monotonicMilliseconds();
+        std::set<std::string> seenPaths;
+        for (const CameraConfig &camera : cameras) {
+            const size_t countBefore = keptMovies.size();
+            collectLeftoverMovies(camera, currentMilliseconds, seenPaths, keptMovies);
+            const size_t foundCount = keptMovies.size() - countBefore;
+            if (foundCount > 0) {
+                logMessage(LogLevel::WARNING,
+                           "camera %s: %zu movie(s) left in temp_dir %s by an earlier run; deleted after %d s "
+                           "or sooner if the disk runs low",
+                           camera.name.c_str(), foundCount, camera.events.temporaryDirectory.c_str(),
+                           camera.copy.temporaryMaximumAgeSeconds);
             }
         }
     }
@@ -3348,17 +3488,31 @@ private:
             std::shared_ptr<CopyJob> job;
             {
                 std::unique_lock<std::mutex> coordinatorLock(coordinatorMutex);
-                coordinatorWakeup.wait(coordinatorLock, [this]() {
+                auto hasWork = [this]() {
                     return !finishedMovies.empty() || coordinatorStopping;
-                });
-                if (finishedMovies.empty()) {
+                };
+                // With movies kept in temp_dir, wake now and then to sweep them
+                // even when no new movie arrives.
+                const bool hasKeptMovies = !keptMovies.empty();
+                if (hasKeptMovies) {
+                    coordinatorWakeup.wait_for(coordinatorLock, std::chrono::seconds(KEPT_MOVIE_SWEEP_SECONDS),
+                                               hasWork);
+                } else {
+                    coordinatorWakeup.wait(coordinatorLock, hasWork);
+                }
+                const bool hasFinishedMovie = !finishedMovies.empty();
+                if (hasFinishedMovie) {
+                    job = finishedMovies.front();
+                    finishedMovies.pop_front();
+                } else if (coordinatorStopping) {
                     return;
                 }
-                job = finishedMovies.front();
-                finishedMovies.pop_front();
             }
-            const std::vector<CopyOutcome> outcomes = waitForOutcomes(*job);
-            finishMovie(job->movie, outcomes);
+            if (job) {
+                const std::vector<CopyOutcome> outcomes = waitForOutcomes(*job);
+                finishMovie(job->movie, outcomes);
+            }
+            sweepKeptMovies();
         }
     }
 
@@ -3447,15 +3601,22 @@ private:
         std::string pathForCommand = movie.localPath;
         const bool storedElsewhere = (allCopied || fallbackStored);
         const bool leavesTemporaryDirectory = (hasDestinations && (storedElsewhere || movie.copy.fallbackOff));
+        bool removedFromTemporaryDirectory = false;
         if (leavesTemporaryDirectory) {
             const int unlinkResult = unlink(movie.localPath.c_str());
             if (unlinkResult == 0) {
+                removedFromTemporaryDirectory = true;
                 pathForCommand = firstStoredCopy;
             } else {
                 const int unlinkErrno = errno;
                 logMessage(LogLevel::WARNING, "cannot remove %s: %s", movie.localPath.c_str(),
                            describeErrno(unlinkErrno).c_str());
             }
+        }
+        // Whatever stays in temp_dir is only kept until temp_max_age, or until
+        // the disk runs low, so it can never fill the RAM disk.
+        if (!removedFromTemporaryDirectory) {
+            keepMovie(movie);
         }
         // A discarded movie has no file left for on_movie_end to use.
         const bool movieFileExists = !pathForCommand.empty();
@@ -3492,7 +3653,74 @@ private:
         return true;
     }
 
+    // Adds a movie that stays in temp_dir to the kept list, timed from now.
+    void keepMovie(const SavedMovie &movie) {
+        KeptMovie keptMovie;
+        keptMovie.cameraName = movie.cameraName;
+        keptMovie.localPath = movie.localPath;
+        keptMovie.keptSinceMilliseconds = monotonicMilliseconds();
+        keptMovie.maximumAgeSeconds = movie.copy.temporaryMaximumAgeSeconds;
+        keptMovie.minimumFreeBytes = movie.copy.temporaryMinimumFreeBytes;
+        keptMovies.push_back(keptMovie);
+        logMessage(LogLevel::INFO, "%s kept in temp_dir for up to %d s", movie.localPath.c_str(),
+                   keptMovie.maximumAgeSeconds);
+    }
+
+    // Deletes kept movies, oldest first (the list is in the order they were
+    // kept): each one older than its temp_max_age, and each one while the disk
+    // holding it has less than its temp_min_free free. Movies already gone are
+    // dropped; one that cannot be deleted is tried again on the next sweep.
+    void sweepKeptMovies() {
+        const bool nothingKept = keptMovies.empty();
+        if (nothingKept) {
+            return;
+        }
+        const int64_t currentMilliseconds = monotonicMilliseconds();
+        std::vector<KeptMovie> stillKept;
+        for (const KeptMovie &keptMovie : keptMovies) {
+            struct stat movieStatus;
+            const int statResult = stat(keptMovie.localPath.c_str(), &movieStatus);
+            const bool movieGone = (statResult != 0 && errno == ENOENT);
+            if (movieGone) {
+                continue;
+            }
+
+            const int64_t keptMilliseconds = currentMilliseconds - keptMovie.keptSinceMilliseconds;
+            const int64_t keptSeconds = keptMilliseconds / MILLISECONDS_PER_SECOND;
+            const bool tooOld = (keptSeconds >= keptMovie.maximumAgeSeconds);
+            const std::string folderPath = parentFolderPath(keptMovie.localPath);
+            const long long freeBytes = readFreeBytes(folderPath);
+            const bool freeSpaceKnown = (freeBytes >= 0);
+            const bool diskLow = (freeSpaceKnown && freeBytes < keptMovie.minimumFreeBytes);
+            if (!tooOld && !diskLow) {
+                stillKept.push_back(keptMovie);
+                continue;
+            }
+
+            setLogContext(keptMovie.cameraName);
+            const int unlinkResult = unlink(keptMovie.localPath.c_str());
+            const int unlinkErrno = errno;
+            const bool deleted = (unlinkResult == 0 || unlinkErrno == ENOENT);
+            if (!deleted) {
+                logMessage(LogLevel::WARNING, "cannot remove kept %s: %s", keptMovie.localPath.c_str(),
+                           describeErrno(unlinkErrno).c_str());
+                stillKept.push_back(keptMovie);
+            } else if (diskLow) {
+                logMessage(LogLevel::ERROR, "deleted kept %s: only %lld bytes free (temp_min_free %lld)",
+                           keptMovie.localPath.c_str(), freeBytes, keptMovie.minimumFreeBytes);
+            } else {
+                logMessage(LogLevel::WARNING, "deleted kept %s after %lld s in temp_dir (temp_max_age)",
+                           keptMovie.localPath.c_str(), static_cast<long long>(keptSeconds));
+            }
+            setLogContext(COPY_COORDINATOR_LOG_CONTEXT);
+        }
+        keptMovies = stillKept;
+    }
+
     std::map<std::string, std::unique_ptr<DestinationWorker>> workersByPath;
+    // Movies left in temp_dir, oldest first. Filled by the constructor before
+    // the coordinator starts, then used by the coordinator thread alone.
+    std::vector<KeptMovie> keptMovies;
     std::thread coordinatorThread;
     std::mutex coordinatorMutex;
     std::condition_variable coordinatorWakeup;
