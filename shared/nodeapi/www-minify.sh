@@ -30,7 +30,8 @@ echo "Compressing website components."
 
 for MINFILE in "$WWWPATH"/styles/*.css "$WWWPATH"/*.js; do
   [ -e "$MINFILE" ] || continue
-  case "$MINFILE" in *.min.js|*.min.css|*/"$CSS_COMBINED") continue ;; esac
+  # opts.js stays as written, so a module installer can rewrite its lines with sed
+  case "$MINFILE" in *.min.js|*.min.css|*/"$CSS_COMBINED"|*/opts.js) continue ;; esac
 
   MIN_NAME="${MINFILE#"$WWWPATH"/}"
   MIN_SRC="$MIN_SRCDIR/$MIN_NAME"

@@ -46,6 +46,9 @@ cp -f $BIN/config/module/camcleanup.conf /etc/camcleanup.conf
 chmod 644 /etc/camcleanup.conf
 chown root:root /etc/camcleanup.conf
 
+## Camera Fallback Partition (once per SD card, at its end; mounted by boot.sh)
+bash $BIN/fallbackpart.sh
+
 ## Remove the USB flash drive copy script (the drive was removed)
 rm -f /usr/bin/cpusb
 rm -f /opt/rpi/cpusb.sh

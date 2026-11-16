@@ -6,7 +6,8 @@
        as a phone held upright needs. viewport.js sets the width for a phone held sideways
        and for a tablet. A desktop browser ignores the tag. -->
   <meta name="viewport" content="width=490, shrink-to-fit=no"/>
-  <title id="title">Automate</title>
+  <!-- main.js sets the title from PAGE_NAME in opts.js, a Pi's brand.txt name on a Pi -->
+  <title>Automate</title>
   <link href="img/automate.png" rel="icon" type="image/x-icon">
   <!-- One sheet per component. Order matters: main.css first, as later rules override
        it at equal specificity; lists.css last, for the drag handle the bookmarks share.
@@ -37,6 +38,7 @@
        time. The feature windows load on demand. -->
   <link rel="modulepreload" href="utils.js">
   <link rel="modulepreload" href="error.js">
+  <link rel="modulepreload" href="opts.js">
   <link rel="modulepreload" href="viewport.js">
   <link rel="modulepreload" href="volctrl.js">
   <link rel="modulepreload" href="dropdowns.js">

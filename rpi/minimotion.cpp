@@ -7,8 +7,9 @@
 // the picture, and each event is recorded to an MP4 named after its start
 // time, in one sub-folder per day, e.g. 2025-03-05/2025-03-05_19.00.26.mp4.
 // Finished movies can be copied to several destinations (e.g. SMB mounts);
-// if a destination cannot be written, an optional fallback folder gets a copy
-// (fallback_dir = off only logs the failure and frees temp_dir).
+// every destination that cannot be written is logged, and if none can be, an
+// optional fallback folder gets a copy (fallback_dir = off only logs the
+// failure and frees temp_dir).
 //
 // Configuration (like Motion):
 //   /opt/rpi/minimotion.conf       global settings, defaults for every camera
@@ -515,7 +516,7 @@ static OptionDefinition makeDirectoryOption(const char *key, Group CameraConfig:
 
 // Builds the definition of fallback_dir: a folder, or "off" to turn the
 // fallback off so a movie is removed from temp_dir after its copies, e.g.
-//   fallback_dir = /mnt/usb/minimotion   failed copies go here
+//   fallback_dir = /mnt/usb/minimotion   movies no destination took go here
 //   fallback_dir = off                   failed copies are only logged
 static OptionDefinition makeFallbackOption(const char *key) {
     OptionParser parser = [](ConfigurationTarget &target, const std::string &text) {
@@ -3284,8 +3285,8 @@ private:
     bool threadFinished = false;
 };
 
-// A movie left in temp_dir after its copies: a destination failed with no
-// fallback, the fallback failed, the camera has no copy_to, the removal
+// A movie left in temp_dir after its copies: no destination took it and there
+// is no fallback, the fallback failed, the camera has no copy_to, the removal
 // failed, or it was found there at start-up. MovieCopyService deletes it once
 // it is older than temp_max_age, or sooner while the disk is low.
 struct KeptMovie {
@@ -3359,9 +3360,10 @@ static void collectLeftoverMovies(const CameraConfig &camera, int64_t currentMil
 }
 
 // Handles every finished movie: copies it to all copy_to destinations in
-// parallel, waits up to copy_timeout for them, writes it to fallback_dir if
-// any destination could not be written (or only logs it when fallback_dir is
-// off), removes the local file once it is stored or fallback_dir is off,
+// parallel, waits up to copy_timeout for them, logs every destination that
+// could not be written, writes it to fallback_dir only if none could (or
+// only logs it when fallback_dir is off), removes the local file once a copy
+// is stored or fallback_dir is off,
 // keeps any other in temp_dir only until temp_max_age or temp_min_free,
 // and finally runs on_movie_end. One coordinator thread does the waiting and
 // finishing; one DestinationWorker per distinct folder does the copying.
@@ -3568,10 +3570,12 @@ private:
         const bool hasDestinations = (destinationCount > 0);
         const bool allCopied = (failureCount == 0);
 
-        bool fallbackStored = false;
+        const bool noDestinationCopied = firstStoredCopy.empty();
         if (hasDestinations && allCopied) {
             logMessage(LogLevel::INFO, "copied %s to %zu destination(s)", movie.relativePath.c_str(), destinationCount);
         }
+        // Every failed destination is logged. The fallback copy is made only
+        // when no destination took the movie: one stored copy is enough.
         if (!allCopied) {
             std::string failureList;
             for (const std::string &description : failureDescriptions) {
@@ -3582,14 +3586,14 @@ private:
             }
             logMessage(LogLevel::WARNING, "%zu of %zu destination(s) not writable for %s: %s", failureCount,
                        destinationCount, movie.relativePath.c_str(), failureList.c_str());
-            if (!movie.copy.fallbackOff) {
-                fallbackStored = storeInFallback(movie, firstStoredCopy);
+            if (noDestinationCopied && !movie.copy.fallbackOff) {
+                storeInFallback(movie, firstStoredCopy);
             }
         }
 
-        // temp_dir only holds a movie until it is safely stored elsewhere:
-        // every destination succeeded, or the fallback copy did. Otherwise it
-        // stays, so a movie is never deleted without a copy existing. With
+        // temp_dir only holds a movie until a copy of it is stored elsewhere:
+        // on any destination, or in fallback_dir when none took it. Otherwise
+        // it stays, so a movie is never deleted without a copy existing. With
         // fallback_dir = off it leaves temp_dir once every copy was tried, so
         // a destination that is down cannot fill the RAM disk.
         const bool noCopyStored = firstStoredCopy.empty();
@@ -3599,7 +3603,7 @@ private:
                        movie.relativePath.c_str());
         }
         std::string pathForCommand = movie.localPath;
-        const bool storedElsewhere = (allCopied || fallbackStored);
+        const bool storedElsewhere = !noCopyStored;
         const bool leavesTemporaryDirectory = (hasDestinations && (storedElsewhere || movie.copy.fallbackOff));
         bool removedFromTemporaryDirectory = false;
         if (leavesTemporaryDirectory) {
@@ -3626,9 +3630,10 @@ private:
         setLogContext(COPY_COORDINATOR_LOG_CONTEXT);
     }
 
-    // Writes the movie to fallback_dir (if configured). Like a copy_to folder,
-    // fallback_dir must already exist and is never created, so a USB drive that
-    // is not mounted is reported instead of its empty mount point being filled.
+    // Writes the movie to fallback_dir (if configured), called when no
+    // destination took it. Like a copy_to folder, fallback_dir must already
+    // exist and is never created, so a USB drive that is not mounted is
+    // reported instead of its empty mount point being filled.
     // Updates `firstStoredCopy` when nothing else holds a copy yet.
     bool storeInFallback(const SavedMovie &movie, std::string &firstStoredCopy) {
         const std::string &fallbackDirectory = movie.copy.fallbackDirectory;

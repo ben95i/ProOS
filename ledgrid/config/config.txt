@@ -10,7 +10,7 @@ auto_initramfs=1
 # Use the kernel's default instead.
 disable_fw_kms_setup=1
 
-#-------Disable Bluetooth-------
+#------Disable Bluetooth-----
 dtoverlay=disable-bt
 
 #-------GPU (disable dynamic clock scaling)-------
@@ -33,9 +33,6 @@ avoid_pwm_pll=1
 dtparam=i2c_arm=off
 dtparam=i2c1=off
 
-#------Camera (disabled)------
-start_x=0
-
 #------Reboot when exceeds-----
-temp_limit=75
+temp_limit=80
 

@@ -44,14 +44,14 @@
   color: var(--alert-red);
 }
 
-/* one setting, in a box drawn like the colour prompt's hex row */
+/* one group of settings (a light's, or the sensor's), in a box drawn like the colour
+   prompt's hex row */
 .bthr__setting {
   padding: 10px 12px;
   text-align: left;
   background-color: var(--nav-menus-color);
   border: 1px solid var(--border-color);
   border-radius: 8px;
-  transition: opacity .2s ease;
 }
 
 /* the gap goes above each box after the first */
@@ -59,8 +59,24 @@
   margin-top: 12px;
 }
 
+/* the light a group's settings belong to, over them */
+.bthr__group-title {
+  font-size: 18px;
+  font-weight: bold;
+  margin-bottom: 6px;
+}
+
+/* one setting inside its group; the gap goes above each after the first */
+.bthr__item {
+  transition: opacity .2s ease;
+}
+
+.bthr__item + .bthr__item {
+  margin-top: 6px;
+}
+
 /* before the settings are read, or when they could not be */
-.bthr__setting.is-disabled {
+.bthr__item.is-disabled {
   opacity: .4;
   pointer-events: none;
 }
@@ -85,7 +101,7 @@
 }
 
 /* the presence switch shares a line with its label */
-.bthr__setting--switch {
+.bthr__item--switch {
   display: flex;
   align-items: center;
   justify-content: space-between;

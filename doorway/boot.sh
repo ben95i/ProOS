@@ -9,6 +9,35 @@ systemctl start rpi-gposerver
 ## RAM Disk
 systemctl start rpi-ramdisk
 
+## Camera Fallback Partition (made once by fallbackpart.sh): repaired first,
+## since a power cut may have hit a write, then mounted for minimotion's
+## fallback_dir. Its folder is made only on the mounted partition, so
+## without it minimotion finds no folder and keeps the movie on the RAM disk.
+fallbackMountDir="/mnt/fallback"
+fallbackCameraDir="$fallbackMountDir/minimotion"
+fallbackDevice=$(blkid -L camfallback)
+if [ -n "$fallbackDevice" ] && ! mountpoint -q "$fallbackMountDir"; then
+  mkdir -p "$fallbackMountDir"
+  e2fsck -p "$fallbackDevice"
+  fsckStatus=$?
+  ## 4 and up: errors left that -p may not fix on its own
+  if [ "$fsckStatus" -ge 4 ]; then
+    e2fsck -f -y "$fallbackDevice"
+    fsckStatus=$?
+  fi
+  if [ "$fsckStatus" -lt 4 ]; then
+    mount -t ext4 -o noatime,nodev,nosuid,noexec,errors=remount-ro "$fallbackDevice" "$fallbackMountDir"
+  else
+    echo "Fallback partition $fallbackDevice could not be repaired, not mounted."
+  fi
+fi
+## minimotion runs as root
+if mountpoint -q "$fallbackMountDir"; then
+  mkdir -p "$fallbackCameraDir"
+  chown root:root "$fallbackCameraDir"
+  chmod 755 "$fallbackCameraDir"
+fi
+
 ## Attach SMB Share
 FILES_IP="192.168.1.4"
 if ping -c 1 $FILES_IP > /dev/null 2> /dev/null

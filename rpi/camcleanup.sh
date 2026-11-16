@@ -2,15 +2,17 @@
 #
 # camcleanup.sh - Cameras Cleanup Script for Pi
 #
-# Keeps the Google Drive sync folder and the USB flash drive camera folder
-# below a configurable size limit (in GB) by deleting the OLDEST files first.
+# Keeps the Google Drive sync folder, the USB flash drive camera folder and
+# the camera fallback partition's folder (made by fallbackpart.sh) below a
+# configurable size limit (in GB) by deleting the OLDEST files first.
 #
-# Both folders share the same cleanup method (enforceFolderLimit):
+# All three folders share the same cleanup method (enforceFolderLimit):
 #   - a cleanup starts when the folder uses more than (limit - reserve),
 #     or when the disk holding it has less than "reserve" free space
 #   - the oldest files are deleted until the folder is at least
 #     FREE_SPACE_RESERVE_GB below its limit and the disk has at least
-#     FREE_SPACE_RESERVE_GB free
+#     FREE_SPACE_RESERVE_GB free (the fallback partition uses its own
+#     FALLBACKPART_RESERVE_GB, as it is smaller than the shared reserve)
 #   - files modified in the last MIN_FILE_AGE_MINUTES are never deleted,
 #     because the camera or rclone may still be writing them
 #   - a location is only cleaned when its mount point is mounted and its
@@ -52,7 +54,11 @@ readonly DEFAULT_CONFIG_FILE="/etc/camcleanup.conf"
 ##   RCLONE_SERVICE_NAME          rclone service restarted when the Drive mount
 ##                                hangs (empty = the mount is not this Pi's own
 ##                                rclone, e.g. an SMB share; nothing is restarted)
-##   FREE_SPACE_RESERVE_GB        GB left free below each limit, and on each disk
+##   FALLBACKPART_PATH            fallback partition mount point (empty = not cleaned)
+##   FALLBACKPART_CAMERA_FOLDER   fallback partition folder kept under the limit
+##   FALLBACKPART_LIMIT_GB        its maximum size in GB (decimals allowed)
+##   FALLBACKPART_RESERVE_GB      GB left free below its limit, and on the partition
+##   FREE_SPACE_RESERVE_GB        GB left free below each other limit, and on each disk
 ##   MIN_FILE_AGE_MINUTES         files modified within this time are never deleted
 ##   MOUNT_CHECK_TIMEOUT_SECONDS  wait for a mount check before treating it as hung
 ##   COMMAND_TIMEOUT_SECONDS      time allowed for scanning a folder / free space
@@ -61,7 +67,8 @@ readonly DEFAULT_CONFIG_FILE="/etc/camcleanup.conf"
 readonly SETTING_NAMES=(
   FLASH_PATH FLASH_CAMERA_FOLDER FLASH_LIMIT_GB FLASH_LOG_FILE FLASH_LOG_MAX_SIZE
   GDRIVE_PATH GDRIVE_CAMERA_FOLDER GDRIVE_LIMIT_GB RCLONE_SERVICE_NAME
-  FREE_SPACE_RESERVE_GB MIN_FILE_AGE_MINUTES MOUNT_CHECK_TIMEOUT_SECONDS
+  FALLBACKPART_PATH FALLBACKPART_CAMERA_FOLDER FALLBACKPART_LIMIT_GB
+  FALLBACKPART_RESERVE_GB FREE_SPACE_RESERVE_GB MIN_FILE_AGE_MINUTES MOUNT_CHECK_TIMEOUT_SECONDS
   COMMAND_TIMEOUT_SECONDS FALLBACK_LOG_FILE FALLBACK_LOG_MAX_SIZE
 )
 
@@ -75,6 +82,10 @@ GDRIVE_PATH=""
 GDRIVE_CAMERA_FOLDER=""
 GDRIVE_LIMIT_GB=""
 RCLONE_SERVICE_NAME=""
+FALLBACKPART_PATH=""
+FALLBACKPART_CAMERA_FOLDER=""
+FALLBACKPART_LIMIT_GB=""
+FALLBACKPART_RESERVE_GB=""
 FREE_SPACE_RESERVE_GB=""
 MIN_FILE_AGE_MINUTES=""
 MOUNT_CHECK_TIMEOUT_SECONDS=""
@@ -217,10 +228,16 @@ requireRootUser() {
   return "$RESULT_OK"
 }
 
-## Checks that one folder limit is a GB amount larger than the reserve
+## Checks that one folder limit is a GB amount larger than its reserve,
+## FREE_SPACE_RESERVE_GB unless another is named
+##   validateFolderLimit "FLASH_LIMIT_GB" "$FLASH_LIMIT_GB"
+##   validateFolderLimit "FALLBACKPART_LIMIT_GB" "$FALLBACKPART_LIMIT_GB" \
+##     "FALLBACKPART_RESERVE_GB" "$FALLBACKPART_RESERVE_GB"
 validateFolderLimit() {
   local limitName="$1"
   local limitGb="$2"
+  local reserveName="${3:-FREE_SPACE_RESERVE_GB}"
+  local reserveGb="${4:-$FREE_SPACE_RESERVE_GB}"
   if ! isGbAmount "$limitGb"; then
     echo "$limitName must be a number of GB like 14 or 14.5, got '$limitGb'" >&2
     return "$RESULT_ERROR"
@@ -228,9 +245,9 @@ validateFolderLimit() {
   local limitBytes
   limitBytes="$(convertGbToBytes "$limitGb")"
   local reserveBytes
-  reserveBytes="$(convertGbToBytes "$FREE_SPACE_RESERVE_GB")"
+  reserveBytes="$(convertGbToBytes "$reserveGb")"
   if (( limitBytes <= reserveBytes )); then
-    echo "$limitName ($limitGb GB) must be larger than FREE_SPACE_RESERVE_GB ($FREE_SPACE_RESERVE_GB GB)" >&2
+    echo "$limitName ($limitGb GB) must be larger than $reserveName ($reserveGb GB)" >&2
     return "$RESULT_ERROR"
   fi
   return "$RESULT_OK"
@@ -319,11 +336,16 @@ isGoogleDriveEnabled() {
   [[ -n "$GDRIVE_PATH" ]]
 }
 
+## Succeeds when the settings file names a camera fallback partition to clean
+isFallbackPartitionEnabled() {
+  [[ -n "$FALLBACKPART_PATH" ]]
+}
+
 ## Checks all settings before anything is deleted: the shared ones always,
 ## each location's own only when that location is enabled
 validateConfiguration() {
-  if ! isFlashDriveEnabled && ! isGoogleDriveEnabled; then
-    echo "Neither FLASH_PATH nor GDRIVE_PATH is set, nothing to clean" >&2
+  if ! isFlashDriveEnabled && ! isGoogleDriveEnabled && ! isFallbackPartitionEnabled; then
+    echo "None of FLASH_PATH, GDRIVE_PATH and FALLBACKPART_PATH is set, nothing to clean" >&2
     return "$RESULT_ERROR"
   fi
   requireSetting "FALLBACK_LOG_FILE" || return "$RESULT_ERROR"
@@ -353,6 +375,15 @@ validateConfiguration() {
   if isGoogleDriveEnabled; then
     requireSetting "GDRIVE_CAMERA_FOLDER" || return "$RESULT_ERROR"
     validateFolderLimit "GDRIVE_LIMIT_GB" "$GDRIVE_LIMIT_GB" || return "$RESULT_ERROR"
+  fi
+  if isFallbackPartitionEnabled; then
+    requireSetting "FALLBACKPART_CAMERA_FOLDER" || return "$RESULT_ERROR"
+    if ! isGbAmount "$FALLBACKPART_RESERVE_GB"; then
+      echo "FALLBACKPART_RESERVE_GB must be a number of GB like 0.5, got '$FALLBACKPART_RESERVE_GB'" >&2
+      return "$RESULT_ERROR"
+    fi
+    validateFolderLimit "FALLBACKPART_LIMIT_GB" "$FALLBACKPART_LIMIT_GB" \
+      "FALLBACKPART_RESERVE_GB" "$FALLBACKPART_RESERVE_GB" || return "$RESULT_ERROR"
   fi
   return "$RESULT_OK"
 }
@@ -425,6 +456,11 @@ isFlashDriveConnected() {
 ## Checks the Google Drive camera folder (same return values as above)
 isGoogleDriveMounted() {
   isStorageAvailable "$GDRIVE_PATH" "$GDRIVE_CAMERA_FOLDER"
+}
+
+## Checks the fallback partition camera folder (same return values as above)
+isFallbackPartitionMounted() {
+  isStorageAvailable "$FALLBACKPART_PATH" "$FALLBACKPART_CAMERA_FOLDER"
 }
 
 ## Restarts the rclone service that provides the Google Drive mount, when one
@@ -600,7 +636,7 @@ removeEmptySubfolders() {
 }
 
 ###############################################################################
-## Shared cleanup method (used by both Google Drive and the flash drive)
+## Shared cleanup method (Google Drive, the flash drive, the fallback partition)
 ###############################################################################
 
 ## Keeps one folder under its limit by deleting its oldest files.
@@ -608,6 +644,8 @@ removeEmptySubfolders() {
 ##   folderPath         folder to clean
 ##   limitGb            maximum folder size in GB
 ##   protectedFilePath  file that must never be deleted (the log file)
+##   reserveGb          GB left free below the limit and on the disk
+##                      (optional, FREE_SPACE_RESERVE_GB when not given)
 ## Returns RESULT_OK, RESULT_ERROR, or RESULT_TIMEOUT when the folder could
 ## not be read in time (a hung mount).
 enforceFolderLimit() {
@@ -615,12 +653,13 @@ enforceFolderLimit() {
   local folderPath="$2"
   local limitGb="$3"
   local protectedFilePath="$4"
+  local reserveGb="${5:-$FREE_SPACE_RESERVE_GB}"
 
-  ## Target: the folder ends FREE_SPACE_RESERVE_GB below its limit
+  ## Target: the folder ends reserveGb below its limit
   local limitBytes
   limitBytes="$(convertGbToBytes "$limitGb")"
   local reserveBytes
-  reserveBytes="$(convertGbToBytes "$FREE_SPACE_RESERVE_GB")"
+  reserveBytes="$(convertGbToBytes "$reserveGb")"
   local targetUsageBytes=$(( limitBytes - reserveBytes ))
 
   ## Step 1: list all files once (sizes and ages come from this one scan)
@@ -739,6 +778,33 @@ cleanupFlashDrive() {
   fi
 }
 
+## Cleans the camera fallback partition's folder when one is set and the
+## partition is mounted (boot.sh mounts it only when it is there and sound)
+cleanupFallbackPartition() {
+  if ! isFallbackPartitionEnabled; then
+    return
+  fi
+  isFallbackPartitionMounted
+  local mountStatus=$?
+  if [[ "$mountStatus" -eq "$RESULT_TIMEOUT" ]]; then
+    printStatus "Fallback partition not responding"
+    writeLogEntry "Fallback partition mount did not respond within $MOUNT_CHECK_TIMEOUT_SECONDS seconds, cleanup not ran"
+    return
+  fi
+  if [[ "$mountStatus" -ne "$RESULT_OK" ]]; then
+    printStatus "Fallback partition not mounted"
+    return
+  fi
+  printStatus "Fallback partition mounted"
+
+  enforceFolderLimit "Fallback partition" "$FALLBACKPART_CAMERA_FOLDER" "$FALLBACKPART_LIMIT_GB" "" \
+    "$FALLBACKPART_RESERVE_GB"
+  local cleanupStatus=$?
+  if [[ "$cleanupStatus" -eq "$RESULT_TIMEOUT" ]]; then
+    writeLogEntry "Fallback partition did not respond within $COMMAND_TIMEOUT_SECONDS seconds, cleanup not ran"
+  fi
+}
+
 ###############################################################################
 ## Main
 ###############################################################################
@@ -767,6 +833,7 @@ main() {
   selectLogFile
   cleanupGoogleDrive
   cleanupFlashDrive
+  cleanupFallbackPartition
 
   ## Log file trim
   trimLogFile "$FALLBACK_LOG_FILE" "$FALLBACK_LOG_MAX_SIZE"

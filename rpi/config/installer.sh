@@ -307,12 +307,21 @@ chown -R "$WWW_NAME":"$WWW_GROUP" /var/www/sessions
 mkdir -p /var/www/uploads
 chmod -R g+rx /var/www/uploads
 chown -R "$WWW_NAME":"$WWW_GROUP" /var/www/uploads
+
+## Set module name in website
+## PAGE_NAME in opts.js becomes the brand.txt name, escaped for a JS string, then for sed
+pageName="$MODNAME"
 if [ ! -e "$MODDIR/brand.txt" ]; then
-  ## No module selected
-  sed -i "s/>Automate</>RaspberryPi</g" "$WWWPATH/index.html"
-else
-  ## Set module name
-  sed -i "s/>Automate</>$MODNAME</g" "$WWWPATH/index.html"
+  pageName="RaspberryPi"
+fi
+jsName="${pageName//\\/\\\\}"
+jsName="${jsName//\'/\\\'}"
+sedName="${jsName//\\/\\\\}"
+sedName="${sedName//&/\\&}"
+sedName="${sedName//\//\\/}"
+sed -i "s/^export const PAGE_NAME = .*;\$/export const PAGE_NAME = '$sedName';/" "$WWWPATH/opts.js"
+if ! grep -q "^export const PAGE_NAME = '" "$WWWPATH/opts.js"; then
+  echo "Module name not set: no PAGE_NAME line in $WWWPATH/opts.js"
 fi
 
 ## Minify JS/CSS

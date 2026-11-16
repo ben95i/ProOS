@@ -1,0 +1,46 @@
+## Created by Ben Provenzano III for RPi ProOS
+
+# Automatically load overlays for detected DSI displays
+display_auto_detect=1
+
+# Automatically load initramfs files, if found
+auto_initramfs=1
+
+# Don't have the firmware create an initial video= setting in cmdline.txt.
+# Use the kernel's default instead.
+disable_fw_kms_setup=1
+
+#------Disable Bluetooth-----
+dtoverlay=disable-bt
+
+#-------GPU (disable dynamic clock scaling)-------
+gpu_mem=16
+core_freq=250
+
+#-------Disable Ram temp refresh every 500ms---------
+disable_pvt=1
+
+#-------Disable Pi Splash screen on boot-------------
+disable_splash=1
+
+#-------Audio support-------
+dtparam=audio=off
+
+#-------Remove dedicated pll for PWM audio-------
+avoid_pwm_pll=1
+
+#-------Hardware interfaces-------
+dtparam=i2c_arm=off
+dtparam=i2c1=off
+
+# --------- Disable ACT LED ---------
+dtparam=act_led_trigger=none
+dtparam=act_led_activelow=off
+
+# --------- Disable PWR LED ---------
+#dtparam=pwr_led_activelow=off
+
+#------Reboot when exceeds-----
+temp_limit=80
+
+

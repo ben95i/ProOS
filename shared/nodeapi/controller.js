@@ -506,38 +506,74 @@ async function lrXmit(arg1, arg2 = '') {
 // reader]. A null value is taken from the website (the "_set" commands), and
 // the log and status answer several lines, so callPicoText() reads them.
 //
-// "bthr-light1" is the brightness, 1-255: the level the light is at, or is
-// fading to, while it is on, and the level it will come on at while it is
-// off. Whether it is on is "bthr-light1_state", 1 or 0, which reports where a
-// fade is heading from the moment it starts.
+// The Pico drives two LEDs, each with its own light mode (0 keep off,
+// 1 automatic, 2 stay on), trigger distance (cm) and off delay (s):
+//   accent: LED0, dimmable. "bthr-light1_accent" is its brightness, 1-255:
+//           the level it is at, or is fading to, while it is on, and the
+//           level it will come on at while it is off.
+//   main:   LED1, on / off only.
+// An LED's "_state" is 1 or 0, and reports where a fade is heading from the
+// moment it starts. "bthr-light1on" / "off" and "_states" (accent~main) act
+// on both. The setting names hold no "_set", which would split them early.
 const BTHR_PICO_CODES = {
-    "bthr-light1":               ["2",  "2",  callPico],
-    "bthr-light1on":             ["2",  "1",  callPico],
-    "bthr-light1off":            ["2",  "0",  callPico],
-    "bthr-light1_state":         ["2",  "4",  callPico],
-    "bthr-light1_set":           ["3",  null, callPico],
-    "bthr-light1_motion":        ["2",  "3",  callPico],
-    "bthr-light1_config":        ["8",  "0",  callPico],
-    "bthr-light1_rangemin":      ["8",  "4",  callPico],
-    "bthr-light1_rangemin_set":  ["4",  null, callPico],
-    "bthr-light1_rangemax":      ["8",  "5",  callPico],
-    "bthr-light1_rangemax_set":  ["5",  null, callPico],
-    "bthr-light1_presence":      ["8",  "6",  callPico],
-    "bthr-light1_presence_set":  ["6",  null, callPico],
-    "bthr-light1_timeout":       ["8",  "7",  callPico],
-    "bthr-light1_timeout_set":   ["7",  null, callPico],
-    "bthr-light1_mode":          ["8",  "13", callPico],
-    "bthr-light1_mode_set":      ["13", null, callPico],
-    "bthr-light1_reset":         ["12", "1",  callPico],
-    "bthr-light1_log":           ["9",  "0",  callPicoText],
-    "bthr-light1_log_set":       ["9",  null, callPicoText],
-    "bthr-light1_status":        ["10", "0",  callPicoText],
-    "bthr-light1_sensor":        ["10", "1",  callPicoText]
+    "bthr-light1on":                 ["18", "1",  callPico],     // accent~main states after
+    "bthr-light1off":                ["18", "0",  callPico],
+    "bthr-light1_states":            ["18", "2",  callPico],     // accent~main, 1 on
+    "bthr-light1_accent":            ["2",  "2",  callPico],
+    "bthr-light1_accenton":          ["2",  "1",  callPico],     // the level the fade ends at
+    "bthr-light1_accentoff":         ["2",  "0",  callPico],
+    "bthr-light1_accent_state":      ["2",  "4",  callPico],
+    "bthr-light1_accent_set":        ["3",  null, callPico],     // 0-255
+    "bthr-light1_accent_mode":       ["8",  "13", callPico],
+    "bthr-light1_accent_mode_set":   ["13", null, callPico],
+    "bthr-light1_accent_range":      ["8",  "5",  callPico],
+    "bthr-light1_accent_range_set":  ["5",  null, callPico],     // 1-490 cm
+    "bthr-light1_accent_delay":      ["8",  "7",  callPico],
+    "bthr-light1_accent_delay_set":  ["7",  null, callPico],     // 1-9999 s
+    "bthr-light1_main_state":        ["14", "2",  callPico],
+    "bthr-light1_mainon":            ["14", "1",  callPico],     // the state after
+    "bthr-light1_mainoff":           ["14", "0",  callPico],
+    "bthr-light1_main_mode":         ["8",  "17", callPico],
+    "bthr-light1_main_mode_set":     ["17", null, callPico],
+    "bthr-light1_main_range":        ["8",  "15", callPico],
+    "bthr-light1_main_range_set":    ["15", null, callPico],     // 1-490 cm
+    "bthr-light1_main_delay":        ["8",  "16", callPico],
+    "bthr-light1_main_delay_set":    ["16", null, callPico],     // 1-9999 s
+    "bthr-light1_motion":            ["2",  "3",  callPico],     // 0 nobody, 1 still, 2 moving
+    "bthr-light1_presence":          ["8",  "6",  callPico],
+    "bthr-light1_presence_set":      ["6",  null, callPico],     // 0 or 1, both LEDs
+    "bthr-light1_config":            ["8",  "0",  callPico],     // see BTHR_CONFIG_FIELDS in bathrm.js
+    "bthr-light1_reset":             ["12", "1",  callPico],
+    "bthr-light1_log":               ["9",  "0",  callPicoText],
+    "bthr-light1_log_set":           ["9",  null, callPicoText], // newest 1-60 lines
+    "bthr-light1_status":            ["10", "0",  callPicoText],
+    "bthr-light1_sensor":            ["10", "1",  callPicoText]
 };
 
-// bthrXmit('bthr-light1on') -> fades the light on; bthrXmit('bthr-light1_set', '128')
-// A "_set" value is checked by sendPicoCode().
+// Commands that read two of the table's values in turn and answer them as
+// "first~second", so a menu that needs both opens on one request. The Pico
+// serves one request at a time, so the second waits for the first.
+const BTHR_PAIRED_READS = {
+    "bthr-light1_accent_menu": ["bthr-light1_accent", "bthr-light1_accent_mode"]  // level~mode
+};
+
+// Reads two table commands one after the other: "128~1", or the first reply
+// that is not a number (an error) as it came.
+async function bthrReadPair(commands) {
+    const [firstCommand, secondCommand] = commands;
+    const firstReply = await bthrXmit(firstCommand);
+    if (!isNumeric(firstReply)) return firstReply;
+    const secondReply = await bthrXmit(secondCommand);
+    if (!isNumeric(secondReply)) return secondReply;
+    return `${firstReply}~${secondReply}`;
+}
+
+// bthrXmit('bthr-light1_mainon') -> turns the main light on;
+// bthrXmit('bthr-light1_accent_set', '128'). A "_set" value is checked by
+// sendPicoCode().
 async function bthrXmit(arg1, arg2 = '') {
+    const pairedReads = BTHR_PAIRED_READS[arg1];
+    if (pairedReads) return await bthrReadPair(pairedReads);
     const codes = BTHR_PICO_CODES[arg1];
     if (!codes) return "bthrXmit: invalid command";
     return await sendPicoCode(codes, IP_ADRS.bthrlight1, arg2, "bthrXmit");
@@ -594,14 +630,21 @@ async function bedroomStatus() {
     return brRoom.getData();
 }
 
-// The bathroom is on while its light is on, whether motion or the website
-// switched it on. Read from the light's on / off state rather than its
-// brightness, which stays above 0 while the light is off (it holds the level
-// the light will come on at).
+// The bathroom is on while either light is on, whether motion or the website
+// switched it on. Both are read in one request as their on / off states
+// ("accent~main"), not the accent's brightness, which stays above 0 while it
+// is off (it holds the level it will come on at). A reply that is not two
+// states (the light offline) goes on both rows as it came.
 async function bathroomStatus() {
     const bthrRoom = new RoomManager();
-    const light = await bthrXmit("bthr-light1_state");
-    bthrRoom.addDevice('Accent Light', light);
+    const reply = await bthrXmit("bthr-light1_states");
+    let [accent, main] = splitByDelimiter(reply, '~');
+    if (!isNumeric(accent) || !isNumeric(main)) {
+        accent = reply;
+        main = reply;
+    }
+    bthrRoom.addDevice('Main Light', main);
+    bthrRoom.addDevice('Accent Light', accent);
     bthrRoom.updateRoomState();
     return bthrRoom.getData();
 }

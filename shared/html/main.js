@@ -9,6 +9,7 @@ import { classDisplay, cleanString, base64URLSafeEncode, sendCmd,
 import { clearVolumePopupTimer } from './volctrl.js';
 import { clearPopupTimer, installErrorHandlers } from './error.js';
 import { installViewportScale } from './viewport.js';
+import { LED_PI, SITE_NAME, PAGE_NAME, HOME_PAGE_URL, EXT_PAGES } from './opts.js';
 import { configureMenus, removeDropdowns, openDropdown, drawMenu,
   destroyActiveSwitches, beginMenuRequest, menuRequestCurrent,
   showDynFileMenu, showPowerMenu, sendLeds } from './dropdowns.js';
@@ -78,9 +79,10 @@ window.addEventListener("DOMContentLoaded", () => {
   loadFeatures();
 });
 
-// reads the model from the title and draws its markup
+// names the page from opts.js and draws its model's markup
 function loadPage() {
-  App.sysModel = document.getElementById('title').textContent;
+  App.sysModel = PAGE_NAME;
+  document.title = PAGE_NAME;
   document.body.insertAdjacentHTML('afterbegin', buildPageHTML(App.sysModel));
 }
 
@@ -126,15 +128,13 @@ async function openPixelsWindow() {
   }
 }
 
-// Index.html is served as written, so the server's title is SERVER_MODEL. A Pi's installer
-// swaps it for its brand.txt name: a LED Pi when that holds "led", a plain Pi otherwise.
-const SERVER_MODEL = 'Automate';
-
-// the whole page's markup for a model
+// The whole page's markup for a model. The server's PAGE_NAME is SITE_NAME; a Pi's installer
+// sets its brand.txt name in opts.js. A Pi is a LED Pi when its LED module's installer has
+// set LED_PI in opts.js, a plain Pi otherwise.
 function buildPageHTML(model) {
   const modelName = model.trim();
-  serverMode = modelName === SERVER_MODEL;
-  const ledPi = !serverMode && modelName.toLowerCase().includes('led');
+  serverMode = modelName === SITE_NAME;
+  const ledPi = !serverMode && LED_PI;
   const select = {
     isServer: serverMode,
     isLedCapable: serverMode || ledPi
@@ -305,7 +305,7 @@ function selectRoom(_mode) {
 
 // the Pi menu's Home row: back to the server's page
 function GoToHomePage() {
-  window.location = 'https://automate.home';
+  window.location = HOME_PAGE_URL;
 }
 
 //// page templates ////
@@ -510,8 +510,8 @@ function roomControlsTemplate() {
 </div>`;
 }
 registerListeners({
-  'btn-media-link':     () => GoToExtPage('media.home'),
-  'btn-yt-link':        () => GoToExtPage('youtube.com'),
+  'btn-media-link':     () => GoToExtPage(EXT_PAGES.media),
+  'btn-yt-link':        () => GoToExtPage(EXT_PAGES.youtube),
   'btn-lists':          () => showLists(),
   'btn-menu-allmenu':   () => openDropdown('allmenu'),
   'btn-menu-pwrmenu':   () => openDropdown('pwrmenu'),

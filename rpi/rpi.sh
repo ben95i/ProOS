@@ -226,6 +226,13 @@ exit
 
 expand)
 ## Expand filesystem on reboot
+## The camera fallback partition (fallbackpart.sh) sits after the root
+## partition, so the root partition cannot grow
+if [ -e "/etc/fallbackpart.enabled" ]; then
+  echo "This Pi has a fallback partition after the root partition."
+  echo "The root filesystem cannot be expanded."
+  exit
+fi
 echo " "
 echo "System must be in read-write mode."
 echo " "

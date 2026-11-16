@@ -1,7 +1,7 @@
 #!/bin/bash
-################################################
-## LEDstrip boot script by Ben Provenzano III ##
-################################################
+##################################################
+## Kitchen Pi boot script by Ben Provenzano III ##
+##################################################
 
 ## LED Controller
 LEDTYPE=`cat /opt/rpi/ledtype.txt`

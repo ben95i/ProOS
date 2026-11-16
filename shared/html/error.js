@@ -1,7 +1,9 @@
-// Automate - message popup and failure reports (styles/error.css). Imports nothing,
-// so every module can use it. Failures show as one of two kinds:
+// Automate - message popup and failure reports (styles/error.css). Imports only opts.js,
+// which imports nothing, so every module can use it. Failures show as one of two kinds:
 //   Not connected           no answer, or the proxy could not reach the API
 //   Exception has occurred  an error answer, an unreadable answer, a page error
+
+import { SITE_NAME } from './opts.js';
 
 const POPUP_ID = 'msg-popup';
 const POPUP_TEXT_ID = 'msg-text';
@@ -9,7 +11,7 @@ const POPUP_CLASS = 'popup-alert';
 const POPUP_FADE_CLASS = 'fade-out';
 const MESSAGE_MS = 4000;
 const ERROR_MS = 7000;
-const LOG_PREFIX = '[Automate]';
+const LOG_PREFIX = `[${SITE_NAME}]`;
 
 // longest server answer or command quoted in a popup; the console has it all
 const ANSWER_MAX_CHARS = 160;
@@ -188,7 +190,7 @@ function connectionSentence(error) {
     return 'This device has no network connection.';
   }
   if (error instanceof HttpError) {
-    return `${host} is up, but the Automate API behind it did not answer.`;
+    return `${host} is up, but the ${SITE_NAME} API behind it did not answer.`;
   }
   return `No answer from ${host}. The connection dropped or the server is down.`;
 }

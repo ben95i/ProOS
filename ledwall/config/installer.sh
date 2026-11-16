@@ -24,6 +24,12 @@ mount -o remount,ro /boot/firmware
 rm -f /opt/rpi/ledtype.txt
 echo "93ringinv" > /opt/rpi/ledtype.txt
 
+## Enable Pixel Menu in Website
+sed -i 's/^export const LED_PI = false;$/export const LED_PI = true;/' /var/www/html/opts.js
+if ! grep -q '^export const LED_PI = true;$' /var/www/html/opts.js; then
+  echo "Pixel menu not enabled: no LED_PI line in /var/www/html/opts.js"
+fi
+
 ## Custom Node API
 cp -f $BIN/config/module/custom.js /opt/nodeapi/
 chmod 644 /opt/nodeapi/custom.js

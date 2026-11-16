@@ -9,6 +9,7 @@ import { classDisplay, base64URLSafeEncode, sendCmd, html, fetchAnswer,
   GoToExtPage } from './utils.js';
 import { removeDropdowns, openDropdown } from './dropdowns.js';
 import { reportError } from './error.js';
+import { EXT_PAGES } from './opts.js';
 import Uploader from './upload.js';
 import { SSIDpwd } from './wifi.js';
 
@@ -117,14 +118,14 @@ registerListeners({
   ...menuOpeners(['atalk', 'legacy', 'unifi', 'xana', 'system', 'netwrk', 'router']),
   ...commandButtons(['startatalk', 'stopatalk', 'startlegacy', 'stoplegacy', 'startunifi',
     'stopunifi', 'startxana', 'stopxana', 'syslog', 'netscan', 'clearlog', 'rebootrouter']),
-  'btn-ext-unifi':        () => GoToExtPage('unifi:11443/network/ff7gqlig/dashboard'),
-  'btn-ext-system':       () => GoToExtPage('pve:8006'),
+  'btn-ext-unifi':        () => GoToExtPage(EXT_PAGES.unifi),
+  'btn-ext-system':       () => GoToExtPage(EXT_PAGES.proxmox),
   'btn-open-backup':      () => openServerPanel(svrOptBackupTemplate),
   'btn-open-regions':     () => openServerPanel(svrOptRegionsTemplate),
   'btn-wifi-prompt':      () => wifiPrompt(),
-  'btn-ext-edgeswitch':   () => GoToExtPage('edgeswitch.home'),
+  'btn-ext-edgeswitch':   () => GoToExtPage(EXT_PAGES.edgeswitch),
   'btn-close-svr-opt1':   () => closeServerOptions(),
-  'btn-ext-router':       () => GoToExtPage('router.home')
+  'btn-ext-router':       () => GoToExtPage(EXT_PAGES.router)
 });
 
 // the server's backup panel

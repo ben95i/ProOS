@@ -1,5 +1,5 @@
 #!/bin/bash
-## LEDstrip Configuration Script
+## Kitchen Pi Configuration Script
 
 # Import Host name
 HOSTNAME=`cat /opt/rpi/config/hostname`
@@ -23,5 +23,11 @@ mount -o remount,ro /boot/firmware
 ## Set LED Type
 rm -f /opt/rpi/ledtype.txt
 echo "3x60strips" > /opt/rpi/ledtype.txt
+
+## Enable Pixel Menu in Website
+sed -i 's/^export const LED_PI = false;$/export const LED_PI = true;/' /var/www/html/opts.js
+if ! grep -q '^export const LED_PI = true;$' /var/www/html/opts.js; then
+  echo "Pixel menu not enabled: no LED_PI line in /var/www/html/opts.js"
+fi
 
 exit

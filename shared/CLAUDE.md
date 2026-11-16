@@ -19,15 +19,17 @@ There is no build step, test suite or linter in the repo; `html/` is served as w
 
 Automate is a one-page home automation site that runs the apartment's lights, audio, PCs, LEDs and doorway camera from a phone or browser. It is plain JavaScript ES modules with no framework: `index.html` loads `main.js`, which draws the whole page from template literals and imports one module per feature and one per room.
 
-The modules import in one direction only, so none of them can call back up: `error.js` (the message popup and error reports) at the bottom, `utils.js` above it, `volctrl.js` (the amp rooms' volume controls) and `dropdowns.js` above it, the room modules (`livingrm.js`, `bedrm.js`, `bathrm.js`), the Server window (`server.js`) and the temperature window (`thermo.js`) above that, and `main.js` on top. What `dropdowns.js` needs from the page (the rooms, the LED text scroller, the browser settings, the bookmarks and weather menus) is handed to it once by `configureMenus()` in `main.js`.
+The modules import in one direction only, so none of them can call back up: `opts.js` (the site's options) at the bottom, `error.js` (the message popup and error reports) above it, `utils.js` above that, `volctrl.js` (the amp rooms' volume controls) and `dropdowns.js` above it, the room modules (`livingrm.js`, `bedrm.js`, `bathrm.js`), the Server window (`server.js`) and the temperature window (`thermo.js`) above that, and `main.js` on top. What `dropdowns.js` needs from the page (the rooms, the LED text scroller, the browser settings, the bookmarks and weather menus) is handed to it once by `configureMenus()` in `main.js`.
 
-One codebase serves three device models. `main.js` reads the model from the page's `<title>` at load and draws only that model's markup; markup for the other models never reaches the page.
+One codebase serves three device models. `main.js` reads the model at load from `PAGE_NAME` and `LED_PI` in `opts.js`, names the page (its title and the About window) `PAGE_NAME`, and draws only that model's markup; markup for the other models never reaches the page.
 
 | Model | Detected by | What it draws |
 | --- | --- | --- |
-| Server | title is exactly `Automate` (`SERVER_MODEL`), as `index.html` is served on the automate host | Full page: top nav (main menu, bookmarks, room status, room selector, weather, stats), Pixels, APT and room groups, server options |
-| LED Pi | any other title holding "led" | Pixels group, LED text scroller, Pi main menu, Pi options, log window |
-| Pi | any other title (a Pi's installer puts its `brand.txt` name there: "Bedroom", "AudioCPU", "Doorway") | Pi main menu, Pi options, log window |
+| Server | `PAGE_NAME` is `SITE_NAME` (`Automate`), as `opts.js` is served on the automate host | Full page: top nav (main menu, bookmarks, room status, room selector, weather, stats), Pixels, APT and room groups, server options |
+| LED Pi | any other `PAGE_NAME`, with `LED_PI` set to true in `opts.js` by the module's installer (`ledwall`, `ledgrid`, `ktchpi`) | Pixels group, LED text scroller, Pi main menu, Pi options, log window |
+| Pi | any other `PAGE_NAME`, with `LED_PI` left false (a Pi's installer sets its `brand.txt` name there: "Bedroom", "AudioCPU", "Doorway") | Pi main menu, Pi options, log window |
+
+`opts.js` holds the site's options, imports nothing and is never minified (`www-minify.sh` skips it), so an installer can rewrite one of its lines with `sed`: `LED_PI` (false as deployed), `SITE_NAME` (`Automate`: the server's page name, the console log prefix and error text), `PAGE_NAME` (`SITE_NAME` as deployed; the Pi installer, `rpi/config/installer.sh` under `## Set module name in website`, rewrites the line to the module's `brand.txt` name, or `RaspberryPi` without one, escaped for a JS string), `HOME_PAGE_URL` (a Pi menu's Home row) and `EXT_PAGES` (the hosts the YouTube, Media, UniFi, Proxmox, EdgeSwitch and router buttons open). `index.html`'s own `<title>` stays `Automate` until `main.js` replaces it. Every deploy brings `opts.js` back as written, then a LED module's installer sets `LED_PI` to true under `## Enable Pixel Menu in Website`, after its `## Set LED Type` step. The model does not depend on the Pi's name: the kitchen Pi (brand "KitchenPi") is a LED Pi.
 
 lighttpd serves the static files and reverse-proxies `/api` to the node API on 127.0.0.1:3000. Every button press becomes a `GET /api?action=…&arg=…&var=…`, menu and list files are read and written through `/api/read` and `/api/write`, uploads go to `/api/upload` and the doorway camera streams from `/api/camera/doorway`.
 
@@ -143,7 +145,7 @@ The grids are built from `dropdownButtonTemplate()` and `gridButtonTemplate()` i
 | --- | --- | --- | --- |
 | Living Room | `lr` | LEDwall (`lrxmit`), 0–100 | the thermostat, Main Lamp, Backlight, Desktop PC, Stereo System |
 | Bedroom | `br` | `brpi`, 0–192 shown as % | Desk Lamp, Bed Lights, RetroPi TV, Vintage Macs, Bedroom TV, Bedroom PC, Audio System |
-| Bathroom | `bthr` | none | Bathroom Light |
+| Bathroom | `bthr` | none | Main Light, Accent Light |
 
 ### Living Room
 
@@ -178,48 +180,55 @@ The grids are built from `dropdownButtonTemplate()` and `gridButtonTemplate()` i
 
 | Button | Opens | Device / command |
 | --- | --- | --- |
-| Brightness | Slider, 0–255 | `bthr-light1`, `bthr-light1_set_<n>` |
-| Mode | Stay On / Automatic / Always Off, active one green | `bthr-light1_mode`, `bthr-light1_mode_set_<0–2>` |
+| Accent | Brightness slider over Stay On / Automatic / Keep Off, active one green | `bthr-light1_accent_menu` (level~mode), `bthr-light1_accent_set_<n>`, `bthr-light1_accent_mode_set_<0–2>` |
+| Main | Stay On / Automatic / Keep Off, active one green | `bthr-light1_main_mode`, `bthr-light1_main_mode_set_<0–2>` |
 | Settings | Motion sensor settings window | See *Bathroom light* |
 
-The bathroom is left out of `lightson`, `lightsoff`, `allon` and `alloff`; APT's Room on / off still reaches it as `bthron` / `bthroff` while it is the room on screen.
+The bathroom is left out of `lightson`, `lightsoff`, `allon` and `alloff`; APT's Room on / off still reaches it as `bthron` / `bthroff` (both lights) while it is the room on screen.
 
 ## Bathroom light
 
-The bathroom's one device is the BathroomLight, a Pico W on 192.168.1.21:4000 (`bthrlight1` in the API's address table) driving a PWM LED and a C4002 mmWave motion sensor. Motion fades it in, and it fades off after the off delay with nobody detected. All of its controls live in `bathrm.js`, styled by `styles/bathrm.css`.
+The bathroom's one device is the BathroomLight, a Pico W on 192.168.1.21:4000 (`bthrlight1` in the API's address table, firmware and its own API reference in `../pico/BathroomLight/`) driving two lights and a C4002 mmWave motion sensor: the **accent** light (the Pico's LED0, a dimmable PWM LED) and the **main** light (LED1, on / off only). Each light has its own mode, its own trigger distance (motion within it turns the light on) and its own off delay (nobody detected within that distance for that long turns it off); presence hold is shared. All of its controls live in `bathrm.js`, styled by `styles/bathrm.css`.
 
-- **Brightness** reads `bthr-light1`, 1–255: the level the light is at (or fading to) while it is on, and the level it will come on at while it is off. The slider is an ordinary `slider` row, so the light gets at most one level every 120 ms while it is dragged and the release value always lands last.
-- **Mode** reads `bthr-light1_mode` and marks Stay On (2), Automatic (1) or Always Off (0) green; a row sends `bthr-light1_mode_set_<n>`.
-- **Room status** reads `bthr-light1_state`, 1 or 0, which reports where a fade is heading from the moment it starts.
+- **Accent** opens on one `bthr-light1_accent_menu` read, which the API answers as `level~mode` from two Pico calls. The level is 1–255: where the light is (or is fading to) while it is on, and where it will come on while it is off. The slider is an ordinary `slider` row, so the light gets at most one level every 120 ms while it is dragged and the release value always lands last. Under it, the modes: Stay On (2), Automatic (1), Keep Off (0), the one in force green; a row sends `bthr-light1_accent_mode_set_<n>`.
+- **Main** reads `bthr-light1_main_mode` and draws the same three rows, sending `bthr-light1_main_mode_set_<n>`; it has no slider.
+- **Room status** reads `bthr-light1_states`, `accent~main` as 1 or 0, which reports where a fade is heading from the moment it starts, and lists Main Light, then Accent Light; the room is on while either is.
+- In Automatic, an on command (`bthron`, `bthr-light1_accenton`, `bthr-light1_mainon`) turns a light on only while someone is within its distance, so a short-reach main light can stay off when the room is switched on from further away.
 
 ### Settings window
 
-`bathroomSettingsPrompt()` opens a centred window, 302 px wide so its setting boxes end level with its row of three buttons, filled from one `bthr-light1_config` read (`min~max~presence~timeout~mode`). Each change is sent on release and confirmed in the title for 5 s ("Off delay: 6 min 8 s"); errors show there in red, and "Light offline" stays while the settings are greyed out.
+`bathroomSettingsPrompt()` opens a centred window, 302 px wide so its boxes end level with its row of three buttons, filled from one `bthr-light1_config` read (`presence~accent range~accent delay~accent mode~main range~main delay~main mode`). The settings sit in three boxes (`BTHR_GROUPS`): Accent Light and Main Light, each titled and holding its distance and off delay, then the presence switch. Each change is sent on release and confirmed in the title for 3 s ("Main off delay: 1 min 38 s"); errors show there in red, and "Light offline" stays while the settings are greyed out.
 
 | Setting | Control | Range | Command |
 | --- | --- | --- | --- |
-| Nearest detection | Slider, held below the farthest | 0–1000 cm, shown in feet | `bthr-light1_rangemin_set_<n>` |
-| Farthest detection | Slider, held above the nearest | 0–1000 cm, shown in feet | `bthr-light1_rangemax_set_<n>` |
-| Presence hold (presence keeps the light on) | Switch | 0 / 1 | `bthr-light1_presence_set_<n>` |
-| Off delay | Slider on a cube curve (about 1 s steps at the short end) | 6 s – 1 h | `bthr-light1_timeout_set_<n>` |
+| Accent / Main: Turns on within | Slider | 1–490 cm (the sensor's reach with 20 cm gates), shown in inches under 3 ft, else in feet | `bthr-light1_accent_range_set_<n>` · `bthr-light1_main_range_set_<n>` |
+| Accent / Main: Off delay | Slider on a cube curve (about 1 s steps at the short end) | 1 s – 1 h | `bthr-light1_accent_delay_set_<n>` · `bthr-light1_main_delay_set_<n>` |
+| Presence hold (still presence keeps a light on) | Switch | 0 / 1 | `bthr-light1_presence_set_<n>` |
 
 The Log and Sensor buttons turn the window into a log box twice as wide (680 px), filled from `bthr-light1_log` or `bthr-light1_sensor`, with Back, Refresh (reads the same read-out again) and Close under it. Every request from the window waits for the one before it (`bthrRequest()`, a `picoRequestQueue()`), because the Pico serves one request at a time.
 
 ### API commands
 
-`bthrXmit()` in `controller.js` maps each command to a Pico call `http://192.168.1.21:4000/api?<cmd>,,<value>~`. The log and status replies keep their line breaks; the rest are single values. A `_set` value has to be a whole number from 0 to 9999, checked by `sendPicoCode()` before anything is sent, or the answer is `bthrXmit: non-numeric value` or `bthrXmit: out-of-range value`; ranges within that are the Pico's to check.
+`bthrXmit()` in `controller.js` maps each command to a Pico call `http://192.168.1.21:4000/api?<cmd>,,<value>~` from `BTHR_PICO_CODES`, and the two-value reads in `BTHR_PAIRED_READS` to two calls in turn. The log and status replies keep their line breaks; the rest are single values. A `_set` value has to be a whole number from 0 to 9999, checked by `sendPicoCode()` before anything is sent, or the answer is `bthrXmit: non-numeric value` or `bthrXmit: out-of-range value`; ranges within that are the Pico's to check. Setting names hold no `_set` (`range`, `delay`), which would split them early.
 
 | Website command | Pico call | Reply |
 | --- | --- | --- |
-| `bthr-light1` | 2, 2 | Brightness 1–255 |
-| `bthr-light1on` · `off` | 2, 1 · 2, 0 | Level the fade ends at |
-| `bthr-light1_state` | 2, 4 | 1 on, 0 off |
+| `bthr-light1on` · `off` | 18, 1 · 18, 0 | Both lights, each by its own mode: `accent~main` states after |
+| `bthr-light1_states` | 18, 2 | `accent~main`, 1 on, 0 off |
+| `bthr-light1_accent` | 2, 2 | Accent brightness 1–255 |
+| `bthr-light1_accent_menu` | 2, 2 then 8, 13 | `level~mode` |
+| `bthr-light1_accenton` · `off` | 2, 1 · 2, 0 | Level the fade ends at |
+| `bthr-light1_accent_state` | 2, 4 | 1 on, 0 off |
+| `bthr-light1_accent_set_<n>` | 3, n | Level set, or the kept on level |
+| `bthr-light1_mainon` · `off` | 14, 1 · 14, 0 | Main state after, 1 or 0 |
+| `bthr-light1_main_state` | 14, 2 | 1 on, 0 off |
+| `bthr-light1_accent_mode` · `_range` · `_delay` | 8, 13 · 5 · 7 | One setting |
+| `bthr-light1_main_mode` · `_range` · `_delay` | 8, 17 · 15 · 16 | One setting |
+| …`_set_<n>` of those | 13 · 5 · 7 / 17 · 15 · 16, n | The new value: mode 0–2, range 1–490 cm, delay 1–9999 s |
+| `bthr-light1_presence` · `_presence_set_<n>` | 8, 6 · 6, n | Presence hold, 0 or 1, both lights |
 | `bthr-light1_motion` | 2, 3 | 0 nobody, 1 still, 2 moving |
-| `bthr-light1_set_<n>` | 3, n | Level set, or the kept on level |
-| `bthr-light1_config` | 8, 0 | `min~max~presence~timeout~mode` |
-| `bthr-light1_rangemin` · `rangemax` · `presence` · `timeout` · `mode` | 8, 4 · 5 · 6 · 7 · 13 | One setting |
-| …`_set_<n>` of those | 4 · 5 · 6 · 7 · 13, n | The new value |
-| `bthr-light1_reset` | 12, 1 | Defaults, mode back to Auto |
+| `bthr-light1_config` | 8, 0 | `presence~accent range~accent delay~accent mode~main range~main delay~main mode` |
+| `bthr-light1_reset` | 12, 1 | Defaults (150 cm / 30 s, 30 cm / 15 s, both Automatic), as `_config` |
 | `bthr-light1_log` · `_log_set_<n>` | 9, 0 · 9, n | Rolling log, all or newest n lines |
 | `bthr-light1_status` · `_sensor` | 10, 0 · 10, 1 | Status text, plus the sensor's stored settings |
 
@@ -279,7 +288,7 @@ Device addresses are in one table at the top of `controller.js`, `IP_ADRS`: `lrt
 
 **Living room (`lrXmit`).** The stereo commands are codes sent to the LEDwall at 192.168.1.12 (`extcom`): power (`hifistate`, `…on`, `…off`), inputs (`usb`, `aux`, `phono`, `coax`, `opt`, `autodac`, `curinput`), volume (`volup`, `voldwn`, `volupc`, `voldwnc`, `volmute`, `voldisplay`), `vlimit`, `togglehpf`, `curhpfvollim` and the subwoofers (`subup`, `subdwn`, `submute`, `subup_fast`, `subdwn_fast`). The living room lamp is a Pico at 192.168.1.18 (`lrmlamp1`; `lrmLamp1Status()`, `lrmLamp1On()`, `lrmLamp1Off()`): `wl1_dual` reads both channels as `lamp~backlight`, `wl1_dualon` / `off` and `wl1_led1…` / `wl1_led2…` switch them, `wl1_dual_set_<n>` dims. `wkststate` pings the desktop (192.168.1.14), and its `on` / `off` press the PC power relay only when the ping says the state would change.
 
-**Living room thermostat.** The SmartThermo, a Pico W on 192.168.1.3:4000 (`lrthermo1`), is reached through `lrxmit` from the `LR_THERMO_PICO_CODES` table, sent and checked as the bathroom light's are (`sendPicoCode()`); its commands are in `../automate/devices/SmartThermo/docs/SmartThermo API Command Reference.md`. The setpoint is `lr-thermo1_target`, because a name holding `_set` would be split there. A refused value (out of range, or cool while the sensor has failed) answers `commonAPIRequest: invalid response`. The thermostat is not part of any scene. In the living room status it is the first row, read from `lr-thermo1` and named by what the HVAC is doing (`lrThermoStatusRow()`): AC On or Heat On (green), Fan On (yellow, fan only), Heat / AC Off (black), or in their place Thermostat Fault, Thermostat Offline or Thermostat Error (red). A sensor fault (startup lockout, stale or failed, sensor states 2–4) shows as Thermostat Fault, and a reply that is not a status as Thermostat Error. The row carries its own `indicator`, which `roomstate.js` draws in place of one worked out from `status`, and it never turns the room's light on.
+**Living room thermostat.** The SmartThermo, a Pico W on 192.168.1.3:4000 (`lrthermo1`), is reached through `lrxmit` from the `LR_THERMO_PICO_CODES` table, sent and checked as the bathroom light's are (`sendPicoCode()`); its commands are in `../pico/SmartThermo/docs/SmartThermo API Command Reference.md`. The setpoint is `lr-thermo1_target`, because a name holding `_set` would be split there. A refused value (out of range, or cool while the sensor has failed) answers `commonAPIRequest: invalid response`. The thermostat is not part of any scene. In the living room status it is the first row, read from `lr-thermo1` and named by what the HVAC is doing (`lrThermoStatusRow()`): AC On or Heat On (green), Fan On (yellow, fan only), Heat / AC Off (black), or in their place Thermostat Fault, Thermostat Offline or Thermostat Error (red). A sensor fault (startup lockout, stale or failed, sensor states 2–4) shows as Thermostat Fault, and a reply that is not a status as Thermostat Error. The row carries its own `indicator`, which `roomstate.js` draws in place of one worked out from `status`, and it never turns the room's light on.
 
 | Website command | Pico call | Reply |
 | --- | --- | --- |
@@ -327,6 +336,7 @@ Each feature larger than a room button is a class in its own module, and anythin
 | `wifi.js` | `SSIDpwd()` | Guest Wi-Fi password for the QR window |
 | `viewport.js` | (functions) | The page's scale on a phone or tablet: `installViewportScale()` writes the viewport tag's width for the screen (see *Page scale*) |
 | `error.js` | `HttpError` | The message popup and every failure report (see *Errors* below) |
+| `opts.js` | (constants) | The site's options: `LED_PI`, `SITE_NAME`, `PAGE_NAME`, `HOME_PAGE_URL`, `EXT_PAGES` (see *Overview*) |
 
 ### utils.js
 
@@ -346,7 +356,7 @@ Each feature larger than a room button is a class in its own module, and anythin
 
 ### Errors
 
-`error.js` holds the message popup and every report of a failure, styled by `styles/error.css`. It imports nothing, so `utils.js` and every other module can use it.
+`error.js` holds the message popup and every report of a failure, styled by `styles/error.css`. It imports only `opts.js` (for `SITE_NAME`), which imports nothing, so `utils.js` and every other module can use it.
 
 | Export | What it does |
 | --- | --- |
@@ -390,14 +400,14 @@ Then its test server answers `styles/icons.min.css` and `fonts/fa-*.woff2` from 
 
 ## Deployment and conventions
 
-`../login.sh` copies the site and API to the host, and `nodeapi/www-minify.sh` minifies the deployed site in place, then combines the stylesheets into `styles/site.css` in the order `index.html` links them and points the deployed page at that one file: yui-compressor for `styles/*.css`, `uglifyjs --compress` for the root `*.js`, with a cache under `/opt/www-mincache` so unchanged files are not recompressed. `installer.sh` on the host copies the staged site into `/var/www/html` (leaving `ram/` alone), installs the API and its service, and runs the minifier. The node API runs separately behind lighttpd and is not minified. lighttpd (`automate/config/lighttpd.conf`, `rpi/config/lighttpd.conf`) sends the page, `.js` and `.css` with `max-age=0`, so browsers revalidate them on every load: one stale cached ES module (iOS Safari keeps them otherwise) can fail to link against new ones and leave the page black.
+`../login.sh` copies the site and API to the host, and `nodeapi/www-minify.sh` minifies the deployed site in place, then combines the stylesheets into `styles/site.css` in the order `index.html` links them and points the deployed page at that one file: yui-compressor for `styles/*.css`, `uglifyjs --compress` for the root `*.js` (except `opts.js`, left as written for the LED installers' `sed`), with a cache under `/opt/www-mincache` so unchanged files are not recompressed. `installer.sh` on the host copies the staged site into `/var/www/html` (leaving `ram/` alone), installs the API and its service, and runs the minifier. The node API runs separately behind lighttpd and is not minified. lighttpd (`automate/config/lighttpd.conf`, `rpi/config/lighttpd.conf`) sends the page, `.js` and `.css` with `max-age=0`, so browsers revalidate them on every load: one stale cached ES module (iOS Safari keeps them otherwise) can fail to link against new ones and leave the page black.
 
 Where new work goes (code style rules, including buttons, listeners and helpers, are in `../CODESTYLE.md`):
 
 - A room's template, listeners, menus and windows live in its own module and sheet; code two rooms share goes in `utils.js` (the volume controls in `volctrl.js`), and anything that draws or opens a menu in `dropdowns.js`. A new room exports its config and is added to `ROOM_CONFIGS` in `main.js`. A feature that stands on its own is a class in its own module with its own sheet.
 - Icons need no build step of their own: a page names any icon of the kit (`fad fa-bell`) and the next deploy builds it. The built sheet and fonts live only on `mgmt`, in the cache `/tmp/proos-fontcache`: before every deploy of the site (`automate` and every Pi), `../login.sh` checks the cache against the site with `build-icons.py --check`, builds into it when a page names an icon it lacks (or after a reboot cleared `/tmp`), and copies the cached sheet and fonts into the copy of the site it sends, logging each step under `Icons:`. A failed build sends the cache's older build (icons added since show blank), or, with no build at all, a site whose icons all show blank, with a warning. Never run the builder on the workstation into the repo, or commit its output; the kit stays out of `html/` so it is not deployed.
 - A feature window that only opens on a press loads on demand: `onDemandModule()` in the module that opens it, and in `SERVER_PRELOADS` in `main.js` if the server page uses it. `upload.js` stays a normal import, as a file dialog must open inside the press.
-- Imports go downwards only (`main.js` → rooms, `server.js` and `thermo.js` → `dropdowns.js` → `volctrl.js` → `utils.js` → `error.js`; `viewport.js` imports nothing and is used by `main.js` alone); a lower module that needs something from the page takes it as a parameter or through `configureMenus()`.
+- Imports go downwards only (`main.js` → rooms, `server.js` and `thermo.js` → `dropdowns.js` → `volctrl.js` → `utils.js` → `error.js` → `opts.js`; `viewport.js` imports nothing and is used by `main.js` alone, and `opts.js` imports nothing and is read by `main.js`, `server.js` and `error.js`); a lower module that needs something from the page takes it as a parameter or through `configureMenus()`.
 - Read and write state files through the site's file API, never a separate store.
 - Report failures through `error.js` (`reportError` around a request, `reportFileFailure` after a failed `readFile` / `writeFile`), never a hand-written popup; `showPopup` is for notices.
 - A new API command is a case in `executeMain()`, or an entry in a room's code table; a service with its own route registers it from its own module, as `upload.js` and `camstream.js` do. Query values must fit the API's character set, so free text goes as URL-safe base64.

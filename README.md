@@ -33,7 +33,7 @@ One Proxmox server (`pve`) runs the network's services as LXC containers and KVM
   │  router VM 100 · appletalk VM 103 · xana VM 105 · unifi VM 107                   │
   │  ZFS: rpool (boot) · tank/datastore (data, mirrored) · scratch SSD · ext. backups │
   └──────────────────────────────────────────────────────────────────────────────────┘
-       Pis: brpi · ledwall · ledgrid · ledstrip · doorway · homepi · btpi · lrpi
+       Pis: brpi · ledwall · ledgrid · ktchpi · doorway · homepi · btpi · lrpi
        Microcontrollers: BathroomLight, LivingRoomLamp, SmartThermo (Pico W) · Bedroom hub, amp, IR hub (AVR)
 ```
 
@@ -44,7 +44,7 @@ Every top-level folder is one of four kinds. `login.sh` tells them apart by the 
 | Kind | Folders | Layout | Deployed by |
 | --- | --- | --- | --- |
 | Pi base | `rpi/` | Programs, `config/` (installer, systemd units, system configs), `effects/` (LED programs) | Copied to every Pi first, to `/opt/rpi` |
-| Pi module | `brpi` `btpi` `doorway` `homepi` `ledgrid` `ledstrip` `ledwall` `lrpi` | `boot.sh`, `config/` (`installer.sh`, `brand.txt`, `config.txt`, other configs), extra programs or firmware | Overlaid onto `/opt/rpi` after the base, with `config/` sent to `/opt/rpi/config/module/` |
+| Pi module | `brpi` `btpi` `doorway` `homepi` `ktchpi` `ledgrid` `ledwall` `lrpi` | `boot.sh`, `config/` (`installer.sh`, `brand.txt`, `config.txt`, other configs), extra programs or firmware | Overlaid onto `/opt/rpi` after the base, with `config/` sent to `/opt/rpi/config/module/` |
 | Server (LXC / VM / PC) | `automate` `files` `legacy` `media` `mgmt` (LXC); `appletalk` `xana` (VM); `pve` (the Proxmox host); `brpc` (a physical PC) | `config/installer.sh` plus the files it installs; `lxc.conf` / `qemu.conf` / `pc.conf` marker | Tarred to `/tmp/config` and `installer.sh` run |
 | Not deployed | `shared/` (Automate site, deployed with `automate` and every Pi), `wkst/` (this workstation, `install.sh` run by hand) | | |
 
@@ -70,13 +70,13 @@ DNS domain `home`, LAN 192.168.1.0/24, gateway and DNS the router at 192.168.1.1
 | `brpi` | Pi | .15 | Bedroom Pi (wired, Wi-Fi off): AirPlay, serial bridge to the bedroom hub and the amp, relax sounds |
 | `ledwall` | Pi | .12 (`lrxmit` in the API) | LEDwall: the 93-pixel LED ring (Fadecandy) and the living room's command host. Its `custom.js` serves `extcom` (living room stereo codes over serial on `/dev/ttyAMA0`), the white LED, the front button and the desktop PC power relay (`pc_power`) |
 | `ledgrid` | Pi Zero | | WS2812 grid driven directly (`opcserver`) |
-| `ledstrip` | Pi | | 3×60 strips (Fadecandy) |
-| `doorway` | Pi | | IMX462 IR camera: `rtspcam` (RTSP on :8554/cam), `minimotion` recorder, `ldrdetect` day/night; clips go to the files server's Cameras and GSync (Google Drive) shares at once, over autofs, with no fallback (`fallback_dir = off`); `camcleanup.sh` keeps `GSync/Cameras/Doorway` under 14.5 GB, oldest first (settings in `doorway/config/camcleanup.conf`) |
+| `ktchpi` | Pi | .22 | Kitchen Pi (formerly `ledstrip`): 3×60 LED strips (Fadecandy), "Kitchen" in `ledhosts.txt` |
+| `doorway` | Pi | | IMX462 IR camera: `rtspcam` (RTSP on :8554/cam), `minimotion` recorder, `ldrdetect` day/night; clips go to the files server's Cameras and GSync (Google Drive) shares at once, over autofs; a clip neither share took is kept instead on a 2 GiB ext4 partition at the end of the SD card (label `camfallback`, `fallback_dir = /mnt/fallback/minimotion`), made once by `rpi/fallbackpart.sh` from the doorway installer when that space is free (marker `/etc/fallbackpart.enabled`) and repaired and mounted by `boot.sh`; `camcleanup.sh` keeps `GSync/Cameras/Doorway` under 14.5 GB and the fallback folder under 1.9 GB with its own 0.5 GB reserve, oldest first (settings in `doorway/config/camcleanup.conf`) |
 | `homepi` | Pi | | Family-home camera hub: `motion` with two cameras, uploads via rclone; `camcleanup.sh` keeps the flash drive and Google Drive camera folders under their limits (settings in `homepi/config/camcleanup.conf`) |
 | `btpi` · `lrpi` | Pi | | Audio receivers: AirPlay (shairport-sync) and Bluetooth (BlueALSA) into a stereo; `btpi` adds Bluetooth to a vintage stereo, `lrpi` (formerly `stereo`) is the living room's, branded "Living Room" |
 | `desk` | PC | .14 | Living room desktop, pinged by `wkststate` |
-| `lrmlamp1` · `bthrlight1` | Pico W | .18 · .21 | Living room lamp, bathroom light (firmware in `automate/devices/`) |
-| `lrthermo1` | Pico W | .3 | SmartThermo, the living room's HVAC thermostat (firmware in `automate/devices/SmartThermo/`) |
+| `lrmlamp1` · `bthrlight1` | Pico W | .18 · .21 | Living room lamp, bathroom light (firmware in `pico/`) |
+| `lrthermo1` | Pico W | .3 | SmartThermo, the living room's HVAC thermostat (firmware in `pico/SmartThermo/`) |
 | `wkst` | Workstation | | This machine: mounts the `files` shares under `/mnt/*` with autofs (`auto.files`), detached while `files` is down by `share-watchdog.sh` (so this repo, `/mnt/Data/Projects/ProOS`, is the Data share) |
 
 The Automate status menu (`shared/html/menus/statsmenu.txt`) and the LED host list (`menus/ledhosts.txt`) are the living lists of hosts the website talks to.
@@ -119,7 +119,7 @@ Requires Raspberry Pi OS on Debian **trixie**; the installer refuses anything el
 1. **First run only** (no `/etc/rpi-conf.done`): locale, time zone, `pi` user, a long apt package list (build tools, GStreamer, ffmpeg, Bluetooth, node, lighttpd, motion; no X11 desktop), purges cron, logrotate, swap, PulseAudio/PipeWire, cups and others, deletes old `rpi-*` units and `/etc/camcleanup.conf`.
 2. **Every run**: read-only boot partition, `config.txt`, sshd and key, `sysctl`, NetworkManager, journald (to RAM), systemd units from `config/systemd/` into `/etc/systemd/system/`, `/etc/netmode.sh` and `/etc/preinit.sh`.
 3. **Node API**: moves `rpi/controller.js`, `rpi/ledparser.js` and `rpi/custom.js` over the shared ones in `/opt/nodeapi` (`npm install` only when `package.json` changed, tracked in `.deps.hash`).
-4. **Website**: rsyncs the staged html into `/var/www/html` (keeping `ram/`), replaces the title `>Automate<` with the module's `brand.txt` name (this is how `main.js` picks the Pi or LED Pi page model), minifies, and gives `www-data` sudo on `servercmds.sh` and `relaxrun.sh` only.
+4. **Website**: rsyncs the staged html into `/var/www/html` (keeping `ram/`), sets `PAGE_NAME` in `opts.js` to the module's `brand.txt` name (so `main.js` titles the page with it and draws a Pi page, not the server's), minifies (all but `opts.js`), and gives `www-data` sudo on `servercmds.sh` and `relaxrun.sh` only.
 5. Bluetooth, ALSA, Samba USB share, udev USB automount, motion defaults, hostname and `/etc/hosts`.
 6. **`config/cleanup.sh`**, once per Pi (skipped while `/etc/rpi-cleanup.done` exists; delete it and deploy to run it again), so the system fits an 8 GB card: swaps `libopencv-dev` for `libopencv-core-dev` + `libopencv-videoio-dev`; purges the X11 desktop, the `arduino` apt package and its AVR toolchain, USB Wi-Fi dongle firmware, the `v6` kernels, every kernel but the running and newest, and all kernel headers; deletes `arduino-cli` and `~/.arduino15` unless the module's `config/installer.sh` installs it (only `brpi` does); installs `config/dpkg-nodoc.conf` as `/etc/dpkg/dpkg.cfg.d/01-nodoc` and deletes docs, man pages and non-English translations; clears the apt lists and npm cache.
 7. **`config/compile.sh`**: builds the C/C++ programs (below).
@@ -140,7 +140,7 @@ Pis run with an OverlayFS root, so writes go to RAM and the Pi can be unplugged 
 
 ### `rpi` command (`rpi/rpi.sh`)
 
-`ro`, `rw`, `update`, `expand`, `net`, `wifiscan`, `wifistats`, `togglenet`, `client`, `apd`, `apdonboot`, `enablewifi`/`disablewifi`, `delwifi`, `resetbt`, `restart-alsa`, `temp`, `jl`/`jh` (journal), `running`/`active`/`timers`/`loadtimes`. The website's Pi options call these through `servercmds.sh`, which logs to `/var/www/html/ram/sysout.txt`.
+`ro`, `rw`, `update`, `expand` (refused once `/etc/fallbackpart.enabled` exists), `net`, `wifiscan`, `wifistats`, `togglenet`, `client`, `apd`, `apdonboot`, `enablewifi`/`disablewifi`, `delwifi`, `resetbt`, `restart-alsa`, `temp`, `jl`/`jh` (journal), `running`/`active`/`timers`/`loadtimes`. The website's Pi options call these through `servercmds.sh`, which logs to `/var/www/html/ram/sysout.txt`.
 
 ### Pi-side node API
 
@@ -163,11 +163,11 @@ The Pis run the same `shared/nodeapi/server.js`, but `rpi/controller.js` replace
 | `mp4toleds` | `rpi-mp4toleds` | OPC client, HTTP :7860 `/api?video=` | Plays `effects/videos/*.mp4` on the pixels |
 | Effects: `textscroll maze oscope spectro noise orbits miami stripes chase writecolor` | spawned by `ledparser.js` | OPC client → :7890 | One running at a time; share `ledlayout.cpp` and `opcclient.cpp` |
 | `rtspcam` | `rpi-rtspcam` | RTSP :8554/cam | IMX462 hardware H.264 (doorway; notes in `rtspcam.md`) |
-| `minimotion` | `rpi-minimotion` | | Motion recorder: reads the RTSP stream, records in `/mnt/ramdisk`, copies clips to every `copy_to` folder at once; a failed copy goes to `fallback_dir`, or with `fallback_dir = off` is only logged and the clip still leaves the RAM disk; a clip that stays there (or that an earlier run left) is deleted after `temp_max_age`, or oldest first while the RAM disk has less than `temp_min_free` free, so it never fills (`doorway/minimotion.conf`) |
+| `minimotion` | `rpi-minimotion` | | Motion recorder: reads the RTSP stream, records in `/mnt/ramdisk`, copies clips to every `copy_to` folder at once and logs each one that fails; a clip no `copy_to` folder took goes to `fallback_dir`, or with `fallback_dir = off` is only logged and the clip still leaves the RAM disk; a clip that stays there (or that an earlier run left) is deleted after `temp_max_age`, or oldest first while the RAM disk has less than `temp_min_free` free, so it never fills (`doorway/minimotion.conf`) |
 | `ztermcom` (`ztermcom.c`) | CLI | serial | Framed serial request/response to Arduino hubs |
 | node API · lighttpd | `nodeapi`, `lighttpd` | :3000 · :80 | Same as the Automate server |
 
-`ledtype.txt` (written by a LED module's `config/installer.sh`) names the layout: `93ringinv` (ledwall), `3x60strips` (ledstrip), `16x16grid` (ledgrid).
+`ledtype.txt` (written by a LED module's `config/installer.sh` under `## Set LED Type`) names the layout: `93ringinv` (ledwall), `3x60strips` (ktchpi), `16x16grid` (ledgrid). The step after it, `## Enable Pixel Menu in Website`, sets `LED_PI` to true in the deployed `/var/www/html/opts.js`, so the Pi's own page draws the Pixels group and the LED text scroller; a new LED module needs both steps.
 
 ### Compiling (`rpi/config/compile.sh`)
 
@@ -177,9 +177,9 @@ C/C++ sources are compiled on the Pi at install time. `build()` compiles only wh
 
 | Folder | Board | Talks to | Role |
 | --- | --- | --- | --- |
-| `automate/devices/BathroomLight/` | Pico W | HTTP :4000 | Bathroom light + C4002 mmWave sensor; API reference `.md` alongside |
-| `automate/devices/LivingRoomLamp/` | Pico W | HTTP :4000 | Living room lamp (switched lamp + dimmable LED, rotary encoder); derived from BathroomLight |
-| `automate/devices/SmartThermo/` | Pico W | HTTP :4000 | HVAC thermostat (furnace + central AC): W1 / Y1 / G relays, DHT22, ST7735R TFT display, every interlock and lockout from the HVAC control reference, watchdog; API reference `.md` alongside; derived from BathroomLight |
+| `pico/BathroomLight/` | Pico W | HTTP :4000 | Bathroom light + C4002 mmWave sensor; API reference `.md` alongside |
+| `pico/LivingRoomLamp/` | Pico W | HTTP :4000 | Living room lamp (switched lamp + dimmable LED, rotary encoder); derived from BathroomLight |
+| `pico/SmartThermo/` | Pico W | HTTP :4000 | HVAC thermostat (furnace + central AC): W1 / Y1 / G relays, DHT22, ST7735R TFT display, every interlock and lockout from the HVAC control reference, watchdog; API reference `.md` alongside; derived from BathroomLight |
 | `automate/devices/InfraredRemoteHub/` | Arduino | serial | Sends IR codes to the stereo's preamp, DAC and sub amp |
 | `brpi/BedroomHub/` | AVR | brpi `/dev/ttyAMA0` | Bedroom hub #1: relays, temperature/humidity (DHT), two external serial ports |
 | `brpi/BedroomHubExt/` | ATmega328P | hub serial #2 | WS2812 bed strip, switched outlets, bed motor (EAGLE board files alongside) |
@@ -218,13 +218,13 @@ This is how the Automate Server window controls the host:
 
 Code style rules (naming, comments, shell, JavaScript and CSS) live only in [`CODESTYLE.md`](CODESTYLE.md), imported at the end of this file. This section covers how the repo is organised and worked on.
 
-- Camera cleanup (`rpi/camcleanup.sh`, `rpi-camcleanup.timer`) takes every setting from `/etc/camcleanup.conf`, which a module's `config/installer.sh` copies from its `config/camcleanup.conf` (`doorway`, `homepi`); a Pi without one never runs it, and an installer reset deletes it before the module's installer runs. A location (flash drive, Google Drive) is cleaned only when its `*_PATH` is set.
+- Camera cleanup (`rpi/camcleanup.sh`, `rpi-camcleanup.timer`) takes every setting from `/etc/camcleanup.conf`, which a module's `config/installer.sh` copies from its `config/camcleanup.conf` (`doorway`, `homepi`); a Pi without one never runs it, and an installer reset deletes it before the module's installer runs. A location (flash drive, Google Drive, the camera fallback partition) is cleaned only when its `*_PATH` is set; the fallback partition has its own reserve (`FALLBACKPART_RESERVE_GB`), the others share `FREE_SPACE_RESERVE_GB`.
 - A new Pi service is a `rpi-<name>.service` in `rpi/config/systemd/`, not enabled, started from the module's `boot.sh` with settings passed by `systemctl set-environment`.
 - A new Pi module is a folder with `boot.sh` and `config/{installer.sh,brand.txt,config.txt}`, the same `config/installer.sh` layout as a server (its installer runs after the base's, from `/opt/rpi/config/module/`); `brand.txt` becomes the page title, AirPlay/Bluetooth/Samba name.
 - A new server is a folder with `config/installer.sh` and a marker file; add its key as `mgmt/keys/<name>.rsa`, plus an empty `<name>/ssh.pwd` if the key has the shared passphrase.
 - Secrets are git-ignored and must stay out of commits and docs: `mgmt/keys/`, `*.rsa`, `*.pub`, `*.pem`, `*.crt`, `*.key`, `authorized_keys`, `auto.creds`, `creds.h`, `sasl_passwd`, `pia-wg.conf`. Don't print their contents.
 - `._*` and `.DS_Store` files are macOS metadata, ignored by git; leave them alone.
-- Large binaries in the tree (`pve/vmbkps/*.zst`, `rpi/effects/videos/`, `shared/fontawesome/`, firmware builds, photos) are backups or assets, not sources to read. Photos of the builds are in `btpi/photos`, `ledstrip/photos`, `ledwall/photos` and `pve/photos`, and are not deployed.
+- Large binaries in the tree (`pve/vmbkps/*.zst`, `rpi/effects/videos/`, `shared/fontawesome/`, firmware builds, photos) are backups or assets, not sources to read. Photos of the builds are in `btpi/photos`, `ktchpi/photos`, `ledwall/photos` and `pve/photos`, and are not deployed.
 - A repo script is run through `bash` (`bash login.sh`, `bash www-minify.sh`), not by its execute bit, which mgmt sees as stored on the server: a file rewritten over the SMB share comes back `0644`, and this workstation's mount shows every file as `0755` whatever it is. A script a program must execute itself (ssh-add's `SSH_ASKPASS`) gets a wrapper written outside the repo; the Pi and server deploys `chmod +x` their installers.
 - There is no git or node in this workstation's shell, and no test suite: verify shell changes by reading them, and the website as described in the Automate reference.
 
