@@ -16,7 +16,7 @@
 import { fileRows, boundedText, cleanString, isNumeric, removeWindow,
   dragGripElement, DragSort, FileLock, readFile, writeFile, sendFileBeacon,
   html, searchRowElement, searchTerm, searchMatches, makeElement,
-  singleFlight, trackPromise, awaitQuiet, gridButtonTemplate,
+  singleFlight, trackPromise, awaitQuiet, gridButtonTemplate, textBoxTemplate,
   reportFileFailure } from './utils.js';
 import { showPopup, reportException } from './error.js';
 import { FileCrypt, cryptoReady, isCryptBlob, cryptContext,
@@ -986,14 +986,17 @@ export default class Lists {
   <div class="list__overlay" id="${PWD_OVERLAY_ID}">
     <div class="list__dialog">
       <div class="list__dialog-msg" id="${PWD_MSG_ID}">Enter password</div>
-      <input type="password" class="list__namebox list__pwbox" id="${PWD_BOX_ID}"
-        autocorrect="off" autocapitalize="none" spellcheck="false">
-      <input type="password" class="list__namebox list__pwbox" id="${PWD_BOX2_ID}"
-        autocorrect="off" autocapitalize="none" spellcheck="false"
-        placeholder="Repeat password">
-      <input type="password" class="list__namebox list__pwbox" id="${PWD_BOX3_ID}"
-        autocorrect="off" autocapitalize="none" spellcheck="false"
-        placeholder="Repeat new password">
+      ${textBoxTemplate({ boxId: PWD_BOX_ID, type: 'password' })}
+      ${textBoxTemplate({
+        boxId: PWD_BOX2_ID,
+        type: 'password',
+        placeholder: 'Repeat password'
+      })}
+      ${textBoxTemplate({
+        boxId: PWD_BOX3_ID,
+        type: 'password',
+        placeholder: 'Repeat new password'
+      })}
       <div class="list__pwerr" id="${PWD_ERR_ID}"></div>
       <div class="list__dialog-btns">
         ${gridButtonTemplate({
@@ -1675,7 +1678,7 @@ export default class Lists {
   // the box a name is edited in: an input for a list, a textarea for an item
   makeNamebox(multi, value) {
     let namebox = null;
-    let className = "list__namebox";
+    let className = "text-box list__namebox";
     if (multi) {
       namebox = document.createElement('textarea');
       namebox.rows = 1;

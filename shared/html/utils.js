@@ -523,6 +523,27 @@ export function gridButtonTemplate(config) {
   </button>`;
 }
 
+// A prompt window's text box in the site's one style (.text-box, .text-box--prompt):
+// textBoxTemplate({ boxId: 'pass__textbox', type: 'password' })
+// config: boxId, optional type ("text" by default), placeholder, boxClass
+export function textBoxTemplate(config) {
+  let boxType = 'text';
+  if (config.type) {
+    boxType = config.type;
+  }
+  let boxClass = 'text-box text-box--prompt';
+  if (config.boxClass) {
+    boxClass = `${boxClass} ${config.boxClass}`;
+  }
+  let placeholderAttribute = '';
+  if (config.placeholder) {
+    placeholderAttribute = ` placeholder="${config.placeholder}"`;
+  }
+  return `
+  <input type="${boxType}" class="${boxClass}" id="${config.boxId}"
+    autocorrect="off" autocapitalize="none" spellcheck="false"${placeholderAttribute}>`;
+}
+
 // A grid button with the dropdown under it.
 // config: buttonId, menuId, optional icon, iconId, label, buttonClass,
 // textId + spinnerId (the label and its spinner), menuClass ("ind-button" by default
@@ -825,7 +846,7 @@ export function searchRowElement(options) {
   icon.className = `fad ${SEARCH_GLASS_ICON} search-row__icon`;
   const box = document.createElement('input');
   box.type = "text";
-  box.className = 'search-row__box';
+  box.className = 'text-box search-row__box';
   if (options.boxId) {
     box.id = options.boxId;
   }

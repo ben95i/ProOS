@@ -75,11 +75,9 @@
   padding: 16px;
 }
 
+/* the .text-box look, spaced from its label and buttons */
 #pass__textbox {
-  border-radius: 15px;
-  margin: 15px;
-  width: 285px;
-  padding: 5px;
+  margin: 15px auto;
 }
 
 #pass__prmbtnctr {
@@ -109,19 +107,10 @@
   padding: 16px;
 }
 
-#pinet__ssidbox {
-  border-radius: 15px;
-  margin: 15px;
-  width: 280px;
-  padding: 5px;
-}
-
+/* the .text-box look, spaced from the labels and buttons */
+#pinet__ssidbox,
 #pinet__passbox {
-  border-radius: 15px;
-  margin: 15px;
-  width: 280px;
-  padding: 5px;
-  padding-bottom: 10px;
+  margin: 15px auto;
 }
 
 .pinet__btn {

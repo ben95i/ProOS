@@ -219,22 +219,12 @@ html.theme-light .list__round--on:not(.list__round--del) i {
   color: var(--main-40-white);
 }
 
-/* rename box, sized in JS to the name's space so the row keeps its size */
+/* rename box, sized in JS to the name's space so the row keeps its size; its look and
+   padding (matching .list__label, so the row height does not shift) are .text-box's */
 .list__namebox {
   flex: none;
   min-width: 0px;
-  /* matches .list__label, so the row height does not shift */
-  padding: 4px 6px;
   margin: -4px -2px;
-  color: #fff;
-  background-color: var(--main-40-black);
-  box-shadow: 0 0 15px var(--main-40-white);
-  border: 3px solid #000;
-  outline: none;
-}
-
-.list__namebox::placeholder {
-  color: #c1c1c1;
 }
 
 /* the item box, grown by growNamebox(): no scrollbar or user resize */
@@ -244,10 +234,6 @@ html.theme-light .list__round--on:not(.list__round--del) i {
   overflow: hidden;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-}
-
-.list__namebox:focus {
-  outline: 3px solid var(--main-40-white);
 }
 
 /* Shared search box (searchRowElement() in utils.js). Everything is set here, type
@@ -286,27 +272,13 @@ html.theme-light .list__round--on:not(.list__round--del) i {
   }
 }
 
-/* the name box's look, filling what the icon leaves of the row */
+/* the box, in the .text-box look, filling what the icon leaves of the row */
 .search-row__box {
   flex: 1 1 auto;
   min-width: 0px;
   width: 100%;
   margin: 0px;
-  padding: 4px 6px;
   font-size: 22px;
-  color: #fff;
-  background-color: var(--main-40-black);
-  box-shadow: 0 0 15px var(--main-40-white);
-  border: 3px solid #000;
-  outline: none;
-}
-
-.search-row__box::placeholder {
-  color: #c1c1c1;
-}
-
-.search-row__box:focus {
-  outline: 3px solid var(--main-40-white);
 }
 
 /* this window's search row: scrolls with the rows; tighter sides, an item row's
@@ -524,17 +496,8 @@ html.theme-light .list__round--on:not(.list__round--del) i {
 
 .list__rowlock + .list__label {
   font-style: italic;
-  /* the faded white already used for the rename box's placeholder */
+  /* the faded white already used for a text box's placeholder */
   color: #c1c1c1;
-}
-
-/* password boxes: the rename box's look, at the width of the dialog */
-.list__pwbox {
-  display: block;
-  width: 260px;
-  margin: 0 auto 12px auto;
-  font-size: 20px;
-  text-align: center;
 }
 
 /* wrong password, mismatched pair, or a write that did not land */

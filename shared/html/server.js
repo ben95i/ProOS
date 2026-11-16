@@ -5,7 +5,7 @@
 
 import { classDisplay, base64URLSafeEncode, sendCmd, html, fetchAnswer,
   savePOST, fileURL, promptWindow, onButtons, setDisplayById,
-  registerListeners, gridButtonTemplate, dropdownButtonTemplate,
+  registerListeners, gridButtonTemplate, dropdownButtonTemplate, textBoxTemplate,
   GoToExtPage } from './utils.js';
 import { removeDropdowns, openDropdown } from './dropdowns.js';
 import { reportError } from './error.js';
@@ -369,9 +369,9 @@ function piWiFiPrompt(windowId) {
   return new Promise((resolve) => {
     const promptElement = promptWindow(windowId, html`
       <div>Network (SSID):</div>
-      <input id="pinet__ssidbox">
+      ${textBoxTemplate({ boxId: 'pinet__ssidbox' })}
       <div>Password:</div>
-      <input id="pinet__passbox" type="password">
+      ${textBoxTemplate({ boxId: 'pinet__passbox', type: 'password' })}
       ${gridButtonTemplate({
         buttonId: PI_WIFI_CANCEL_BUTTON_ID,
         label: 'Cancel',
@@ -477,7 +477,7 @@ function passwordPrompt() {
   }
   const promptElement = promptWindow(PASSWORD_PROMPT_ID, html`
     <div>Enter password:</div>
-    <input id="pass__textbox" type="password">
+    ${textBoxTemplate({ boxId: 'pass__textbox', type: 'password' })}
     <div id="pass__prmbtnctr">
       ${gridButtonTemplate({
         buttonId: 'pass__btn-cancel',

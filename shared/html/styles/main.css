@@ -115,6 +115,38 @@ input[type="checkbox"] {
 }
 
 /*
+ *  Text Box Styles
+ */
+
+/* the site's one text box look: white text on the dark theme fill, a black edge and a
+   theme glow; the box's size is its host's (Lists, search rows, prompt windows) */
+.text-box {
+  padding: 4px 6px;
+  color: #fff;
+  background-color: var(--main-40-black);
+  box-shadow: 0 0 15px var(--main-40-white);
+  border: 3px solid #000;
+  outline: none;
+}
+
+.text-box::placeholder {
+  color: #c1c1c1;
+}
+
+.text-box:focus {
+  outline: 3px solid var(--main-40-white);
+}
+
+/* a prompt window's box, drawn by textBoxTemplate(): one per line, centred */
+.text-box--prompt {
+  display: block;
+  width: 260px;
+  margin: 0 auto 12px auto;
+  font-size: 20px;
+  text-align: center;
+}
+
+/*
  *  Button Styles
  */
 

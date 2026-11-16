@@ -6,7 +6,8 @@
 import { html, cleanString, fileRows, boundedText, base64URLSafeEncode,
   base64URLSafeToStandard, sendCmd, dragGripElement, DragSort, FileLock,
   readFile, writeFile, sendFileBeacon, LOCK_TAG, searchRowElement, searchTerm,
-  searchMatches, makeElement, singleFlight, reportFileFailure } from './utils.js';
+  searchMatches, makeElement, singleFlight, reportFileFailure,
+  textBoxTemplate } from './utils.js';
 import { showPopup, reportException } from './error.js';
 import { removeDropdowns } from './dropdowns.js';
 
@@ -784,10 +785,8 @@ export default class Bookmarks {
         <span class="editFav__toplabel">${bannerText}</span>
         <span class="editFav__iconpreview" id="${PREVIEW_ID}"></span>
       </div>
-      <input type="text" id="editFav__namebox" class="editFav__textbox"
-             autocorrect="off" autocapitalize="none">
-      <input type="text" id="editFav__urlbox" class="editFav__textbox"
-             autocorrect="off" autocapitalize="none">
+      ${textBoxTemplate({ boxId: 'editFav__namebox', boxClass: 'editFav__textbox' })}
+      ${textBoxTemplate({ boxId: 'editFav__urlbox', boxClass: 'editFav__textbox' })}
       ${Object.keys(EDIT_BTN_IDS).map(key => `
       <button class="editFav__button button ${EDIT_BTN_ICONS[key]}" type="button"
               id="${EDIT_BTN_IDS[key]}"></button>`).join('')}
