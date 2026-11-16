@@ -26,8 +26,22 @@ Every request is an HTTP GET whose URL carries one command framed as `?<command>
 Every 0.1 s the C4002 reports an overall state (none, static presence or motion) and two targets it tracks side by side: the strongest **motion target** and the strongest **presence target**, each with a distance and an energy (0 when there is none). It reports the motion target even while its overall state reads static presence, as when someone stands still at the sink and moves a hand. Each LED's **zone** reaches from the sensor out to the LED's trigger distance, and is occupied while something has been detected inside it within the LED's off delay.
 
 - **Arriving:** the motion target inside a zone occupies it, whatever the overall state says, so a hand moved near the sensor counts while someone is standing in the room. With the defaults, walking in at 4 ft occupies LED0's zone (0–150 cm) only; stepping up to the sink at 12 in occupies LED1's zone (0–30 cm) too, as anything inside LED1's zone is also inside LED0's.
-- **Staying:** further motion inside the zone keeps it occupied. With presenceHoldsLight on, the presence target inside an occupied zone (sitting or standing still) keeps it occupied as well; still presence never occupies an empty zone.
-- **Leaving:** a zone goes vacant once nothing has been detected inside it for the LED's off delay. Stepping back from the sink to the middle of the room starts LED1's off delay at once while LED0 stays on. Leaving the sensor's view altogether adds the sensor's own 5 s hold, because it keeps reporting the target that long.
+- **Staying:** an occupied zone stays occupied while a target is within its **hold distance**:
+  - presenceHoldsLight on: the farther of the two trigger distances (150 cm by default), counting the motion target and the presence target (sitting or standing still). Anyone there keeps every light that is on lit, whichever light they first turned on.
+  - presenceHoldsLight off: the LED's own trigger distance, counting the motion target only.
+
+  Still presence never occupies an empty zone: turning a light on always takes motion within its own distance.
+- **Leaving:** a zone goes vacant once nothing has been detected within its hold distance for the LED's off delay. With presenceHoldsLight on, stepping back from the sink keeps LED1 on until you are beyond LED0's distance, and then each LED counts its own off delay. With it off, stepping back from the sink starts LED1's off delay at once while LED0 stays on. Leaving the sensor's view altogether adds the sensor's own 5 s hold, because it keeps reporting the target that long.
+
+In short, checked for each LED on every report:
+
+```text
+arrive:  zone empty    and motion target within the LED's trigger distance     -> occupied
+hold:    zone occupied and (presenceHoldsLight on:  motion or presence target within the farther trigger distance
+                            presenceHoldsLight off: motion target within the LED's trigger distance)
+                                                                                -> off delay restarts
+leave:   zone occupied and nothing held it for the LED's off delay             -> vacant (motion activated: LED off)
+```
 - **Sensor range:** the sensor is told to detect from 0 cm out to the farther of the two trigger distances (150 cm by default), so movement beyond both zones, such as someone passing the doorway, is ignored. It is sent again when a change moves the farther distance.
 - **Nobody reported:** while the overall state is none, the targets are ignored, even if their fields still hold old values.
 - **Right at the sensor:** a target at 0 cm (energy above 0) is real and counts for every zone.
@@ -62,7 +76,7 @@ Every command, in short form; anything not listed replies 0. The on and off comm
 | `?2,0,4~` | — | Reads whether LED0 is on (on or fading on) or off (off or fading off) | 1 on, 0 off |
 | `?3,0,N~` | 0–255 (higher = 255) | Sets LED0's brightness; a non-zero N becomes the on level | the level set, or the kept on level when LED0 stays off |
 | `?5,0,N~` | 1–490 cm | Sets LED0's trigger distance | the new value |
-| `?6,0,N~` | 0 or 1 | Sets presenceHoldsLight for both LEDs: whether sitting still keeps an occupied zone occupied | the new value |
+| `?6,0,N~` | 0 or 1 | Sets presenceHoldsLight for both LEDs: whether anyone within the farther trigger distance, moving or still, keeps a lit LED on | the new value |
 | `?7,0,N~` | 1–9999 s | Sets LED0's off delay | the new value |
 | `?8,0,0~` | — | Reads all settings | `presence~LED0 distance~LED0 delay~LED0 mode~LED1 distance~LED1 delay~LED1 mode`, e.g. `1~150~30~1~30~15~1` |
 | `?8,0,N~` | 5, 6, 7, 13, 15, 16 or 17 | Reads the setting that command N sets | the value |
@@ -114,7 +128,7 @@ Seven settings are stored in EEPROM and survive a reboot; each takes effect as s
 
 | Setting | Set | Read | Range | Default | Effect |
 | --- | --- | --- | --- | --- | --- |
-| presenceHoldsLight | `?6,0,N~` | `?8,0,6~` | 0 or 1 | 1 | Both LEDs. 1: sitting still (breathing) inside an occupied zone keeps it occupied; 0: only motion does |
+| presenceHoldsLight | `?6,0,N~` | `?8,0,6~` | 0 or 1 | 1 | Both LEDs. 1: anyone within the farther trigger distance, moving or still (breathing), keeps every lit LED on; 0: only motion within an LED's own distance keeps it on |
 | LED0 trigger distance (cm) | `?5,0,N~` | `?8,0,5~` | 1–490 | 150 (about 5 ft) | Motion up to this distance turns LED0 on |
 | LED0 off delay (s) | `?7,0,N~` | `?8,0,7~` | 1–9999 | 30 | Time from the last detection inside LED0's zone to LED0 turning off |
 | LED0 light mode | `?13,0,N~` | `?8,0,13~` | 0, 1 or 2 | 1 | 0 always off, 1 motion activated, 2 always on |
@@ -139,9 +153,9 @@ reports:             812 ok, 0 bad checksum, last 0.1s ago
 target:              motion (2)
 presence target:     28 cm, energy 41
 motion target:       25 cm, energy 63, speed -40 cm/s
-LED0 zone:           occupied (0-150 cm), last detection 0s ago, vacant in 29s
+LED0 zone:           occupied (held within 150 cm), last detection 0s ago, vacant in 29s
 LED0:                level 255, target 255, on level 255
-LED1 zone:           occupied (0-30 cm), last detection 0s ago, vacant in 14s
+LED1 zone:           occupied (held within 150 cm), last detection 0s ago, vacant in 14s
 LED1:                on
 settings:
   presenceHoldsLight:1
@@ -163,7 +177,7 @@ fixed configuration:
 | reports | Valid frames, frames with a bad checksum (a rising count means UART noise), and the age of the last detection report |
 | target | The sensor's last state: none (0), static presence (1) or motion (2) |
 | presence / motion target | Each target the zones are checked against: its distance, its energy (0 = none), and the motion target's speed |
-| LED0 zone · LED1 zone | `vacant`, or `occupied` with the time since the last detection inside it and the countdown to vacant; tracked in every mode |
+| LED0 zone · LED1 zone | `vacant` with the LED's trigger distance, or `occupied` with its hold distance, the time since the last detection within it and the countdown to vacant; tracked in every mode |
 | LED0 | Current level, the level a fade is heading to, and the on level |
 | LED1 | `on` or `off` |
 | settings | The stored settings, each LED's on one line, the range sent to the sensor, and `EEPROM: saved` or `pending, writes in Ns` |
@@ -173,7 +187,7 @@ fixed configuration:
 ```text
 +0d 00:10:02  motion at 140cm: LED0 fading in to 255
 +0d 00:10:06  motion at 30cm: LED1 on
-+0d 00:10:41  nothing within 30cm for 15s: LED1 off
++0d 00:11:05  nothing within 150cm for 15s: LED1 off
 +0d 00:11:20  nothing within 150cm for 30s: LED0 fading off
 +0d 00:11:35  always on: LED1 on
 +0d 00:11:35  http: LED1 lightMode set to 2

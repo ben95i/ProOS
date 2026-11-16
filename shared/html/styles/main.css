@@ -118,14 +118,16 @@ input[type="checkbox"] {
  *  Text Box Styles
  */
 
-/* the site's one text box look: white text on the dark theme fill, a black edge and a
-   theme glow; the box's size is its host's (Lists, search rows, prompt windows) */
+/* the site's one text box look: white text on the dark theme fill and a grey edge (the
+   prompt window's, so it shows on black) with rounded corners, 40px tall (the bookmarks
+   search box's height); its width is its host's (Lists, search rows, prompt windows) */
 .text-box {
+  height: 40px;
   padding: 4px 6px;
   color: #fff;
   background-color: var(--main-40-black);
-  box-shadow: 0 0 15px var(--main-40-white);
-  border: 3px solid #000;
+  border: 3px solid var(--border-color);
+  border-radius: 5px;
   outline: none;
 }
 
@@ -133,7 +135,9 @@ input[type="checkbox"] {
   color: #c1c1c1;
 }
 
+/* selected: the black edge inside the light ring */
 .text-box:focus {
+  border-color: #000;
   outline: 3px solid var(--main-40-white);
 }
 
@@ -442,6 +446,18 @@ input[type="checkbox"] {
   text-wrap-mode: nowrap;
   text-overflow: ellipsis;
   overflow-x: scroll;
+}
+
+/* a Pico's read-out (the thermostat's status and log, the bathroom light's log and
+   sensor status): smaller, edged in the setting boxes' light grey, long lines wrapped */
+.popup-ctn textarea.pico-logbox {
+  font-size: 12px;
+  text-align: left;
+  border: 1px solid var(--border-color);
+  text-wrap-mode: wrap;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow-x: hidden;
 }
 
 .button_left_txtwin {

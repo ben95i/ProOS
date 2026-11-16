@@ -40,8 +40,8 @@ These go in `arg`, like `lrstatus`, `lron` and `lroff` for the living room. The 
 {
   "roomState": true,
   "devices": [
-    { "name": "Main Light", "value": "0", "status": false },
-    { "name": "Accent Light", "value": "1", "status": true }
+    { "name": "Ambient Light", "value": "0", "status": false },
+    { "name": "Accent Lights", "value": "1", "status": true }
   ]
 }
 ```
@@ -97,7 +97,7 @@ So in Automatic, `bthron` from across the room lights the accent (5 ft reach by 
 | Accent off delay (s) | `bthr-light1_accent_delay` | `bthr-light1_accent_delay_set_<N>` | 1–9999 | 30 | Time with nobody within the accent's distance before it turns off |
 | Main trigger distance (cm) | `bthr-light1_main_range` | `bthr-light1_main_range_set_<N>` | 1–490 | 30 | Motion this close turns the main light on |
 | Main off delay (s) | `bthr-light1_main_delay` | `bthr-light1_main_delay_set_<N>` | 1–9999 | 15 | Time with nobody within the main light's distance before it turns off |
-| Presence hold | `bthr-light1_presence` | `bthr-light1_presence_set_<N>` | 0 or 1 | 1 | Both lights. 1: sitting still keeps a light on that is already on; 0: only movement does |
+| Presence hold | `bthr-light1_presence` | `bthr-light1_presence_set_<N>` | 0 or 1 | 1 | Both lights. 1: anyone within the farther of the two distances, moving or still, keeps every light that is on lit (walking back from the sink keeps the main light on until you pass the accent's distance); 0: each light is kept on only by movement within its own distance |
 
 | Command | What it does | Reply |
 | --- | --- | --- |

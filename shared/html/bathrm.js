@@ -1,4 +1,4 @@
-// Automate - bathroom: button grid, the Accent and Main lights' menus, and the Settings
+// Automate - bathroom: button grid, the Accent and Ambient buttons' menus, and the Settings
 // window for the lights' motion sensor.
 
 import { registerListeners, gridButtonTemplate, dropdownButtonTemplate,
@@ -22,7 +22,8 @@ export const BATHROOM_CONFIG = {
 const BTHR_ACCENT_MENU = 'bthraccentmenu';
 const BTHR_MAIN_MENU = 'bthrmainmenu';
 
-// the room's button grid: the BathroomLight Pico's two lights and its Settings window
+// the room's button grid: the BathroomLight Pico's two lights (Accent, and Ambient for the main
+// light) and its Settings window
 function bathroomGridTemplate() {
   return `
 <div>
@@ -36,7 +37,7 @@ function bathroomGridTemplate() {
   ${dropdownButtonTemplate({
     buttonId: 'btn-bthr-main',
     icon: 'fad fa-light-ceiling',
-    label: 'Main',
+    label: 'Ambient',
     ...spinnerIds(BTHR_MAIN_MENU),
     menuId: BTHR_MAIN_MENU
   })}
@@ -119,7 +120,7 @@ function showAccentMenu() {
   });
 }
 
-// Main: the mode rows only, as the main light does not dim
+// Ambient: the main light's mode rows only, as it does not dim
 function showMainMenu() {
   openDeviceMenu({
     menu: BTHR_MAIN_MENU,
@@ -144,31 +145,45 @@ function showMainMenu() {
 // its name there, and name how a change or error names it in the heading.
 const BTHR_CONFIG_FIELDS = 7;
 const BTHR_GROUPS = [
-  { id: 'accent', title: 'Accent Light' },
-  { id: 'main', title: 'Main Light' },
+  { id: 'main', title: 'Ambient Light' },
+  { id: 'accent', title: 'Accent Lights' },
   { id: 'sensor', title: '' }
 ];
 const BTHR_SETTINGS = [
+  { key: 'main_range', group: 'main', field: 4, kind: 'range', label: 'Turns on within',
+    name: 'Ambient distance', min: 10, max: 305 },
+  { key: 'main_delay', group: 'main', field: 5, kind: 'delay', label: 'Off delay',
+    name: 'Ambient off delay', min: 1, max: 3600 },
   { key: 'accent_range', group: 'accent', field: 1, kind: 'range', label: 'Turns on within',
-    name: 'Accent distance', min: 1, max: 490 },
+    name: 'Accent distance', min: 10, max: 305 },
   { key: 'accent_delay', group: 'accent', field: 2, kind: 'delay', label: 'Off delay',
     name: 'Accent off delay', min: 1, max: 3600 },
-  { key: 'main_range', group: 'main', field: 4, kind: 'range', label: 'Turns on within',
-    name: 'Main distance', min: 1, max: 490 },
-  { key: 'main_delay', group: 'main', field: 5, kind: 'delay', label: 'Off delay',
-    name: 'Main off delay', min: 1, max: 3600 },
   { key: 'presence', group: 'sensor', field: 0, kind: 'switch', label: 'Presence hold',
     name: 'Presence hold' }
 ];
 
-// The off delay grows with the cube of the slider, so short delays move about a second
-// at a time. A delay set past an hour shows as it is, with the slider at its end.
-const BTHR_DELAY_STEPS = 1000;
-const BTHR_DELAY_POWER = 3;
+// Every slider runs 0-BTHR_SLIDER_STEPS and maps to its setting on an exponential curve,
+// value = min * (max / min) ^ (position / steps), so each step changes the value by the same
+// share of it: short delays and near distances move a second or an inch at a time, long ones
+// in larger steps. Halfway is 60 s on the off delay (1 s - 1 h) and 22 in on the distance
+// (4 in - 10 ft). A value set outside min-max shows as it is, with the slider at the nearer end.
+const BTHR_SLIDER_STEPS = 1000;
 
-const BTHR_TITLE_SETTINGS = 'Bathroom Light';
-const BTHR_TITLE_LOG = 'Light Log';
-const BTHR_TITLE_SENSOR = 'Sensor Status';
+const BTHR_TITLE_SETTINGS = 'Bathroom';
+// The log box's read-outs: what reads each, its name over the box (capitals by CSS) and
+// icon, also its button's, and whether it opens at its end.
+const BTHR_LOG_VIEW = {
+  command: `${BTHR_DEVICE}_log`,
+  title: 'Light Log',
+  icon: 'fad fa-terminal',
+  scrollToEnd: true
+};
+const BTHR_SENSOR_VIEW = {
+  command: `${BTHR_DEVICE}_sensor`,
+  title: 'Sensor Status',
+  icon: 'fad fa-broadcast-tower',
+  scrollToEnd: false
+};
 const BTHR_DISABLED_CLASS = 'is-disabled';
 // how long a change or error stands in place of the heading
 const BTHR_MESSAGE_MS = 3000;
@@ -205,18 +220,19 @@ function bathroomSettingsPrompt() {
         })}
         ${gridButtonTemplate({
           buttonId: 'bthr__btn-log',
-          icon: 'fad fa-terminal',
+          icon: BTHR_LOG_VIEW.icon,
           buttonClass: BTHR_BUTTON_CLASS
         })}
         ${gridButtonTemplate({
           buttonId: 'bthr__btn-sensor',
-          icon: 'fad fa-broadcast-tower',
+          icon: BTHR_SENSOR_VIEW.icon,
           buttonClass: BTHR_BUTTON_CLASS
         })}
       </div>
     </div>
     <div class="popup-ctn bthr__log" id="bthr__log">
-      <textarea readonly class="scroll-bar-style" id="bthr__logbox" spellcheck="false"></textarea>
+      <div class="btn-group-label bthr__log-title"><i id="bthr__log-icon"></i><span id="bthr__log-title"></span></div>
+      <textarea readonly class="scroll-bar-style pico-logbox" id="bthr__logbox" spellcheck="false"></textarea>
       <div class="popup-actions bthr__actions">
         ${gridButtonTemplate({
           buttonId: 'bthr__btn-back',
@@ -240,11 +256,12 @@ function bathroomSettingsPrompt() {
     win: promptElement,
     title: document.getElementById('bthr__title'),
     panel: 'settings',     // which of the two is showing
-    titleText: BTHR_TITLE_SETTINGS, // the heading a message gives way to
     messageTimer: null,
     settingsPanel: document.getElementById('bthr__settings'),
     logPanel: document.getElementById('bthr__log'),
     logBox: document.getElementById('bthr__logbox'),
+    logTitle: document.getElementById('bthr__log-title'),
+    logIcon: document.getElementById('bthr__log-icon'),
     presenceSwitch: null,
     controls: {},     // per setting key: its box, slider and value label
     values: {},       // per setting key: what the light last confirmed
@@ -266,21 +283,21 @@ function bathroomSettingsPrompt() {
         closeBathroomSettings();
         break;
       case 'bthr__btn-log':
-        bthrShowLog(settingsWindow, `${BTHR_DEVICE}_log`, BTHR_TITLE_LOG, true);
+        bthrShowLog(settingsWindow, BTHR_LOG_VIEW);
         break;
       case 'bthr__btn-sensor':
-        bthrShowLog(settingsWindow, `${BTHR_DEVICE}_sensor`, BTHR_TITLE_SENSOR, false);
+        bthrShowLog(settingsWindow, BTHR_SENSOR_VIEW);
         break;
       case 'bthr__btn-refresh':
         bthrRefreshLog(settingsWindow);
         break;
       case 'bthr__btn-back':
         settingsWindow.logSeq += 1; // a read in the air is no longer wanted
-        bthrShowPanel(settingsWindow, 'settings', BTHR_TITLE_SETTINGS);
+        bthrShowPanel(settingsWindow, 'settings');
         break;
     }
   });
-  bthrShowPanel(settingsWindow, 'settings', BTHR_TITLE_SETTINGS);
+  bthrShowPanel(settingsWindow, 'settings');
   bthrLoadConfig(settingsWindow);
 }
 
@@ -337,12 +354,6 @@ function bthrSettingHTML(setting) {
         <span id="${settingId}-switch"></span>
       </div>`;
   }
-  let sliderMin = setting.min;
-  let sliderMax = setting.max;
-  if (setting.kind === 'delay') {
-    sliderMin = 0;
-    sliderMax = BTHR_DELAY_STEPS;
-  }
   return `
     <div class="bthr__item" id="${settingId}">
       <div class="bthr__setting-head">
@@ -351,7 +362,7 @@ function bthrSettingHTML(setting) {
       </div>
       <div class="slider-wide_container bthr__slider">
         <input type="range" class="slider-wide" id="${settingId}-slider"
-          min="${sliderMin}" max="${sliderMax}" step="1" value="${sliderMin}">
+          min="0" max="${BTHR_SLIDER_STEPS}" step="1" value="0">
       </div>
     </div>`;
 }
@@ -396,45 +407,49 @@ function bthrBindSetting(settingsWindow, setting) {
   });
 }
 
-// swaps between the settings and the log box, and the heading with them
-function bthrShowPanel(settingsWindow, name, title) {
+// Swaps between the settings ('settings') and the log box ('log'). The settings show
+// under the heading; the log box carries its read-out's own title instead.
+function bthrShowPanel(settingsWindow, name) {
   let settingsDisplay = 'none';
   let logDisplay = 'flex';
+  let titleDisplay = 'none';
   if (name === 'settings') {
     settingsDisplay = 'block';
     logDisplay = 'none';
+    titleDisplay = 'block';
   }
   settingsWindow.settingsPanel.style.display = settingsDisplay;
   settingsWindow.logPanel.style.display = logDisplay;
+  settingsWindow.title.style.display = titleDisplay;
   // the log and sensor status run wide
   settingsWindow.win.classList.toggle(BTHR_WIDE_CLASS, name !== 'settings');
   settingsWindow.panel = name;
-  settingsWindow.titleText = title;
   // a message showing belonged to the panel being left
   bthrRestoreTitle(settingsWindow);
 }
 
-// Reads one of the light's read-outs into the log box. The log opens on its newest line,
-// the sensor status at the top.
-function bthrShowLog(settingsWindow, command, title, scrollToEnd) {
-  settingsWindow.logView = { command, title, scrollToEnd };
-  bthrShowPanel(settingsWindow, 'log', title);
+// Reads one of the light's read-outs (BTHR_LOG_VIEW, BTHR_SENSOR_VIEW) into the log box,
+// under its name and icon. The log opens on its newest line, the sensor status at the top.
+function bthrShowLog(settingsWindow, logView) {
+  settingsWindow.logView = logView;
+  bthrShowPanel(settingsWindow, 'log');
+  settingsWindow.logTitle.textContent = logView.title;
+  settingsWindow.logIcon.className = logView.icon;
   settingsWindow.logBox.value = 'Loading...';
   settingsWindow.logBox.scrollTop = 0;
-  readPicoLog(settingsWindow, bthrRequest, bthrReplyError, command, scrollToEnd);
+  readPicoLog(settingsWindow, bthrRequest, bthrReplyError, logView.command, logView.scrollToEnd);
 }
 
 // reads the read-out on show again
 function bthrRefreshLog(settingsWindow) {
-  const logView = settingsWindow.logView;
-  bthrShowLog(settingsWindow, logView.command, logView.title, logView.scrollToEnd);
+  bthrShowLog(settingsWindow, settingsWindow.logView);
 }
 
 // puts the heading back, dropping any message in its place
 function bthrRestoreTitle(settingsWindow) {
   clearTimeout(settingsWindow.messageTimer);
   settingsWindow.messageTimer = null;
-  settingsWindow.title.textContent = settingsWindow.titleText;
+  settingsWindow.title.textContent = BTHR_TITLE_SETTINGS;
   settingsWindow.title.classList.remove(BTHR_TITLE_ERROR_CLASS);
   settingsWindow.title.classList.remove(BTHR_TITLE_MESSAGE_CLASS);
 }
@@ -558,41 +573,36 @@ function bthrFormatDelay(seconds) {
   return `${hours} h ${leftMinutes} min`;
 }
 
-// slider position -> off delay in seconds
-function bthrDelayFromSlider(setting, position) {
-  const sliderFraction = position / BTHR_DELAY_STEPS;
-  const curvedFraction = Math.pow(sliderFraction, BTHR_DELAY_POWER);
-  const delaySpan = setting.max - setting.min;
-  const secondsAboveMinimum = delaySpan * curvedFraction;
-  const delaySeconds = setting.min + secondsAboveMinimum;
-  return Math.round(delaySeconds);
+// slider position -> the setting's value: bthrValueFromSlider(offDelay, 500) -> 60 (s)
+function bthrValueFromSlider(setting, position) {
+  const sliderFraction = position / BTHR_SLIDER_STEPS;
+  const rangeRatio = setting.max / setting.min;
+  const growth = Math.pow(rangeRatio, sliderFraction);
+  const value = setting.min * growth;
+  return Math.round(value);
 }
 
-// off delay in seconds -> slider position
-function bthrSliderFromDelay(setting, seconds) {
-  const delaySpan = setting.max - setting.min;
-  const secondsAboveMinimum = seconds - setting.min;
-  // a delay outside the slider's range stands at the nearer end
-  let delayFraction = secondsAboveMinimum / delaySpan;
-  if (delayFraction < 0) {
-    delayFraction = 0;
+// the setting's value -> slider position: bthrSliderFromValue(offDelay, 60) -> 500
+function bthrSliderFromValue(setting, value) {
+  // a value outside the slider's range stands at the nearer end
+  let boundedValue = value;
+  if (boundedValue < setting.min) {
+    boundedValue = setting.min;
   }
-  if (delayFraction > 1) {
-    delayFraction = 1;
+  if (boundedValue > setting.max) {
+    boundedValue = setting.max;
   }
-  const inversePower = 1 / BTHR_DELAY_POWER;
-  const sliderFraction = Math.pow(delayFraction, inversePower);
-  const sliderPosition = sliderFraction * BTHR_DELAY_STEPS;
+  const rangeRatio = setting.max / setting.min;
+  const valueRatio = boundedValue / setting.min;
+  const sliderFraction = Math.log(valueRatio) / Math.log(rangeRatio);
+  const sliderPosition = sliderFraction * BTHR_SLIDER_STEPS;
   return Math.round(sliderPosition);
 }
 
 // the value the slider stands at now, as the light counts it
 function bthrSliderValue(settingsWindow, setting) {
   const position = Number(settingsWindow.controls[setting.key].slider.value);
-  if (setting.kind === 'delay') {
-    return bthrDelayFromSlider(setting, position);
-  }
-  return position;
+  return bthrValueFromSlider(setting, position);
 }
 
 // puts a value on its slider or switch and beside it
@@ -604,11 +614,7 @@ function bthrShowValue(settingsWindow, setting, value) {
     }
     return;
   }
-  if (setting.kind === 'delay') {
-    settingControls.slider.value = bthrSliderFromDelay(setting, value);
-  } else {
-    settingControls.slider.value = value;
-  }
+  settingControls.slider.value = bthrSliderFromValue(setting, value);
   settingControls.value.textContent = bthrFormatValue(setting, value);
 }
 

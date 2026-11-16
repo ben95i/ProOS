@@ -145,7 +145,7 @@ The grids are built from `dropdownButtonTemplate()` and `gridButtonTemplate()` i
 | --- | --- | --- | --- |
 | Living Room | `lr` | LEDwall (`lrxmit`), 0–100 | the thermostat, Main Lamp, Backlight, Desktop PC, Stereo System |
 | Bedroom | `br` | `brpi`, 0–192 shown as % | Desk Lamp, Bed Lights, RetroPi TV, Vintage Macs, Bedroom TV, Bedroom PC, Audio System |
-| Bathroom | `bthr` | none | Main Light, Accent Light |
+| Bathroom | `bthr` | none | Ambient Light, Accent Lights |
 
 ### Living Room
 
@@ -181,31 +181,31 @@ The grids are built from `dropdownButtonTemplate()` and `gridButtonTemplate()` i
 | Button | Opens | Device / command |
 | --- | --- | --- |
 | Accent | Brightness slider over Stay On / Automatic / Keep Off, active one green | `bthr-light1_accent_menu` (level~mode), `bthr-light1_accent_set_<n>`, `bthr-light1_accent_mode_set_<0–2>` |
-| Main | Stay On / Automatic / Keep Off, active one green | `bthr-light1_main_mode`, `bthr-light1_main_mode_set_<0–2>` |
+| Ambient | Stay On / Automatic / Keep Off for the main light, active one green | `bthr-light1_main_mode`, `bthr-light1_main_mode_set_<0–2>` |
 | Settings | Motion sensor settings window | See *Bathroom light* |
 
 The bathroom is left out of `lightson`, `lightsoff`, `allon` and `alloff`; APT's Room on / off still reaches it as `bthron` / `bthroff` (both lights) while it is the room on screen.
 
 ## Bathroom light
 
-The bathroom's one device is the BathroomLight, a Pico W on 192.168.1.21:4000 (`bthrlight1` in the API's address table, firmware and its own API reference in `../pico/BathroomLight/`) driving two lights and a C4002 mmWave motion sensor: the **accent** light (the Pico's LED0, a dimmable PWM LED) and the **main** light (LED1, on / off only). Each light has its own mode, its own trigger distance (motion within it turns the light on) and its own off delay (nobody detected within that distance for that long turns it off); presence hold is shared. All of its controls live in `bathrm.js`, styled by `styles/bathrm.css`.
+The bathroom's one device is the BathroomLight, a Pico W on 192.168.1.21:4000 (`bthrlight1` in the API's address table, firmware and its own API reference in `../pico/BathroomLight/`) driving two lights and a C4002 mmWave motion sensor: the **accent** light (the Pico's LED0, a dimmable PWM LED) and the **main** light (LED1, on / off only). Each light has its own mode, its own trigger distance (motion within it turns the light on) and its own off delay (nobody detected for that long turns it off). Presence hold is shared: on, anyone within the farther of the two distances, moving or still, keeps every light that is on lit, so the main light stays on until you walk past the accent's distance; off, each light is kept on only by movement within its own distance. All of its controls live in `bathrm.js`, styled by `styles/bathrm.css`.
 
 - **Accent** opens on one `bthr-light1_accent_menu` read, which the API answers as `level~mode` from two Pico calls. The level is 1–255: where the light is (or is fading to) while it is on, and where it will come on while it is off. The slider is an ordinary `slider` row, so the light gets at most one level every 120 ms while it is dragged and the release value always lands last. Under it, the modes: Stay On (2), Automatic (1), Keep Off (0), the one in force green; a row sends `bthr-light1_accent_mode_set_<n>`.
-- **Main** reads `bthr-light1_main_mode` and draws the same three rows, sending `bthr-light1_main_mode_set_<n>`; it has no slider.
-- **Room status** reads `bthr-light1_states`, `accent~main` as 1 or 0, which reports where a fade is heading from the moment it starts, and lists Main Light, then Accent Light; the room is on while either is.
+- **Ambient** (the main light's button) reads `bthr-light1_main_mode` and draws the same three rows, sending `bthr-light1_main_mode_set_<n>`; it has no slider.
+- **Room status** reads `bthr-light1_states`, `accent~main` as 1 or 0, which reports where a fade is heading from the moment it starts, and lists the main light as Ambient Light, then the accent as Accent Lights; the room is on while either is.
 - In Automatic, an on command (`bthron`, `bthr-light1_accenton`, `bthr-light1_mainon`) turns a light on only while someone is within its distance, so a short-reach main light can stay off when the room is switched on from further away.
 
 ### Settings window
 
-`bathroomSettingsPrompt()` opens a centred window, 302 px wide so its boxes end level with its row of three buttons, filled from one `bthr-light1_config` read (`presence~accent range~accent delay~accent mode~main range~main delay~main mode`). The settings sit in three boxes (`BTHR_GROUPS`): Accent Light and Main Light, each titled and holding its distance and off delay, then the presence switch. Each change is sent on release and confirmed in the title for 3 s ("Main off delay: 1 min 38 s"); errors show there in red, and "Light offline" stays while the settings are greyed out.
+`bathroomSettingsPrompt()` opens a centred window, 302 px wide so its boxes end level with its row of three buttons, filled from one `bthr-light1_config` read (`presence~accent range~accent delay~accent mode~main range~main delay~main mode`). The settings sit in three boxes (`BTHR_GROUPS`): Accent Lights and Ambient Light (the main light), each titled and holding its distance and off delay, then the presence switch. Every slider runs 0–1000 and maps to its value as `min × (max ÷ min)^(position ÷ 1000)` (`bthrValueFromSlider()`), so each step is the same share of the value; a value set outside the slider's range shows as it is, with the thumb at the nearer end. The window is centred on whole pixels with `round()` where the browser has it, as the Pixels and thermostat windows are: on a half pixel a slider's fill, its thumb's wide box-shadow, can leave a light line along the slider's bottom edge. Each change is sent on release and confirmed in the title for 3 s ("Ambient off delay: 1 min 38 s"); errors show there in red, and "Light offline" stays while the settings are greyed out.
 
 | Setting | Control | Range | Command |
 | --- | --- | --- | --- |
-| Accent / Main: Turns on within | Slider | 1–490 cm (the sensor's reach with 20 cm gates), shown in inches under 3 ft, else in feet | `bthr-light1_accent_range_set_<n>` · `bthr-light1_main_range_set_<n>` |
-| Accent / Main: Off delay | Slider on a cube curve (about 1 s steps at the short end) | 1 s – 1 h | `bthr-light1_accent_delay_set_<n>` · `bthr-light1_main_delay_set_<n>` |
-| Presence hold (still presence keeps a light on) | Switch | 0 / 1 | `bthr-light1_presence_set_<n>` |
+| Accent / Ambient: Turns on within | Slider on an exponential curve (inch steps near the sensor; halfway is 22 in) | 4 in – 10 ft (10–305 cm; the light takes up to 490), shown in inches under 3 ft, else in feet | `bthr-light1_accent_range_set_<n>` · `bthr-light1_main_range_set_<n>` |
+| Accent / Ambient: Off delay | Slider on an exponential curve (1 s steps at the short end; halfway is 1 min) | 1 s – 1 h | `bthr-light1_accent_delay_set_<n>` · `bthr-light1_main_delay_set_<n>` |
+| Presence hold (anyone within the farther distance keeps lit lights on) | Switch | 0 / 1 | `bthr-light1_presence_set_<n>` |
 
-The Log and Sensor buttons turn the window into a log box twice as wide (680 px), filled from `bthr-light1_log` or `bthr-light1_sensor`, with Back, Refresh (reads the same read-out again) and Close under it. Every request from the window waits for the one before it (`bthrRequest()`, a `picoRequestQueue()`), because the Pico serves one request at a time.
+The window is titled Bathroom. The Log and Sensor buttons turn it into a log box twice as wide (680 px), filled from `bthr-light1_log` or `bthr-light1_sensor`, with Back, Refresh (reads the same read-out again) and Close under it. The box is titled as the thermostat's status is, with the read-out's icon and name in bold capitals (LIGHT LOG, SENSOR STATUS) in place of the window's title, 10 px in from the window's edge, and its text wraps; the two log boxes share the `.pico-logbox` rule in `main.css`. Every request from the window waits for the one before it (`bthrRequest()`, a `picoRequestQueue()`), because the Pico serves one request at a time.
 
 ### API commands
 

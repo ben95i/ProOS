@@ -35,6 +35,10 @@
   left: 50%;
   margin-right: -50%;
   transform: translate(-50%, -50%);
+  /* on whole pixels, so its backlight slider leaves no line behind (see #bthr__prompt) */
+  top: round(50%, 1px);
+  left: round(50%, 1px);
+  transform: translate(round(-50%, 1px), round(-50%, 1px));
   height: var(--thermo-window-height);
   display: grid;
   grid-template-rows: minmax(0, 1fr);
@@ -509,15 +513,4 @@ html.theme-light .thermometer .temperature:before {
 .thermo__log .popup-ctn {
   padding: 0;
   min-height: 0;
-}
-
-/* long lines wrap, unlike the server log box */
-.thermo__log textarea {
-  font-size: 12px;
-  text-align: left;
-  border: 1px solid var(--border-color);
-  text-wrap-mode: wrap;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  overflow-x: hidden;
 }

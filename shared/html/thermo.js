@@ -292,7 +292,7 @@ function thermoWindowTemplate() {
     <fieldset class="btn-group thermo__log">
       <div class="btn-group-label">${thermoViewTitleTemplate()}</div>
       <div class="popup-ctn">
-        <textarea readonly class="scroll-bar-style" id="thermo__logbox" spellcheck="false"></textarea>
+        <textarea readonly class="scroll-bar-style pico-logbox" id="thermo__logbox" spellcheck="false"></textarea>
       </div>
     </fieldset>
     <div class="thermo__actions">

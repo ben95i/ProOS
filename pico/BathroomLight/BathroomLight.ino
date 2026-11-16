@@ -269,8 +269,8 @@ uint8_t radarFrameBuffer[RADAR_FRAME_MAX];
 uint8_t radarFrameReceived = 0;          // bytes of the current frame received so far
 uint16_t radarFrameExpectedLength = 0;   // whole-frame length from the frame's length field
 uint8_t radarTargetState = eNoTarget;    // last reported state: 0=none, 1=static presence, 2=motion
-// an LED's zone reaches from the sensor out to the LED's trigger distance; it is occupied while
-// something was detected inside it within the LED's off delay
+// an LED's zone is occupied from motion within its trigger distance until nothing has been
+// detected within its hold distance (calculateZoneHoldRangeCm) for its off delay
 bool zoneOccupied[LED_COUNT] = { false, false };
 uint32_t zoneLastDetectionMs[LED_COUNT] = { 0, 0 };
 bool radarConfigured = false;            // true once the sensor has answered and been configured
@@ -283,7 +283,7 @@ uint8_t radarLastReportData[RADAR_REPORT_DATA_MAX]; // data bytes of the latest 
 uint8_t radarLastReportDataLength = 0;
 
 // ---- persistent settings (each firmware build starts from the defaults, see loadSettings) ----
-const uint8_t PRESENCE_HOLDS_LIGHT_DEFAULT = 1;   // 1 = static presence (e.g. sitting still) also keeps the LEDs on
+const uint8_t PRESENCE_HOLDS_LIGHT_DEFAULT = 1;   // 1 = anyone within the farther trigger distance, moving or still, keeps lit LEDs on
 // per LED, indexed by LED number: LED0 lights the room from about 5 ft, LED1 from about 12 in
 const uint16_t TRIGGER_RANGE_DEFAULT_CM[LED_COUNT] = { 150, 30 };
 const uint16_t OFF_DELAY_DEFAULT_S[LED_COUNT] = { 30, 15 };  // LED turns off after no detection in its zone for this long
@@ -619,9 +619,10 @@ void saveSettingsWhenDue() {
 }
 
 // Returns how long an LED's zone stays occupied after its last detection: the LED's off delay.
-// It counts from the last detection inside the zone, so leaving the zone but staying in the
-// room starts it at once; leaving the sensor's view altogether adds the sensor's own hold
-// (RADAR_DISAPPEAR_DELAY_S), as the sensor keeps reporting the target that long.
+// It counts from the last detection within the zone's hold distance (calculateZoneHoldRangeCm),
+// so leaving that distance but staying in the room starts it at once; leaving the sensor's
+// view altogether adds the sensor's own hold (RADAR_DISAPPEAR_DELAY_S), as the sensor keeps
+// reporting the target that long.
 uint32_t calculateZoneHoldMs(uint8_t led) {
   uint32_t offDelaySeconds = settings.offDelaySeconds[led];
   uint32_t zoneHoldMs = offDelaySeconds * MS_PER_SECOND;
@@ -639,6 +640,21 @@ uint16_t calculateSensorRangeCm() {
     }
   }
   return sensorRangeCm;
+}
+
+// Returns the distance within which a target keeps an occupied LED's zone occupied. With
+// presenceHoldsLight on it is the farther of the two trigger distances, so anyone there,
+// moving or still, keeps every light that is on lit; with it off it is the LED's own trigger
+// distance, where only motion counts.
+// Accent 91 cm, main 25 cm, hold on: 91 for both; hold off: 91 for the accent, 25 for the main.
+uint16_t calculateZoneHoldRangeCm(uint8_t led) {
+  bool presenceMayHoldLight = (settings.presenceHoldsLight != 0);
+  if (presenceMayHoldLight) {
+    uint16_t fartherRangeCm = calculateSensorRangeCm();
+    return fartherRangeCm;
+  }
+  uint16_t ownRangeCm = settings.triggerRangeCm[led];
+  return ownRangeCm;
 }
 
 // ==== LED light ====
@@ -1139,17 +1155,25 @@ void readRadarTargets(uint8_t targetState, RadarTarget &motion, RadarTarget &pre
 }
 
 // Updates one LED's zone from the latest report's targets, and in motion activated mode turns
-// the LED on when someone arrives in its zone. The motion target inside the zone always
-// counts, whatever the sensor's overall state; the presence target inside it only keeps an
-// already occupied zone occupied, and only when presenceHoldsLight is on. Zones are tracked
-// in every light mode.
+// the LED on when someone arrives in its zone. The rules, checked on every report:
+//   arrive: the motion target within the LED's own trigger distance occupies an empty zone,
+//           whatever the sensor's overall state
+//   hold:   an occupied zone stays occupied while a target is within its hold distance
+//           (calculateZoneHoldRangeCm): with presenceHoldsLight on, the motion or presence
+//           target within the farther trigger distance; with it off, the motion target within
+//           the LED's own distance
+//   leave:  updateZoneOccupancy() empties a zone held by nothing for the LED's off delay
+// Zones are tracked in every light mode.
 void handleZoneDetection(uint8_t led, const RadarTarget &motion, const RadarTarget &presence) {
   uint16_t zoneRangeCm = settings.triggerRangeCm[led];
-  bool motionInZone = motion.seen && (motion.distanceCm <= zoneRangeCm);
-  bool presenceInZone = presence.seen && (presence.distanceCm <= zoneRangeCm);
+  uint16_t holdRangeCm = calculateZoneHoldRangeCm(led);
   bool presenceMayHoldLight = (settings.presenceHoldsLight != 0);
-  bool presenceKeepsZoneOccupied = presenceMayHoldLight && zoneOccupied[led] && presenceInZone;
-  bool detected = motionInZone || presenceKeepsZoneOccupied;
+  bool motionInZone = motion.seen && (motion.distanceCm <= zoneRangeCm);
+  bool motionWithinHold = motion.seen && (motion.distanceCm <= holdRangeCm);
+  bool presenceWithinHold = presenceMayHoldLight && presence.seen && (presence.distanceCm <= holdRangeCm);
+  bool targetWithinHold = motionWithinHold || presenceWithinHold;
+  bool holdKeepsZoneOccupied = zoneOccupied[led] && targetWithinHold;
+  bool detected = motionInZone || holdKeepsZoneOccupied;
   if (!detected) {
     return;
   }
@@ -1329,9 +1353,10 @@ void updateZoneOccupancy(uint8_t led) {
   bool motionActivated = (settings.lightMode[led] == LIGHT_MODE_MOTION);
   bool ledOnOrFadingOn = ledIsOnOrFadingOn(led);
   bool turnOff = motionActivated && ledOnOrFadingOn;
+  uint16_t holdRangeCm = calculateZoneHoldRangeCm(led);
   char reason[LOG_TEXT_LENGTH];
   snprintf(reason, sizeof(reason), "nothing within %ucm for %us",
-           settings.triggerRangeCm[led], settings.offDelaySeconds[led]);
+           holdRangeCm, settings.offDelaySeconds[led]);
   if (turnOff) {
     turnLedOff(led, PWM_LED0_FADE_STEP_MS);
     logLedTurningOff(led, reason);
@@ -1419,13 +1444,15 @@ void appendRadarSensorStatus(uint32_t nowMs) {
   }
 }
 
-// Appends an LED's zone, with a countdown to vacant while it is occupied.
+// Appends an LED's zone, with a countdown to vacant while it is occupied: "vacant (on within
+// 30 cm)", or "occupied (held within 150 cm), last detection 2s ago, vacant in 13s".
 void appendZoneStatus(uint32_t nowMs, uint8_t led) {
   char label[STATUS_LABEL_SIZE];
   snprintf(label, sizeof(label), "%s zone:", LED_NAMES[led]);
   uint16_t zoneRangeCm = settings.triggerRangeCm[led];
+  uint16_t holdRangeCm = calculateZoneHoldRangeCm(led);
   if (!zoneOccupied[led]) {
-    appendBodyField(label, "vacant (0-%u cm)\n", zoneRangeCm);
+    appendBodyField(label, "vacant (on within %u cm)\n", zoneRangeCm);
     return;
   }
   uint32_t msSinceDetection = nowMs - zoneLastDetectionMs[led];
@@ -1437,8 +1464,8 @@ void appendZoneStatus(uint32_t nowMs, uint8_t led) {
     uint32_t msUntilVacant = zoneHoldMs - msSinceDetection;
     secondsUntilVacant = msUntilVacant / MS_PER_SECOND;
   }
-  appendBodyField(label, "occupied (0-%u cm), last detection %lus ago, vacant in %lus\n",
-                  zoneRangeCm, (unsigned long)secondsSinceDetection, (unsigned long)secondsUntilVacant);
+  appendBodyField(label, "occupied (held within %u cm), last detection %lus ago, vacant in %lus\n",
+                  holdRangeCm, (unsigned long)secondsSinceDetection, (unsigned long)secondsUntilVacant);
 }
 
 // Appends each LED's zone and output: LED0's levels, LED1's on or off.
@@ -1799,7 +1826,8 @@ void setLedLightMode(uint8_t led, uint16_t requestedMode) {
   completeLedSettingChange(led, "lightMode", settings.lightMode[led], "");
 }
 
-// Sets whether static presence keeps an occupied zone occupied (command 6, 0 or 1), for both LEDs.
+// Sets presenceHoldsLight (command 6, 0 or 1), for both LEDs: 1 holds every lit LED on while
+// anyone, moving or still, is within the farther trigger distance (calculateZoneHoldRangeCm).
 void setPresenceHoldsLight(uint16_t requestedFlag) {
   bool valid = (requestedFlag <= FLAG_MAX_VALUE);
   if (!valid) {

@@ -8,6 +8,13 @@
   left: 50%;
   margin-right: -50%;
   transform: translate(-50%, -50%);
+  /* Centred on whole pixels where the browser can round. On a half pixel (an odd window
+     or screen height) a slider's fill, which is its thumb's wide box-shadow, can leave a
+     light line along the slider's bottom edge as the thumb moves. Browsers without
+     round() keep the lines above. The Pixels and thermostat windows do the same. */
+  top: round(50%, 1px);
+  left: round(50%, 1px);
+  transform: translate(round(-50%, 1px), round(-50%, 1px));
   /* as wide as its three buttons (260px, face to wall) plus 20px padding and 1px
      border each side */
   width: 302px;
@@ -16,10 +23,12 @@
   color: #fff;
 }
 
-/* the log or sensor read-out: double width, never wider than the screen */
+/* the log or sensor read-out: double width, never wider than the screen, with the
+   thermostat window's 10px from its edge to the box */
 #bthr__prompt.bthr__prompt--wide {
   width: 680px;
   max-width: 95vw;
+  padding: 10px;
 }
 
 /* The heading, also showing a change or error for a few seconds; one line, so the
@@ -147,9 +156,15 @@
   padding: 0;
 }
 
-/* the light grey edge the setting boxes carry, where .popup-ctn has none */
-.bthr__log textarea {
-  font-size: 12px;
-  text-align: left;
-  border: 1px solid var(--border-color);
+/* The read-out's name and icon over the box, as the thermostat titles its status
+   (a .btn-group-label, groups.css): centred, the window's 10px padding above its
+   capitals and the thermostat's 8px under them. */
+#bthr__prompt .bthr__log-title {
+  justify-content: center;
+  padding: 0 0 8px;
+}
+
+/* the text gives back letter-spacing's trailing space, so it centres */
+#bthr__prompt .bthr__log-title span {
+  margin-right: -0.2em;
 }

@@ -643,8 +643,8 @@ async function bathroomStatus() {
         accent = reply;
         main = reply;
     }
-    bthrRoom.addDevice('Main Light', main);
-    bthrRoom.addDevice('Accent Light', accent);
+    bthrRoom.addDevice('Ambient Light', main);
+    bthrRoom.addDevice('Accent Lights', accent);
     bthrRoom.updateRoomState();
     return bthrRoom.getData();
 }
