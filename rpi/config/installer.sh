@@ -249,6 +249,9 @@ cp -fr $TMPDIR/systemd/* /etc/systemd/system/
 cp -f $TMPDIR/netmode.sh /etc/
 chmod +x /etc/netmode.sh
 chown root:root /etc/netmode.sh
+cp -f $TMPDIR/netwatchdog.sh /etc/
+chmod +x /etc/netwatchdog.sh
+chown root:root /etc/netwatchdog.sh
 cp -f $TMPDIR/preinit.sh /etc/
 chmod +x /etc/preinit.sh
 chown root:root /etc/preinit.sh

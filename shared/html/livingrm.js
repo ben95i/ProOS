@@ -49,7 +49,7 @@ const VOLUME_STEP_UP_BUTTON = 'btn-vol-upc';
 function livingRoomGridTemplate() {
   return `
 <div>
-  ${powerButtonTemplate('wl1_dual', 'fad fa-lamp-floor', 'Lamp')}
+  ${powerButtonTemplate('wl1_dual', 'fad fa-lamp-floor', 'Floor')}
   ${powerButtonTemplate('wkststate', 'fad fa-desktop-alt', 'Desktop')}
   ${powerButtonTemplate('clr1', 'fad fa-light-ceiling', 'Ceiling')}
   <p class="grid-sep"></p>

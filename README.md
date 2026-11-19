@@ -117,7 +117,7 @@ Requires Raspberry Pi OS on Debian **trixie**; the installer refuses anything el
 ### Installer (`rpi/config/installer.sh`)
 
 1. **First run only** (no `/etc/rpi-conf.done`): locale, time zone, `pi` user, a long apt package list (build tools, GStreamer, ffmpeg, Bluetooth, node, lighttpd, motion; no X11 desktop), purges cron, logrotate, swap, PulseAudio/PipeWire, cups and others, deletes old `rpi-*` units and `/etc/camcleanup.conf`.
-2. **Every run**: read-only boot partition, `config.txt`, sshd and key, `sysctl`, NetworkManager, journald (to RAM), systemd units from `config/systemd/` into `/etc/systemd/system/`, `/etc/netmode.sh` and `/etc/preinit.sh`.
+2. **Every run**: read-only boot partition, `config.txt`, sshd and key, `sysctl`, NetworkManager, journald (to RAM), systemd units from `config/systemd/` into `/etc/systemd/system/`, `/etc/netmode.sh`, `/etc/netwatchdog.sh` and `/etc/preinit.sh`.
 3. **Node API**: moves `rpi/controller.js`, `rpi/ledparser.js` and `rpi/custom.js` over the shared ones in `/opt/nodeapi` (`npm install` only when `package.json` changed, tracked in `.deps.hash`).
 4. **Website**: rsyncs the staged html into `/var/www/html` (keeping `ram/`), sets `PAGE_NAME` in `opts.js` to the module's `brand.txt` name (so `main.js` titles the page with it and draws a Pi page, not the server's), minifies (all but `opts.js`), and gives `www-data` sudo on `servercmds.sh` and `relaxrun.sh` only.
 5. Bluetooth, ALSA, Samba USB share, udev USB automount, motion defaults, hostname and `/etc/hosts`.
@@ -134,9 +134,9 @@ Requires Raspberry Pi OS on Debian **trixie**; the installer refuses anything el
 
 Pis run with an OverlayFS root, so writes go to RAM and the Pi can be unplugged safely (the SD cards used to corrupt when a Pi lost power). `rpi rw` / `rpi ro` reboot into read-write / read-only (via `raspi-config nonint disable_overlayfs`/`enable_overlayfs`); the boot partition is remounted rw only for the moment it is written. Anything that must survive a reboot on a Pi has to be written in rw mode or to the boot partition / a USB drive.
 
-### Networking (`rpi/config/netmode.sh`)
+### Networking (`rpi/config/netmode.sh`, `rpi/config/netwatchdog.sh`)
 
-`boot`, `client`, `apd`, `delwifi`, `watchdog`. Wi-Fi credentials live on the boot partition (`/boot/firmware/wpa.conf`, `NAME|$|PASSWORD`, written by the website's Wi-Fi setup through `servercmds.sh confwpa`). Flags on the boot partition: `disable.wifi`, `apd.enable` (start as hotspot `RPiHotspot`). With no known network at boot the Pi falls back to hotspot mode with a captive DNS (`captive.conf`). `rpi-netwatchdog.service` (`netmode.sh watchdog`) recovers a hung Wi-Fi chip in stages without writing to disk; tunables are at the top of the script.
+`netmode.sh` takes the mode commands `boot`, `client`, `apd`, `delwifi`, and the status commands `inapd` and `inclient` (exit 0 when that mode is active) and `ssid` (prints the client network name), which change nothing. Wi-Fi credentials live on the boot partition (`/boot/firmware/wpa.conf`, `NAME|$|PASSWORD`, written by the website's Wi-Fi setup through `servercmds.sh confwpa`). The client profile (`RPiWiFi`) connects on 2.4 GHz only: on 5 GHz ktchpi stopped receiving broadcasts, so other hosts lost it once their ARP entry expired. Flags on the boot partition: `disable.wifi`, `apd.enable` (start as hotspot `RPiHotspot`). With no known network at boot the Pi falls back to hotspot mode with a captive DNS (`captive.conf`). `rpi-netwatchdog.service` runs `netwatchdog.sh` (installed as `/etc/netwatchdog.sh`, started from a module's `boot.sh`), which waits out access point outages and recovers a dropped Wi-Fi connection in stages (rejoin, driver and firmware reload, reboot) without writing to disk; it runs `/etc/netmode.sh` as a command (`client` to rebuild the connection, the status commands for the mode and network name) rather than loading its functions, and its tunables are at the top of the script.
 
 ### `rpi` command (`rpi/rpi.sh`)
 

@@ -1,19 +1,19 @@
-## /etc/systemd/system/netwatchdog.service
-## ProOS Wi-Fi client watchdog - runs '/etc/netmode.sh watchdog'
+## /etc/systemd/system/rpi-netwatchdog.service
+## ProOS Wi-Fi client watchdog - runs '/etc/netwatchdog.sh'
 ## Only acts in Wi-Fi client mode; idles in hotspot/eth0/disabled modes.
 ## Writes nothing to persistent storage (read-only filesystem safe).
 ## Logs:
-##   journalctl -u netwatchdog -f
+##   journalctl -u rpi-netwatchdog -f
 
 [Unit]
-Description=ProOS Wi-Fi client watchdog (netmode.sh)
+Description=ProOS Wi-Fi client watchdog (netwatchdog.sh)
 After=NetworkManager.service
 Wants=NetworkManager.service
 StartLimitIntervalSec=0
 
 [Service]
 Type=simple
-ExecStart=/bin/bash /etc/netmode.sh watchdog
+ExecStart=/bin/bash /etc/netwatchdog.sh
 Restart=on-failure
 RestartSec=15
 OOMScoreAdjust=-500

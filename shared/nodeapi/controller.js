@@ -586,19 +586,19 @@ async function bthrXmit(arg1, arg2 = '') {
 // heating or cooling is not something left on in the room, and lroff leaves
 // it alone.
 async function livingRoomStatus() {
-    const lrRoom = new RoomManager();
     const [thermostat, lamp, desktop, stereo] = await Promise.all([
         lrXmit("lr-thermo1"),
         lrmLamp1Status(),
         lrXmit("wkststate"),
         lrXmit("hifistate")
     ]);
-    // the lamp answers both of its channels as "lamp~backlight"
-    const [lampMain, lampBacklight] = splitByDelimiter(lamp, '~');
     const thermoRow = lrThermoStatusRow(thermostat);
+    const lrRoom = new RoomManager();
     lrRoom.addIndicatorDevice(thermoRow.label, thermoRow.value, thermoRow.indicator);
-    lrRoom.addDevice('Floor Lamp', lampMain);
-    lrRoom.addDevice('Backlight', lampBacklight);
+    // the lamp answers both of its channels as "lamp~accent"
+    const [fl, fa] = splitByDelimiter(lamp, '~');
+    lrRoom.addDevice('Floor Lamp', fl);
+    lrRoom.addDevice('Floor Accent', fa);
     lrRoom.addDevice('Desktop PC', desktop);
     lrRoom.addDevice('Stereo System', stereo);
     lrRoom.updateRoomState();
