@@ -12,7 +12,8 @@ import { powerButtonTemplate, powerListeners, spinnerIds, openDeviceMenu, showIn
 const LIVING_ROOM_TARGET = 'lrxmit';
 
 // The room's config. key names its API commands (lrstatus, lron, lroff); the amp counts
-// its volume 0-100; climate is the temperature window's source, the thermostat's status.
+// its volume 0-100. climate, set, makes the room a source in the temperature window's
+// Source menu: the thermostat's status, its temperature and humidity at places 3 and 4.
 export const LIVING_ROOM_CONFIG = {
   key: 'lr',
   name: 'Living Room',

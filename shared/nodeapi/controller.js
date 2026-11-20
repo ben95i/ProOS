@@ -685,6 +685,7 @@ async function executeMain(baseWWW, firstArg, secondArg) {
                 lrXmit("wl1_led2off"),
                 brXmit("brlamp1off"),
                 brXmit("bed_leds_off"),
+                bthrXmit("bthr-light1off"),
                 OPCLEDparser(baseWWW, "stop")
             ]).catch(() => {});
             return "OK";

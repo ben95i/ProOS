@@ -1,13 +1,13 @@
-// Automate - temperature and thermostat window: two thermometers for a room (main.js picks
-// it, and its config's climate names the source), the SmartThermo's setpoint display, mode
-// and blower boxes, and the settings view (text colour, brightness, status and log).
-// openThermoWindow(), refreshThermoWindow() and closeThermoWindow(); state is on
-// App.thermoWindow while open.
+// Automate - temperature and thermostat window: two thermometers for the source room (picked
+// from the Source menu under them and kept in the browser, apart from the room on screen;
+// its config's climate names the reading), the SmartThermo's setpoint display, mode and
+// blower boxes, and the settings view (text colour, brightness, status and log).
+// openThermoWindow() and closeThermoWindow(); state is on App.thermoWindow while open.
 
 import { registerListeners, gridButtonTemplate, dropdownButtonTemplate,
   promptWindow, sendCmd, cleanString, isNumeric, makeElement,
   requestThrottle, picoReplyError, picoRequestQueue, parsePicoNumber, readPicoLog,
-  PICO_REFUSED, PICO_NO_REPLY } from './utils.js';
+  setDisplayById, PICO_REFUSED, PICO_NO_REPLY } from './utils.js';
 import { openDropdown, removeDropdowns, beginMenuRequest,
   menuRequestCurrent } from './dropdowns.js';
 import { reportNotConnected, reportException } from './error.js';
@@ -74,7 +74,7 @@ const THERMO_SETTINGS = {
     choices: [
       { code: '1', label: 'Heat', icon: 'fad fa-fire-alt', running: RUNNING_HEAT },
       { code: '2', label: 'Cool', icon: 'fad fa-snowflake', running: RUNNING_COOL },
-      { code: '0', label: 'Off', icon: 'fad fa-power-off', running: null }
+      { code: '0', label: 'Off', icon: 'fad fa-toggle-off', running: null }
     ]
   },
   fan: {
@@ -115,6 +115,10 @@ const HUMIDITY_MAX = 100;
 
 // a thermometer with no reading
 const NO_READING = '--';
+
+// The source room's key, kept in the browser (localStorage) as the room on screen is.
+const THERMO_SOURCE_KEY = 'thermo-source';
+const THERMO_SOURCE_MENU = 'thermo__source-menu';
 
 //// window ////
 
@@ -239,9 +243,42 @@ function thermoViewTitleTemplate() {
   });
 }
 
+// the id of a source room's menu row
+function thermoSourceRowId(roomKey) {
+  return `thermo__source-row-${roomKey}`;
+}
+
+// The Source line under the thermometers, also a button: its menu has one row per room
+// with a climate, its name and icon, the source's own row hidden.
+// thermoSourceTemplate([LIVING_ROOM_CONFIG, BEDROOM_CONFIG])
+function thermoSourceTemplate(climateRooms) {
+  let rows = '';
+  climateRooms.forEach(roomConfig => {
+    rows += `
+      <a id="${thermoSourceRowId(roomConfig.key)}">${roomConfig.name}<i class="${roomConfig.icon}"></i></a>`;
+  });
+  return dropdownButtonTemplate({
+    buttonId: 'thermo__btn-source',
+    label: '<span id="thermo__source"></span>',
+    buttonClass: 'thermo__source',
+    menuId: THERMO_SOURCE_MENU,
+    menuClass: 'dd-button',
+    menuContent: rows
+  });
+}
+
+// one listener per source room's menu row
+function thermoSourceListeners(climateRooms) {
+  const listeners = {};
+  climateRooms.forEach(roomConfig => {
+    listeners[thermoSourceRowId(roomConfig.key)] = () => thermoPickSource(App.thermoWindow, roomConfig);
+  });
+  return listeners;
+}
+
 // The window: thermometers and thermostat over three buttons, and the settings view that
 // takes their place.
-function thermoWindowTemplate() {
+function thermoWindowTemplate(climateRooms) {
   return `
   <div class="thermo__main" id="thermo__main">
     <fieldset class="btn-group thermo__climate">
@@ -254,7 +291,7 @@ function thermoWindowTemplate() {
           <div class="temperature" id="thermo__1" data-value="${NO_READING}"></div>
         </div>
       </div>
-      <div class="thermo__source" id="thermo__source"></div>
+      ${thermoSourceTemplate(climateRooms)}
     </fieldset>
     <fieldset class="btn-group thermo__controls">
       <div class="btn-group-label"><span>Thermostat</span></div>
@@ -322,6 +359,7 @@ registerListeners({
   'thermo__btn-settings':   () => thermoOpenSettings(App.thermoWindow),
   'thermo__btn-brightness': () => thermoOpenBrightnessMenu(App.thermoWindow),
   'thermo__btn-view':       () => openDropdown(THERMO_VIEW_MENU),
+  'thermo__btn-source':     () => openDropdown(THERMO_SOURCE_MENU),
   'thermo__row-view':       () => thermoSwitchView(App.thermoWindow),
   'thermo__btn-logrefresh': () => thermoRefreshSettings(App.thermoWindow),
   'thermo__btn-back':       () => thermoBack(App.thermoWindow)
@@ -349,17 +387,30 @@ function thermoSwatchListeners() {
   return listeners;
 }
 
-// Opens the window and reads the thermostat and the room's climate into it.
-// pickClimateRoom() answers the room config to read, asked again on every refresh.
-export function openThermoWindow(pickClimateRoom) {
+// The source room kept in the browser, or the first room when none is kept or the kept
+// one has no climate any more: thermoSavedSource([LIVING_ROOM_CONFIG, BEDROOM_CONFIG])
+function thermoSavedSource(climateRooms) {
+  const savedKey = localStorage.getItem(THERMO_SOURCE_KEY);
+  const savedRoom = climateRooms.find(roomConfig => roomConfig.key === savedKey);
+  if (savedRoom) {
+    return savedRoom;
+  }
+  return climateRooms[0];
+}
+
+// Opens the window and reads the thermostat and the source room's climate into it.
+// climateRooms: the room configs with a climate, in menu order; the source is one of them.
+export function openThermoWindow(climateRooms) {
   if (App.thermoWindow) {
     return;
   }
   removeDropdowns();
-  const promptElement = promptWindow(THERMO_PROMPT_ID, thermoWindowTemplate());
+  registerListeners(thermoSourceListeners(climateRooms));
+  const promptElement = promptWindow(THERMO_PROMPT_ID, thermoWindowTemplate(climateRooms));
   const thermoWindow = {
     win: promptElement,
-    pickClimateRoom: pickClimateRoom,
+    climateRooms: climateRooms,
+    sourceRoom: thermoSavedSource(climateRooms),
     mainPanel: document.getElementById('thermo__main'),
     logPanel: document.getElementById('thermo__log'),
     brightnessIcon: document.getElementById(THERMO_BRIGHTNESS_ICON),
@@ -404,13 +455,6 @@ export function openThermoWindow(pickClimateRoom) {
   thermoRefresh(thermoWindow);
 }
 
-// Reads an open window again, for a room switch.
-export function refreshThermoWindow() {
-  if (App.thermoWindow) {
-    thermoRefresh(App.thermoWindow);
-  }
-}
-
 // Takes the window down; a setpoint press still waiting is sent rather than lost.
 export function closeThermoWindow() {
   const thermoWindow = App.thermoWindow;
@@ -441,14 +485,41 @@ function thermoShowPanel(thermoWindow, name) {
 
 //// reading ////
 
-// Reads the thermostat's status and the room's climate together and shows both. When the
-// climate is the thermostat's own, one read serves both.
+// Puts the source room's name on the Source line and leaves only the other rooms in its
+// menu, as the room selector does.
+function thermoShowSource(thermoWindow) {
+  const sourceRoom = thermoWindow.sourceRoom;
+  thermoWindow.source.textContent = `Source: ${sourceRoom.name}`;
+  thermoWindow.climateRooms.forEach(roomConfig => {
+    const isSource = roomConfig.key === sourceRoom.key;
+    let rowDisplay = '';
+    if (isSource) {
+      rowDisplay = 'none';
+    }
+    setDisplayById(thermoSourceRowId(roomConfig.key), rowDisplay);
+  });
+}
+
+// A Source menu row was picked: keeps the room in the browser and reads it.
+function thermoPickSource(thermoWindow, roomConfig) {
+  if (!thermoWindow) {
+    return;
+  }
+  removeDropdowns();
+  thermoWindow.sourceRoom = roomConfig;
+  localStorage.setItem(THERMO_SOURCE_KEY, roomConfig.key);
+  // the room before's readings stay while it is read, so each tube moves straight to the
+  // new level rather than emptying first
+  thermoRefresh(thermoWindow);
+}
+
+// Reads the thermostat's status and the source room's climate together and shows both.
+// When the climate is the thermostat's own, one read serves both.
 async function thermoRefresh(thermoWindow) {
   thermoWindow.readSeq += 1;
   const sequence = thermoWindow.readSeq;
-  const climateRoom = thermoWindow.pickClimateRoom();
-  const climate = climateRoom.climate;
-  thermoWindow.source.textContent = `Source: ${climateRoom.name}`;
+  const climate = thermoWindow.sourceRoom.climate;
+  thermoShowSource(thermoWindow);
   thermoWindow.refreshIcon.classList.add(THERMO_SPIN_CLASS);
   const statusRead = thermoRequest(THERMO_DEVICE);
   let climateRead = statusRead;

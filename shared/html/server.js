@@ -92,7 +92,7 @@ function svrOptMainTemplate() {
   return `
 <div class="svropt__panel svropt__main">
   ${optionMenu('atalk', 'fab fa-apple', 'AFP', startStopRows('atalk'))}
-  ${optionMenu('legacy', 'fad fa-save', 'CIFS', startStopRows('legacy'))}
+  ${optionMenu('cifs', 'fad fa-save', 'CIFS', startStopRows('cifs'))}
   ${optionMenu('xana', 'fab fa-linux', 'Xana', startStopRows('xana'))}
   ${optionButton('btn-open-regions', 'fad fa-th', 'Regions')}
   ${optionMenu('system', 'fad fa-microchip', 'System', `
@@ -115,8 +115,8 @@ function svrOptMainTemplate() {
 }
 registerListeners({
   'btn-upload':           () => showUpload(),
-  ...menuOpeners(['atalk', 'legacy', 'unifi', 'xana', 'system', 'netwrk', 'router']),
-  ...commandButtons(['startatalk', 'stopatalk', 'startlegacy', 'stoplegacy', 'startunifi',
+  ...menuOpeners(['atalk', 'cifs', 'unifi', 'xana', 'system', 'netwrk', 'router']),
+  ...commandButtons(['startatalk', 'stopatalk', 'startcifs', 'stopcifs', 'startunifi',
     'stopunifi', 'startxana', 'stopxana', 'syslog', 'netscan', 'clearlog', 'rebootrouter']),
   'btn-ext-unifi':        () => GoToExtPage(EXT_PAGES.unifi),
   'btn-ext-system':       () => GoToExtPage(EXT_PAGES.proxmox),

@@ -237,16 +237,11 @@ function closePageMenus() {
   }
 }
 
-// a room menu row was picked: draws the room, reads its devices and any open temperature window
+// a room menu row was picked: draws the room and reads its devices
 function pickRoom(roomKey) {
   selectRoom(roomKey);
   if (App.roomStateManager) {
     App.roomStateManager.restartRoomState();
-  }
-  // not loaded means not open
-  const thermoModule = loadThermo.loaded();
-  if (thermoModule) {
-    thermoModule.refreshThermoWindow();
   }
 }
 
@@ -299,6 +294,7 @@ function selectRoom(_mode) {
   }
   showRoomIdentity('current-room-icon', 'current-room-label', config);
   showRoomIdentity('room-group-icon', 'room-group-label', config);
+  showRoomIdentity('room-onoff-icon', null, config);
   App.currentRoom = _mode;
   localStorage.setItem("ctls-mode", _mode);
 }
@@ -369,12 +365,14 @@ registerListeners({
   'btn-home-pi': () => GoToHomePage()
 });
 
-// the main grid (server + LED Pi): Pixels, then the server-only APT and room groups
+// the main grid (server + LED Pi): the server-only APT group, Pixels, then the
+// server-only room group
 function mainGridTemplate(f) {
   if (!f.isLedCapable) return '';
   return `
 <div>
   <div class="grid">
+    ${f.isServer ? roomControlsTemplate() : ''}
     <fieldset class="btn-group">
       <div class="btn-group-label"><i class="fad fa-stars"></i><span>Pixels</span></div>
       ${gridButtonTemplate({
@@ -401,7 +399,6 @@ function mainGridTemplate(f) {
         menuClass: 'dd-button'
       })}
     </fieldset>
-    ${f.isServer ? roomControlsTemplate() : ''}
     ${f.isServer ? `
     <fieldset class="btn-group" id="room-group">
       <div class="btn-group-label"><i id="room-group-icon"></i><span id="room-group-label"></span></div>
@@ -433,43 +430,43 @@ function onOffRowsTemplate(onRowId, offRowId) {
     <a id="${offRowId}"> Off<i class="fad fa-toggle-off"></i></a>`;
 }
 
-// The room the temperature window reads: the one on screen when it has a sensor, or
-// else the living room.
-function climateRoomConfig() {
-  const roomConfig = ROOM_CONFIGS[App.currentRoom];
-  if (roomConfig && roomConfig.climate) {
-    return roomConfig;
-  }
-  return LIVING_ROOM_CONFIG;
+// The rooms the temperature window can read, in ROOM_CONFIGS order: those whose config
+// has a climate. -> [LIVING_ROOM_CONFIG, BEDROOM_CONFIG]
+function climateRoomConfigs() {
+  const allRooms = Object.values(ROOM_CONFIGS);
+  return allRooms.filter(roomConfig => roomConfig.climate);
 }
 
-// the server-only APT group
+// The server-only APT group. The Room button shows the room on screen's icon, which
+// selectRoom() sets; it is drawn with the first room's until then.
 function roomControlsTemplate() {
+  const firstRoomConfig = Object.values(ROOM_CONFIGS)[0];
   return `
 <div>
   <p class="grid-sep"></p>
   <fieldset class="btn-group">
   <div class="btn-group-label"><i class="fad fa-home"></i><span>APT</span></div>
   ${dropdownButtonTemplate({
+    buttonId: 'btn-menu-lightmenu',
+    icon: 'fad fa-lightbulb-on',
+    label: 'All Lights',
+    menuId: 'lightmenu',
+    menuClass: 'dd-button',
+    menuContent: onOffRowsTemplate('btn-cmd-lightson', 'btn-cmd-lightsoff')
+  })}
+  ${dropdownButtonTemplate({
     buttonId: 'btn-menu-allmenu',
-    icon: 'fad fa-plug',
+    icon: firstRoomConfig.icon,
+    iconId: 'room-onoff-icon',
     label: 'Room',
     menuId: 'allmenu',
     menuClass: 'dd-button',
     menuContent: onOffRowsTemplate('btn-room-on', 'btn-room-off')
   })}
   ${dropdownButtonTemplate({
-    buttonId: 'btn-menu-lightmenu',
-    icon: 'fad fa-lightbulb-on',
-    label: 'Lights',
-    menuId: 'lightmenu',
-    menuClass: 'dd-button',
-    menuContent: onOffRowsTemplate('btn-cmd-lightson', 'btn-cmd-lightsoff')
-  })}
-  ${dropdownButtonTemplate({
     buttonId: 'btn-menu-pwrmenu',
-    icon: 'fad fa-home',
-    label: 'Power',
+    icon: 'fas fa-bolt',
+    label: 'All Rooms',
     menuId: 'pwrmenu',
     menuClass: 'dd-button',
     menuContent: onOffRowsTemplate('btn-power-on', 'btn-power-off')
@@ -482,8 +479,9 @@ function roomControlsTemplate() {
   })}
   ${gridButtonTemplate({
     buttonId: 'btn-show-temphumid',
-    label: `<i class="fad fa-temperature-hot large__icon"></i>
-      <i class="fad fa-humidity large__icon"></i>`
+    label: `<i class="fad fa-fire-alt large__icon"></i>
+      <i class="fad fa-snowflake large__icon"></i>
+      <span class="button__caption">HVAC</span>`
   })}
   ${gridButtonTemplate({
     buttonId: 'btn-media-link',
@@ -531,7 +529,7 @@ registerListeners({
 async function openTemperatureWindow() {
   const thermoModule = await loadThermo();
   if (thermoModule) {
-    thermoModule.openThermoWindow(climateRoomConfig);
+    thermoModule.openThermoWindow(climateRoomConfigs());
   }
 }
 

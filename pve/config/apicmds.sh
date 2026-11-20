@@ -425,13 +425,13 @@ if [ "$CMD" == "pve_listsnaps" ]; then
 fi
 
 ### START LXC/VMs #####################################
-if [ "$CMD" == "startlegacy" ]; then
-  echo "starting legacy SMB server..."
+if [ "$CMD" == "startcifs" ]; then
+  echo "starting legacy CIFS server..."
   lxc-start -n 104
   END_ROUTINE
 fi
-if [ "$CMD" == "stoplegacy" ]; then
-  echo "shutting down legacy SMB server..."
+if [ "$CMD" == "stopcifs" ]; then
+  echo "shutting down legacy CIFS server..."
   lxc-stop -n 104
   END_ROUTINE
 fi
@@ -444,12 +444,6 @@ fi
 if [ "$CMD" == "stopxana" ]; then
   echo "shutting down xana..."
   qm stop 105
-  END_ROUTINE
-fi
-if [ "$CMD" == "restorexana" ]; then
-  echo "restoring xana..."
-  qmrestore /opt/xana-restore-image.vma.zst \
-    105 -force -storage scratch
   END_ROUTINE
 fi
 #######################################################
@@ -465,12 +459,12 @@ if [ "$CMD" == "stopunifi" ]; then
 fi
 #######################################################
 if [ "$CMD" == "startatalk" ]; then
-  echo "starting AppleTalk server..."
+  echo "starting legacy AppleTalk server..."
   qm start 103
   END_ROUTINE
 fi
 if [ "$CMD" == "stopatalk" ]; then
-  echo "shutting down AppleTalk server..."
+  echo "shutting down legacy AppleTalk server..."
   qm stop 103
   END_ROUTINE
 fi
@@ -496,68 +490,69 @@ if [ "$CMD" == "pve_vmsbkp" ]; then
   fi
   trap 'rm -f "$RAMDISK/pvebackup.lock"' EXIT
   trap 'exit 143' TERM INT
+  ###
   echo " "
   echo "Backing-up Files LXC 101..."
-  vzdump 101 --mode snapshot --compress zstd --node pve --storage local --remove 1 --exclude-path /mnt --exclude-path /home/ben
+  vzdump 101 --mode snapshot --compress zstd --node pve --storage local --remove 1 --exclude-path /mnt \
+    --exclude-path /home/ben
   cp /etc/pve/lxc/101.conf $PROOS_DIR/files/lxc.conf
-  chmod 777 $PROOS_DIR/files/lxc.conf
+  chown -v tank:shared $PROOS_DIR/files/lxc.conf
   ###
   echo " "
   echo "Backing-up Management LXC 102..."
   vzdump 102 --mode snapshot --compress zstd --node pve --storage local --remove 1 --exclude-path /mnt
   cp /etc/pve/lxc/102.conf $PROOS_DIR/mgmt/lxc.conf
-  chmod 777 $PROOS_DIR/mgmt/lxc.conf
+  chown -v tank:shared $PROOS_DIR/mgmt/lxc.conf
   ### 
   echo " "
-  echo "Backing-up Legacy LXC 104..."
+  echo "Backing-up CIFS LXC 104..."
   vzdump 104 --mode snapshot --compress zstd --node pve --storage local --remove 1 --exclude-path /mnt
-  cp -v /etc/pve/lxc/104.conf $PROOS_DIR/legacy/lxc.conf
-  chmod 777 $PROOS_DIR/legacy/lxc.conf
+  cp /etc/pve/lxc/104.conf $PROOS_DIR/cifs/lxc.conf
+  chown -v tank:shared $PROOS_DIR/cifs/lxc.conf
   ###
   echo " "
   echo "Backing-up Automate LXC 106..."
-  vzdump 106 --mode snapshot --compress zstd --node pve --storage local --remove 1 --exclude-path /mnt --exclude-path /var/www/html
-  cp -v /etc/pve/lxc/106.conf $PROOS_DIR/automate/lxc.conf
-  chmod 777 $PROOS_DIR/automate/lxc.conf
+  vzdump 106 --mode snapshot --compress zstd --node pve --storage local --remove 1 --exclude-path /mnt \
+    --exclude-path /var/www/html
+  cp /etc/pve/lxc/106.conf $PROOS_DIR/automate/lxc.conf
+  chown -v tank:shared $PROOS_DIR/automate/lxc.conf
   ###
   echo " "
   echo "Backing-up Media LXC 108..."
   vzdump 108 --mode snapshot --compress zstd --node pve --storage local --remove 1 --exclude-path /mnt
   cp /etc/pve/lxc/108.conf $PROOS_DIR/media/lxc.conf
-  chmod 777 $PROOS_DIR/media/lxc.conf
+  chown -v tank:shared $PROOS_DIR/media/lxc.conf
+  ###
   echo " "
   echo "Backing-up Router KVM 100..."
   vzdump 100 --mode snapshot --compress zstd --node pve --storage local --remove 1 --exclude-path /mnt
   cp /etc/pve/qemu-server/100.conf $PROOS_DIR/pve/vmbkps/vzdump-qemu-100.conf
-  chmod 777 $PROOS_DIR/pve/vmbkps/vzdump-qemu-100.conf
+  chown -v tank:shared $PROOS_DIR/pve/vmbkps/vzdump-qemu-100.conf
   ###
   echo " "
   echo "Backing-up AppleTalk KVM 103..."
   vzdump 103 --mode snapshot --compress zstd --node pve --storage local --remove 1 --exclude-path /mnt
   cp /etc/pve/qemu-server/103.conf $PROOS_DIR/appletalk/qemu.conf
-  chmod 777 $PROOS_DIR/appletalk/qemu.conf
+  chown -v tank:shared $PROOS_DIR/appletalk/qemu.conf
   ###  
   echo " "
   echo "Backing-up Xana KVM 105..."
   vzdump 105 --mode snapshot --compress zstd --node pve --storage local --remove 1 --exclude-path /mnt
   cp /etc/pve/qemu-server/105.conf $PROOS_DIR/xana/qemu.conf
-  chmod 777 $PROOS_DIR/xana/qemu.conf
+  chown -v tank:shared $PROOS_DIR/xana/qemu.conf
   ###
   echo " "
   echo "Backing-up Unifi KVM 107..."
   vzdump 107 --mode snapshot --compress zstd --node pve --storage local --remove 1
   cp /etc/pve/qemu-server/107.conf $PROOS_DIR/pve/vmbkps/vzdump-qemu-107.conf
-  chmod 777 $PROOS_DIR/pve/vmbkps/vzdump-qemu-107.conf
+  chown -v tank:shared $PROOS_DIR/pve/vmbkps/vzdump-qemu-107.conf
   ###
   ### Copy to ZFS Pool
   ###
   echo " "
   echo "Copying VM's to Datastore..."
   rsync --progress -a /var/lib/vz/dump/vzdump-* $PROOS_DIR/pve/vmbkps/
-  chmod -R 777 $PROOS_DIR/pve/vmbkps/*.vma.zst
-  chmod -R 777 $PROOS_DIR/pve/vmbkps/*.tar.zst
-  chmod -R 777 $PROOS_DIR/pve/vmbkps/*.conf
-  chmod -R 777 $PROOS_DIR/pve/vmbkps/*.log
+  chown -Rv tank:shared $PROOS_DIR/pve/vmbkps/vzdump-*
   echo "Backup Complete."
   rm -f "$RAMDISK/pvebackup.lock"
   END_ROUTINE

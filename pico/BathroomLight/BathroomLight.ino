@@ -1163,6 +1163,7 @@ void readRadarTargets(uint8_t targetState, RadarTarget &motion, RadarTarget &pre
 //           target within the farther trigger distance; with it off, the motion target within
 //           the LED's own distance
 //   leave:  updateZoneOccupancy() empties a zone held by nothing for the LED's off delay
+//   off:    in motion activated mode an off command empties the zone at once (clearZoneByCommand)
 // Zones are tracked in every light mode.
 void handleZoneDetection(uint8_t led, const RadarTarget &motion, const RadarTarget &presence) {
   uint16_t zoneRangeCm = settings.triggerRangeCm[led];
@@ -1622,13 +1623,29 @@ void replyWithLedStates() {
   snprintf(commandReplyOut, sizeof(commandReplyOut), "%d~%d", led0State, led1State);
 }
 
+// Empties an occupied zone for an off command in motion activated mode, ending its off delay
+// countdown, so the zone is vacant at once and the next motion within the LED's trigger
+// distance turns it on again.
+void clearZoneByCommand(uint8_t led) {
+  bool motionActivated = (settings.lightMode[led] == LIGHT_MODE_MOTION);
+  bool clearsZone = motionActivated && zoneOccupied[led];
+  if (!clearsZone) {
+    return;
+  }
+  zoneOccupied[led] = false;
+  const char *ledName = LED_NAMES[led];
+  logMessage("http: %s zone vacant, off delay cleared", ledName);
+}
+
 // Turns an LED off for a command, except in always on mode which keeps it on. LED0 fades off,
-// LED1 switches off.
+// LED1 switches off. In motion activated mode the LED's zone is emptied as well
+// (clearZoneByCommand).
 void turnLedOffByCommand(uint8_t led) {
   bool mayTurnOff = commandMayTurnLedOff(led);
   if (mayTurnOff) {
     turnLedOff(led, PWM_LED0_FADE_STEP_MS);
     logLedTurningOff(led, "http");
+    clearZoneByCommand(led);
   } else {
     const char *ledName = LED_NAMES[led];
     logMessage("http: %s stays on (always on mode)", ledName);

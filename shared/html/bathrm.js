@@ -9,7 +9,8 @@ import { openDeviceMenu, inputMenuRows, removeDropdowns, spinnerIds } from './dr
 import ToggleSwitch from './switch.js';
 
 // The room's config. key names its API commands (bthrstatus, bthron, bthroff). No amp, so
-// no volume target; no sensor, so the temperature window shows the living room's.
+// no volume target. climate null: no sensor, so the room is not in the temperature window's
+// Source menu.
 export const BATHROOM_CONFIG = {
   key: 'bthr',
   name: 'Bathroom',

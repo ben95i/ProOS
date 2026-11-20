@@ -38,7 +38,7 @@ dtparam=act_led_trigger=none
 dtparam=act_led_activelow=off
 
 # --------- Disable PWR LED ---------
-#dtparam=pwr_led_activelow=off
+dtparam=pwr_led_activelow=off
 
 #------Reboot when exceeds-----
 temp_limit=80

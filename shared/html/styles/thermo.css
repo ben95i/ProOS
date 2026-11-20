@@ -8,12 +8,23 @@
   --thermo-window-height: 500px;     /* border included */
   --thermo-gap: 10px;
   --thermo-wall: 5px;                /* a .button's walls */
-  --thermo-climate-width: 245px;     /* the two thermometers and their readings */
-  --thermo-tube-spacing: 92.5px;     /* between the two tubes, centred together */
-  --thermo-panel-width: 145px;       /* the thermostat's display and buttons */
+  /* Widths chosen so every box lands on a whole pixel: the panels' sum is even and,
+     less the two gaps, splits three ways (the buttons: (416 - 20) / 3 = 132), and the
+     swatch row's space splits eight ways (see .thermo__swatches). */
+  --thermo-climate-width: 216px;     /* the two thermometers and their readings */
+  --thermo-tube-width: 25px;         /* border included */
+  /* Every reading's bubble is this wide, so the space from the panel's border to the
+     first, between the two and on to the border is one gap: (216 - -2 × 10 - 2 × 91) / 3
+     = 18. Odd, as the tube is, so a bubble centred on its tube lands on whole pixels;
+     the widest reading, "100.0°F", still fits inside it. */
+  --thermo-reading-width: 91px;
+  /* the thermostat's display and buttons; even, so the mode and blower boxes are whole:
+     (146 - 10) / 2 = 68 */
+  --thermo-panel-width: 146px;
   --thermo-button-height: 75px;      /* the bathroom settings' button height */
   --thermo-lcd-height: 79px;
-  --thermo-state-height: 70px;       /* the mode and blower boxes */
+  /* the mode and blower boxes; odd, so the Up and Down buttons share an even height */
+  --thermo-state-height: 71px;
   /* a thermometer, border included, at the least: it stretches to the
      height its panel has */
   --thermo-tube-min-height: 150px;
@@ -25,8 +36,8 @@
   --thermo-reading-padding: 5px;
   --thermo-reading-height: calc(var(--thermo-reading-font) - -2 * var(--thermo-reading-padding));
   /* a half bubble below the fill's top, so an empty tube's reading hangs this far
-     below */
-  --thermo-reading-drop: calc(1.5 * var(--thermo-reading-height) - var(--thermo-tube-border));
+     below, to the nearest whole pixel (58.5 - 9 = 49.5 -> 50) */
+  --thermo-reading-drop: round(calc(1.5 * var(--thermo-reading-height) - var(--thermo-tube-border)), 1px);
   /* the panels' own spacing, the same gap as everything else in here */
   --group-clear: var(--thermo-gap);
   --group-gap: var(--thermo-gap);
@@ -92,6 +103,13 @@
   margin-right: -0.2em;
 }
 
+/* A label's text is trimmed to its capitals, 8.42px tall at 12px; held to the nearest
+   whole pixel so nothing under a label sits on a fraction. */
+#temp__prompt .btn-group-label > span,
+#temp__prompt .thermo__view .button__text > span {
+  height: round(1cap, 1px);
+}
+
 /*
  *  Thermometers
  */
@@ -101,25 +119,45 @@
   grid-template-rows: auto 1fr auto;
 }
 
-/* As tall as the panel leaves; below, room for the bulb or an empty tube's reading. */
+/* As tall as the panel leaves; below, room for the bulb or an empty tube's reading.
+   Each tube takes its bubble's width (.thermometer's margin), spread evenly over the
+   panel's whole inside, its padding included, so the bubbles have equal space from the
+   border, between them and on to the border. */
 #temp_therm_grid {
   display: flex;
-  justify-content: center;
-  column-gap: var(--thermo-tube-spacing);
+  justify-content: space-evenly;
+  margin: 0 calc(-1 * var(--group-clear));
   align-items: stretch;
   padding-bottom: max(var(--thermo-bulb-drop), var(--thermo-reading-drop));
 }
 
-/* which room the readings are from */
-.thermo__source {
+/* which room the readings are from: the Source button and its menu, centred under the
+   thermometers (the button's look is with the log box's title, below) */
+.thermo__climate > .dropdown {
+  justify-self: center;
+}
+
+/* the * rule sizes every element, so the text's spans are set */
+.thermo__source .button__text,
+.thermo__source .button__text span {
   font-size: 16px;
-  color: var(--main-40-white);
+}
+
+/* the Source menu opens centred under the line: room names left, icons right */
+#thermo__source-menu {
+  left: 50%;
+  transform: translateX(-50%);
+  /* as wide as its longest row: half the line's width is all a left of 50% leaves */
+  width: max-content;
+  min-width: 170px;
 }
 
 /* a size container, so the fill's gradient can be sized to the tube */
 .thermometer {
   container-type: size;
-  width: 25px;
+  width: var(--thermo-tube-width);
+  /* out to the bubble's width on each side: (91 - 25) / 2 = 33 */
+  margin: 0 calc((var(--thermo-reading-width) - var(--thermo-tube-width)) / 2);
   min-height: var(--thermo-tube-min-height);
   background: #0f0f0f;
   position: relative;
@@ -156,15 +194,19 @@
   transition: height 0.2s ease-in-out;
 }
 
-/* the reading, in a theme-coloured bubble centred on its tube at the top of
-   the fill */
+/* the reading, in a theme-coloured bubble centred on its tube at the top of the fill;
+   one width for every reading, the text centred in it (flex, so a reading wider than
+   usual spills evenly into the bubble's own margin rather than to the right) */
 .thermometer .temperature:before {
   content: attr(data-value);
   left: 50%;
-  min-width: 40px;
+  box-sizing: border-box;
+  width: var(--thermo-reading-width);
+  display: flex;
+  justify-content: center;
   position: absolute;
   z-index: 2;
-  padding: var(--thermo-reading-padding) 10px;
+  padding: var(--thermo-reading-padding) 0;
   border-radius: 5px;
   font-size: var(--thermo-reading-font);
   line-height: 1;
@@ -202,6 +244,8 @@ html.theme-light .thermometer .temperature:before {
   display: flex;
   align-items: center;
   justify-content: center;
+  /* the read-out is 113px wide in 144px, so 1px on the left centres it on whole pixels */
+  padding-left: 1px;
   gap: var(--lcd-glyph-gap);
   border: 1px solid var(--border-color);
   border-radius: 8px;
@@ -353,12 +397,14 @@ html.theme-light .thermometer .temperature:before {
 /* the eight colours and the Brightness circle in one row, spread over it */
 .thermo__swatches {
   --thermo-swatch-size: 36px;
-  --thermo-swatch-lift: 1.25;
+  /* 36px to 44px, so a lifted swatch grows a whole 4px on each side */
+  --thermo-swatch-lift: calc(44 / 36);
   display: grid;
   grid-template-columns: repeat(9, var(--thermo-swatch-size));
   justify-content: space-between;
   align-items: center;
-  padding: 0 4px;
+  /* the swatches' spaces whole: (400 - 2 × 6 - 9 × 36) / 8 = 8 */
+  padding: 0 6px;
 }
 
 /* the colour set, larger than the prompt's own lift so it stands out */
@@ -445,8 +491,10 @@ html.theme-light .thermometer .temperature:before {
   padding-top: 0;
 }
 
-/* the title: a .button put back to a plain label, opening the other read-out's menu */
-#temp__prompt .button.thermo__view {
+/* the title, and the Source line under the thermometers: a .button put back to a plain
+   label, opening a menu */
+#temp__prompt .button.thermo__view,
+#temp__prompt .button.thermo__source {
   width: auto;
   height: auto;
   /* a finger's room to press it, the label staying where it was */
@@ -463,17 +511,26 @@ html.theme-light .thermometer .temperature:before {
   text-shadow: none;
 }
 
-#temp__prompt .button.thermo__view:active {
+#temp__prompt .button.thermo__view:active,
+#temp__prompt .button.thermo__source:active {
   transform: none;
   box-shadow: none;
 }
 
 /* lights up as a dropdown row does (dropdowns.css), to show it can be pressed */
 @media (hover: hover) and (pointer: fine) {
-  #temp__prompt .button.thermo__view:hover {
+  #temp__prompt .button.thermo__view:hover,
+  #temp__prompt .button.thermo__source:hover {
     color: #fff;
     text-shadow: var(--menu-glow);
   }
+}
+
+/* the Source line in its own grey, with less room around it than the title */
+#temp__prompt .button.thermo__source {
+  color: var(--main-40-white);
+  margin: -8px -16px;
+  padding: 8px 16px;
 }
 
 /* icon and name at the label's size; letter-spacing only on the name */

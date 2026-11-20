@@ -47,8 +47,8 @@ chown root:root /etc/samba/smb.conf
 ## Reload services
 systemctl daemon-reload
 
-## Disable auto-starting services
-systemctl disable smbd nmbd avahi-daemon autofs
+## Auto-starting services
+systemctl enable smbd nmbd avahi-daemon
 
 ## Set locale
 if [ ! -e "/etc/locales.generated" ]; then
@@ -82,15 +82,6 @@ chmod +x /root/.profile
 cp /tmp/config/sysctl.conf /etc
 chmod 644 /etc/sysctl.conf
 chown root:root /etc/sysctl.conf
-
-## Startup configuration
-cp /tmp/config/rc-local.service /etc/systemd/system/
-chmod 644 /etc/systemd/system/rc-local.service
-chown root:root /etc/systemd/system/rc-local.service
-cp /tmp/config/rc.local /etc/
-chmod 755 /etc/rc.local
-chown root:root /etc/rc.local
-systemctl enable rc-local
 
 ## Clean-up
 rm -rf /tmp/config

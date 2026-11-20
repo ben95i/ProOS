@@ -25,7 +25,7 @@ One codebase serves three device models. `main.js` reads the model at load from 
 
 | Model | Detected by | What it draws |
 | --- | --- | --- |
-| Server | `PAGE_NAME` is `SITE_NAME` (`Automate`), as `opts.js` is served on the automate host | Full page: top nav (main menu, bookmarks, room status, room selector, weather, stats), Pixels, APT and room groups, server options |
+| Server | `PAGE_NAME` is `SITE_NAME` (`Automate`), as `opts.js` is served on the automate host | Full page: top nav (main menu, bookmarks, room status, room selector, weather, stats), APT, Pixels and room groups, server options |
 | LED Pi | any other `PAGE_NAME`, with `LED_PI` set to true in `opts.js` by the module's installer (`ledwall`, `ledgrid`, `ktchpi`) | Pixels group, LED text scroller, Pi main menu, Pi options, log window |
 | Pi | any other `PAGE_NAME`, with `LED_PI` left false (a Pi's installer sets its `brand.txt` name there: "Bedroom", "AudioCPU", "Doorway") | Pi main menu, Pi options, log window |
 
@@ -75,7 +75,7 @@ All of the menu code is in `dropdowns.js` (styles in `styles/dropdowns.css`). Mo
 
 ## The page
 
-The server page is a top bar over three outlined button groups: Pixels and APT in the left column, the current room on the right. In portrait the room group sits under the others; under 700 px of height it stands beside them, both columns ending level.
+The server page is a top bar over three outlined button groups: APT over Pixels in the left column, the current room on the right. In portrait the room group sits under the others; under 700 px of height it stands beside them, both columns ending level.
 
 ### Page scale
 
@@ -114,7 +114,7 @@ Effects, Off, Pause and the text scroller send through `sendLeds()` in `dropdown
 
 | Row | Buttons |
 | --- | --- |
-| 1 | **Room** on / off (`<room>on`, `<room>off` for the room on screen) · **Lights** on / off (`lightson`, `lightsoff`) · **Power** all on / off (`allon`, `alloff`) |
+| 1 | **All Lights** on / off (`lightson`, `lightsoff`) · **Room** on / off (`<room>on`, `<room>off` for the room on screen, whose icon the button shows) · **All Rooms** all on / off (`allon`, `alloff`) |
 | 2 | **YouTube** (link) · **Temperature / humidity** (the temperature and thermostat window, below) · **Media** (link) |
 | 3 | **Doorway** (live camera window, full screen) · **Server** (log window + server options) · **Lists** (lists window) |
 
@@ -124,7 +124,7 @@ The Server log window arms one command at a time from three option panels (main,
 
 The temperature / humidity button opens `temp__prompt` (`thermo.js`, `styles/thermo.css`): two panels drawn as `.btn-group`s, flat with the bathroom settings' thin grey edge, over a row of three buttons (75 px tall, the bathroom settings' height, with its 22 px icons), in a window 500 px tall: the thermometers and the Up / Down buttons stretch to take the height the rest leaves (the fill's gradient is sized to its tube with container units), with every space in the window, between and inside the panels, one `--thermo-gap`.
 
-- **Humidity/Temperature**: two thermometers, humidity on the left, and the room they read ("Source: Bedroom"). The room is the one on screen when its config has a `climate` (the living room reads the thermostat's one-line status, the bedroom `roomth`), or else the living room (`climateRoomConfig()` in `main.js`); it is asked again on every refresh, and picking another room refreshes an open window (`refreshThermoWindow()`). A missing reading, or the thermostat's `NA`, shows `--`.
+- **Humidity/Temperature**: two thermometers, humidity on the left, and the room they read ("Source: Bedroom"), chosen apart from the room on screen. The Source line is a button whose menu lists the rooms whose config has a `climate` (`climateRoomConfigs()` in `main.js`; the living room reads the thermostat's one-line status, the bedroom `roomth`), each with its name and icon, the source itself left out as the room selector leaves out the room on screen; a pick reads that room at once and is kept in `localStorage` (`thermo-source`), as the room on screen is. With none kept, or a kept room that no longer has a `climate`, the source is the first such room in `ROOM_CONFIGS` (the living room). A missing reading, or the thermostat's `NA`, shows `--`.
 - **Thermostat**: the setpoint on a dot-matrix display ("72°" in 7 px black dots on the light theme colour, drawn from a 5 × 7 glyph table), the mode's and the blower's boxes, and Up / Down. The mode's icon is a flame lit orange while heating, a snowflake lit blue while cooling, or red over "Fault" while the sensor has one; the blower's is green and turning while G is closed, with the fan mode under it. Pressing the mode's box opens the **Mode** menu (Heat, Cool, Off) and the blower's the **Fan** menu (Auto, On): static rows, and the menu opens only after a fresh status read (the Refresh icon turns meanwhile), its dot set on the choice in force only: green while it runs (the furnace for Heat, the AC for Cool, the blower for Auto or On), yellow while it is idle, and always yellow for Off; a choice is sent, then the status read back. The boxes are drawn by `dropdownButtonTemplate()` and flattened in `thermo.css`. A setpoint press shows at once and is sent through `requestThrottle` at most every 600 ms, the last always; a press still waiting is sent when the window closes. With no status read the display shows `--°` and Up / Down are off.
 - **Buttons**: Close, Refresh (its icon turns while the window reads) and Settings (a cog).
 - **Settings**: stands in the panels' place, and opens on the status each time. On top, a Thermostat Setup title, then under it the bordered **Display** panel, on the grey behind the colour prompt's swatches: 8 of the thermostat's 15 text colours (White, Red, Orange, Yellow, Green, Cyan, Blue, Magenta) as a row of swatches in the colour prompt's style (`.color-swatch`), the one set on the display larger (read from `lr-thermo1_color` on opening and on Refresh; none is larger while another colour is set through the API). A swatch is marked at once and sent, then the read-out on show is read again; a refused colour is reported and the swatches go back to what the thermostat kept. The last circle in the row is **Brightness**: it reads the level (its icon turns), then opens a 0–255 slider under it for the display's resting level (`lr-thermo1_backlight`), sent through the queue at most every 250 ms while dragged, the release value always; a failed read is reported and the slider stays shut. Under the panel, a log box (its title over the text on plain black, long lines wrapped) showing `lr-thermo1_status` or `lr-thermo1_log`, the log opening on its newest line. The title is a button, STATUS or SYSTEM LOGS in capitals, whose menu of one row switches to the other. Under the box, Close, Back (to the panels) and Refresh in the same row and at the same height as the main buttons.
@@ -137,7 +137,7 @@ The third group's legend shows the current room's icon and name, and its grid is
 
 ## Rooms and devices
 
-Each room is a module of its own that exports its config (`LIVING_ROOM_CONFIG` in `livingrm.js`, `BEDROOM_CONFIG` in `bedrm.js`, `BATHROOM_CONFIG` in `bathrm.js`): a key, a name, an icon, a volume target, a grid template and `climate`, where the temperature window reads the room's temperature and humidity (`{ target, cmd, fields }`: a command and the places of the two in its `~` reply), or null for a room with no sensor. The module also holds the room's button listeners, its menus and its windows, and `main.js` only collects the three configs into `ROOM_CONFIGS`. The key names the room's API commands: `<key>status`, `<key>on`, `<key>off`, and device commands go through `<key>xmit`.
+Each room is a module of its own that exports its config (`LIVING_ROOM_CONFIG` in `livingrm.js`, `BEDROOM_CONFIG` in `bedrm.js`, `BATHROOM_CONFIG` in `bathrm.js`): a key, a name, an icon, a volume target, a grid template and `climate`, where the temperature window reads the room's temperature and humidity (`{ target, cmd, fields }`: a command and the places of the two in its `~` reply), or null for a room with no sensor. A room with a `climate` is listed in the temperature window's Source menu, so a new room with a sensor needs only its `climate` set. The module also holds the room's button listeners, its menus and its windows, and `main.js` only collects the three configs into `ROOM_CONFIGS`. The key names the room's API commands: `<key>status`, `<key>on`, `<key>off`, and device commands go through `<key>xmit`.
 
 The grids are built from `dropdownButtonTemplate()` and `gridButtonTemplate()` in `utils.js` and `powerButtonTemplate()` in `dropdowns.js` (with `powerListeners()` for its handlers and `spinnerIds()` for a menu button's label and spinner). The Pixels and APT groups and the text scroller in `main.js`, and the Server window's option panels in `server.js`, are built from the same two; both take an optional `buttonClass` (`svropt_button`, `button__sml`), and a button may have an icon, a label or both. The windows' own buttons (log, camera, bathroom settings, temperature, Pixels, bed, colour prompt, About, upload, lists, password and Wi-Fi prompts) are drawn with `gridButtonTemplate()` too. One kind stays written out: the bookmark edit window's buttons, whose icon class sits on the button itself; each has an id. The volume buttons, their handlers, the subwoofer mode and the volume popup are shared by the two rooms with an amp and live in `volctrl.js` (`volumeButtonsTemplate`, `volumeButtonListeners`, `sendVolume`).
 
@@ -184,7 +184,7 @@ The grids are built from `dropdownButtonTemplate()` and `gridButtonTemplate()` i
 | Ambient | Stay On / Automatic / Keep Off for the main light, active one green | `bthr-light1_main_mode`, `bthr-light1_main_mode_set_<0–2>` |
 | Settings | Motion sensor settings window | See *Bathroom light* |
 
-The bathroom is left out of `lightson`, `lightsoff`, `allon` and `alloff`; APT's Room on / off still reaches it as `bthron` / `bthroff` (both lights) while it is the room on screen.
+The bathroom is left out of `lightson`; `lightsoff` (APT's All Lights off) sends it `bthr-light1off`, both lights. APT's All Rooms (`allon` / `alloff`) switches it with the other rooms, and APT's Room on / off reaches it as `bthron` / `bthroff` (both lights) while it is the room on screen; both turn each light on by its own mode.
 
 ## Bathroom light
 
@@ -193,7 +193,7 @@ The bathroom's one device is the BathroomLight, a Pico W on 192.168.1.21:4000 (`
 - **Accent** opens on one `bthr-light1_accent_menu` read, which the API answers as `level~mode` from two Pico calls. The level is 1–255: where the light is (or is fading to) while it is on, and where it will come on while it is off. The slider is an ordinary `slider` row, so the light gets at most one level every 120 ms while it is dragged and the release value always lands last. Under it, the modes: Stay On (2), Automatic (1), Keep Off (0), the one in force green; a row sends `bthr-light1_accent_mode_set_<n>`.
 - **Ambient** (the main light's button) reads `bthr-light1_main_mode` and draws the same three rows, sending `bthr-light1_main_mode_set_<n>`; it has no slider.
 - **Room status** reads `bthr-light1_states`, `accent~main` as 1 or 0, which reports where a fade is heading from the moment it starts, and lists the main light as Ambient Light, then the accent as Accent Lights; the room is on while either is.
-- In Automatic, an on command (`bthron`, `bthr-light1_accenton`, `bthr-light1_mainon`) turns a light on only while someone is within its distance, so a short-reach main light can stay off when the room is switched on from further away.
+- In Automatic, an on command (`bthron`, `bthr-light1_accenton`, `bthr-light1_mainon`) turns a light on only while someone is within its distance, so a short-reach main light can stay off when the room is switched on from further away. An off command (`bthroff`, `bthr-light1_accentoff`, `bthr-light1_mainoff`, `lightsoff` and `alloff`) fades the accent off, switches the main light off and clears each light's off delay countdown, so the next movement within a light's distance turns it on again.
 
 ### Settings window
 
@@ -275,8 +275,8 @@ Device addresses are in one table at the top of `controller.js`, `IP_ADRS`: `lrt
 | `lrxmit` · `brxmit` · `bthrxmit` | a device command | `lrXmit()`, `brXmit()`, `bthrXmit()`: one device of that room |
 | `lrstatus` · `brstatus` · `bthrstatus` | | Reads the room's devices together: `{ roomState, devices: [{ name, value, status }] }`; the room is on when any device is. A device with its own `indicator` (the thermostat) is drawn with it and does not count towards `roomState` |
 | `lron` · `lroff` · `bron` · `broff` · `bthron` · `bthroff` | | The room's scene, fired without waiting; answers `OK` |
-| `allon` · `alloff` | | The living room and bedroom scenes together |
-| `lightson` · `lightsoff` | | Both lamps, the dresser lamp and the bed lights; off also stops the LED pixels |
+| `allon` · `alloff` | | The living room, bedroom and bathroom scenes together |
+| `lightson` · `lightsoff` | | Both lamps, the dresser lamp and the bed lights; off also turns off both bathroom lights (`bthr-light1off`) and stops the LED pixels |
 | `lrlightson` · `lrlightsoff` | | The living room lamp's first channel |
 | `brpi` | a command | Passed straight to the Bedroom Pi (`ampstate`, `inputstate`, `vol…`, the input names) |
 | `relax` | a sound | Plays it on the Bedroom Pi, turns the TV off and sleeps the bedroom PC |
@@ -321,7 +321,7 @@ Each feature larger than a room button is a class in its own module, and anythin
 | `livingrm.js` · `bedrm.js` · `bathrm.js` | (functions) | One room each: config, grid template, listeners, menus and windows |
 | `server.js` | (functions) | Server log window, option panels, armed command and send, password prompt, Wi-Fi windows, upload button |
 | `pixels.js` | (functions) | Pixels window: per-host brightness sliders and links for the LED hosts in the `ledhosts` file |
-| `thermo.js` | (functions) | Temperature and thermostat window: thermometers, the thermostat's setpoint display, its mode and blower boxes with their Mode and Fan menus, and its Settings view of status, text colour, backlight and log (`openThermoWindow`, `closeThermoWindow`) |
+| `thermo.js` | (functions) | Temperature and thermostat window: thermometers with their Source menu, the thermostat's setpoint display, its mode and blower boxes with their Mode and Fan menus, and its Settings view of status, text colour, backlight and log (`openThermoWindow`, `closeThermoWindow`) |
 | `mainmenu.js` | `MainMenu` | Main menus, theme colour (live while picking, kept on close), light-theme switch, About window |
 | `roomstate.js` | `RoomStateManager` | Room status light, 10 s refresh, device dropdown |
 | `colorprompt.js` | `ColorPrompt` | Colour window: saturation / value map, hue slider, palette swatches with names, hex box; `openColorPrompt()` opens it for a device, `showColorPrompt()` for any other caller |

@@ -15,7 +15,8 @@ const BEDROOM_TARGET = 'brxmit';
 const BEDROOM_AMP_TARGET = 'brpi';
 
 // The room's config. key names its API commands (brstatus, bron, broff); the amp counts
-// its volume 0-192; climate is the temperature window's source, the hub's temperature~humidity.
+// its volume 0-192. climate, set, makes the room a source in the temperature window's
+// Source menu: the hub's temperature~humidity.
 export const BEDROOM_CONFIG = {
   key: 'br',
   name: 'Bedroom',

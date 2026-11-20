@@ -26,7 +26,7 @@ Room commands go in `arg`; device commands go in `var`, with `arg=bthrxmit`, the
 
 ## Room commands
 
-These go in `arg`, like `lrstatus`, `lron` and `lroff` for the living room. The bathroom is not part of `lightson`, `lightsoff`, `allon` or `alloff`.
+These go in `arg`, like `lrstatus`, `lron` and `lroff` for the living room. The bathroom is not part of `lightson`; `lightsoff` turns both its lights off as `bthroff` does, and `allon` and `alloff` switch it as `bthron` and `bthroff` do.
 
 | Command | What it does | Reply |
 | --- | --- | --- |
@@ -84,7 +84,7 @@ Each light has its own mode, saved on the light, so it survives a power cut.
 | Mode | Website label | Light | What on / off commands can still do |
 | --- | --- | --- | --- |
 | `2` | Stay On | On and stays on | Off is ignored; the accent's level still changes |
-| `1` | Automatic | On when someone comes within its trigger distance, off after its off delay with nobody there | On works only while someone is within its distance (or it is already on); off works, and keeps it off until its zone has been empty for the off delay |
+| `1` | Automatic | On when someone comes within its trigger distance, off after its off delay with nobody there | On works only while someone is within its distance (or it is already on); off works: the accent fades off, the main light switches off, and its off delay countdown is cleared, so the next movement within its distance turns it on again |
 | `0` | Keep Off | Off and stays off | On is ignored; an accent level is kept for later |
 
 So in Automatic, `bthron` from across the room lights the accent (5 ft reach by default) but leaves the main light (12 in) off.

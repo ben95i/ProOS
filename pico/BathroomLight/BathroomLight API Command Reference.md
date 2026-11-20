@@ -31,7 +31,7 @@ Every 0.1 s the C4002 reports an overall state (none, static presence or motion)
   - presenceHoldsLight off: the LED's own trigger distance, counting the motion target only.
 
   Still presence never occupies an empty zone: turning a light on always takes motion within its own distance.
-- **Leaving:** a zone goes vacant once nothing has been detected within its hold distance for the LED's off delay. With presenceHoldsLight on, stepping back from the sink keeps LED1 on until you are beyond LED0's distance, and then each LED counts its own off delay. With it off, stepping back from the sink starts LED1's off delay at once while LED0 stays on. Leaving the sensor's view altogether adds the sensor's own 5 s hold, because it keeps reporting the target that long.
+- **Leaving:** a zone goes vacant once nothing has been detected within its hold distance for the LED's off delay. With presenceHoldsLight on, stepping back from the sink keeps LED1 on until you are beyond LED0's distance, and then each LED counts its own off delay. With it off, stepping back from the sink starts LED1's off delay at once while LED0 stays on. Leaving the sensor's view altogether adds the sensor's own 5 s hold, because it keeps reporting the target that long. An off command in motion activated mode empties the LED's zone at once (see *On and off commands by mode*).
 
 In short, checked for each LED on every report:
 
@@ -41,6 +41,7 @@ hold:    zone occupied and (presenceHoldsLight on:  motion or presence target wi
                             presenceHoldsLight off: motion target within the LED's trigger distance)
                                                                                 -> off delay restarts
 leave:   zone occupied and nothing held it for the LED's off delay             -> vacant (motion activated: LED off)
+off:     motion activated, zone occupied, and an off command (?2,0,0~ ?14,0,0~ ?18,0,0~) -> vacant at once
 ```
 - **Sensor range:** the sensor is told to detect from 0 cm out to the farther of the two trigger distances (150 cm by default), so movement beyond both zones, such as someone passing the doorway, is ignored. It is sent again when a change moves the farther distance.
 - **Nobody reported:** while the overall state is none, the targets are ignored, even if their fields still hold old values.
@@ -110,13 +111,13 @@ The mode decides whether a command may turn an LED on or off; a brightness sent 
 | `?3,0,N~` (N > 0) | LED0 stays off; N becomes the on level; replies N | LED0 stays off; N becomes the on level for the next detection; replies N | LED0 jumps to N; N becomes the on level; replies N | LED0 jumps to N; N becomes the on level; replies N |
 | `?3,0,0~` | LED0 off at once; replies 0 | LED0 off at once; replies 0 | LED0 off at once; replies 0 (see below) | Ignored; replies the level it stays at |
 | `?2,0,1~` | Ignored; replies 0 | Ignored; replies 0 | Fades on to 255; replies 255 | Fades on to 255; replies 255 |
-| `?2,0,0~` | Fades off; replies 0 | Fades off; replies 0 | Fades off; replies 0 (see below) | Ignored; replies the level it stays at |
+| `?2,0,0~` | Fades off; replies 0 | Fades off; replies 0 | Fades off and empties LED0's zone; replies 0 (see below) | Ignored; replies the level it stays at |
 | `?14,0,1~` | Ignored; replies 0 | Ignored; replies 0 | LED1 on; replies 1 | LED1 on; replies 1 |
-| `?14,0,0~` | LED1 off; replies 0 | LED1 off; replies 0 | LED1 off; replies 0 (see below) | Ignored; replies 1 |
+| `?14,0,0~` | LED1 off; replies 0 | LED1 off; replies 0 | LED1 off and empties LED1's zone; replies 0 (see below) | Ignored; replies 1 |
 
 - **All on and all off** (`?18,0,1~`, `?18,0,0~`) apply these rules to each LED on its own: with both in motion activated mode and someone standing 4 ft away, all on lights LED0 but leaves LED1 off, since nobody is in LED1's zone. Put LED1 in always on mode to keep it lit.
 - **Command 3 jumps, command 2 fades.** `?3,0,N~` sets LED0's level at once and cancels any fade; `?2,0,0~` and `?2,0,1~` fade at 8 ms per level. LED1 always switches at once.
-- **Turned off while someone is in the zone** (motion activated): the LED stays off while its zone is occupied, because motion only turns it on when someone arrives in an empty zone. After the zone has been empty for the LED's off delay, the next arrival turns it on again.
+- **Turned off while someone is in the zone** (motion activated): an off command (`?2,0,0~`, `?14,0,0~`, or `?18,0,0~` for both) turns the LED off (LED0 fades, LED1 switches) and empties its zone at once, ending its off delay countdown, so the next motion within its trigger distance turns it on again; someone still moving there brings it straight back on. `?3,0,0~` turns LED0 off but leaves its zone as it is, so LED0 stays off while the zone is occupied, because motion only turns it on when someone arrives in an empty zone; after the zone has been empty for the off delay, the next arrival turns it on again.
 - **Zone empty, LED0 on** in motion activated mode only happens briefly, while LED0 fades off after its off delay; a level sent then is kept for next time and the fade carries on.
 - `?2,0,1~` fades LED0 to full brightness but doesn't change the on level.
 - **Reading the LEDs:** `?2,0,2~` always returns LED0's brightness, never 0. `?2,0,4~`, `?14,0,2~` and `?18,0,2~` return 1 or 0 for on or off; LED0 counts as on from the moment a fade on starts and as off from the moment a fade off starts. The live level during a fade is on the status page (`?10,0,0~`).

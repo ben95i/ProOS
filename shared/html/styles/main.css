@@ -251,6 +251,17 @@ input[type="checkbox"] {
   font-size: 38px;
 }
 
+/* a word on its own line under a button's large icons, set a little apart and a little
+   smaller than a button's label (22px), centred as the button's text is */
+.button__caption {
+  display: block;
+  margin-top: 6px;
+  font-size: 20px;
+  /* even, so the label (38px icons, 6px, 24px) leaves whole space above and below it in
+     the button: (100 - 2 × 1 - 68) / 2 = 15, plus the 1px padding = 16 */
+  line-height: 24px;
+}
+
 /*
  *  Top Navigation Bar
  */
