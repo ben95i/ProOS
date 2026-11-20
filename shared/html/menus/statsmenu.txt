@@ -3,7 +3,7 @@ media.home|Media|ssh
 xana.home|Xana|ssh
 U7.home|WiFi|ping
 unifi.home|UniFi|ssh
-legacy.home|CIFS|ssh
+cifs.home|CIFS|ssh
 appletalk.home|AFP|ssh
 files.home|Files|ssh
 brpi.home|BrPi|ssh

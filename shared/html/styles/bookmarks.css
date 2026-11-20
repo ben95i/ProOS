@@ -167,11 +167,8 @@
  */
 
 #editFav__prompt {
-  position: absolute;
   display: inline-block;
   padding-bottom: 10px;
-  top: 20%;
-  left: 20%;
   height: auto;
   width: 360px;
   z-index: 998;

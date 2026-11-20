@@ -4,20 +4,25 @@
  *  Color Selector Style
  */
 
+/* Placed as a .prompt_win: fixed, centred under the top bar and never taller than the
+   space there, scrolling inside when it does not fit. Its content stands at the top,
+   so a scrolled window starts at its title. */
 #color-popup {
   display: none;
-  position: absolute;
-  top: 50%;
+  position: fixed;
+  top: var(--prompt-centre-top);
   left: 50%;
   transform: translate(-50%, -50%);
   margin-right: -50%;
   width: auto;
   height: auto;
+  max-height: var(--prompt-space-height);
   border: 1px solid var(--border-color);
   border-radius: 15px;
   background-color:#000;
-  overflow: hidden;
-  align-items: center;
+  overflow-x: hidden;
+  overflow-y: auto;
+  align-items: flex-start;
   justify-content: center;
 }
 

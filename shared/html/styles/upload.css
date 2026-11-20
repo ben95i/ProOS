@@ -11,14 +11,9 @@
  *  Window
  */
 
-/* fixed and centred, as .prompt_win has no offsets */
 #upl__win {
-  position: fixed;
   display: flex;
   flex-direction: column;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
   /* wide enough for a long filename, never wider than the screen */
   width: max-content;
   min-width: 320px;

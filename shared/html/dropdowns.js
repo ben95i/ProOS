@@ -88,6 +88,32 @@ export function openDropdown(menuId) {
   }
   removeDropdowns();
   menuElement.style.display = 'block';
+  fitWindowMenu(menuElement);
+  return true;
+}
+
+// the space left clear under a menu cut to fit, as under the prompt windows
+const WINDOW_MENU_CLEAR_BOTTOM = 5;
+
+// A prompt window stays put as the page scrolls, so a menu hanging from one past the
+// screen's bottom edge could never be reached: it is cut to the height left on screen
+// and scrolls inside. Answers whether the menu is in a window. Run after it is shown:
+// fitWindowMenu(document.getElementById('textscrollcolor-menu'))
+function fitWindowMenu(menuElement) {
+  menuElement.style.maxHeight = '';
+  menuElement.style.overflowY = '';
+  if (!menuElement.closest('.prompt_win')) {
+    return false;
+  }
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+  const lowestBottom = viewportHeight - WINDOW_MENU_CLEAR_BOTTOM;
+  const menuBounds = menuElement.getBoundingClientRect();
+  if (menuBounds.bottom <= lowestBottom) {
+    return true;
+  }
+  const heightLeft = lowestBottom - menuBounds.top;
+  menuElement.style.maxHeight = `${heightLeft}px`;
+  menuElement.style.overflowY = 'auto';
   return true;
 }
 
@@ -149,8 +175,12 @@ export function drawMenu(data, menuId, { TwoColumns = false, MenuScroll = true }
   scrollMenuIntoView(menuElement);
 }
 
-// scrolls down to a menu that runs past the bottom of the viewport
+// Scrolls down to a menu that runs past the bottom of the viewport; a menu in a
+// prompt window, which the page scrolls under, is cut to fit instead.
 function scrollMenuIntoView(menuElement) {
+  if (fitWindowMenu(menuElement)) {
+    return;
+  }
   const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
   const menuBounds = menuElement.getBoundingClientRect();
   if (menuBounds.bottom <= viewportHeight) {

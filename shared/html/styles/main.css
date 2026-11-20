@@ -49,6 +49,15 @@
   --sec-60-black:  color-mix(in srgb, var(--nav-menus-color) 60%, #000);
   --red-trans-35:  color-mix(in srgb, var(--alert-red), transparent 35%);
   --menu-glow: 0px 0px 2px #fff, 0px 0px 7px var(--main-40-white), 0px 0px 16px var(--main-color);
+  /* Prompt windows stand in the space between the top bar and the screen's bottom
+     edge: the room kept clear above them (the bar's 5px margin and 60px height and a
+     5px gap) and below them. */
+  --prompt-clear-top: 70px;
+  --prompt-clear-bottom: 5px;
+  /* that space's height, and its middle as a window's top (the window is moved up
+     half its own height); 100% is the screen's height where they are used */
+  --prompt-space-height: calc(100% - var(--prompt-clear-top) - var(--prompt-clear-bottom));
+  --prompt-centre-top: calc(var(--prompt-clear-top) - -0.5 * var(--prompt-space-height));
 }
 
 body {
@@ -85,24 +94,32 @@ body {
  *  Scrollbar Styles
  */
 
-.scroll-bar-style::-webkit-scrollbar-track {
+.scroll-bar-style::-webkit-scrollbar-track,
+.prompt_win::-webkit-scrollbar-track,
+#color-popup::-webkit-scrollbar-track {
   margin-top: 3px;
   margin-bottom: 3px;
   border-radius: 5px;
   background: transparent;
 }
 
-.scroll-bar-style::-webkit-scrollbar-thumb {
+.scroll-bar-style::-webkit-scrollbar-thumb,
+.prompt_win::-webkit-scrollbar-thumb,
+#color-popup::-webkit-scrollbar-thumb {
   background-color: var(--main-75-white);
   border-radius: 5px;
 }
 
-.scroll-bar-style::-webkit-scrollbar {
+.scroll-bar-style::-webkit-scrollbar,
+.prompt_win::-webkit-scrollbar,
+#color-popup::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
-.scroll-bar-style::-webkit-scrollbar-corner {
+.scroll-bar-style::-webkit-scrollbar-corner,
+.prompt_win::-webkit-scrollbar-corner,
+#color-popup::-webkit-scrollbar-corner {
   background: transparent;
 }
 
@@ -400,11 +417,22 @@ input[type="checkbox"] {
   padding: 0px;
 }
 
+/* Every prompt window: fixed, so it stays in view on a scrolled page, and centred in
+   the space under the top bar, never taller than it: a window that does not fit
+   scrolls inside, so its top never passes under the bar. margin-right keeps a window
+   sized by its content from shrinking to the half of the screen right of its left
+   edge. */
 .prompt_win {
   border-radius: 15px;
   background-color: #000;
   border: 1px solid var(--border-color);
-  position: absolute;
+  position: fixed;
+  top: var(--prompt-centre-top);
+  left: 50%;
+  margin-right: -50%;
+  transform: translate(-50%, -50%);
+  max-height: var(--prompt-space-height);
+  overflow-y: auto;
   color: #fff;
   z-index: 991;
   text-decoration: none;
@@ -531,10 +559,6 @@ html.theme-light .button:not(.red_btn_menu) {
  */
 
 #about__prompt {
-  top: 50%;
-  left: 50%;
-  margin-right: -50%;
-  transform: translate(-50%, -50%);
   width: 260px;
   height: 340px;
   padding: 15px;
@@ -565,10 +589,6 @@ html.theme-light .button:not(.red_btn_menu) {
 .textscroll__prompt {
   display: none;
   overflow-y: visible;
-  top: 50%;
-  left: 50%;
-  margin-right: -50%;
-  transform: translate(-50%, -50%);
   width: 400px;
   height: auto;
   padding: 5px;

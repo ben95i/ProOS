@@ -6,13 +6,8 @@
  */
 
 .list__win {
-  /* fixed so the window stays centered on a scrolled page */
-  position: fixed;
   display: flex;
   flex-direction: column;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
   /* 300px unless a name needs more room, and never wider than the screen */
   width: max-content;
   min-width: 400px;

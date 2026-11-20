@@ -2,12 +2,8 @@
    Rules resizing shared classes win by loading after them. */
 
 #pixels__prompt {
-  top: 50%;
-  left: 50%;
-  margin-right: -50%;
-  transform: translate(-50%, -50%);
   /* on whole pixels, so its sliders leave no line behind (see #bthr__prompt) */
-  top: round(50%, 1px);
+  top: round(var(--prompt-centre-top), 1px);
   left: round(50%, 1px);
   transform: translate(round(-50%, 1px), round(-50%, 1px));
   /* the bathroom settings window's width */
