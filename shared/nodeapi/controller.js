@@ -89,13 +89,11 @@ function processProgramError(error, separator = ' : ') {
 }
 
 // Collects the devices of one room and works out whether the room counts as
-// on: it does when any device in it is. An indicator device (the thermostat)
-// is listed before the rest and left out of that.
+// on: it does when any device in it is.
 class RoomManager {
     constructor() {
         this.roomState = null;
         this.devices = [];
-        this.indicatorDevices = [];
     }
     addDevice(name, value) {
         let _status = null;
@@ -107,27 +105,13 @@ class RoomManager {
             status: _status
         });
     }
-    // A device that names its own row: the page draws name with indicator
-    // (grnind, ylwind, blkind or redind) as given, instead of from its status.
-    // addIndicatorDevice('AC On', '2', 'grnind')
-    addIndicatorDevice(name, value, indicator) {
-        let _status = null;
-        if (indicator === 'grnind' || indicator === 'ylwind') _status = true;
-        else if (indicator === 'blkind') _status = false;
-        this.indicatorDevices.push({
-            name: name,
-            value: value,
-            status: _status,
-            indicator: indicator
-        });
-    }
     updateRoomState() {
         this.roomState = this.devices.some(device => device.status === true);
     }
     getData() {
         return {
             roomState: this.roomState,
-            devices: this.indicatorDevices.concat(this.devices)
+            devices: this.devices
         };
     }
 }
@@ -276,12 +260,21 @@ function livingRoomOff(baseWWW) {
     ]).catch(() => {});
 }
 
-function bathroomOn() {
-    Promise.all([
-        bthrXmit("bthr-light1on")
-    ]).catch(() => {});
+// The bathroom lights' mode for APT's Room on and All Rooms on: Stay On
+// lights a light at once, whoever is in the room.
+const BTHR_MODE_STAY_ON = "2";
+
+// Puts both bathroom lights in one mode, one after the other, as the Pico
+// serves one request at a time. bathroomSetModes(BTHR_MODE_STAY_ON) for
+// bthron and allon.
+async function bathroomSetModes(mode) {
+    await bthrXmit("bthr-light1_accent_mode_set", mode);
+    await bthrXmit("bthr-light1_main_mode_set", mode);
 }
 
+// Room off and All Rooms off (lightsoff sends the same): both lights' off command, which
+// the light turns into Keep Off for a light in Stay On, and into off with its
+// zone cleared for a light in Automatic, which stays in Automatic.
 function bathroomOff() {
     Promise.all([
         bthrXmit("bthr-light1off")
@@ -427,45 +420,6 @@ const LR_THERMO_PICO_CODES = {
     "lr-thermo1_status":        ["10", "0",  callPicoText]
 };
 
-// The thermostat's row in the room status, by what the HVAC is doing (the
-// last field of its one-line status): running -> [label, indicator]
-const LR_THERMO_STATUS_ROWS = {
-    "0": ["Heat / AC Off", "blkind"],
-    "1": ["Heat On",       "grnind"],
-    "2": ["AC On",         "grnind"],
-    "3": ["Fan On",        "ylwind"]
-};
-
-// The sensor states (the sixth field of the thermostat's one-line status) that
-// are a fault: 2 startup lockout, 3 stale, 4 failed. Starting (1) is the first
-// 60 s after boot, so it is not one.
-const LR_THERMO_SENSOR_FAULTS = ["2", "3", "4"];
-const LR_THERMO_FAULT_LABEL = "Thermostat Fault";
-const LR_THERMO_ERROR_LABEL = "Thermostat Error";
-
-// The thermostat's one-line status as its one room status row: what the HVAC
-// is doing, or in its place a red fault while the sensor has one, or a red
-// error when the reply is not a status (the Pico offline or refusing).
-// "1~0~70~69.4~41.0~0~1~0~0~1" -> { label: 'Heat On', indicator: 'grnind', value: '1' }
-// "1~0~70~NA~NA~4~1~0~0~1"     -> { label: 'Thermostat Fault', indicator: 'redind', value: '4' }
-function lrThermoStatusRow(reading) {
-    // mode~fan~setpoint~temperature~humidity~sensor~W1~Y1~G~running
-    const fields = String(reading).split('~');
-    const running = fields[fields.length - 1];
-    const row = LR_THERMO_STATUS_ROWS[running];
-    if (fields.length === 10 && row) {
-        const sensor = fields[5];
-        if (LR_THERMO_SENSOR_FAULTS.includes(sensor)) {
-            return { label: LR_THERMO_FAULT_LABEL, indicator: "redind", value: sensor };
-        }
-        return { label: row[0], indicator: row[1], value: running };
-    }
-    if (String(reading).startsWith("commonAPIRequest exception")) {
-        return { label: "Thermostat Offline", indicator: "redind", value: reading };
-    }
-    return { label: LR_THERMO_ERROR_LABEL, indicator: "redind", value: reading };
-}
-
 // lrXmit('hifistateon') -> sends the stereo on code; lrXmit('lr-thermo1_target_set', '71')
 async function lrXmit(arg1, arg2 = '') {
     const code = LR_COM_CODES[arg1];
@@ -540,8 +494,6 @@ const BTHR_PICO_CODES = {
     "bthr-light1_main_delay":        ["8",  "16", callPico],
     "bthr-light1_main_delay_set":    ["16", null, callPico],     // 1-9999 s
     "bthr-light1_motion":            ["2",  "3",  callPico],     // 0 nobody, 1 still, 2 moving
-    "bthr-light1_presence":          ["8",  "6",  callPico],
-    "bthr-light1_presence_set":      ["6",  null, callPico],     // 0 or 1, both LEDs
     "bthr-light1_config":            ["8",  "0",  callPico],     // see BTHR_CONFIG_FIELDS in bathrm.js
     "bthr-light1_reset":             ["12", "1",  callPico],
     "bthr-light1_log":               ["9",  "0",  callPicoText],
@@ -550,30 +502,34 @@ const BTHR_PICO_CODES = {
     "bthr-light1_sensor":            ["10", "1",  callPicoText]
 };
 
-// Commands that read two of the table's values in turn and answer them as
-// "first~second", so a menu that needs both opens on one request. The Pico
-// serves one request at a time, so the second waits for the first.
-const BTHR_PAIRED_READS = {
-    "bthr-light1_accent_menu": ["bthr-light1_accent", "bthr-light1_accent_mode"]  // level~mode
+// Commands that read several of the table's values in turn and answer them
+// joined by "~", so a menu that needs them all opens on one request. The Pico
+// serves one request at a time, so each read waits for the one before it.
+const BTHR_MENU_READS = {
+    // level~mode~state, for the Accent menu
+    "bthr-light1_accent_menu": ["bthr-light1_accent", "bthr-light1_accent_mode", "bthr-light1_accent_state"],
+    // mode~state, for the Ambient menu
+    "bthr-light1_main_menu":   ["bthr-light1_main_mode", "bthr-light1_main_state"]
 };
 
-// Reads two table commands one after the other: "128~1", or the first reply
+// Reads table commands one after the other: "128~1~0", or the first reply
 // that is not a number (an error) as it came.
-async function bthrReadPair(commands) {
-    const [firstCommand, secondCommand] = commands;
-    const firstReply = await bthrXmit(firstCommand);
-    if (!isNumeric(firstReply)) return firstReply;
-    const secondReply = await bthrXmit(secondCommand);
-    if (!isNumeric(secondReply)) return secondReply;
-    return `${firstReply}~${secondReply}`;
+async function bthrReadInTurn(commands) {
+    const replies = [];
+    for (const command of commands) {
+        const reply = await bthrXmit(command);
+        if (!isNumeric(reply)) return reply;
+        replies.push(reply);
+    }
+    return replies.join('~');
 }
 
 // bthrXmit('bthr-light1_mainon') -> turns the main light on;
 // bthrXmit('bthr-light1_accent_set', '128'). A "_set" value is checked by
 // sendPicoCode().
 async function bthrXmit(arg1, arg2 = '') {
-    const pairedReads = BTHR_PAIRED_READS[arg1];
-    if (pairedReads) return await bthrReadPair(pairedReads);
+    const menuReads = BTHR_MENU_READS[arg1];
+    if (menuReads) return await bthrReadInTurn(menuReads);
     const codes = BTHR_PICO_CODES[arg1];
     if (!codes) return "bthrXmit: invalid command";
     return await sendPicoCode(codes, IP_ADRS.bthrlight1, arg2, "bthrXmit");
@@ -581,20 +537,53 @@ async function bthrXmit(arg1, arg2 = '') {
 
 //// room status ////
 
+// The thermostat's one-line status has this many fields, the sensor state the
+// sixth and what the HVAC is doing the last:
+// mode~fan~setpoint~temperature~humidity~sensor~W1~Y1~G~running
+const THERMO_STATUS_FIELDS = 10;
+const THERMO_SENSOR_FIELD = 5;
+
+// Reads the thermostat and answers its raw codes for every room status, for
+// the page to decode: running (0 idle, 1 heating, 2 cooling, 3 fan only) and
+// sensor (0 ok, 1 starting, 2 startup lockout, 3 stale, 4 failed). An answer
+// that is not a status (the Pico offline or refusing) leaves both null and
+// is passed on as reply.
+// "1~0~70~69.4~41.0~0~1~0~0~1" -> { running: 1, sensor: 0, reply: null }
+// "commonAPIRequest exception: …" -> { running: null, sensor: null, reply: "commonAPIRequest exception: …" }
+async function thermostatState() {
+    const reading = String(await lrXmit("lr-thermo1"));
+    const fields = reading.split('~');
+    const runningField = fields[fields.length - 1];
+    const sensorField = fields[THERMO_SENSOR_FIELD];
+    const hasAllFields = fields.length === THERMO_STATUS_FIELDS;
+    const isStatus = hasAllFields && isNumeric(runningField) && isNumeric(sensorField);
+    if (isStatus) {
+        return { running: Number(runningField), sensor: Number(sensorField), reply: null };
+    }
+    return { running: null, sensor: null, reply: reading };
+}
+
+// Reads a room's devices and the thermostat at once and answers the room's
+// status with the thermostat's added as HVAC: { roomState, devices, HVAC }.
+// The thermostat does not count towards roomState.
+// roomStatusWithThermostat(bedroomStatus)
+async function roomStatusWithThermostat(readRoomStatus) {
+    const [roomStatus, thermostat] = await Promise.all([
+        readRoomStatus(),
+        thermostatState()
+    ]);
+    roomStatus.HVAC = thermostat;
+    return roomStatus;
+}
+
 // Reads every living room device at once and answers { roomState, devices }.
-// The thermostat is listed first and does not make the room count as on, since
-// heating or cooling is not something left on in the room, and lroff leaves
-// it alone.
 async function livingRoomStatus() {
-    const [thermostat, lamp, desktop, stereo] = await Promise.all([
-        lrXmit("lr-thermo1"),
+    const [lamp, desktop, stereo] = await Promise.all([
         lrmLamp1Status(),
         lrXmit("wkststate"),
         lrXmit("hifistate")
     ]);
-    const thermoRow = lrThermoStatusRow(thermostat);
     const lrRoom = new RoomManager();
-    lrRoom.addIndicatorDevice(thermoRow.label, thermoRow.value, thermoRow.indicator);
     // the lamp answers both of its channels as "lamp~accent"
     const [fl, fa] = splitByDelimiter(lamp, '~');
     lrRoom.addDevice('Floor Lamp', fl);
@@ -691,7 +680,7 @@ async function executeMain(baseWWW, firstArg, secondArg) {
             return "OK";
         case "allon":
             bedroomOn();
-            bathroomOn();
+            bathroomSetModes(BTHR_MODE_STAY_ON).catch(() => {});
             livingRoomOn(baseWWW);
             return "OK";
         case "alloff":
@@ -704,7 +693,7 @@ async function executeMain(baseWWW, firstArg, secondArg) {
             return await lrXmit(lrcmds.var1, lrcmds.var2);
         }
         case "lrstatus":
-            return await livingRoomStatus();
+            return await roomStatusWithThermostat(livingRoomStatus);
         case "lrlightson":
             lrXmit("wl1_led1on");
             return "OK";
@@ -722,7 +711,7 @@ async function executeMain(baseWWW, firstArg, secondArg) {
             return await brXmit(brcmds.var1, brcmds.var2);
         }
         case "brstatus":
-            return await bedroomStatus();
+            return await roomStatusWithThermostat(bedroomStatus);
         case "bron":
             bedroomOn();
             return "OK";
@@ -734,9 +723,9 @@ async function executeMain(baseWWW, firstArg, secondArg) {
             return await bthrXmit(bthrcmds.var1, bthrcmds.var2);
         }
         case "bthrstatus":
-            return await bathroomStatus();
+            return await roomStatusWithThermostat(bathroomStatus);
         case "bthron":
-            bathroomOn();
+            bathroomSetModes(BTHR_MODE_STAY_ON).catch(() => {});
             return "OK";
         case "bthroff":
             bathroomOff();

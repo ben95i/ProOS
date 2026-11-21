@@ -92,12 +92,10 @@ const uint8_t LED_COUNT = 2;
 const char *const LED_NAMES[] = { "LED0", "LED1" };
 static_assert(sizeof(LED_NAMES) / sizeof(LED_NAMES[0]) == LED_COUNT, "one name per LED");
 
-// command numbers (first field); LED0 keeps the numbers of the single-LED firmware, and
-// command 4 (the nearest detection distance, now always 0 cm) was removed
+// command numbers (first field)
 const uint16_t COMMAND_LIGHT = 2;               // LED0, value: light action below
 const uint16_t COMMAND_SET_LEVEL = 3;           // LED0, value: level 0-255
 const uint16_t COMMAND_SET_LED0_RANGE = 5;      // LED0, value: trigger distance in cm
-const uint16_t COMMAND_SET_PRESENCE_HOLDS = 6;  // both LEDs, value: 0/1
 const uint16_t COMMAND_SET_LED0_OFF_DELAY = 7;  // LED0, value: seconds
 const uint16_t COMMAND_READ_SETTINGS = 8;       // value: 0 = all, or a setting command number
 const uint16_t COMMAND_READ_LOG = 9;            // value: 0 = all entries, N = newest N
@@ -140,7 +138,6 @@ static_assert(LIGHT_MODE_NAME_COUNT == LIGHT_MODE_ALWAYS_ON + 1, "one name per l
 // other command values
 const uint16_t READ_ALL_SETTINGS = 0;
 const uint16_t RADAR_STATUS_WITH_READ_BACK = 1;
-const uint16_t FLAG_MAX_VALUE = 1;
 const uint16_t RESET_SETTINGS_CONFIRM = 1;
 
 // ---- HTTP buffers ----
@@ -283,7 +280,6 @@ uint8_t radarLastReportData[RADAR_REPORT_DATA_MAX]; // data bytes of the latest 
 uint8_t radarLastReportDataLength = 0;
 
 // ---- persistent settings (each firmware build starts from the defaults, see loadSettings) ----
-const uint8_t PRESENCE_HOLDS_LIGHT_DEFAULT = 1;   // 1 = anyone within the farther trigger distance, moving or still, keeps lit LEDs on
 // per LED, indexed by LED number: LED0 lights the room from about 5 ft, LED1 from about 12 in
 const uint16_t TRIGGER_RANGE_DEFAULT_CM[LED_COUNT] = { 150, 30 };
 const uint16_t OFF_DELAY_DEFAULT_S[LED_COUNT] = { 30, 15 };  // LED turns off after no detection in its zone for this long
@@ -292,7 +288,9 @@ const uint16_t TRIGGER_RANGE_MIN_CM = 1;          // shortest trigger distance a
 const uint16_t RADAR_RANGE_LIMIT_CM = 490;        // farthest the sensor sees with 20 cm gates, the longest trigger distance
 const uint16_t OFF_DELAY_MIN_S = 1;               // shortest off delay accepted
 const uint16_t OFF_DELAY_MAX_S = 9999;            // longest off delay accepted
-const uint32_t SETTINGS_SAVE_INTERVAL_MS = 300000; // minimum time between EEPROM writes, 5 minutes
+const uint8_t LED0_ON_LEVEL_DEFAULT = 255;         // LED0 comes on at full brightness
+const uint8_t LED0_ON_LEVEL_MIN = 1;               // an on level of 0 would never light LED0
+const uint32_t SETTINGS_SAVE_INTERVAL_MS = 420000; // minimum time between EEPROM writes, 7 minutes
 const uint16_t SETTINGS_EEPROM_SIZE = 256;         // emulated EEPROM size in bytes
 const uint16_t SETTINGS_EEPROM_ADDRESS = 0;
 const uint8_t EEPROM_ERASED_BYTE = 0xFF;           // value every byte is wiped to
@@ -305,9 +303,9 @@ const uint32_t FNV_PRIME = 16777619u;
 struct Settings {
   uint32_t firmwareId;                 // ID of the firmware build that saved this block
   uint16_t magic;
-  uint8_t presenceHoldsLight;          // shared by both LEDs
-  uint8_t lightMode[LED_COUNT];        // LIGHT_MODE_ALWAYS_OFF / LIGHT_MODE_MOTION / LIGHT_MODE_ALWAYS_ON
   uint8_t reserved;                    // always 0, keeps the 16-bit fields aligned without padding
+  uint8_t lightMode[LED_COUNT];        // LIGHT_MODE_ALWAYS_OFF / LIGHT_MODE_MOTION / LIGHT_MODE_ALWAYS_ON
+  uint8_t led0OnLevel;                 // 1-255, the level motion and always on fade LED0 in to
   uint16_t triggerRangeCm[LED_COUNT];  // detections up to this distance turn the LED on
   uint16_t offDelaySeconds[LED_COUNT]; // time without a detection in the LED's zone before it turns off
   uint16_t checksum;
@@ -340,7 +338,6 @@ uint32_t activityLedOnMs = 0;                    // when the on-board LED was la
 static_assert(PWM_LED0_FADE_STEP_MS > 0, "fade step time must not be zero");
 static_assert(PWM_LED0_MOTION_FADE_STEP_MS > 0, "fade step time must not be zero");
 int16_t pwmLED0Level = 0;                        // 0 = off, 255 = 100%
-int16_t pwmLED0OnLevel = PWM_MAX_LEVEL;          // level motion and always on fade in to, set by direct control
 int16_t pwmLED0TargetLevel = 0;                  // level the LED is at or heading to, a fade runs while they differ
 uint8_t pwmLED0FadeStepMs = PWM_LED0_FADE_STEP_MS; // step time of the active fade
 uint32_t pwmLED0LastStepMs = 0;                  // time of the last fade step
@@ -493,8 +490,7 @@ bool offDelayValid(uint16_t delaySeconds) {
 
 // Returns true when every setting value is within its allowed range.
 bool settingValuesInRange(const Settings &candidate) {
-  bool presenceFlagValid = (candidate.presenceHoldsLight <= FLAG_MAX_VALUE);
-  bool valuesInRange = presenceFlagValid;
+  bool valuesInRange = (candidate.reserved == 0);
   for (uint8_t led = 0; led < LED_COUNT; led++) {
     bool rangeValid = triggerRangeValid(candidate.triggerRangeCm[led]);
     bool delayValid = offDelayValid(candidate.offDelaySeconds[led]);
@@ -502,6 +498,8 @@ bool settingValuesInRange(const Settings &candidate) {
     bool ledSettingsValid = rangeValid && delayValid && lightModeKnown;
     valuesInRange = valuesInRange && ledSettingsValid;
   }
+  bool onLevelValid = (candidate.led0OnLevel >= LED0_ON_LEVEL_MIN);
+  valuesInRange = valuesInRange && onLevelValid;
   return valuesInRange;
 }
 
@@ -535,8 +533,8 @@ bool settingsAreValid(const Settings &candidate) {
 void applyDefaultSettings(Settings &target) {
   target.firmwareId = calculateFirmwareId();
   target.magic = SETTINGS_MAGIC;
-  target.presenceHoldsLight = PRESENCE_HOLDS_LIGHT_DEFAULT;
   target.reserved = 0;
+  target.led0OnLevel = LED0_ON_LEVEL_DEFAULT;
   for (uint8_t led = 0; led < LED_COUNT; led++) {
     target.lightMode[led] = LIGHT_MODE_DEFAULT[led];
     target.triggerRangeCm[led] = TRIGGER_RANGE_DEFAULT_CM[led];
@@ -559,15 +557,15 @@ bool wipeSettingsStorage() {
 // Restores the settings this firmware build saved in EEPROM. Settings are never carried over from
 // another build: on the first boot after an upload (or when the block is missing or damaged) the
 // EEPROM is wiped and the defaults are stored. Boot counts as a write, so the first save can
-// happen 5 minutes after power-up.
+// happen 7 minutes after power-up.
 void loadSettings() {
   EEPROM.begin(SETTINGS_EEPROM_SIZE);
   EEPROM.get(SETTINGS_EEPROM_ADDRESS, settings);
   bool storedSettingsValid = settingsAreValid(settings);
   if (storedSettingsValid) {
-    logMessage("restored presence %u, LED0 %ucm %us mode %u, LED1 %ucm %us mode %u",
-               settings.presenceHoldsLight,
+    logMessage("restored LED0 %ucm %us mode %u on level %u, LED1 %ucm %us mode %u",
                settings.triggerRangeCm[LED0], settings.offDelaySeconds[LED0], settings.lightMode[LED0],
+               settings.led0OnLevel,
                settings.triggerRangeCm[LED1], settings.offDelaySeconds[LED1], settings.lightMode[LED1]);
   } else {
     applyDefaultSettings(settings);
@@ -613,7 +611,7 @@ void saveSettingsWhenDue() {
     logMessage("settings saved to EEPROM");
   } else {
     settingsSavePending = true; // retry after the next interval
-    logMessage("settings save to EEPROM failed, retrying in 5 min");
+    logMessage("settings save to EEPROM failed, retrying in 7 min");
   }
   settingsLastSaveMs = millis();
 }
@@ -642,19 +640,12 @@ uint16_t calculateSensorRangeCm() {
   return sensorRangeCm;
 }
 
-// Returns the distance within which a target keeps an occupied LED's zone occupied. With
-// presenceHoldsLight on it is the farther of the two trigger distances, so anyone there,
-// moving or still, keeps every light that is on lit; with it off it is the LED's own trigger
-// distance, where only motion counts.
-// Accent 91 cm, main 25 cm, hold on: 91 for both; hold off: 91 for the accent, 25 for the main.
-uint16_t calculateZoneHoldRangeCm(uint8_t led) {
-  bool presenceMayHoldLight = (settings.presenceHoldsLight != 0);
-  if (presenceMayHoldLight) {
-    uint16_t fartherRangeCm = calculateSensorRangeCm();
-    return fartherRangeCm;
-  }
-  uint16_t ownRangeCm = settings.triggerRangeCm[led];
-  return ownRangeCm;
+// Returns the distance within which a target keeps an occupied zone occupied: the farther of
+// the two trigger distances, the same for both LEDs, so anyone there, moving or still, keeps
+// every light that is on lit. Accent 91 cm, main 25 cm: 91 for both.
+uint16_t calculateZoneHoldRangeCm() {
+  uint16_t fartherRangeCm = calculateSensorRangeCm();
+  return fartherRangeCm;
 }
 
 // ==== LED light ====
@@ -768,7 +759,7 @@ int16_t ledOnState(uint8_t led) {
 }
 
 // Turns an LED on: LED0 fades in to pwmLevel at fadeStepMs per level, LED1 switches on at once
-// and ignores both values. turnLedOn(LED0, pwmLED0OnLevel, PWM_LED0_MOTION_FADE_STEP_MS)
+// and ignores both values. turnLedOn(LED0, settings.led0OnLevel, PWM_LED0_MOTION_FADE_STEP_MS)
 void turnLedOn(uint8_t led, int16_t pwmLevel, uint8_t fadeStepMs) {
   if (led == LED0) {
     startFadePwmLED0(pwmLevel, fadeStepMs);
@@ -862,7 +853,7 @@ void applyLightMode(uint8_t led) {
   bool needsTurningOff = !wantsLedOn && ledOnOrFadingOn;
   const char *modeName = lightModeName(settings.lightMode[led]);
   if (needsTurningOn) {
-    turnLedOn(led, pwmLED0OnLevel, PWM_LED0_FADE_STEP_MS);
+    turnLedOn(led, settings.led0OnLevel, PWM_LED0_FADE_STEP_MS);
     logLedTurningOn(led, modeName);
   } else if (needsTurningOff) {
     turnLedOff(led, PWM_LED0_FADE_STEP_MS);
@@ -1158,20 +1149,19 @@ void readRadarTargets(uint8_t targetState, RadarTarget &motion, RadarTarget &pre
 // the LED on when someone arrives in its zone. The rules, checked on every report:
 //   arrive: the motion target within the LED's own trigger distance occupies an empty zone,
 //           whatever the sensor's overall state
-//   hold:   an occupied zone stays occupied while a target is within its hold distance
-//           (calculateZoneHoldRangeCm): with presenceHoldsLight on, the motion or presence
-//           target within the farther trigger distance; with it off, the motion target within
-//           the LED's own distance
+//   hold:   an occupied zone stays occupied while the motion or presence target is within the
+//           hold distance (calculateZoneHoldRangeCm), the farther trigger distance
 //   leave:  updateZoneOccupancy() empties a zone held by nothing for the LED's off delay
 //   off:    in motion activated mode an off command empties the zone at once (clearZoneByCommand)
+//   mode:   a change of light mode empties the zone at once (changeLedLightMode), including the
+//           switch to always off that an off command makes in always on mode
 // Zones are tracked in every light mode.
 void handleZoneDetection(uint8_t led, const RadarTarget &motion, const RadarTarget &presence) {
   uint16_t zoneRangeCm = settings.triggerRangeCm[led];
-  uint16_t holdRangeCm = calculateZoneHoldRangeCm(led);
-  bool presenceMayHoldLight = (settings.presenceHoldsLight != 0);
+  uint16_t holdRangeCm = calculateZoneHoldRangeCm();
   bool motionInZone = motion.seen && (motion.distanceCm <= zoneRangeCm);
   bool motionWithinHold = motion.seen && (motion.distanceCm <= holdRangeCm);
-  bool presenceWithinHold = presenceMayHoldLight && presence.seen && (presence.distanceCm <= holdRangeCm);
+  bool presenceWithinHold = presence.seen && (presence.distanceCm <= holdRangeCm);
   bool targetWithinHold = motionWithinHold || presenceWithinHold;
   bool holdKeepsZoneOccupied = zoneOccupied[led] && targetWithinHold;
   bool detected = motionInZone || holdKeepsZoneOccupied;
@@ -1200,7 +1190,7 @@ void handleZoneDetection(uint8_t led, const RadarTarget &motion, const RadarTarg
     logMessage("motion at %ucm: %s already on", arrivalDistanceCm, ledName);
     return;
   }
-  turnLedOn(led, pwmLED0OnLevel, PWM_LED0_MOTION_FADE_STEP_MS);
+  turnLedOn(led, settings.led0OnLevel, PWM_LED0_MOTION_FADE_STEP_MS);
   char reason[LOG_TEXT_LENGTH];
   snprintf(reason, sizeof(reason), "motion at %ucm", arrivalDistanceCm);
   logLedTurningOn(led, reason);
@@ -1354,7 +1344,7 @@ void updateZoneOccupancy(uint8_t led) {
   bool motionActivated = (settings.lightMode[led] == LIGHT_MODE_MOTION);
   bool ledOnOrFadingOn = ledIsOnOrFadingOn(led);
   bool turnOff = motionActivated && ledOnOrFadingOn;
-  uint16_t holdRangeCm = calculateZoneHoldRangeCm(led);
+  uint16_t holdRangeCm = calculateZoneHoldRangeCm();
   char reason[LOG_TEXT_LENGTH];
   snprintf(reason, sizeof(reason), "nothing within %ucm for %us",
            holdRangeCm, settings.offDelaySeconds[led]);
@@ -1451,7 +1441,7 @@ void appendZoneStatus(uint32_t nowMs, uint8_t led) {
   char label[STATUS_LABEL_SIZE];
   snprintf(label, sizeof(label), "%s zone:", LED_NAMES[led]);
   uint16_t zoneRangeCm = settings.triggerRangeCm[led];
-  uint16_t holdRangeCm = calculateZoneHoldRangeCm(led);
+  uint16_t holdRangeCm = calculateZoneHoldRangeCm();
   if (!zoneOccupied[led]) {
     appendBodyField(label, "vacant (on within %u cm)\n", zoneRangeCm);
     return;
@@ -1473,7 +1463,7 @@ void appendZoneStatus(uint32_t nowMs, uint8_t led) {
 void appendOccupancyStatus(uint32_t nowMs) {
   appendZoneStatus(nowMs, LED0);
   appendBodyField("LED0:", "level %d, target %d, on level %d\n",
-                  pwmLED0Level, pwmLED0TargetLevel, pwmLED0OnLevel);
+                  pwmLED0Level, pwmLED0TargetLevel, settings.led0OnLevel);
   appendZoneStatus(nowMs, LED1);
   const char *led1StateName = "off";
   if (led1On) {
@@ -1495,7 +1485,6 @@ void appendLedSettingsStatus(uint8_t led) {
 // Appends the stored settings and whether an EEPROM write is pending.
 void appendSettingsStatus(uint32_t nowMs) {
   appendBody("settings:\n");
-  appendBodyField("  presenceHoldsLight:", "%u\n", settings.presenceHoldsLight);
   appendLedSettingsStatus(LED0);
   appendLedSettingsStatus(LED1);
   uint16_t sensorRangeCm = calculateSensorRangeCm();
@@ -1623,33 +1612,61 @@ void replyWithLedStates() {
   snprintf(commandReplyOut, sizeof(commandReplyOut), "%d~%d", led0State, led1State);
 }
 
-// Empties an occupied zone for an off command in motion activated mode, ending its off delay
-// countdown, so the zone is vacant at once and the next motion within the LED's trigger
-// distance turns it on again.
-void clearZoneByCommand(uint8_t led) {
-  bool motionActivated = (settings.lightMode[led] == LIGHT_MODE_MOTION);
-  bool clearsZone = motionActivated && zoneOccupied[led];
-  if (!clearsZone) {
+// Empties an LED's zone if it is occupied, ending its off delay countdown, so the zone is
+// vacant at once and only the next motion within the LED's trigger distance occupies it
+// again. reason starts the log line: clearZone(LED1, "http") logs
+// "http: LED1 zone vacant, off delay cleared".
+void clearZone(uint8_t led, const char *reason) {
+  if (!zoneOccupied[led]) {
     return;
   }
   zoneOccupied[led] = false;
   const char *ledName = LED_NAMES[led];
-  logMessage("http: %s zone vacant, off delay cleared", ledName);
+  logMessage("%s: %s zone vacant, off delay cleared", reason, ledName);
 }
 
-// Turns an LED off for a command, except in always on mode which keeps it on. LED0 fades off,
-// LED1 switches off. In motion activated mode the LED's zone is emptied as well
-// (clearZoneByCommand).
-void turnLedOffByCommand(uint8_t led) {
-  bool mayTurnOff = commandMayTurnLedOff(led);
-  if (mayTurnOff) {
-    turnLedOff(led, PWM_LED0_FADE_STEP_MS);
-    logLedTurningOff(led, "http");
-    clearZoneByCommand(led);
-  } else {
-    const char *ledName = LED_NAMES[led];
-    logMessage("http: %s stays on (always on mode)", ledName);
+// Empties an occupied zone for an off command in motion activated mode (clearZone), so the
+// next motion within the LED's trigger distance turns it on again.
+void clearZoneByCommand(uint8_t led) {
+  bool motionActivated = (settings.lightMode[led] == LIGHT_MODE_MOTION);
+  if (!motionActivated) {
+    return;
   }
+  clearZone(led, "http");
+}
+
+// Changes an LED's light mode and schedules the EEPROM save. The LED's zone is emptied
+// (clearZone), so motion activated starts vacant and dark until the next motion within the
+// LED's trigger distance, then the LED goes straight to what the new mode calls for. The mode
+// already in force changes nothing. changeLedLightMode(LED1, LIGHT_MODE_ALWAYS_OFF)
+void changeLedLightMode(uint8_t led, uint8_t newMode) {
+  bool modeChanged = (newMode != settings.lightMode[led]);
+  if (!modeChanged) {
+    return;
+  }
+  settings.lightMode[led] = newMode;
+  markSettingsChanged();
+  clearZone(led, "http");
+  applyLightMode(led);
+}
+
+// Turns an LED off for a command (?2,0,0~, ?14,0,0~, ?18,0,0~), by its light mode:
+//   always on:        switches the LED to always off mode, which turns it off and keeps it off
+//   motion activated: turns it off and empties its zone (clearZoneByCommand), staying in motion
+//                     activated mode, so the next motion within its trigger distance turns it on
+//   always off:       already off, nothing changes
+// LED0 fades off, LED1 switches off.
+void turnLedOffByCommand(uint8_t led) {
+  bool alwaysOn = (settings.lightMode[led] == LIGHT_MODE_ALWAYS_ON);
+  if (alwaysOn) {
+    const char *ledName = LED_NAMES[led];
+    logMessage("http: %s off, lightMode set to %u (always off)", ledName, LIGHT_MODE_ALWAYS_OFF);
+    changeLedLightMode(led, LIGHT_MODE_ALWAYS_OFF);
+    return;
+  }
+  turnLedOff(led, PWM_LED0_FADE_STEP_MS);
+  logLedTurningOff(led, "http");
+  clearZoneByCommand(led);
 }
 
 // Turns an LED on for a command when its light mode allows it (see commandMayTurnLedOn). LED0
@@ -1670,7 +1687,7 @@ void turnLedOnByCommand(uint8_t led) {
 // while it is on, and the on level it will come on at next while it is off.
 void replyWithBrightness() {
   bool led0OnOrFadingOn = ledIsOnOrFadingOn(LED0);
-  int16_t brightness = pwmLED0OnLevel;
+  int16_t brightness = settings.led0OnLevel;
   if (led0OnOrFadingOn) {
     brightness = pwmLED0TargetLevel;
   }
@@ -1749,7 +1766,8 @@ void runAllLedsCommand(uint16_t action) {
 }
 
 // Direct level control of LED0 (command 3). A non-zero level becomes the on level, the level
-// motion and always on fade in to. LED0 jumps to the level (cancelling any fade) when its light
+// motion and always on fade in to, saved with the settings (at most every 7 minutes, see
+// saveSettingsWhenDue). LED0 jumps to the level (cancelling any fade) when its light
 // mode allows it; otherwise it is left as it is:
 //   - always off mode, or motion activated with its zone empty and LED0 off: the level is only
 //     kept for the next time LED0 comes on, and the reply is that kept level
@@ -1758,8 +1776,10 @@ void setPwmLED0Directly(uint16_t requestedLevel) {
   int16_t signedRequestedLevel = (int16_t)requestedLevel;
   int16_t level = clampPwmLevel(signedRequestedLevel);
   bool turnsLightOn = (level > 0);
-  if (turnsLightOn) {
-    pwmLED0OnLevel = level;
+  bool onLevelChanged = (level != settings.led0OnLevel);
+  if (turnsLightOn && onLevelChanged) {
+    settings.led0OnLevel = (uint8_t)level;
+    markSettingsChanged();
   }
   bool mayTurnOn = commandMayTurnLedOn(LED0);
   bool mayTurnOff = commandMayTurnLedOff(LED0);
@@ -1767,8 +1787,8 @@ void setPwmLED0Directly(uint16_t requestedLevel) {
   bool keptOn = !turnsLightOn && !mayTurnOff;
   if (keptForNextTime) {
     const char *reason = ledStaysOffReason(LED0);
-    logMessage("http: LED0 on level set to %d, stays off (%s)", pwmLED0OnLevel, reason);
-    replyWithNumber(pwmLED0OnLevel);
+    logMessage("http: LED0 on level set to %d, stays off (%s)", settings.led0OnLevel, reason);
+    replyWithNumber(settings.led0OnLevel);
     return;
   }
   if (keptOn) {
@@ -1828,46 +1848,27 @@ void setLedOffDelay(uint8_t led, uint16_t requestedSeconds) {
 }
 
 // Sets an LED's light mode (command 13 for LED0, 17 for LED1): 0 = always off, 1 = motion
-// activated, 2 = always on. A new mode takes the LED straight to what that mode calls for;
-// other values are rejected (400 ERR).
+// activated, 2 = always on, through changeLedLightMode (a new mode empties the LED's zone and
+// takes the LED straight to what the mode calls for); other values are rejected (400 ERR).
 void setLedLightMode(uint8_t led, uint16_t requestedMode) {
   bool valid = (requestedMode <= LIGHT_MODE_ALWAYS_ON);
   if (!valid) {
     return;
   }
-  bool modeChanged = (requestedMode != settings.lightMode[led]);
-  settings.lightMode[led] = (uint8_t)requestedMode;
-  if (modeChanged) {
-    applyLightMode(led);
-  }
+  changeLedLightMode(led, (uint8_t)requestedMode);
   completeLedSettingChange(led, "lightMode", settings.lightMode[led], "");
 }
 
-// Sets presenceHoldsLight (command 6, 0 or 1), for both LEDs: 1 holds every lit LED on while
-// anyone, moving or still, is within the farther trigger distance (calculateZoneHoldRangeCm).
-void setPresenceHoldsLight(uint16_t requestedFlag) {
-  bool valid = (requestedFlag <= FLAG_MAX_VALUE);
-  if (!valid) {
-    return;
-  }
-  settings.presenceHoldsLight = (uint8_t)requestedFlag;
-  completeSettingChange("presenceHoldsLight", settings.presenceHoldsLight, "");
-}
-
 // Reads settings (command 8): 0 replies
-// "presence~LED0 range~LED0 delay~LED0 mode~LED1 range~LED1 delay~LED1 mode" ("1~150~30~1~30~15~1"),
-// a setting's command number (5, 6, 7, 13, 15, 16 or 17) replies with that setting. Unknown
+// "LED0 range~LED0 delay~LED0 mode~LED1 range~LED1 delay~LED1 mode" ("150~30~1~30~15~1"),
+// a setting's command number (5, 7, 13, 15, 16 or 17) replies with that setting. Unknown
 // selectors leave the reply empty (400 ERR).
 void replyWithSettings(uint16_t selector) {
   switch (selector) {
     case READ_ALL_SETTINGS:
-      snprintf(commandReplyOut, sizeof(commandReplyOut), "%d~%d~%d~%d~%d~%d~%d",
-               settings.presenceHoldsLight,
+      snprintf(commandReplyOut, sizeof(commandReplyOut), "%d~%d~%d~%d~%d~%d",
                settings.triggerRangeCm[LED0], settings.offDelaySeconds[LED0], settings.lightMode[LED0],
                settings.triggerRangeCm[LED1], settings.offDelaySeconds[LED1], settings.lightMode[LED1]);
-      break;
-    case COMMAND_SET_PRESENCE_HOLDS:
-      replyWithNumber(settings.presenceHoldsLight);
       break;
     case COMMAND_SET_LED0_RANGE:
       replyWithNumber(settings.triggerRangeCm[LED0]);
@@ -1941,9 +1942,6 @@ void runCommand(uint16_t command, uint16_t value) {
       break;
     case COMMAND_SET_LED0_RANGE:
       setLedTriggerRange(LED0, value);
-      break;
-    case COMMAND_SET_PRESENCE_HOLDS:
-      setPresenceHoldsLight(value);
       break;
     case COMMAND_SET_LED0_OFF_DELAY:
       setLedOffDelay(LED0, value);

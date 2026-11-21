@@ -39,7 +39,7 @@ The browser never talks to a device: every press is a request to the node API, a
 
 `browser → lighttpd → /api → node API (127.0.0.1:3000) → executeMain() → room transmitter / Pico / Pi`
 
-Room transmitters answer the Automate API on port 80 (`callApi`), Pico controllers answer `?<cmd>,,<value>~` on port 4000 (`callPico`), and every call gives up after 3 s. A room status (`lrstatus`, `brstatus`, `bthrstatus`) reads all of a room's devices at once and answers `{ roomState, devices }`. The routes, the command table and the API's modules are under *Node API*.
+Room transmitters answer the Automate API on port 80 (`callApi`), Pico controllers answer `?<cmd>,,<value>~` on port 4000 (`callPico`), and every call gives up after 3 s. A room status (`lrstatus`, `brstatus`, `bthrstatus`) reads all of a room's devices and the thermostat at once and answers `{ roomState, devices, HVAC }`. The routes, the command table and the API's modules are under *Node API*.
 
 ## How the page is built
 
@@ -61,7 +61,7 @@ All of the menu code is in `dropdowns.js` (styles in `styles/dropdowns.css`). Mo
 
 | Row type | Draws | Sends |
 | --- | --- | --- |
-| `grnind` · `blkind` · `redind` · `ylwind` · `noind` | Label with a green, black, red or yellow dot, or none | The row's command on click, for `cmd~` rows |
+| `grnind` · `ylwind` · `blkind` · `redind` · `noind` | Label with a green, yellow, black or red dot, or none | The row's command on click, for `cmd~` rows |
 | `toggle` | `ToggleSwitch` from the device's 1 / 0 | `<command>on` / `<command>off` |
 | `slider` | 0–255 slider | `<command>_set_<n>` while sliding, 120 ms throttle (`SLIDER_MS`); the release value always sent last |
 | `slidercust` | 1–255 slider | As `slider` |
@@ -97,7 +97,7 @@ Every icon in the bar is the size of the status light's dot: `--nav-status-size`
 | --- | --- |
 | Main menu (list icon) | About window, Colors (theme colour picker), stars animation switch. The Pi models get About, Colors, stars, System (log window) and Home. |
 | Bookmarks (star) | Bookmarks menu with search, add, edit and drag re-order, kept in a file under its own edit lock |
-| Room status light | Polls `<room>status` every 10 s with a countdown ring; hatched once the readings go stale after 50 s idle, red on an error. Tapped, it lists each device with a green, black or red dot (yellow for the thermostat running its fan only). |
+| Room status light | Polls `<room>status` every 10 s with a countdown ring; hatched once the readings go stale after 50 s idle, red on an error. Tapped, it lists each device with a green, black or red dot. |
 | Room selector (centre) | The current room's icon and name; opens a menu of the other rooms |
 | Weather | The weather widget and its menu; reads the `weather` command once a minute |
 | Stats (network icon) | Runs the `status` command, which probes every host in the `statsmenu` file, and shows a green or black dot per host |
@@ -115,14 +115,18 @@ Effects, Off, Pause and the text scroller send through `sendLeds()` in `dropdown
 | Row | Buttons |
 | --- | --- |
 | 1 | **All Lights** on / off (`lightson`, `lightsoff`) · **Room** on / off (`<room>on`, `<room>off` for the room on screen, whose icon the button shows) · **All Rooms** all on / off (`allon`, `alloff`) |
-| 2 | **YouTube** (link) · **Temperature / humidity** (the temperature and thermostat window, below) · **Media** (link) |
+| 2 | **YouTube** (link) · **HVAC** (the temperature and thermostat window, below) · **Media** (link) |
 | 3 | **Doorway** (live camera window, full screen) · **Server** (log window + server options) · **Lists** (lists window) |
 
 The Server log window arms one command at a time from three option panels (main, backup, regions) and sends it with the send button; password commands go through a password prompt first. The panels cover AFP, CIFS, Xana, UniFi, the router and network, backups and snapshots, archive and RAM disk regions, uploads and clearing the log. All of it lives in `server.js` and `styles/server.css`: the log window and panel templates, the armed command, the password prompt, the guest Wi-Fi window, the Pi models' options panel and Wi-Fi setup, and the upload button. `main.js` draws its two templates and opens and closes the log window through `showLogWindow()` and `closeLogWindow()`, because closing it also closes the camera window.
 
+### HVAC button
+
+APT's HVAC button shows what the thermostat is doing as three icons and no text: a flame, a snowflake and a fan, all black while nothing runs. Every room status read (`<room>status`, every 10 s) hands its `HVAC` field to `onRoomStatusHvac()` in `main.js` (passed to `RoomStateManager` as `onHvac`), which `hvacButtonState()` decodes into `off`, `heat`, `cool`, `fan` or `error` and `showHvacState()` draws: the flame orange while heating and the snowflake blue while cooling, as the thermostat window lights its mode, the fan green while it runs alone, as the window's blower but not turning, and on an error, a sensor fault or a failed room status read, a red alert in the fan's place. The colours are the `.hvac__icon` rules at the end of `styles/thermo.css`. Pressing it opens the temperature and thermostat window.
+
 ### Temperature and thermostat window
 
-The temperature / humidity button opens `temp__prompt` (`thermo.js`, `styles/thermo.css`): two panels drawn as `.btn-group`s, flat with the bathroom settings' thin grey edge, over a row of three buttons (75 px tall, the bathroom settings' height, with its 22 px icons), in a window 500 px tall: the thermometers and the Up / Down buttons stretch to take the height the rest leaves (the fill's gradient is sized to its tube with container units), with every space in the window, between and inside the panels, one `--thermo-gap`.
+The HVAC button opens `temp__prompt` (`thermo.js`, `styles/thermo.css`): two panels drawn as `.btn-group`s, flat with the bathroom settings' thin grey edge, over a row of three buttons (75 px tall, the bathroom settings' height, with its 22 px icons), in a window 500 px tall: the thermometers and the Up / Down buttons stretch to take the height the rest leaves (the fill's gradient is sized to its tube with container units), with every space in the window, between and inside the panels, one `--thermo-gap`.
 
 - **Humidity/Temperature**: two thermometers, humidity on the left, and the room they read ("Source: Bedroom"), chosen apart from the room on screen. The Source line is a button whose menu lists the rooms whose config has a `climate` (`climateRoomConfigs()` in `main.js`; the living room reads the thermostat's one-line status, the bedroom `roomth`), each with its name and icon, the source itself left out as the room selector leaves out the room on screen; a pick reads that room at once and is kept in `localStorage` (`thermo-source`), as the room on screen is. With none kept, or a kept room that no longer has a `climate`, the source is the first such room in `ROOM_CONFIGS` (the living room). A missing reading, or the thermostat's `NA`, shows `--`.
 - **Thermostat**: the setpoint on a dot-matrix display ("72°" in 7 px black dots on the light theme colour, drawn from a 5 × 7 glyph table), the mode's and the blower's boxes, and Up / Down. The mode's icon is a flame lit orange while heating, a snowflake lit blue while cooling, or red over "Fault" while the sensor has one; the blower's is green and turning while G is closed, with the fan mode under it. Pressing the mode's box opens the **Mode** menu (Heat, Cool, Off) and the blower's the **Fan** menu (Auto, On): static rows, and the menu opens only after a fresh status read (the Refresh icon turns meanwhile), its dot set on the choice in force only: green while it runs (the furnace for Heat, the AC for Cool, the blower for Auto or On), yellow while it is idle, and always yellow for Off; a choice is sent, then the status read back. The boxes are drawn by `dropdownButtonTemplate()` and flattened in `thermo.css`. A setpoint press shows at once and is sent through `requestThrottle` at most every 600 ms, the last always; a press still waiting is sent when the window closes. With no status read the display shows `--°` and Up / Down are off.
@@ -143,7 +147,7 @@ The grids are built from `dropdownButtonTemplate()` and `gridButtonTemplate()` i
 
 | Room | Key | Volume target | Room status reads |
 | --- | --- | --- | --- |
-| Living Room | `lr` | LEDwall (`lrxmit`), 0–100 | the thermostat, Main Lamp, Backlight, Desktop PC, Stereo System |
+| Living Room | `lr` | LEDwall (`lrxmit`), 0–100 | Floor Lamp, Floor Accent, Desktop PC, Stereo System |
 | Bedroom | `br` | `brpi`, 0–192 shown as % | Desk Lamp, Bed Lights, RetroPi TV, Vintage Macs, Bedroom TV, Bedroom PC, Audio System |
 | Bathroom | `bthr` | none | Ambient Light, Accent Lights |
 
@@ -180,54 +184,54 @@ The grids are built from `dropdownButtonTemplate()` and `gridButtonTemplate()` i
 
 | Button | Opens | Device / command |
 | --- | --- | --- |
-| Accent | Brightness slider over Stay On / Automatic / Keep Off, active one green | `bthr-light1_accent_menu` (level~mode), `bthr-light1_accent_set_<n>`, `bthr-light1_accent_mode_set_<0–2>` |
-| Ambient | Stay On / Automatic / Keep Off for the main light, active one green | `bthr-light1_main_mode`, `bthr-light1_main_mode_set_<0–2>` |
+| Accent | Brightness slider over Stay On / Automatic / Keep Off, active one green (Keep Off yellow, and Automatic while the light is off) | `bthr-light1_accent_menu` (level~mode~state), `bthr-light1_accent_set_<n>`, `bthr-light1_accent_mode_set_<0–2>` |
+| Ambient | Stay On / Automatic / Keep Off for the main light, active one green (Keep Off yellow, and Automatic while the light is off) | `bthr-light1_main_menu` (mode~state), `bthr-light1_main_mode_set_<0–2>` |
 | Settings | Motion sensor settings window | See *Bathroom light* |
 
-The bathroom is left out of `lightson`; `lightsoff` (APT's All Lights off) sends it `bthr-light1off`, both lights. APT's All Rooms (`allon` / `alloff`) switches it with the other rooms, and APT's Room on / off reaches it as `bthron` / `bthroff` (both lights) while it is the room on screen; both turn each light on by its own mode.
+The bathroom is left out of `lightson`; `lightsoff` (APT's All Lights off) sends it `bthr-light1off`, both lights' off command, which the light itself turns into Keep Off for a light in Stay On and into off for a light in Automatic, leaving it in Automatic. APT's All Rooms (`allon` / `alloff`) switches it with the other rooms: on sets both lights to Stay On, off sends both `bthr-light1off` as All Lights off does. APT's Room on (`bthron`, while the bathroom is the room on screen) also sets both lights to Stay On, which lights them at once, and Room off (`bthroff`) sends both `bthr-light1off` as All Lights off does. A light switched to Keep Off stays off, through motion, until its mode is changed.
 
 ## Bathroom light
 
-The bathroom's one device is the BathroomLight, a Pico W on 192.168.1.21:4000 (`bthrlight1` in the API's address table, firmware and its own API reference in `../pico/BathroomLight/`) driving two lights and a C4002 mmWave motion sensor: the **accent** light (the Pico's LED0, a dimmable PWM LED) and the **main** light (LED1, on / off only). Each light has its own mode, its own trigger distance (motion within it turns the light on) and its own off delay (nobody detected for that long turns it off). Presence hold is shared: on, anyone within the farther of the two distances, moving or still, keeps every light that is on lit, so the main light stays on until you walk past the accent's distance; off, each light is kept on only by movement within its own distance. All of its controls live in `bathrm.js`, styled by `styles/bathrm.css`.
+The bathroom's one device is the BathroomLight, a Pico W on 192.168.1.21:4000 (`bthrlight1` in the API's address table, firmware and its own API reference in `../pico/BathroomLight/`) driving two lights and a C4002 mmWave motion sensor: the **accent** light (the Pico's LED0, a dimmable PWM LED) and the **main** light (LED1, on / off only). Each light has its own mode, its own trigger distance (motion within it turns the light on) and its own off delay (nobody detected for that long turns it off). Presence hold is always on and not adjustable: anyone within the farther of the two distances, moving or still, keeps every light that is on lit, so the main light stays on until you walk past the accent's distance. All of its controls live in `bathrm.js`, styled by `styles/bathrm.css`.
 
-- **Accent** opens on one `bthr-light1_accent_menu` read, which the API answers as `level~mode` from two Pico calls. The level is 1–255: where the light is (or is fading to) while it is on, and where it will come on while it is off. The slider is an ordinary `slider` row, so the light gets at most one level every 120 ms while it is dragged and the release value always lands last. Under it, the modes: Stay On (2), Automatic (1), Keep Off (0), the one in force green; a row sends `bthr-light1_accent_mode_set_<n>`.
-- **Ambient** (the main light's button) reads `bthr-light1_main_mode` and draws the same three rows, sending `bthr-light1_main_mode_set_<n>`; it has no slider.
+- **Accent** opens on one `bthr-light1_accent_menu` read, which the API answers as `level~mode~state` from three Pico calls. The level is 1–255: where the light is (or is fading to) while it is on, and where it will come on while it is off. The slider is an ordinary `slider` row, so the light gets at most one level every 120 ms while it is dragged and the release value always lands last. Under it, the modes: Stay On (2), Automatic (1), Keep Off (0), the one in force green, or yellow for Keep Off and for Automatic while the light is off (nobody within its distance); a row sends `bthr-light1_accent_mode_set_<n>`.
+- **Ambient** (the main light's button) reads `bthr-light1_main_menu` (`mode~state`, two Pico calls) and draws the same three rows, marked the same way, sending `bthr-light1_main_mode_set_<n>`; it has no slider.
 - **Room status** reads `bthr-light1_states`, `accent~main` as 1 or 0, which reports where a fade is heading from the moment it starts, and lists the main light as Ambient Light, then the accent as Accent Lights; the room is on while either is.
-- In Automatic, an on command (`bthron`, `bthr-light1_accenton`, `bthr-light1_mainon`) turns a light on only while someone is within its distance, so a short-reach main light can stay off when the room is switched on from further away. An off command (`bthroff`, `bthr-light1_accentoff`, `bthr-light1_mainoff`, `lightsoff` and `alloff`) fades the accent off, switches the main light off and clears each light's off delay countdown, so the next movement within a light's distance turns it on again.
+- A mode change (a menu row, Room on, All Rooms on, or an off command switching a light out of Stay On) clears the light's zone and its off delay countdown, so a light switched to Automatic goes dark until the next movement within its distance.
+- In Automatic, an on command (`bthr-light1on`, `bthr-light1_accenton`, `bthr-light1_mainon`) turns a light on only while someone is within its distance, so a short-reach main light can stay off when the room is switched on from further away. An off command (`bthr-light1_accentoff`, `bthr-light1_mainoff`, `bthroff`, `lightsoff` and `alloff`) switches a light in Stay On to Keep Off, and in Automatic fades the accent off, switches the main light off and clears each light's off delay countdown, so the next movement within a light's distance turns it on again.
 
 ### Settings window
 
-`bathroomSettingsPrompt()` opens a centred window, 302 px wide so its boxes end level with its row of three buttons, filled from one `bthr-light1_config` read (`presence~accent range~accent delay~accent mode~main range~main delay~main mode`). The settings sit in three boxes (`BTHR_GROUPS`): Accent Lights and Ambient Light (the main light), each titled and holding its distance and off delay, then the presence switch. Every slider runs 0–1000 and maps to its value as `min × (max ÷ min)^(position ÷ 1000)` (`bthrValueFromSlider()`), so each step is the same share of the value; a value set outside the slider's range shows as it is, with the thumb at the nearer end. The window is centred on whole pixels with `round()` where the browser has it, as the Pixels and thermostat windows are: on a half pixel a slider's fill, its thumb's wide box-shadow, can leave a light line along the slider's bottom edge. Each change is sent on release and confirmed in the title for 3 s ("Ambient off delay: 1 min 38 s"); errors show there in red, and "Light offline" stays while the settings are greyed out.
+`bathroomSettingsPrompt()` opens a centred window, 302 px wide so its boxes end level with its row of three buttons, filled from one `bthr-light1_config` read (`accent range~accent delay~accent mode~main range~main delay~main mode`). The settings sit in two boxes (`BTHR_GROUPS`): Ambient Light (the main light) and Accent Lights, each titled and holding its distance and off delay. Every slider runs 0–1000 and maps to its value as `min × (max ÷ min)^(position ÷ 1000)` (`bthrValueFromSlider()`), so each step is the same share of the value; a value set outside the slider's range shows as it is, with the thumb at the nearer end. The window is centred on whole pixels with `round()` where the browser has it, as the Pixels and thermostat windows are: on a half pixel a slider's fill, its thumb's wide box-shadow, can leave a light line along the slider's bottom edge. Each change is sent on release and confirmed in the title for 3 s ("Ambient off delay: 1 min 38 s"); errors show there in red, and "Light offline" stays while the settings are greyed out.
 
 | Setting | Control | Range | Command |
 | --- | --- | --- | --- |
 | Accent / Ambient: Turns on within | Slider on an exponential curve (inch steps near the sensor; halfway is 22 in) | 4 in – 10 ft (10–305 cm; the light takes up to 490), shown in inches under 3 ft, else in feet | `bthr-light1_accent_range_set_<n>` · `bthr-light1_main_range_set_<n>` |
 | Accent / Ambient: Off delay | Slider on an exponential curve (1 s steps at the short end; halfway is 1 min) | 1 s – 1 h | `bthr-light1_accent_delay_set_<n>` · `bthr-light1_main_delay_set_<n>` |
-| Presence hold (anyone within the farther distance keeps lit lights on) | Switch | 0 / 1 | `bthr-light1_presence_set_<n>` |
 
-The window is titled Bathroom. The Log and Sensor buttons turn it into a log box twice as wide (680 px), filled from `bthr-light1_log` or `bthr-light1_sensor`, with Back, Refresh (reads the same read-out again) and Close under it. The box is titled as the thermostat's status is, with the read-out's icon and name in bold capitals (LIGHT LOG, SENSOR STATUS) in place of the window's title, 10 px in from the window's edge, and its text wraps; the two log boxes share the `.pico-logbox` rule in `main.css`. Every request from the window waits for the one before it (`bthrRequest()`, a `picoRequestQueue()`), because the Pico serves one request at a time.
+The window is titled Bathroom. The Log and Sensor buttons turn it into a log box twice as wide (680 px), filled from `bthr-light1_log` or `bthr-light1_sensor`, with Close, Back and Refresh (reads the same read-out again) under it, in that order. The box is titled as the thermostat's status is, with the read-out's icon and name in bold capitals (LIGHT LOG, SENSOR STATUS) in place of the window's title, 10 px in from the window's edge, and its text wraps; the two log boxes share the `.pico-logbox` rule in `main.css`. Every request from the window waits for the one before it (`bthrRequest()`, a `picoRequestQueue()`), because the Pico serves one request at a time.
 
 ### API commands
 
-`bthrXmit()` in `controller.js` maps each command to a Pico call `http://192.168.1.21:4000/api?<cmd>,,<value>~` from `BTHR_PICO_CODES`, and the two-value reads in `BTHR_PAIRED_READS` to two calls in turn. The log and status replies keep their line breaks; the rest are single values. A `_set` value has to be a whole number from 0 to 9999, checked by `sendPicoCode()` before anything is sent, or the answer is `bthrXmit: non-numeric value` or `bthrXmit: out-of-range value`; ranges within that are the Pico's to check. Setting names hold no `_set` (`range`, `delay`), which would split them early.
+`bthrXmit()` in `controller.js` maps each command to a Pico call `http://192.168.1.21:4000/api?<cmd>,,<value>~` from `BTHR_PICO_CODES`, and the menu reads in `BTHR_MENU_READS` to several calls in turn. The log and status replies keep their line breaks; the rest are single values. A `_set` value has to be a whole number from 0 to 9999, checked by `sendPicoCode()` before anything is sent, or the answer is `bthrXmit: non-numeric value` or `bthrXmit: out-of-range value`; ranges within that are the Pico's to check. Setting names hold no `_set` (`range`, `delay`), which would split them early.
 
 | Website command | Pico call | Reply |
 | --- | --- | --- |
 | `bthr-light1on` · `off` | 18, 1 · 18, 0 | Both lights, each by its own mode: `accent~main` states after |
 | `bthr-light1_states` | 18, 2 | `accent~main`, 1 on, 0 off |
 | `bthr-light1_accent` | 2, 2 | Accent brightness 1–255 |
-| `bthr-light1_accent_menu` | 2, 2 then 8, 13 | `level~mode` |
+| `bthr-light1_accent_menu` | 2, 2 then 8, 13 then 2, 4 | `level~mode~state` |
 | `bthr-light1_accenton` · `off` | 2, 1 · 2, 0 | Level the fade ends at |
 | `bthr-light1_accent_state` | 2, 4 | 1 on, 0 off |
 | `bthr-light1_accent_set_<n>` | 3, n | Level set, or the kept on level |
 | `bthr-light1_mainon` · `off` | 14, 1 · 14, 0 | Main state after, 1 or 0 |
 | `bthr-light1_main_state` | 14, 2 | 1 on, 0 off |
 | `bthr-light1_accent_mode` · `_range` · `_delay` | 8, 13 · 5 · 7 | One setting |
+| `bthr-light1_main_menu` | 8, 17 then 14, 2 | `mode~state` |
 | `bthr-light1_main_mode` · `_range` · `_delay` | 8, 17 · 15 · 16 | One setting |
 | …`_set_<n>` of those | 13 · 5 · 7 / 17 · 15 · 16, n | The new value: mode 0–2, range 1–490 cm, delay 1–9999 s |
-| `bthr-light1_presence` · `_presence_set_<n>` | 8, 6 · 6, n | Presence hold, 0 or 1, both lights |
 | `bthr-light1_motion` | 2, 3 | 0 nobody, 1 still, 2 moving |
-| `bthr-light1_config` | 8, 0 | `presence~accent range~accent delay~accent mode~main range~main delay~main mode` |
+| `bthr-light1_config` | 8, 0 | `accent range~accent delay~accent mode~main range~main delay~main mode` |
 | `bthr-light1_reset` | 12, 1 | Defaults (150 cm / 30 s, 30 cm / 15 s, both Automatic), as `_config` |
 | `bthr-light1_log` · `_log_set_<n>` | 9, 0 · 9, n | Rolling log, all or newest n lines |
 | `bthr-light1_status` · `_sensor` | 10, 0 · 10, 1 | Status text, plus the sensor's stored settings |
@@ -273,9 +277,9 @@ Device addresses are in one table at the top of `controller.js`, `IP_ADRS`: `lrt
 | `arg` | `var` | What it does |
 | --- | --- | --- |
 | `lrxmit` · `brxmit` · `bthrxmit` | a device command | `lrXmit()`, `brXmit()`, `bthrXmit()`: one device of that room |
-| `lrstatus` · `brstatus` · `bthrstatus` | | Reads the room's devices together: `{ roomState, devices: [{ name, value, status }] }`; the room is on when any device is. A device with its own `indicator` (the thermostat) is drawn with it and does not count towards `roomState` |
-| `lron` · `lroff` · `bron` · `broff` · `bthron` · `bthroff` | | The room's scene, fired without waiting; answers `OK` |
-| `allon` · `alloff` | | The living room, bedroom and bathroom scenes together |
+| `lrstatus` · `brstatus` · `bthrstatus` | | Reads the room's devices and the thermostat together: `{ roomState, devices: [{ name, value, status }], HVAC: { running, sensor, reply } }`; the room is on when any device is, the thermostat aside (see *Living room thermostat*) |
+| `lron` · `lroff` · `bron` · `broff` · `bthron` · `bthroff` | | The room's scene, fired without waiting; answers `OK`. `bthron` sets both bathroom lights to Stay On, `bthroff` sends them `bthr-light1off` |
+| `allon` · `alloff` | | The living room, bedroom and bathroom scenes together; `allon` sets both bathroom lights to Stay On, as `bthron` does |
 | `lightson` · `lightsoff` | | Both lamps, the dresser lamp and the bed lights; off also turns off both bathroom lights (`bthr-light1off`) and stops the LED pixels |
 | `lrlightson` · `lrlightsoff` | | The living room lamp's first channel |
 | `brpi` | a command | Passed straight to the Bedroom Pi (`ampstate`, `inputstate`, `vol…`, the input names) |
@@ -288,7 +292,7 @@ Device addresses are in one table at the top of `controller.js`, `IP_ADRS`: `lrt
 
 **Living room (`lrXmit`).** The stereo commands are codes sent to the LEDwall at 192.168.1.12 (`extcom`): power (`hifistate`, `…on`, `…off`), inputs (`usb`, `aux`, `phono`, `coax`, `opt`, `autodac`, `curinput`), volume (`volup`, `voldwn`, `volupc`, `voldwnc`, `volmute`, `voldisplay`), `vlimit`, `togglehpf`, `curhpfvollim` and the subwoofers (`subup`, `subdwn`, `submute`, `subup_fast`, `subdwn_fast`). The living room lamp is a Pico at 192.168.1.18 (`lrmlamp1`; `lrmLamp1Status()`, `lrmLamp1On()`, `lrmLamp1Off()`): `wl1_dual` reads both channels as `lamp~backlight`, `wl1_dualon` / `off` and `wl1_led1…` / `wl1_led2…` switch them, `wl1_dual_set_<n>` dims. `wkststate` pings the desktop (192.168.1.14), and its `on` / `off` press the PC power relay only when the ping says the state would change.
 
-**Living room thermostat.** The SmartThermo, a Pico W on 192.168.1.3:4000 (`lrthermo1`), is reached through `lrxmit` from the `LR_THERMO_PICO_CODES` table, sent and checked as the bathroom light's are (`sendPicoCode()`); its commands are in `../pico/SmartThermo/docs/SmartThermo API Command Reference.md`. The setpoint is `lr-thermo1_target`, because a name holding `_set` would be split there. A refused value (out of range, or cool while the sensor has failed) answers `commonAPIRequest: invalid response`. The thermostat is not part of any scene. In the living room status it is the first row, read from `lr-thermo1` and named by what the HVAC is doing (`lrThermoStatusRow()`): AC On or Heat On (green), Fan On (yellow, fan only), Heat / AC Off (black), or in their place Thermostat Fault, Thermostat Offline or Thermostat Error (red). A sensor fault (startup lockout, stale or failed, sensor states 2–4) shows as Thermostat Fault, and a reply that is not a status as Thermostat Error. The row carries its own `indicator`, which `roomstate.js` draws in place of one worked out from `status`, and it never turns the room's light on.
+**Living room thermostat.** The SmartThermo, a Pico W on 192.168.1.3:4000 (`lrthermo1`), is reached through `lrxmit` from the `LR_THERMO_PICO_CODES` table, sent and checked as the bathroom light's are (`sendPicoCode()`); its commands are in `../pico/SmartThermo/docs/SmartThermo API Command Reference.md`. The setpoint is `lr-thermo1_target`, because a name holding `_set` would be split there. A refused value (out of range, or cool while the sensor has failed) answers `commonAPIRequest: invalid response`. The thermostat is not part of any scene. Every room status (`lrstatus`, `brstatus`, `bthrstatus`) reads `lr-thermo1` beside the room's devices (`roomStatusWithThermostat()`) and adds its raw codes as `HVAC` (`thermostatState()`), not as a device row, so it never turns a room's light on: `running` (0 idle, 1 heating, 2 cooling, 3 fan only) and `sensor` (0 ok, 1 starting, 2 startup lockout, 3 stale, 4 failed) as numbers, for the page to decode, or both null with the answer in `reply` when it is not a status (`commonAPIRequest exception` while the thermostat is offline); `reply` is null otherwise. The page draws it on APT's HVAC button (see *HVAC button*).
 
 | Website command | Pico call | Reply |
 | --- | --- | --- |
@@ -323,7 +327,7 @@ Each feature larger than a room button is a class in its own module, and anythin
 | `pixels.js` | (functions) | Pixels window: per-host brightness sliders and links for the LED hosts in the `ledhosts` file |
 | `thermo.js` | (functions) | Temperature and thermostat window: thermometers with their Source menu, the thermostat's setpoint display, its mode and blower boxes with their Mode and Fan menus, and its Settings view of status, text colour, backlight and log (`openThermoWindow`, `closeThermoWindow`) |
 | `mainmenu.js` | `MainMenu` | Main menus, theme colour (live while picking, kept on close), light-theme switch, About window |
-| `roomstate.js` | `RoomStateManager` | Room status light, 10 s refresh, device dropdown |
+| `roomstate.js` | `RoomStateManager` | Room status light, 10 s refresh, device dropdown; hands each read's `HVAC` field to the HVAC button |
 | `colorprompt.js` | `ColorPrompt` | Colour window: saturation / value map, hue slider, palette swatches with names, hex box; `openColorPrompt()` opens it for a device, `showColorPrompt()` for any other caller |
 | `switch.js` | `ToggleSwitch` | Draggable on / off switch used in menus and windows |
 | `stars.js` | `AnimatedBackground` | Star field behind the page: two square tiles of stars (509 and 383 px, so the pattern does not visibly repeat), each drawn once into a PNG and repeated as the `#star-field` background, drawn again only when the pixel ratio changes. Six shooting stars, each a small SVG line moved by a compositor animation, so nothing runs per frame. No canvas stays on the page, so the field cannot come back blank (a prerendered or background tab, a GPU reset). Paused when idle |

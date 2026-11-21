@@ -212,8 +212,8 @@ const INDICATOR_CLASSES = {
   'noind': '',
   'blkind': '',
   'grnind': 'ind_dot_green',
-  'redind': 'ind_dot_red',
-  'ylwind': 'ind_dot_yellow'
+  'ylwind': 'ind_dot_yellow',
+  'redind': 'ind_dot_red'
 };
 
 // the icon an 'on', 'off' or 'pause' row carries
@@ -473,12 +473,16 @@ export function menuOfflineRow(menuId) {
 }
 
 // One row per choice, green on the selected one. choices: [{ code, cmd, label }], where
-// code is what the device answers while that choice is live.
-export function inputMenuRows(target, selectedCode, choices) {
+// code is what the device answers while that choice is live. selectedIndicator is the
+// selected row's indicator type when it is not green ('ylwind' for yellow).
+export function inputMenuRows(target, selectedCode, choices, selectedIndicator = indicator(true)) {
   let rows = '';
   choices.forEach(choice => {
-    rows += menuRow(`cmd~${target}~${choice.cmd}`,
-      indicator(selectedCode == choice.code), choice.label);
+    let rowIndicator = indicator(false);
+    if (selectedCode == choice.code) {
+      rowIndicator = selectedIndicator;
+    }
+    rows += menuRow(`cmd~${target}~${choice.cmd}`, rowIndicator, choice.label);
   });
   return rows;
 }

@@ -49,8 +49,7 @@
   color: var(--alert-red);
 }
 
-/* one group of settings (a light's, or the sensor's), in a box drawn like the colour
-   prompt's hex row */
+/* one light's group of settings, in a box drawn like the colour prompt's hex row */
 .bthr__setting {
   padding: 10px 12px;
   text-align: left;
@@ -105,33 +104,9 @@
   white-space: nowrap;
 }
 
-/* the presence switch shares a line with its label */
-.bthr__item--switch {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
 /* .slider-wide_container is sized for a menu row; a little lower here */
 .bthr__slider {
   height: 44px;
-}
-
-/* the menu-checkbox size: no paint containment, so the handle keeps its shadow, and
-   no ON / OFF lettering */
-.bthr__setting .toggle-switch {
-  contain: layout !important;
-  flex-shrink: 0;
-}
-
-.bthr__setting .toggle-text-on,
-.bthr__setting .toggle-text-off {
-  display: none;
-}
-
-.bthr__setting .toggle-handle {
-  padding-top: 0;
 }
 
 /* centred under the boxes */

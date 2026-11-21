@@ -1,6 +1,8 @@
 // Automate - room status light in the title bar and the device list behind it.
-// new RoomStateManager('status_anchor'); showRoomState() reads the room and re-arms every
-// REFRESH_INTERVAL seconds, hideRoomState() stops, destroy() ends the instance.
+// new RoomStateManager('status_anchor', onHvac); showRoomState() reads the room and re-arms
+// every REFRESH_INTERVAL seconds, hideRoomState() stops, destroy() ends the instance. Each
+// read hands onHvac the reply's HVAC field ({ running, sensor, reply }), or null when the
+// read failed.
 
 import { sendCmd, REFRESH_INTERVAL, svgElement, menuRow,
   isBlockDisplayed } from './utils.js'
@@ -13,8 +15,9 @@ const LIGHT_ID = 'trafficLightIcon';
 export default class RoomStateManager {
 
   // draws the light into its container
-  constructor(containerId) {
+  constructor(containerId, onHvac) {
     this.container = document.getElementById(containerId);
+    this.onHvac = onHvac;
     this.timerID = null;
     this.isRunning = false;
     // set by destroy(); a late response is dropped instead of re-arming the refresh
@@ -101,6 +104,7 @@ export default class RoomStateManager {
       this.setRefreshing(false);
       this.devices = [];
       this.roomState = null;
+      this.showHvac(resp.HVAC);
       lightIcon.classList.remove("status-error", "status-idle");
       if (resp.roomState === null) {
         lightIcon.classList.add("status-error");
@@ -126,9 +130,19 @@ export default class RoomStateManager {
         return;
       }
       this.setRefreshing(false);
+      this.showHvac(null);
       lightIcon.classList.add("status-error");
       this.hideRoomState();
     }
+  }
+
+  // hands the reply's HVAC field to onHvac; one missing from the reply counts as failed
+  showHvac(hvac) {
+    let reading = null;
+    if (hvac) {
+      reading = hvac;
+    }
+    this.onHvac(reading);
   }
 
   // starts the countdown ring and books the next read
@@ -147,8 +161,7 @@ export default class RoomStateManager {
     });
   }
 
-  // The status dropdown's rows from the reading held: roomstatus|grnind|Desk Lamp. A device
-  // with its own indicator ({ name: 'Fan On', indicator: 'ylwind' }) is drawn with it.
+  // The status dropdown's rows from the reading held: roomstatus|grnind|Desk Lamp
   statusMenuData() {
     if (this.roomState === null) {
       return menuRow(STATUS_MENU, 'noind', 'Error checking devices.');
@@ -156,9 +169,7 @@ export default class RoomStateManager {
     let menuData = '';
     for (const device of this.devices) {
       let ind = 'redind';
-      if (device.indicator) {
-        ind = device.indicator;
-      } else if (device.status === false) {
+      if (device.status === false) {
         ind = 'blkind';
       } else if (device.status === true) {
         ind = 'grnind';

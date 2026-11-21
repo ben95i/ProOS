@@ -139,7 +139,7 @@ Each sensor state is reported by `?2,0,2~` and the one-line status, shown under 
 
 - The fan mode works as usual in the stale and failed states (fan on keeps G closed).
 - Every safeguard still applies to the 25% fallback: the furnace minimum on time, starts per hour (3 per hour, under the limit of 6) and the dead band.
-- As soon as the sensor gives a valid reading again, the state returns to ok and heat goes back to normal control. Cool mode doesn't come back on its own: set it again. Until any hvac mode is set, the status shows `cool was switched off by a sensor failure` under `errors:`, also after a restart. The website's room status row doesn't show this: it reads Heat / AC Off.
+- As soon as the sensor gives a valid reading again, the state returns to ok and heat goes back to normal control. Cool mode doesn't come back on its own: set it again. Until any hvac mode is set, the status shows `cool was switched off by a sensor failure` under `errors:`, also after a restart.
 - With heat mode saved, a dead sensor followed by a restart gives the startup lockout for the first 10 min after boot, then the 25% fallback. So a dead sensor can't leave the house with no heat, but the furnace does run with no feedback, in mild weather too, until someone notices the fault.
 - Temperature and humidity replies are `NA` while there is no usable reading (starting, startup lockout, failed). While stale they give the last good reading.
 - A failed read is logged when it follows a good one, and each state change is logged once, so a missing sensor doesn't flood the log.

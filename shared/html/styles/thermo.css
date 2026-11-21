@@ -320,6 +320,13 @@ html.theme-light .thermometer .temperature:before {
   color: var(--green-ind);
 }
 
+/* the blower's fan stands an eighth of a turn round while it is still, its blades
+   straight up, down and to the sides; turning, fa-spin's animation sets its
+   transform instead */
+.thermo__icon.fa-fan:not(.fa-spin) {
+  transform: rotate(45deg);
+}
+
 .thermo__icon.is-fault {
   color: var(--alert-red);
 }
@@ -566,4 +573,36 @@ html.theme-light .thermometer .temperature:before {
 .thermo__log .popup-ctn {
   padding: 0;
   min-height: 0;
+}
+
+/* The APT HVAC button (main.js): its flame, snowflake and fan black while nothing
+   runs, each lit as the thermostat window's icons are while it runs; the fan does
+   not turn. On an error the alert in the fan's place is red. */
+.hvac__icon {
+  color: #000;
+}
+
+.hvac__icon.is-heat {
+  color: var(--orange-ind);
+}
+
+.hvac__icon.is-cool {
+  color: var(--cool-ind);
+}
+
+.hvac__icon.is-fan {
+  color: var(--green-ind);
+}
+
+/* the fan an eighth of a turn round, as the thermostat window's still blower. Turned,
+   it draws 0.8em wide in its 1em box, while the flame, snowflake and alert fill theirs:
+   the margins take off the 0.1em left blank on each side, so the gaps between the
+   three icons are even and the row is centred on what is drawn. */
+.hvac__icon.fa-fan {
+  margin: 0 -0.1em;
+  transform: rotate(45deg);
+}
+
+.hvac__icon.is-fault {
+  color: var(--alert-red);
 }

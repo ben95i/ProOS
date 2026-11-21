@@ -100,7 +100,7 @@ function loadFeatures() {
 // starts the server page's own services: the last room, its status, the weather
 function serverFeatures() {
   selectRoom(localStorage.getItem("ctls-mode"));
-  App.roomStateManager = new RoomStateManager('status_anchor');
+  App.roomStateManager = new RoomStateManager('status_anchor', onRoomStatusHvac);
   App.weatherWidget = new WeatherWidget();
   App.weatherWidget.activate();
   // the Pixels window reaches every LED host through the server's API
@@ -479,9 +479,7 @@ function roomControlsTemplate() {
   })}
   ${gridButtonTemplate({
     buttonId: 'btn-show-temphumid',
-    label: `<i class="fad fa-fire-alt large__icon"></i>
-      <i class="fad fa-snowflake large__icon"></i>
-      <span class="button__caption">HVAC</span>`
+    label: hvacButtonLabel()
   })}
   ${gridButtonTemplate({
     buttonId: 'btn-media-link',
@@ -524,6 +522,86 @@ registerListeners({
   'btn-open-cam':       () => openCamWindow(),
   'btn-open-log-svr':   () => openLogWindow()
 });
+
+//// HVAC button ////
+
+// The HVAC button's three icons, all black while nothing runs: the flame lit while
+// heating, the snowflake while cooling, the fan while it runs alone. On an error or a
+// fault the fan's place holds a red alert.
+const HVAC_ICON_CLASS = 'large__icon hvac__icon';
+const HVAC_HEAT_ICON_ID = 'hvac__heat-icon';
+const HVAC_COOL_ICON_ID = 'hvac__cool-icon';
+const HVAC_FAN_ICON_ID = 'hvac__fan-icon';
+const HVAC_FAN_ICON = 'fad fa-fan';
+const HVAC_ALERT_ICON = 'fad fa-exclamation-triangle';
+
+// the HVAC button's icons, as nothing runs until the first room status says otherwise
+function hvacButtonLabel() {
+  return `<i class="${HVAC_ICON_CLASS} fad fa-fire-alt" id="${HVAC_HEAT_ICON_ID}"></i>
+      <i class="${HVAC_ICON_CLASS} fad fa-snowflake" id="${HVAC_COOL_ICON_ID}"></i>
+      <i class="${HVAC_ICON_CLASS} ${HVAC_FAN_ICON}" id="${HVAC_FAN_ICON_ID}"></i>`;
+}
+
+// The thermostat's running codes (0 idle, 1 heating, 2 cooling, 3 fan only) as the
+// HVAC button's states
+const HVAC_RUNNING_STATES = {
+  0: 'off',
+  1: 'heat',
+  2: 'cool',
+  3: 'fan'
+};
+
+// The sensor codes that are a fault: 2 startup lockout, 3 stale, 4 failed. Starting (1)
+// is the first 60 s after the thermostat boots, so it is not one.
+const HVAC_SENSOR_FAULTS = [2, 3, 4];
+
+// What the HVAC button shows for a room status's HVAC field, or null when the room
+// status failed: 'off', 'heat', 'cool', 'fan' or 'error'.
+// hvac: { running, sensor, reply } from the API, running 0 idle, 1 heating, 2 cooling,
+// 3 fan only, sensor 0 ok, 1 starting, 2 startup lockout, 3 stale, 4 failed; both null
+// with the thermostat's answer in reply when it sent no status (offline, refused).
+// A sensor fault shows as an error, as the thermostat window shows it in the mode's
+// place, and so does a running code the page does not know.
+// hvacButtonState({ running: 1, sensor: 0, reply: null }) -> 'heat'
+// hvacButtonState({ running: 1, sensor: 4, reply: null }) -> 'error'
+function hvacButtonState(hvac) {
+  if (hvac === null) {
+    return 'error';
+  }
+  const sensorFault = HVAC_SENSOR_FAULTS.includes(hvac.sensor);
+  if (sensorFault === true) {
+    return 'error';
+  }
+  const runningState = HVAC_RUNNING_STATES[hvac.running];
+  if (runningState === undefined) {
+    return 'error';
+  }
+  return runningState;
+}
+
+// Lights the HVAC button's icons for a state from hvacButtonState(): showHvacState('cool')
+function showHvacState(state) {
+  const heatIcon = document.getElementById(HVAC_HEAT_ICON_ID);
+  const coolIcon = document.getElementById(HVAC_COOL_ICON_ID);
+  const fanIcon = document.getElementById(HVAC_FAN_ICON_ID);
+  if (!heatIcon || !coolIcon || !fanIcon) {
+    return;
+  }
+  heatIcon.classList.toggle('is-heat', state === 'heat');
+  coolIcon.classList.toggle('is-cool', state === 'cool');
+  let fanIconClass = `${HVAC_ICON_CLASS} ${HVAC_FAN_ICON}`;
+  if (state === 'fan') {
+    fanIconClass = `${fanIconClass} is-fan`;
+  } else if (state === 'error') {
+    fanIconClass = `${HVAC_ICON_CLASS} ${HVAC_ALERT_ICON} is-fault`;
+  }
+  fanIcon.className = fanIconClass;
+}
+
+// a room status's HVAC field (null when the read failed) onto the HVAC button
+function onRoomStatusHvac(hvac) {
+  showHvacState(hvacButtonState(hvac));
+}
 
 // the temperature / humidity button
 async function openTemperatureWindow() {

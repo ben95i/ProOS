@@ -2,11 +2,10 @@
 // window for the lights' motion sensor.
 
 import { registerListeners, gridButtonTemplate, dropdownButtonTemplate,
-  cleanString, isNumeric, menuRow, promptWindow, onButtons, picoReplyError,
-  picoRequestQueue, parsePicoNumber, readPicoLog, splitByDelimiter,
+  cleanString, isNumeric, menuRow, indicator, promptWindow, onButtons, picoReplyError,
+  picoRequestQueue, parsePicoNumber, readPicoLog,
   PICO_REFUSED } from './utils.js';
 import { openDeviceMenu, inputMenuRows, removeDropdowns, spinnerIds } from './dropdowns.js';
-import ToggleSwitch from './switch.js';
 
 // The room's config. key names its API commands (bthrstatus, bthron, bthroff). No amp, so
 // no volume target. climate null: no sensor, so the room is not in the temperature window's
@@ -60,7 +59,7 @@ registerListeners({
 // Every command reaches the BathroomLight Pico as /api?action=main&arg=bthrxmit&var=<command>.
 
 const BTHR_TARGET = 'bthrxmit';
-// the Pico, whose own commands (config, presence, log) carry its name
+// the Pico, whose own commands (config, log) carry its name
 const BTHR_DEVICE = 'bthr-light1';
 // its two lights: the accent (LED0) dims, the main light (LED1) is on or off
 const BTHR_ACCENT = `${BTHR_DEVICE}_accent`;
@@ -77,6 +76,13 @@ function bthrReplyError(reply) {
 
 // the light serves one request at a time
 const bthrRequest = picoRequestQueue(BTHR_TARGET);
+
+// what a light's _state answers while it is on
+const BTHR_LIGHT_ON = '1';
+// the mode that turns a light on and off by motion
+const BTHR_MODE_AUTOMATIC = '1';
+// the mode that keeps a light off
+const BTHR_MODE_KEEP_OFF = '0';
 
 // A light's modes for inputMenuRows(): code is what <light>_mode answers.
 // bathroomModes(BTHR_MAIN)[0] -> { code: '2', cmd: 'bthr-light1_main_mode_set_2', label: 'Stay On' }
@@ -101,37 +107,63 @@ function bathroomErrorRow(menuId, reply) {
   return menuRow(`${menuId}-error`, indicatorType, label);
 }
 
-// Accent: the brightness slider over the mode rows, green on the mode in force. One
-// request reads both, as level~mode; the level is 1-255 on or off, the level the light is
-// at or will come on at.
+// A menu read's fields, or none when the request failed (null):
+// bathroomReplyFields('180~1~0') -> ['180', '1', '0']
+function bathroomReplyFields(reply) {
+  if (typeof reply !== 'string') {
+    return [];
+  }
+  return reply.split('~');
+}
+
+// A light's mode rows, the mode in force marked: green, but yellow for Keep Off and while
+// Automatic holds the light off (nobody within its distance).
+// bathroomModeRows(BTHR_MAIN, '1', '0') -> Automatic yellow;
+// bathroomModeRows(BTHR_MAIN, '1', '1') -> Automatic green; bathroomModeRows(BTHR_MAIN, '0', '0')
+// -> Keep Off yellow.
+function bathroomModeRows(light, mode, state) {
+  const automaticAndOff = mode === BTHR_MODE_AUTOMATIC && state !== BTHR_LIGHT_ON;
+  const keepOff = mode === BTHR_MODE_KEEP_OFF;
+  let selectedIndicator = indicator(true);
+  if (automaticAndOff || keepOff) {
+    selectedIndicator = 'ylwind';
+  }
+  return inputMenuRows(BTHR_TARGET, mode, bathroomModes(light), selectedIndicator);
+}
+
+// Accent: the brightness slider over the mode rows. One request reads all three, as
+// level~mode~state; the level is 1-255 on or off, the level the light is at or will come
+// on at, and the state 1 while it is on.
 function showAccentMenu() {
   openDeviceMenu({
     menu: BTHR_ACCENT_MENU,
     target: BTHR_TARGET,
     cmd: `${BTHR_ACCENT}_menu`,
     build: (reply) => {
-      const [level, mode] = splitByDelimiter(reply, '~');
-      if (isNumeric(level) !== true || isNumeric(mode) !== true) {
+      const [level, mode, state] = bathroomReplyFields(reply);
+      if (isNumeric(level) !== true || isNumeric(mode) !== true || isNumeric(state) !== true) {
         return bathroomErrorRow(BTHR_ACCENT_MENU, reply);
       }
       const sliderRow = menuRow(`${level}~${BTHR_TARGET}~${BTHR_ACCENT}`, 'slider', '');
-      const modeRows = inputMenuRows(BTHR_TARGET, mode, bathroomModes(BTHR_ACCENT));
+      const modeRows = bathroomModeRows(BTHR_ACCENT, mode, state);
       return sliderRow + modeRows;
     }
   });
 }
 
-// Ambient: the main light's mode rows only, as it does not dim
+// Ambient: the main light's mode rows only, as it does not dim. One request reads its mode
+// and state, as mode~state.
 function showMainMenu() {
   openDeviceMenu({
     menu: BTHR_MAIN_MENU,
     target: BTHR_TARGET,
-    cmd: `${BTHR_MAIN}_mode`,
+    cmd: `${BTHR_MAIN}_menu`,
     build: (reply) => {
-      if (isNumeric(reply) !== true) {
+      const [mode, state] = bathroomReplyFields(reply);
+      if (isNumeric(mode) !== true || isNumeric(state) !== true) {
         return bathroomErrorRow(BTHR_MAIN_MENU, reply);
       }
-      return inputMenuRows(BTHR_TARGET, reply, bathroomModes(BTHR_MAIN));
+      return bathroomModeRows(BTHR_MAIN, mode, state);
     }
   });
 }
@@ -139,28 +171,25 @@ function showMainMenu() {
 /////// Bathroom Settings Window ///////
 
 // bthr-light1_config answers
-// presence~accent range~accent delay~accent mode~main range~main delay~main mode, as
-// "1~150~30~1~30~15~1"; field is each setting's place in it, key its name in the _set
+// accent range~accent delay~accent mode~main range~main delay~main mode, as
+// "150~30~1~30~15~1"; field is each setting's place in it, key its name in the _set
 // command (bthr-light1_<key>_set_<n>). Delays are in seconds, ranges (how near someone
 // must come to turn the light on) in cm. group is the box the setting is drawn in, label
 // its name there, and name how a change or error names it in the heading.
-const BTHR_CONFIG_FIELDS = 7;
+const BTHR_CONFIG_FIELDS = 6;
 const BTHR_GROUPS = [
   { id: 'main', title: 'Ambient Light' },
-  { id: 'accent', title: 'Accent Lights' },
-  { id: 'sensor', title: '' }
+  { id: 'accent', title: 'Accent Lights' }
 ];
 const BTHR_SETTINGS = [
-  { key: 'main_range', group: 'main', field: 4, kind: 'range', label: 'Turns on within',
+  { key: 'main_range', group: 'main', field: 3, kind: 'range', label: 'Turns on within',
     name: 'Ambient distance', min: 10, max: 305 },
-  { key: 'main_delay', group: 'main', field: 5, kind: 'delay', label: 'Off delay',
+  { key: 'main_delay', group: 'main', field: 4, kind: 'delay', label: 'Off delay',
     name: 'Ambient off delay', min: 1, max: 3600 },
-  { key: 'accent_range', group: 'accent', field: 1, kind: 'range', label: 'Turns on within',
+  { key: 'accent_range', group: 'accent', field: 0, kind: 'range', label: 'Turns on within',
     name: 'Accent distance', min: 10, max: 305 },
-  { key: 'accent_delay', group: 'accent', field: 2, kind: 'delay', label: 'Off delay',
-    name: 'Accent off delay', min: 1, max: 3600 },
-  { key: 'presence', group: 'sensor', field: 0, kind: 'switch', label: 'Presence hold',
-    name: 'Presence hold' }
+  { key: 'accent_delay', group: 'accent', field: 1, kind: 'delay', label: 'Off delay',
+    name: 'Accent off delay', min: 1, max: 3600 }
 ];
 
 // Every slider runs 0-BTHR_SLIDER_STEPS and maps to its setting on an exponential curve,
@@ -195,9 +224,6 @@ const BTHR_WIDE_CLASS = 'bthr__prompt--wide';
 const BTHR_PROMPT_ID = 'bthr__prompt';
 // the window's six icon buttons
 const BTHR_BUTTON_CLASS = 'button_left_txtwin';
-// the presence switch
-const BTHR_SWITCH_WIDTH = '75px';
-const BTHR_SWITCH_HEIGHT = '35px';
 
 // Opens the Settings window and fills it from the light.
 function bathroomSettingsPrompt() {
@@ -236,6 +262,11 @@ function bathroomSettingsPrompt() {
       <textarea readonly class="scroll-bar-style pico-logbox" id="bthr__logbox" spellcheck="false"></textarea>
       <div class="popup-actions bthr__actions">
         ${gridButtonTemplate({
+          buttonId: 'bthr__btn-logclose',
+          icon: 'fas fa-times',
+          buttonClass: BTHR_BUTTON_CLASS
+        })}
+        ${gridButtonTemplate({
           buttonId: 'bthr__btn-back',
           icon: 'fad fa-arrow-left',
           buttonClass: BTHR_BUTTON_CLASS
@@ -243,11 +274,6 @@ function bathroomSettingsPrompt() {
         ${gridButtonTemplate({
           buttonId: 'bthr__btn-refresh',
           icon: 'fad fa-sync-alt',
-          buttonClass: BTHR_BUTTON_CLASS
-        })}
-        ${gridButtonTemplate({
-          buttonId: 'bthr__btn-logclose',
-          icon: 'fas fa-times',
           buttonClass: BTHR_BUTTON_CLASS
         })}
       </div>
@@ -263,7 +289,6 @@ function bathroomSettingsPrompt() {
     logBox: document.getElementById('bthr__logbox'),
     logTitle: document.getElementById('bthr__log-title'),
     logIcon: document.getElementById('bthr__log-icon'),
-    presenceSwitch: null,
     controls: {},     // per setting key: its box, slider and value label
     values: {},       // per setting key: what the light last confirmed
     // per setting key, bumped on each save, so an older reply cannot pull a slider back
@@ -302,7 +327,7 @@ function bathroomSettingsPrompt() {
   bthrLoadConfig(settingsWindow);
 }
 
-// Takes the window down; the switch's window listeners go with destroy().
+// Takes the window down; a reply still in the air is dropped.
 export function closeBathroomSettings() {
   const settingsWindow = App.bathroomSettings;
   if (!settingsWindow) {
@@ -313,24 +338,16 @@ export function closeBathroomSettings() {
   clearTimeout(settingsWindow.messageTimer);
   settingsWindow.messageTimer = null;
   settingsWindow.logSeq += 1;
-  if (settingsWindow.presenceSwitch) {
-    settingsWindow.presenceSwitch.destroy();
-    settingsWindow.presenceSwitch = null;
-  }
   settingsWindow.win.remove();
 }
 
-// the id of one setting's box, which its slider, value and switch ids extend
+// the id of one setting's box, which its slider and value ids extend
 function bthrSettingId(setting) {
   return `bthr__set-${setting.key}`;
 }
 
-// One group's box: its title, if it has one, over its settings.
+// One group's box: its title over its settings.
 function bthrGroupHTML(group) {
-  let titleMarkup = '';
-  if (group.title !== '') {
-    titleMarkup = `<div class="bthr__group-title">${group.title}</div>`;
-  }
   let itemsMarkup = '';
   BTHR_SETTINGS.forEach(setting => {
     if (setting.group === group.id) {
@@ -339,22 +356,14 @@ function bthrGroupHTML(group) {
   });
   return `
     <div class="bthr__setting" id="bthr__group-${group.id}">
-      ${titleMarkup}
+      <div class="bthr__group-title">${group.title}</div>
       ${itemsMarkup}
     </div>`;
 }
 
-// One setting in its group's box: a label and value over a slider, or a label and switch
-// on one line.
+// One setting in its group's box: a label and value over a slider.
 function bthrSettingHTML(setting) {
   const settingId = bthrSettingId(setting);
-  if (setting.kind === 'switch') {
-    return `
-      <div class="bthr__item bthr__item--switch" id="${settingId}">
-        <span class="bthr__label">${setting.label}</span>
-        <span id="${settingId}-switch"></span>
-      </div>`;
-  }
   return `
     <div class="bthr__item" id="${settingId}">
       <div class="bthr__setting-head">
@@ -368,37 +377,15 @@ function bthrSettingHTML(setting) {
     </div>`;
 }
 
-// finds a setting's elements and wires its slider or switch
+// finds a setting's elements and wires its slider
 function bthrBindSetting(settingsWindow, setting) {
   const settingId = bthrSettingId(setting);
   const settingControls = {
     box: document.getElementById(settingId),
-    slider: null,
-    value: null
+    slider: document.getElementById(`${settingId}-slider`),
+    value: document.getElementById(`${settingId}-value`)
   };
   settingsWindow.controls[setting.key] = settingControls;
-  if (setting.kind === 'switch') {
-    const switchCommand = `${setting.key}-`;
-    settingsWindow.presenceSwitch = new ToggleSwitch(document.getElementById(`${settingId}-switch`), {
-      id: `bthr-${setting.key}`,
-      checked: false,
-      width: BTHR_SWITCH_WIDTH,
-      height: BTHR_SWITCH_HEIGHT,
-      cmdHost: BTHR_TARGET,
-      command: switchCommand,
-      onToggle: (payload) => {
-        let wanted = 0;
-        if (payload.cmd === `${switchCommand}on`) {
-          wanted = 1;
-        }
-        bthrSaveSetting(settingsWindow, setting, wanted);
-      }
-    });
-    settingsWindow.presenceSwitch.activate();
-    return;
-  }
-  settingControls.slider = document.getElementById(`${settingId}-slider`);
-  settingControls.value = document.getElementById(`${settingId}-value`);
   // the label follows the drag; the light hears only the release
   settingControls.slider.addEventListener('input', () => {
     bthrSliderMoved(settingsWindow, setting);
@@ -481,9 +468,7 @@ function bthrSetReady(settingsWindow, ready) {
   BTHR_SETTINGS.forEach(setting => {
     const settingControls = settingsWindow.controls[setting.key];
     settingControls.box.classList.toggle(BTHR_DISABLED_CLASS, ready !== true);
-    if (settingControls.slider) {
-      settingControls.slider.disabled = ready !== true;
-    }
+    settingControls.slider.disabled = ready !== true;
   });
 }
 
@@ -524,12 +509,6 @@ async function bthrLoadConfig(settingsWindow) {
 function bthrFormatValue(setting, value) {
   if (setting.kind === 'delay') {
     return bthrFormatDelay(value);
-  }
-  if (setting.kind === 'switch') {
-    if (value === 1) {
-      return 'on';
-    }
-    return 'off';
   }
   return bthrFormatDistance(value);
 }
@@ -606,15 +585,9 @@ function bthrSliderValue(settingsWindow, setting) {
   return bthrValueFromSlider(setting, position);
 }
 
-// puts a value on its slider or switch and beside it
+// puts a value on its slider and beside it
 function bthrShowValue(settingsWindow, setting, value) {
   const settingControls = settingsWindow.controls[setting.key];
-  if (setting.kind === 'switch') {
-    if (settingsWindow.presenceSwitch) {
-      settingsWindow.presenceSwitch.checkbox.checked = value === 1;
-    }
-    return;
-  }
   settingControls.slider.value = bthrSliderFromValue(setting, value);
   settingControls.value.textContent = bthrFormatValue(setting, value);
 }
