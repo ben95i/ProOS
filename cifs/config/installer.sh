@@ -78,8 +78,12 @@ cp /tmp/config/profile /root/.profile
 chown root:root /root/.profile
 chmod +x /root/.profile
 
-## Remove sysctl settings (systemd-sysctl is skipped in an LXC, so they never applied)
+## Network sysctl settings (only net.* settings can be changed in an LXC)
+cp -f /tmp/config/sysctl-net.conf /etc/sysctl.d/90-net.conf
+chmod 644 /etc/sysctl.d/90-net.conf
+chown root:root /etc/sysctl.d/90-net.conf
 rm -f /etc/sysctl.conf
+systemctl restart systemd-sysctl
 
 ## Remove legacy boot service
 rm -f /etc/systemd/system/multi-user.target.wants/rc-local.service

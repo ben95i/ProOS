@@ -64,8 +64,12 @@ cp /tmp/config/profile /root/.profile
 chown root:root /root/.profile
 chmod +x /root/.profile
 
-## Remove Sysctl Settings (systemd-sysctl is skipped in an LXC, so they never applied)
+## Network Sysctl Settings (only net.* settings can be changed in an LXC)
+cp -f /tmp/config/sysctl-net.conf /etc/sysctl.d/90-net.conf
+chmod 644 /etc/sysctl.d/90-net.conf
+chown root:root /etc/sysctl.d/90-net.conf
 rm -f /etc/sysctl.conf
+systemctl restart systemd-sysctl
 
 ## Bind Mounts
 cp -f /tmp/config/fstab /etc/fstab

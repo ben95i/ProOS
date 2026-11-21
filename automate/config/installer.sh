@@ -57,8 +57,12 @@ dpkg --purge rsyslog
 rm -f /var/log/messages
 rm -f /var/log/syslog
 
-## Remove Sysctl Settings (systemd-sysctl is skipped in an LXC, so they never applied)
+## Network Sysctl Settings (only net.* settings can be changed in an LXC)
+cp -f $TMPDIR/sysctl-net.conf /etc/sysctl.d/90-net.conf
+chmod 644 /etc/sysctl.d/90-net.conf
+chown root:root /etc/sysctl.d/90-net.conf
 rm -f /etc/sysctl.conf
+systemctl restart systemd-sysctl
 
 ## Remove Legacy Boot Service
 rm -f /etc/systemd/system/multi-user.target.wants/rc-local.service

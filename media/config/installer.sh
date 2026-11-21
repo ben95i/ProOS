@@ -70,9 +70,14 @@ cp $TMPCFG/profile /root/.profile
 chown root:root /root/.profile
 chmod +x /root/.profile
 
-## Remove Sysctl Settings (systemd-sysctl is skipped in an LXC, so they never applied)
-rm -f /etc/sysctl.conf
+## Network Sysctl Settings (only net.* settings can be changed in an LXC)
+## (90-net.conf also lets Jellyfin bind ports below 1024, once 50-unprivileged-ports.conf)
+cp -f $TMPCFG/sysctl-net.conf /etc/sysctl.d/90-net.conf
+chmod 644 /etc/sysctl.d/90-net.conf
+chown root:root /etc/sysctl.d/90-net.conf
 rm -f /etc/sysctl.d/50-unprivileged-ports.conf
+rm -f /etc/sysctl.conf
+systemctl restart systemd-sysctl
 
 ## Logrotate Fix for LXCs
 cp $TMPCFG/logrotate.service /lib/systemd/system/

@@ -61,8 +61,12 @@ cp /tmp/config/profile_ben /home/ben/.profile
 chown ben:ben /home/ben/.profile
 chmod +x /home/ben/.profile
 
-## Remove Sysctl Settings (systemd-sysctl is skipped in an LXC, so they never applied)
+## Network Sysctl Settings (only net.* settings can be changed in an LXC)
+cp -f /tmp/config/sysctl-net.conf /etc/sysctl.d/90-net.conf
+chmod 644 /etc/sysctl.d/90-net.conf
+chown root:root /etc/sysctl.d/90-net.conf
 rm -f /etc/sysctl.conf
+systemctl restart systemd-sysctl
 
 ## tmux Configuration
 cp /tmp/config/tmux.conf /etc/
@@ -79,10 +83,9 @@ rm -f /etc/systemd/system/multi-user.target.wants/rc-local.service
 rm -f /etc/systemd/system/rc-local.service
 rm -f /etc/rc.local
 
-## Allow Non-root Users to Ping Hosts
-cp /tmp/config/ping-group.service /etc/systemd/system/
-chmod 644 /etc/systemd/system/ping-group.service
-chown root:root /etc/systemd/system/ping-group.service
+## Remove Ping Service (ping_group_range is now in 90-net.conf)
+rm -f /etc/systemd/system/multi-user.target.wants/ping-group.service
+rm -f /etc/systemd/system/ping-group.service
 
 ## Supress Slice Log Entries
 cp /tmp/config/ignore-session-slice.conf /etc/rsyslog.d/
@@ -96,7 +99,6 @@ chown ben:ben /opt/deploy
 
 ## Reload services
 systemctl daemon-reload
-systemctl enable ping-group
 
 ## Clean-up
 rm -rf /tmp/config
