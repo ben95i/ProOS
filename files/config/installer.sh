@@ -64,10 +64,8 @@ cp /tmp/config/profile /root/.profile
 chown root:root /root/.profile
 chmod +x /root/.profile
 
-## System Configuration
-cp /tmp/config/sysctl.conf /etc
-chmod 644 /etc/sysctl.conf
-chown root:root /etc/sysctl.conf
+## Remove Sysctl Settings (systemd-sysctl is skipped in an LXC, so they never applied)
+rm -f /etc/sysctl.conf
 
 ## Bind Mounts
 cp -f /tmp/config/fstab /etc/fstab
@@ -99,11 +97,15 @@ cp /tmp/config/smb.conf /etc/samba
 chmod 644 /etc/samba/smb.conf
 chown root:root /etc/samba/smb.conf
 
+## Remove Legacy Boot Service
+rm -f /etc/systemd/system/multi-user.target.wants/rc-local.service
+rm -f /etc/systemd/system/rc-local.service
+rm -f /etc/rc.local
+
 ## Services
 systemctl daemon-reload
 systemctl enable cron nmbd smbd wsdd2 avahi-daemon
 
 ## Clean-up
 rm -rf /tmp/config
-rm -f /etc/systemd/system/rc-local.service
 exit

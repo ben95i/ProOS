@@ -70,30 +70,19 @@ cp $TMPCFG/profile /root/.profile
 chown root:root /root/.profile
 chmod +x /root/.profile
 
-## System Configuration
-cp -r $TMPCFG/sysctl.conf /etc
-chmod 644 /etc/sysctl.conf
-chown root:root /etc/sysctl.conf
+## Remove Sysctl Settings (systemd-sysctl is skipped in an LXC, so they never applied)
+rm -f /etc/sysctl.conf
+rm -f /etc/sysctl.d/50-unprivileged-ports.conf
 
 ## Logrotate Fix for LXCs
 cp $TMPCFG/logrotate.service /lib/systemd/system/
 chmod 644 /lib/systemd/system/logrotate.service
 chown root:root /lib/systemd/system/logrotate.service
 
-## Allow Unprivileged Users to Bind to Lower # Ports
-rm -f /etc/sysctl.d/50-unprivileged-ports.conf
-echo 'net.ipv4.ip_unprivileged_port_start=0' > /etc/sysctl.d/50-unprivileged-ports.conf
-chmod 644 /etc/sysctl.d/50-unprivileged-ports.conf
-chown root:root /etc/sysctl.d/50-unprivileged-ports.conf
-
-## Startup Configuration
-cp -r $TMPCFG/rc-local.service /etc/systemd/system/
-chmod 644 /etc/systemd/system/rc-local.service
-chown root:root /etc/systemd/system/rc-local.service
-cp -r $TMPCFG/rc.local /etc/
-chmod 755 /etc/rc.local
-chown root:root /etc/rc.local
-systemctl enable rc-local
+## Remove Legacy Boot Service
+rm -f /etc/systemd/system/multi-user.target.wants/rc-local.service
+rm -f /etc/systemd/system/rc-local.service
+rm -f /etc/rc.local
 
 ## Clean-up
 systemctl daemon-reload

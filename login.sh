@@ -844,7 +844,8 @@ DEPLOY_PI(){
   PREPARE_PI_SITE
   echo "Downloading shared software..."
   RSYNC_TO_HOST "$siteSource/" "/opt/rpi/config/html/" --mkpath
-  RSYNC_TO_HOST "$ROOT_DIR/shared/nodeapi/" "/opt/nodeapi/" --mkpath
+  ## staged beside the site; the Pi installer installs it into /opt/nodeapi with api-install.sh
+  RSYNC_TO_HOST "$ROOT_DIR/shared/nodeapi/" "/opt/rpi/config/nodeapi/" --mkpath --delete
   echo "Downloading module-specific software..."
   RSYNC_TO_HOST "$ROOT_DIR/$MODULE/" "/opt/rpi/" "${RSYNC_EXCLUDES[@]}" --exclude=/config
   ## the module's config folder goes beside the base's, so its installer.sh and configs

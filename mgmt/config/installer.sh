@@ -61,10 +61,8 @@ cp /tmp/config/profile_ben /home/ben/.profile
 chown ben:ben /home/ben/.profile
 chmod +x /home/ben/.profile
 
-## System Configuration
-cp /tmp/config/sysctl.conf /etc/
-chmod 644 /etc/sysctl.conf
-chown root:root /etc/sysctl.conf
+## Remove Sysctl Settings (systemd-sysctl is skipped in an LXC, so they never applied)
+rm -f /etc/sysctl.conf
 
 ## tmux Configuration
 cp /tmp/config/tmux.conf /etc/
@@ -76,14 +74,15 @@ cp /tmp/config/logrotate.service /lib/systemd/system/
 chmod 644 /lib/systemd/system/logrotate.service
 chown root:root /lib/systemd/system/logrotate.service
 
-## Startup Configuration
-cp /tmp/config/rc-local.service /etc/systemd/system/
-chmod 644 /etc/systemd/system/rc-local.service
-chown root:root /etc/systemd/system/rc-local.service
-cp /tmp/config/rc.local /etc/
-chmod 755 /etc/rc.local
-chown root:root /etc/rc.local
-systemctl enable rc-local
+## Remove Legacy Boot Service
+rm -f /etc/systemd/system/multi-user.target.wants/rc-local.service
+rm -f /etc/systemd/system/rc-local.service
+rm -f /etc/rc.local
+
+## Allow Non-root Users to Ping Hosts
+cp /tmp/config/ping-group.service /etc/systemd/system/
+chmod 644 /etc/systemd/system/ping-group.service
+chown root:root /etc/systemd/system/ping-group.service
 
 ## Supress Slice Log Entries
 cp /tmp/config/ignore-session-slice.conf /etc/rsyslog.d/
@@ -97,6 +96,7 @@ chown ben:ben /opt/deploy
 
 ## Reload services
 systemctl daemon-reload
+systemctl enable ping-group
 
 ## Clean-up
 rm -rf /tmp/config

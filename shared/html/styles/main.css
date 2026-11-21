@@ -86,10 +86,6 @@ body {
   padding-bottom: 100px;
 }
 
-#current-room-icon {
-  display: none;
-}
-
 /*
  *  Scrollbar Styles
  */
@@ -363,7 +359,7 @@ input[type="checkbox"] {
   overflow: hidden;
 }
 
-/* the name, then the room's icon, 7px apart as a dropdown row */
+/* the room's name alone */
 #room_anchor {
   max-width: 100%;
   min-width: 0;
@@ -372,15 +368,7 @@ input[type="checkbox"] {
   display: inline-flex !important;
   align-items: center;
   justify-content: center;
-  gap: 7px;
   overflow: hidden;
-}
-
-/* the icon keeps its size in a shared width, so the name stays put between rooms */
-#room_anchor i {
-  flex: 0 0 auto;
-  width: 1.25em;
-  text-align: center;
 }
 
 /* long names end in an ellipsis */

@@ -1,0 +1,15 @@
+## Boot settings with no config file of their own: every CPU's frequency governor
+## set to performance, and the Proxmox firewall stopped, also when another unit
+## pulls in pve-firewall.service (it is disabled by the installer).
+[Unit]
+Description=ProOS boot settings (CPU governor, firewall off)
+After=systemd-modules-load.service pve-firewall.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'echo performance | tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor > /dev/null'
+ExecStart=-/usr/sbin/pve-firewall stop
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

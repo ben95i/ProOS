@@ -270,11 +270,20 @@ else
 fi
 
 ## API server
+## The staged API (sent beside the site by login.sh) takes the Pi's own controller.js,
+## ledparser.js and custom.js (the module's custom.js when it ships one) first, so the
+## install report shows only what this deploy really changes. api-install.sh copies new
+## and changed files, deletes ones no longer deployed, and reports each.
 API_PATH="/opt/nodeapi"
+apiStagedDir="$TMPDIR/nodeapi"
 mkdir -p $API_PATH
-mv -f /opt/rpi/custom.js $API_PATH/
-mv -f /opt/rpi/ledparser.js $API_PATH/
-mv -f /opt/rpi/controller.js $API_PATH/
+mv -f /opt/rpi/custom.js "$apiStagedDir/"
+mv -f /opt/rpi/ledparser.js "$apiStagedDir/"
+mv -f /opt/rpi/controller.js "$apiStagedDir/"
+if [ -f "$MODDIR/custom.js" ]; then
+  cp -f "$MODDIR/custom.js" "$apiStagedDir/"
+fi
+bash "$apiStagedDir/api-install.sh" "$apiStagedDir" "$API_PATH"
 cd $API_PATH
 API_PKG_CHKSUM=$(cat package.json package-lock.json 2>/dev/null | sha256sum | cut -d' ' -f1)
 if [ ! -d node_modules ] || [ "$API_PKG_CHKSUM" != "$(cat "$API_PATH/.deps.hash" 2>/dev/null)" ]; then

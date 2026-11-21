@@ -59,13 +59,20 @@ cp -f $TMPDIR/sshd_config /etc/ssh/
 chmod 644 /etc/ssh/sshd_config
 chown root:root /etc/ssh/sshd_config
 
-## Startup Configuration
-cp -f $TMPDIR/rc-local.service /etc/systemd/system/
-chmod 644 /etc/systemd/system/rc-local.service
-chown root:root /etc/systemd/system/rc-local.service
-cp -f $TMPDIR/rc.local /etc/
-chmod +x /etc/rc.local
-chown root:root /etc/rc.local
+## Remove Legacy Boot Service
+rm -f /etc/systemd/system/multi-user.target.wants/rc-local.service
+rm -f /etc/systemd/system/rc-local.service
+rm -f /etc/rc.local
+
+## Boot Settings (CPU governor, firewall stopped)
+cp -f $TMPDIR/proos-boot.service /etc/systemd/system/
+chmod 644 /etc/systemd/system/proos-boot.service
+chown root:root /etc/systemd/system/proos-boot.service
+
+## Nuvoton SuperIO and CPU Temperature Sensor Drivers
+cp -f $TMPDIR/sensors-modules.conf /etc/modules-load.d/sensors.conf
+chmod 644 /etc/modules-load.d/sensors.conf
+chown root:root /etc/modules-load.d/sensors.conf
 
 ## Hosts Configuration
 cp -f $TMPDIR/hosts /etc/hosts
@@ -237,6 +244,11 @@ cp -f $TMPDIR/99-arp_ignore.conf /etc/sysctl.d/
 chmod 644 /etc/sysctl.d/99-arp_ignore.conf
 chown root:root /etc/sysctl.d/99-arp_ignore.conf
 
+## Use Virtual Memory Less
+cp -f $TMPDIR/90-swappiness.conf /etc/sysctl.d/
+chmod 644 /etc/sysctl.d/90-swappiness.conf
+chown root:root /etc/sysctl.d/90-swappiness.conf
+
 ## Disable Firewall
 systemctl disable pve-firewall
 
@@ -303,7 +315,7 @@ systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
 systemctl daemon-reload
 
 ## Start Services on Boot
-systemctl enable rc-local
+systemctl enable proos-boot
 systemctl enable smartmontools
 systemctl enable apcupsd
 systemctl enable file-monitor.service

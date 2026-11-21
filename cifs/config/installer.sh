@@ -78,10 +78,13 @@ cp /tmp/config/profile /root/.profile
 chown root:root /root/.profile
 chmod +x /root/.profile
 
-## System configuration
-cp /tmp/config/sysctl.conf /etc
-chmod 644 /etc/sysctl.conf
-chown root:root /etc/sysctl.conf
+## Remove sysctl settings (systemd-sysctl is skipped in an LXC, so they never applied)
+rm -f /etc/sysctl.conf
+
+## Remove legacy boot service
+rm -f /etc/systemd/system/multi-user.target.wants/rc-local.service
+rm -f /etc/systemd/system/rc-local.service
+rm -f /etc/rc.local
 
 ## Clean-up
 rm -rf /tmp/config

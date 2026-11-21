@@ -8,9 +8,10 @@ Project reference imported from the Claude chat "Automate" project doc (Oct 11, 
 | --- | --- | --- |
 | `html/` | The UI: `index.html`, one ES module per feature, `styles/`, `menus/`, `img/`, `fonts/` | `/var/www/html` (staged via `/opt/rpi/config/html/`) |
 | `nodeapi/` | The node API (Express 5, CommonJS): `server.js` entry, `controller.js` dispatch, one module per service (see *Node API*) | `/opt/nodeapi`, run by `nodeapi.service` |
+| `nodeapi/api-install.sh` | Installs the staged API into `/opt/nodeapi`, run by the automate and Pi installers: copies new and changed files, deletes files no longer deployed (keeping `node_modules`, dotfiles and `package-lock.json`), and prints a table of each, as the minifier does. A staged folder without `server.js` is refused | `/opt/nodeapi/api-install.sh` |
 | `nodeapi/www-minify.sh` | Minifies the deployed site in place and combines its stylesheets, run by the installer | `/opt/nodeapi/www-minify.sh` |
 | `fontawesome/` | The Font Awesome Pro 5.15 kit (its `.woff2` fonts only) and `build-icons.py`, which builds the icons the site uses into the folder given with `--out` (never inside `html/`): `styles/icons.min.css`, and one font per style a page uses, `fonts/fa-solid`, `fa-regular`, `fa-light`, `fa-duotone` or `fa-brands.woff2` (`fas`, `far`, `fal`, `fad`, `fab`). The built files are not in the repo (git-ignored): `../login.sh` builds them on `mgmt` and adds them to every deploy | Not deployed |
-| `../automate/config/` | Host config: `installer.sh`, `lighttpd.conf`, `nodeapi.service`, `rc.local` | the Automate server |
+| `../automate/config/` | Host config: `installer.sh`, `lighttpd.conf`, `lighttpd.service`, `nodeapi.service` | the Automate server |
 | `../login.sh` | Deploys from the repo root: rsyncs `shared/html/` and `shared/nodeapi/` to a host | |
 
 There is no build step, test suite or linter in the repo; `html/` is served as written and minified only on the host, apart from its icons, which are built at deploy (see *Testing the site* for a local copy). On the host, menu files are read from `/var/www/html/menus/<name>.txt` and saved state (any `*.save` file, plus `sysout`) is read and written under `/var/www/html/ram/`.
@@ -98,7 +99,7 @@ Every icon in the bar is the size of the status light's dot: `--nav-status-size`
 | Main menu (list icon) | About window, Colors (theme colour picker), stars animation switch. The Pi models get About, Colors, stars, System (log window) and Home. |
 | Bookmarks (star) | Bookmarks menu with search, add, edit and drag re-order, kept in a file under its own edit lock |
 | Room status light | Polls `<room>status` every 10 s with a countdown ring; hatched once the readings go stale after 50 s idle, red on an error. Tapped, it lists each device with a green, black or red dot. |
-| Room selector (centre) | The current room's icon and name; opens a menu of the other rooms |
+| Room selector (centre) | The current room's name, as text only; opens a menu of the other rooms |
 | Weather | The weather widget and its menu; reads the `weather` command once a minute |
 | Stats (network icon) | Runs the `status` command, which probes every host in the `statsmenu` file, and shows a green or black dot per host |
 
@@ -404,7 +405,7 @@ Then its test server answers `styles/icons.min.css` and `fonts/fa-*.woff2` from 
 
 ## Deployment and conventions
 
-`../login.sh` copies the site and API to the host, and `nodeapi/www-minify.sh` minifies the deployed site in place, then combines the stylesheets into `styles/site.css` in the order `index.html` links them and points the deployed page at that one file: yui-compressor for `styles/*.css`, `uglifyjs --compress` for the root `*.js` (except `opts.js`, left as written for the LED installers' `sed`), with a cache under `/opt/www-mincache` so unchanged files are not recompressed. `installer.sh` on the host copies the staged site into `/var/www/html` (leaving `ram/` alone), installs the API and its service, and runs the minifier. The node API runs separately behind lighttpd and is not minified. lighttpd (`automate/config/lighttpd.conf`, `rpi/config/lighttpd.conf`) sends the page, `.js` and `.css` with `max-age=0`, so browsers revalidate them on every load: one stale cached ES module (iOS Safari keeps them otherwise) can fail to link against new ones and leave the page black.
+`../login.sh` copies the site and API to the host, and `nodeapi/www-minify.sh` minifies the deployed site in place, then combines the stylesheets into `styles/site.css` in the order `index.html` links them and points the deployed page at that one file: yui-compressor for `styles/*.css`, `uglifyjs --compress` for the root `*.js` (except `opts.js`, left as written for the LED installers' `sed`), with a cache under `/opt/www-mincache` so unchanged files are not recompressed. `installer.sh` on the host copies the staged site into `/var/www/html` (leaving `ram/` alone), installs the API and its service (`nodeapi/api-install.sh`, so `/opt/nodeapi` holds exactly the deployed files), and runs the minifier. The node API runs separately behind lighttpd and is not minified. lighttpd (`automate/config/lighttpd.conf`, `rpi/config/lighttpd.conf`) sends the page, `.js` and `.css` with `max-age=0`, so browsers revalidate them on every load: one stale cached ES module (iOS Safari keeps them otherwise) can fail to link against new ones and leave the page black.
 
 Where new work goes (code style rules, including buttons, listeners and helpers, are in `../CODESTYLE.md`):
 

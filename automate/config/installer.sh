@@ -57,19 +57,13 @@ dpkg --purge rsyslog
 rm -f /var/log/messages
 rm -f /var/log/syslog
 
-## System Configuration
-cp $TMPDIR/sysctl.conf /etc
-chmod 644 /etc/sysctl.conf
-chown root:root /etc/sysctl.conf
+## Remove Sysctl Settings (systemd-sysctl is skipped in an LXC, so they never applied)
+rm -f /etc/sysctl.conf
 
-## Boot Service
-cp -f $TMPDIR/rc.local /etc/
-chmod +x /etc/rc.local
-chown root:root /etc/rc.local
-cp -f $TMPDIR/rc-local.service /etc/systemd/system/
-chmod 644 /etc/systemd/system/rc-local.service
-chown root:root /etc/systemd/system/rc-local.service
-systemctl enable rc-local
+## Remove Legacy Boot Service
+rm -f /etc/systemd/system/multi-user.target.wants/rc-local.service
+rm -f /etc/systemd/system/rc-local.service
+rm -f /etc/rc.local
 
 ## Disable Root Password
 passwd -d root
@@ -98,8 +92,9 @@ setcap cap_net_raw+p /usr/bin/ping
 cp -f $TMPDIR/nodeapi.service /etc/systemd/system/
 chmod 644 /etc/systemd/system/nodeapi.service
 chown root:root /etc/systemd/system/nodeapi.service
+## copies new and changed files, deletes ones no longer deployed, and reports each
 mkdir -p $API_PATH
-cp -r $TMPDIR/nodeapi/* $API_PATH/
+bash $TMPDIR/nodeapi/api-install.sh "$TMPDIR/nodeapi" "$API_PATH"
 chown -R root:root $API_PATH
 cd $API_PATH
 API_PKG_CHKSUM=$(cat package.json package-lock.json 2>/dev/null | sha256sum | cut -d' ' -f1)
@@ -117,9 +112,9 @@ apt-get install -y --no-upgrade lighttpd
 cp -f $TMPDIR/lighttpd.conf /etc/lighttpd/
 chmod 644 /etc/lighttpd/lighttpd.conf
 chown root:root /etc/lighttpd/lighttpd.conf
-cp -f $TMPDIR/lighttpd.service /lib/systemd/system/
-chmod 644 /lib/systemd/system/lighttpd.service 
-chown root:root /lib/systemd/system/lighttpd.service
+cp -f $TMPDIR/lighttpd.service /etc/systemd/system/
+chmod 644 /etc/systemd/system/lighttpd.service
+chown root:root /etc/systemd/system/lighttpd.service
 
 ## SSL Certificates
 cp -f $TMPDIR/ssl_cert.pem /etc/lighttpd/
@@ -151,9 +146,12 @@ chown root:root /etc/sudoers.d/www-perms
 chmod u=rwx,g=rx,o=rx /etc/sudoers.d/www-perms
 chmod u=r,g=r,o= /etc/sudoers.d/www-perms
 
-## Reload Services
+## Services configuration
 systemctl daemon-reload
-/etc/rc.local
+systemctl enable nodeapi
+systemctl enable lighttpd
+systemctl restart nodeapi
+systemctl restart lighttpd
 
 ## Clean-up
 rm -rf $TMPDIR

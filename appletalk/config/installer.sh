@@ -52,9 +52,21 @@ if [ ! -e "/usr/lib/systemd/system/netatalk.service" ]; then
   cd -
 fi
 cp -f /tmp/config/afp.conf /etc/netatalk/
-chmod 644 /etc/netatalk/afp.conf 
+chmod 644 /etc/netatalk/afp.conf
 chown root:root /etc/netatalk/afp.conf
 mkdir -p /opt/afpdb
+
+## Load the AppleTalk kernel module at boot (atalkd needs it)
+cp -f /tmp/config/appletalk-modules.conf /etc/modules-load.d/appletalk.conf
+chmod 644 /etc/modules-load.d/appletalk.conf
+chown root:root /etc/modules-load.d/appletalk.conf
+
+## Start netatalk after autofs, so the shares under /mnt/smb exist
+## (netatalk already starts after atalkd, which reports started once AppleTalk is up)
+mkdir -p /etc/systemd/system/netatalk.service.d
+cp -f /tmp/config/netatalk-autofs.conf /etc/systemd/system/netatalk.service.d/autofs.conf
+chmod 644 /etc/systemd/system/netatalk.service.d/autofs.conf
+chown root:root /etc/systemd/system/netatalk.service.d/autofs.conf
 
 ## AutoFS configuration
 cp -f /tmp/config/auto.master /etc/
@@ -68,11 +80,16 @@ chmod 400 /etc/auto.creds
 chown root:root /etc/auto.creds
 mkdir -p /mnt/smb
 
+## Remove Legacy Boot Service
+rm -f /etc/systemd/system/multi-user.target.wants/rc-local.service
+rm -f /etc/systemd/system/rc-local.service
+rm -f /etc/rc.local
+
 ## Reload services
 systemctl daemon-reload
 
-## Disable auto-starting services
-systemctl disable netatalk atalkd autofs avahi-daemon
+## Start services on boot
+systemctl enable autofs atalkd netatalk avahi-daemon
 
 ## Set locale
 if [ ! -e "/etc/locales.generated" ]; then
@@ -106,15 +123,6 @@ chmod +x /root/.profile
 cp /tmp/config/sysctl.conf /etc
 chmod 644 /etc/sysctl.conf
 chown root:root /etc/sysctl.conf
-
-## Startup configuration
-cp /tmp/config/rc-local.service /etc/systemd/system/
-chmod 644 /etc/systemd/system/rc-local.service
-chown root:root /etc/systemd/system/rc-local.service
-cp /tmp/config/rc.local /etc/
-chmod 755 /etc/rc.local
-chown root:root /etc/rc.local
-systemctl enable rc-local
 
 ## Clean-up
 rm -rf /tmp/config

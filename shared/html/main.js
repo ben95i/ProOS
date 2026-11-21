@@ -292,7 +292,7 @@ function selectRoom(_mode) {
     removeDropdowns();
     container.innerHTML = config.template();
   }
-  showRoomIdentity('current-room-icon', 'current-room-label', config);
+  showRoomIdentity(null, 'current-room-label', config);
   showRoomIdentity('room-group-icon', 'room-group-label', config);
   showRoomIdentity('room-onoff-icon', null, config);
   App.currentRoom = _mode;
@@ -325,7 +325,6 @@ function topNavTemplate(f) {
   <div id="room_center">
     <a id="room_anchor">
       <span id="current-room-label"></span>
-      <i id="current-room-icon"></i>
     </a>
   </div>
   <div id="topnav-right">

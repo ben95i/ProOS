@@ -66,3 +66,6 @@ RestrictNamespaces=yes
 RestrictRealtime=yes
 RestrictSUIDSGID=yes
 SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

@@ -318,13 +318,13 @@ if systemctl is-enabled --quiet lightdm; then
   systemctl disable --quiet lightdm
 fi
 
+## Remove Legacy Boot Service
+rm -f /etc/systemd/system/multi-user.target.wants/rc-local.service
+rm -f /etc/systemd/system/rc-local.service
+rm -f /etc/rc.local
+
 ## Clean-up
 rm -rf /tmp/config/
-# rc-local.service is generated from /etc/rc.local and can't be disabled with systemctl;
-# removing the execute bit stops it from running at boot.
-if [ -x /etc/rc.local ]; then
-  chmod -x /etc/rc.local
-fi
 apt-get autoremove -y
 apt-get clean -y
 apt-get autoclean -y
