@@ -1,5 +1,7 @@
 #!/bin/bash
-###########################################################
+######################################################
+## Living Room Pi boot script by Ben Provenzano III ##
+######################################################
 
 ## AirPlay Support
 systemctl start rpi-airplay

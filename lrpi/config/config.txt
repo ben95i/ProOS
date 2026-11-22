@@ -23,5 +23,9 @@ dtparam=i2s=on
 dtoverlay=hifiberry-digi
 dtoverlay=i2s-mmap
 
+# --------- Disable ACT LED ---------
+dtparam=act_led_trigger=none
+dtparam=act_led_activelow=off
+
 #------Reboot when exceeds-----
-temp_limit=85
+temp_limit=80

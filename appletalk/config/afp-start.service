@@ -1,0 +1,24 @@
+## Starts the AFP server at boot in the order and with the pauses the old rc.local had.
+## atalkd fails with "zero interfaces" until the network has its address, and netatalk
+## registers on AppleTalk (DDP, the Chooser on older Macs) only if atalkd is already up,
+## so the services stay disabled and are started here one after another.
+[Unit]
+Description=Start the AFP server (autofs, AppleTalk, atalkd, netatalk, avahi) in order
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=0
+## Wait for the network
+ExecStart=/usr/bin/sleep 10
+## Attach shares
+ExecStart=/usr/bin/systemctl start autofs
+## Start AppleTalk
+ExecStart=/usr/sbin/modprobe appletalk
+ExecStart=/usr/bin/systemctl start atalkd
+ExecStart=/usr/bin/sleep 10
+## Start the AFP server
+ExecStart=/usr/bin/systemctl start netatalk avahi-daemon
+
+[Install]
+WantedBy=multi-user.target
