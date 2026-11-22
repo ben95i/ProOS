@@ -371,7 +371,10 @@ function fillRowElement(element, row) {
   element.classList.toggle(LANSCAN_OFFLINE_CLASS, !row.online);
   const indicatorDot = makeElement('span', `lanscan__ind lanscan__ind--${row.indicator}`);
   if (row.ssh) {
-    indicatorDot.textContent = row.statusText;
+    // its own element, so it can be trimmed to its capitals and centred in the dot
+    const indicatorText = makeElement('span', 'lanscan__ind-text');
+    indicatorText.textContent = row.statusText;
+    indicatorDot.appendChild(indicatorText);
   }
   const address = makeElement('span', 'lanscan__ip');
   address.textContent = row.address;

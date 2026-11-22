@@ -415,7 +415,7 @@ html.theme-light .list__round--on:not(.list__round--del) i {
 
 .list__dlg-btn {
   width: 130px;
-  height: 60px;
+  height: var(--window-button-height);
   font-size: 22px;
 }
 
@@ -439,7 +439,7 @@ html.theme-light .list__round--on:not(.list__round--del) i {
 
 .list__btn {
   width: 115px;
-  height: 60px;
+  height: var(--window-button-height);
 }
 
 /* the delete button's icon in delete mode */

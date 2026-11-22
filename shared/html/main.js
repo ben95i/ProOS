@@ -515,7 +515,7 @@ registerListeners({
   'btn-cmd-lightson':   () => sendCmd('main', 'lightson'),
   'btn-cmd-lightsoff':  () => sendCmd('main', 'lightsoff'),
   'btn-open-cam':       () => openCamWindow(),
-  'btn-open-log-svr':   () => openLogWindow()
+  'btn-open-log-svr':   () => openLogWindow(true)
 });
 
 //// HVAC button ////
@@ -811,10 +811,11 @@ function showBookmarks() {
   });
 }
 
-// Server button, or System on the Pi models: the log window, over nothing else
-function openLogWindow() {
+// Server button, or System on the Pi models: the log window, over nothing else;
+// openOptions (the Server button) also opens the options window over it
+function openLogWindow(openOptions = false) {
   closePopup();
-  showLogWindow();
+  showLogWindow(openOptions);
 }
 
 // Doorway button: the camera's live stream

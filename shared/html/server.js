@@ -244,10 +244,15 @@ registerListeners({
 
 //// log window ////
 
-// Shows the log window and reads the log into it.
-export function showLogWindow() {
+// Shows the log window and reads the log into it; with openOptions, also opens the
+// options window over it on the main panel, as its options button does.
+// showLogWindow(true) for the Server button, showLogWindow() for a Pi's System row
+export function showLogWindow(openOptions = false) {
   setDisplayById(LOG_WINDOW_ID, "block");
   loadLog();
+  if (openOptions) {
+    openServerPanel(svrOptMainTemplate);
+  }
 }
 
 // Hides the log window, its armed command and the options window over it.
@@ -386,16 +391,18 @@ function piWiFiPrompt(windowId) {
       ${textBoxTemplate({ boxId: 'pinet__ssidbox' })}
       <div>Password:</div>
       ${textBoxTemplate({ boxId: 'pinet__passbox', type: 'password' })}
-      ${gridButtonTemplate({
-        buttonId: PI_WIFI_CANCEL_BUTTON_ID,
-        label: 'Cancel',
-        buttonClass: 'pinet__btn'
-      })}
-      ${gridButtonTemplate({
-        buttonId: PI_WIFI_SAVE_BUTTON_ID,
-        label: 'Save',
-        buttonClass: 'pinet__btn'
-      })}
+      <div id="pinet__btnrow">
+        ${gridButtonTemplate({
+          buttonId: PI_WIFI_CANCEL_BUTTON_ID,
+          label: 'Cancel',
+          buttonClass: 'pinet__btn'
+        })}
+        ${gridButtonTemplate({
+          buttonId: PI_WIFI_SAVE_BUTTON_ID,
+          label: 'Save',
+          buttonClass: 'pinet__btn'
+        })}
+      </div>
     `);
     const ssidLabel = promptElement.querySelector("div");
     const ssidBox = document.getElementById("pinet__ssidbox");

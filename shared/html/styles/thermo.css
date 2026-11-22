@@ -5,7 +5,11 @@
    "+" inside calc(). */
 
 #temp__prompt {
-  --thermo-window-height: 500px;     /* border included */
+  /* the window, border included, less its row of buttons: the panels keep this
+     height whatever --window-button-height is, so the Up and Down buttons stay on
+     whole pixels */
+  --thermo-panels-height: 425px;
+  --thermo-window-height: calc(var(--thermo-panels-height) - -1 * var(--thermo-button-height));
   --thermo-gap: 10px;
   --thermo-wall: 5px;                /* a .button's walls */
   /* Widths chosen so every box lands on a whole pixel: the panels' sum is even and,
@@ -21,7 +25,7 @@
   /* the thermostat's display and buttons; even, so the mode and blower boxes are whole:
      (146 - 10) / 2 = 68 */
   --thermo-panel-width: 146px;
-  --thermo-button-height: 75px;      /* the bathroom settings' button height */
+  --thermo-button-height: var(--window-button-height);
   --thermo-lcd-height: 79px;
   /* the mode and blower boxes; odd, so the Up and Down buttons share an even height */
   --thermo-state-height: 71px;

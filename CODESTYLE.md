@@ -35,6 +35,7 @@ These are the code style rules for everything in ProOS. Project structure (where
 
 ### CSS (Automate website)
 
+- A prompt window's own buttons take their height from `--window-button-height` (`main.css`), never a height of their own; only the bookmark edit window's are exempt.
 - No `+` inside `calc()`: yui-compressor strips the spaces around it. Write sums as `a - -1 * b`.
 - Wrap every `:hover` rule in `@media (hover: hover) and (pointer: fine)`, or iOS keeps the last tapped row lit.
 - Put translucency in the background colour, not `opacity`, on menus; iOS Safari repaints opacity layers poorly.

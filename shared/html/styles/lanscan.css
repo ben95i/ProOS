@@ -1,16 +1,29 @@
 /* Automate: LAN Scanner window (lanscan.js). Four count boxes in a flat group, drawn as
    the thermostat window's mode and blower boxes, over a list in a Pico log box's black
-   and grey edge. Rules resizing shared classes win by loading after them. */
+   and grey edge. Every space between the window's edge, the group, the list and the
+   buttons is --lanscan-gap, to a button's walls rather than its face, as in the
+   thermostat window. Rules resizing shared classes win by loading after them. */
 
+/* Most of the screen's height, the list taking what the group and buttons leave; never
+   taller than the space between the top bar and the screen's edge (.prompt_win), nor
+   wider than the screen. */
 #lanscan__prompt {
-  width: 470px;
+  --lanscan-gap: 10px;     /* the thermostat window's gap */
+  --lanscan-wall: 5px;     /* a .button's walls */
+  display: flex;
+  flex-direction: column;
+  /* the narrowest that still fits the longest maker nmap gives ("Proxmox Server
+     Solutions GmbH") on one line; even, so the centred window lands on whole pixels */
+  width: 492px;
   max-width: 96vw;
-  padding: 10px 12px;
+  height: 79vh;
+  padding: var(--lanscan-gap);
   color: #fff;
 }
 
 /* the group, flat with the settings windows' thin grey edge */
 .lanscan__panel {
+  flex-shrink: 0;
   width: auto;
   grid-template-columns: 1fr;
   margin: 0;
@@ -96,9 +109,11 @@
 }
 
 /* the list: a Pico log box's black and grey edge, one row per host */
+/* the window's height less the group's and the buttons' */
 .lanscan__list {
-  height: 46vh;
-  margin-top: 10px;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-top: var(--lanscan-gap);
   overflow: auto;
   text-align: left;
   background-color: #000;
@@ -157,13 +172,18 @@
   width: 26px;
   height: 26px;
   border-radius: 50%;
+  overflow: visible;
+}
+
+/* SSH, trimmed to its capitals and baseline, so the dot centres the letters themselves
+   rather than the font's line box, which each browser places differently */
+.lanscan__ind-text {
   font-family: 'JosefinSans', system-ui;
   font-size: 9px;
   font-weight: bold;
   line-height: 1;
-  padding-top: 1px;
   color: #fff;
-  overflow: visible;
+  text-box: trim-both cap alphabetic;
 }
 
 .lanscan__ind--ssh {
@@ -225,14 +245,19 @@
   letter-spacing: .1em;
 }
 
-/* Close and Refresh under the list, spanning half its width each */
+/* Close and Refresh under the list, one gap from it and from the window's edge */
 .lanscan__actions {
+  flex-shrink: 0;
   justify-content: center;
-  padding-top: 15px;
+  gap: var(--lanscan-gap);
+  padding-top: var(--lanscan-gap);
   padding-left: 0;
   padding-right: 0;
 }
 
+/* The face starts at the row's top, moved up and left by the button's own transform,
+   and the walls end at its bottom, so the row is the button's height and nothing more. */
 #lanscan__prompt .lanscan__actions .button_left_txtwin {
   width: 120px;
+  margin: var(--lanscan-wall) 0 0 var(--lanscan-wall);
 }

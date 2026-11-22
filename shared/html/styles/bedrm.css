@@ -31,5 +31,5 @@
 
 #bed__btn-close {
   width: 150px;
-  height: 65px;
+  height: var(--window-button-height);
 }

@@ -58,6 +58,9 @@
      half its own height); 100% is the screen's height where they are used */
   --prompt-space-height: calc(100% - var(--prompt-clear-top) - var(--prompt-clear-bottom));
   --prompt-centre-top: calc(var(--prompt-clear-top) - -0.5 * var(--prompt-space-height));
+  /* the height of every prompt window's own buttons (Close, Refresh, Send …); the
+     bookmark edit window's keep their own */
+  --window-button-height: 70px;
 }
 
 body {
@@ -134,13 +137,16 @@ input[type="checkbox"] {
 /* the site's one text box look: white text on the dark theme fill and a grey edge (the
    prompt window's, so it shows on black) with rounded corners, 40px tall (the bookmarks
    search box's height); its width is its host's (Lists, search rows, prompt windows) */
+/* A 1px grey edge; the padding takes the 2px the edge gave up, so the text sits where
+   it did under a 3px edge (border and padding 7px tall, 9px wide in all) and a list
+   row's rename box still lines up with the name it replaces. */
 .text-box {
   height: 40px;
-  padding: 4px 6px;
+  padding: 6px 8px;
   color: #fff;
   background-color: var(--main-40-black);
-  border: 3px solid var(--border-color);
-  border-radius: 5px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
   outline: none;
 }
 
@@ -148,9 +154,11 @@ input[type="checkbox"] {
   color: #c1c1c1;
 }
 
-/* selected: the black edge inside the light ring */
+/* selected: a 3px black edge (the border and a 2px inset shadow, which moves no
+   text) inside the light ring */
 .text-box:focus {
   border-color: #000;
+  box-shadow: inset 0 0 0 2px #000;
   outline: 3px solid var(--main-40-white);
 }
 
@@ -245,12 +253,12 @@ input[type="checkbox"] {
 }
 
 .button__med {
-  height: 75px;
+  height: var(--window-button-height);
 }
 
 .button__sml {
   width: 110px;
-  height: 60px;
+  height: var(--window-button-height);
 }
 
 .button__text {
@@ -499,12 +507,12 @@ input[type="checkbox"] {
 }
 
 .button_left_txtwin {
-  height: 75px;
+  height: var(--window-button-height);
   width: 75px;
 }
 
 .button_right_txtwin {
-  height: 75px;
+  height: var(--window-button-height);
   width: 120px;
   margin-left: auto;
 }
@@ -565,7 +573,7 @@ html.theme-light .button:not(.red_btn_menu) {
 
 #about__btn {
   width: 150px;
-  height: 65px;
+  height: var(--window-button-height);
   left: 3px;
   top: 10px;
 }
