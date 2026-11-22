@@ -470,6 +470,13 @@ export function onButtons(win, handler) {
 export function setSpinner(textId, spinnerId, on, spinnerClass = 'btn-spinner') {
   const text = document.getElementById(textId);
   const spinner = document.getElementById(spinnerId);
+  showSpinner(text, spinner, on, spinnerClass);
+}
+
+// setSpinner() for a label and spinner already in hand, as a window keeps its own, so a
+// read still running from a closed window cannot reach the buttons of the next one.
+// showSpinner(win.refreshText, win.refreshSpinner, true)
+export function showSpinner(text, spinner, on, spinnerClass = 'btn-spinner') {
   if (!text || !spinner) {
     return;
   }
@@ -504,6 +511,27 @@ function buttonLabelMarkup(iconClass, labelText, iconId) {
   return labelMarkup;
 }
 
+// the class that sizes a button's spinner to its icon (main.css)
+const ICON_SPINNER_CLASS = 'icon-spinner';
+
+// A button's inside: its label, or with config.spinnerId its label (config.textId) and the
+// empty spinner setSpinner() turns, which with config.iconSpinner is the icon's size.
+// buttonContentMarkup({ textId: 'x-text', spinnerId: 'x-spinner', iconSpinner: true }, label)
+function buttonContentMarkup(config, labelMarkup) {
+  // a button with no spinner has a label with no id
+  if (!config.spinnerId) {
+    return `
+    <span class="button__text">${labelMarkup}</span>`;
+  }
+  let spinnerClass = 'button__text';
+  if (config.iconSpinner === true) {
+    spinnerClass = `${spinnerClass} ${ICON_SPINNER_CLASS}`;
+  }
+  return `
+    <span class="button__text" id="${config.textId}">${labelMarkup}</span>
+    <span class="${spinnerClass}" id="${config.spinnerId}"></span>`;
+}
+
 // buttonClassNames('svropt_button') -> "button svropt_button"
 function buttonClassNames(extraClass) {
   if (extraClass) {
@@ -513,13 +541,14 @@ function buttonClassNames(extraClass) {
 }
 
 // A plain button: a grid button or one of a window's own.
-// config: buttonId, optional icon, iconId, label, buttonClass
+// config: buttonId, optional icon, iconId, label, buttonClass,
+// textId + spinnerId (the label and its spinner), iconSpinner (the spinner the icon's size)
 export function gridButtonTemplate(config) {
   const labelMarkup = buttonLabelMarkup(config.icon, config.label, config.iconId);
   const buttonClass = buttonClassNames(config.buttonClass);
+  const buttonContent = buttonContentMarkup(config, labelMarkup);
   return `
-  <button type="button" class="${buttonClass}" id="${config.buttonId}">
-    <span class="button__text">${labelMarkup}</span>
+  <button type="button" class="${buttonClass}" id="${config.buttonId}">${buttonContent}
   </button>`;
 }
 
@@ -546,8 +575,9 @@ export function textBoxTemplate(config) {
 
 // A grid button with the dropdown under it.
 // config: buttonId, menuId, optional icon, iconId, label, buttonClass,
-// textId + spinnerId (the label and its spinner), menuClass ("ind-button" by default
-// or "dd-button"), menuContent (rows held from the start)
+// textId + spinnerId (the label and its spinner), iconSpinner (the spinner the icon's
+// size), menuClass ("ind-button" by default or "dd-button"), menuContent (rows held from
+// the start)
 export function dropdownButtonTemplate(config) {
   const labelMarkup = buttonLabelMarkup(config.icon, config.label, config.iconId);
   const buttonClass = buttonClassNames(config.buttonClass);
@@ -559,14 +589,7 @@ export function dropdownButtonTemplate(config) {
   if (config.menuContent) {
     menuContent = config.menuContent;
   }
-  // a button with no spinner has a label with no id
-  let buttonContent = `
-      <span class="button__text">${labelMarkup}</span>`;
-  if (config.spinnerId) {
-    buttonContent = `
-      <span class="button__text" id="${config.textId}">${labelMarkup}</span>
-      <span class="button__text" id="${config.spinnerId}"></span>`;
-  }
+  const buttonContent = buttonContentMarkup(config, labelMarkup);
   return `
   <div class="dropdown">
     <button type="button" class="${buttonClass}" id="${config.buttonId}">${buttonContent}
@@ -805,13 +828,18 @@ export function rgbToHsv(red, green, blue) {
 //// shared search box ////
 
 const SEARCH_GLASS_ICON = 'fa-search';
+const SEARCH_GLASS_STYLE = 'fad';
 const SEARCH_CLEAR_ICON = 'fa-times';
+const SEARCH_CLEAR_STYLE = 'fas';
 
-// The icon follows the box's content: a magnifier while empty, else a cross that clears it.
+// The icon follows the box's content: a duotone magnifier while empty, else a solid cross
+// that clears it.
 function setSearchIcon(icon, value) {
   const clear = value !== "";
   icon.classList.toggle(SEARCH_CLEAR_ICON, clear);
+  icon.classList.toggle(SEARCH_CLEAR_STYLE, clear);
   icon.classList.toggle(SEARCH_GLASS_ICON, !clear);
+  icon.classList.toggle(SEARCH_GLASS_STYLE, !clear);
   icon.classList.toggle('search-row__icon--clear', clear);
 }
 
@@ -843,7 +871,7 @@ export function searchRowElement(options) {
   }
   row.className = 'search-row';
   const icon = document.createElement('i');
-  icon.className = `fad ${SEARCH_GLASS_ICON} search-row__icon`;
+  icon.className = `${SEARCH_GLASS_STYLE} ${SEARCH_GLASS_ICON} search-row__icon`;
   const box = document.createElement('input');
   box.type = "text";
   box.className = 'text-box search-row__box';

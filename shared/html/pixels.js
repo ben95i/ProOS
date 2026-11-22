@@ -4,8 +4,8 @@
 // on App.pixelsWindow while open.
 
 import { sendCmd, readFile, splitMenuData, promptWindow, onButtons,
-  makeElement, requestThrottle, gridButtonTemplate } from './utils.js';
-import { removeDropdowns, SLIDER_MS } from './dropdowns.js';
+  makeElement, requestThrottle, gridButtonTemplate, showSpinner } from './utils.js';
+import { removeDropdowns, spinnerIds, SLIDER_MS } from './dropdowns.js';
 
 // the LED hosts, URL|NAME per line; nodeapi/ledparser.js uses the same list
 const PIXELS_HOST_FILE = 'ledhosts';
@@ -45,9 +45,9 @@ const PIXELS_BUTTON_CLASS = 'button_left_txtwin';
 const PIXELS_LOADING_CLASS = 'is-loading';
 const PIXELS_DOWN_CLASS = 'is-down';
 const PIXELS_MESSAGE_ERROR_CLASS = 'pixels__message--error';
-// the Refresh icon, turning while the hosts are asked
-const PIXELS_REFRESH_ICON_ID = 'pixels__refresh-icon';
-const PIXELS_SPIN_CLASS = 'fa-spin';
+// the Refresh button's label and the spinner standing in for its icon while the hosts
+// are asked
+const PIXELS_REFRESH = spinnerIds('pixels__refresh');
 // how long a slider takes to move to a level read on Refresh
 const PIXELS_SLIDE_MS = 300;
 
@@ -74,7 +74,8 @@ export function openPixelsWindow() {
       ${gridButtonTemplate({
         buttonId: 'pixels__btn-refresh',
         icon: 'fad fa-sync-alt',
-        iconId: PIXELS_REFRESH_ICON_ID,
+        ...PIXELS_REFRESH,
+        iconSpinner: true,
         buttonClass: PIXELS_BUTTON_CLASS
       })}
     </div>
@@ -82,7 +83,8 @@ export function openPixelsWindow() {
   const pixelsWindow = {
     win: promptElement,
     hostList: document.getElementById('pixels__hosts'),
-    refreshIcon: document.getElementById(PIXELS_REFRESH_ICON_ID),
+    refreshText: document.getElementById(PIXELS_REFRESH.textId),
+    refreshSpinner: document.getElementById(PIXELS_REFRESH.spinnerId),
     // per host, in file order: its name, box, state line and slider
     hosts: [],
     // effect -> its name in the Animated menu
@@ -161,8 +163,13 @@ function parseEffectNames(fileText) {
   return effectNames;
 }
 
+// the Refresh button's spinner in its icon's place while the hosts are asked, or the icon
+function pixelsShowRefreshing(pixelsWindow, refreshing) {
+  showSpinner(pixelsWindow.refreshText, pixelsWindow.refreshSpinner, refreshing);
+}
+
 // Reads the host list and effect names, draws a box per host, then asks every host at once;
-// each box fills in as its answer lands, with the Refresh icon turning until the last.
+// each box fills in as its answer lands, with the Refresh spinner turning until the last.
 // While the list is unchanged the boxes stay, sliders moving to the new level.
 async function pixelsLoadHosts(pixelsWindow) {
   pixelsWindow.loadSeq += 1;
@@ -170,7 +177,7 @@ async function pixelsLoadHosts(pixelsWindow) {
   if (pixelsWindow.hosts.length === 0) {
     pixelsShowMessage(pixelsWindow, PIXELS_LOADING, false);
   }
-  pixelsWindow.refreshIcon.classList.add(PIXELS_SPIN_CLASS);
+  pixelsShowRefreshing(pixelsWindow, true);
   const [fileText, effectFileText] = await Promise.all([
     readFile(PIXELS_HOST_FILE),
     readFile(PIXELS_EFFECT_FILE)
@@ -192,7 +199,7 @@ async function pixelsLoadHosts(pixelsWindow) {
   if (listError !== '') {
     pixelsClearHosts(pixelsWindow);
     pixelsShowMessage(pixelsWindow, listError, true);
-    pixelsWindow.refreshIcon.classList.remove(PIXELS_SPIN_CLASS);
+    pixelsShowRefreshing(pixelsWindow, false);
     return;
   }
   if (!pixelsSameHosts(pixelsWindow.hosts, hosts)) {
@@ -208,11 +215,11 @@ async function pixelsLoadHosts(pixelsWindow) {
     return pixelsReadStatus(pixelsWindow, hostControls);
   });
   await Promise.all(statusReads);
-  // a newer Refresh owns the icon from here
+  // a newer Refresh owns the spinner from here
   if (pixelsWindow.closed === true || sequence !== pixelsWindow.loadSeq) {
     return;
   }
-  pixelsWindow.refreshIcon.classList.remove(PIXELS_SPIN_CLASS);
+  pixelsShowRefreshing(pixelsWindow, false);
 }
 
 // are these the hosts the boxes on screen were drawn for, in order?

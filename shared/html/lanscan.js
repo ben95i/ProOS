@@ -6,7 +6,9 @@
 // count All, Online, Offline and Tracked, and pick which the list shows. State is on
 // App.lanScanner while open.
 
-import { makeElement, promptWindow, onButtons, gridButtonTemplate } from './utils.js';
+import { makeElement, promptWindow, onButtons, gridButtonTemplate,
+  showSpinner } from './utils.js';
+import { spinnerIds } from './dropdowns.js';
 import { HttpError, reportError, reportException, reportNotConnected } from './error.js';
 
 // The scan, one JSON event per line:
@@ -28,8 +30,8 @@ const LANSCAN_TITLE = 'LAN Scanner';
 const LANSCAN_TITLE_ID = 'lanscan__title';
 const LANSCAN_LIST_ID = 'lanscan__list';
 const LANSCAN_MESSAGE_ID = 'lanscan__message';
-const LANSCAN_REFRESH_ICON_ID = 'lanscan__refresh-icon';
-const LANSCAN_SPIN_CLASS = 'fa-spin';
+// the Refresh button's label and the spinner standing in for its icon while a scan is read
+const LANSCAN_REFRESH = spinnerIds('lanscan__refresh');
 // the window's two buttons (sized in lanscan.css)
 const LANSCAN_BUTTON_CLASS = 'button_left_txtwin';
 
@@ -112,7 +114,8 @@ export function openLanScanner() {
       ${gridButtonTemplate({
         buttonId: 'lanscan__btn-refresh',
         icon: 'fad fa-sync-alt',
-        iconId: LANSCAN_REFRESH_ICON_ID,
+        ...LANSCAN_REFRESH,
+        iconSpinner: true,
         buttonClass: LANSCAN_BUTTON_CLASS
       })}
     </div>`);
@@ -121,7 +124,8 @@ export function openLanScanner() {
     title: document.getElementById(LANSCAN_TITLE_ID),
     list: document.getElementById(LANSCAN_LIST_ID),
     message: document.getElementById(LANSCAN_MESSAGE_ID),
-    refreshIcon: document.getElementById(LANSCAN_REFRESH_ICON_ID),
+    refreshText: document.getElementById(LANSCAN_REFRESH.textId),
+    refreshSpinner: document.getElementById(LANSCAN_REFRESH.spinnerId),
     // key -> { row, element }, every host drawn
     hosts: new Map(),
     filter: LANSCAN_FILTERS[0],
@@ -174,7 +178,7 @@ function lanScanURL() {
 }
 
 // Clears the list and reads a new scan, each host drawn as its line arrives; the Refresh
-// icon turns until the scan ends. A scan already running on the server is joined.
+// spinner turns in the icon's place until the scan ends. A scan already running on the server is joined.
 async function startLanScan(lanScanner) {
   lanScanner.scanSeq += 1;
   const sequence = lanScanner.scanSeq;
@@ -259,10 +263,10 @@ function readScanLine(lanScanner, line) {
   }
 }
 
-// the Refresh icon turning, and the list's line, while a scan is read
+// the Refresh spinner in the icon's place, and the list's line, while a scan is read
 function setScanning(lanScanner, scanning) {
   lanScanner.scanning = scanning;
-  lanScanner.refreshIcon.classList.toggle(LANSCAN_SPIN_CLASS, scanning);
+  showSpinner(lanScanner.refreshText, lanScanner.refreshSpinner, scanning);
   showMessage(lanScanner);
 }
 

@@ -803,6 +803,10 @@ export default class Bookmarks {
       urlBox.placeholder = "Enter URL";
     }
     document.body.appendChild(editFavPrompt);
+    // a new bookmark starts with its name, taken from the menu's search box
+    if (add === true) {
+      nameBox.focus();
+    }
     // the preview beside the banner: a click drops the icon, the row keeping its old one
     // until saved
     editFavPrompt.querySelector(`#${PREVIEW_ID}`)

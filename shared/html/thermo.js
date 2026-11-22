@@ -7,9 +7,9 @@
 import { registerListeners, gridButtonTemplate, dropdownButtonTemplate,
   promptWindow, sendCmd, cleanString, isNumeric, makeElement,
   requestThrottle, picoReplyError, picoRequestQueue, parsePicoNumber, readPicoLog,
-  setDisplayById, PICO_REFUSED, PICO_NO_REPLY } from './utils.js';
+  setDisplayById, showSpinner, PICO_REFUSED, PICO_NO_REPLY } from './utils.js';
 import { openDropdown, removeDropdowns, beginMenuRequest,
-  menuRequestCurrent } from './dropdowns.js';
+  menuRequestCurrent, spinnerIds } from './dropdowns.js';
 import { reportNotConnected, reportException } from './error.js';
 
 //// thermostat API ////
@@ -123,11 +123,11 @@ const THERMO_SOURCE_MENU = 'thermo__source-menu';
 //// window ////
 
 const THERMO_PROMPT_ID = 'temp__prompt';
-// the Refresh icon, turning while the window reads
-const THERMO_REFRESH_ICON = 'thermo__refresh-icon';
-const THERMO_SPIN_CLASS = 'fa-spin';
-// the Brightness circle's icon, turning while the level is read
-const THERMO_BRIGHTNESS_ICON = 'thermo__brightness-icon';
+// the Refresh button's label, and the spinner standing in for its icon while the window
+// reads
+const THERMO_REFRESH = spinnerIds('thermo__refresh');
+// the Brightness circle's icon and the spinner standing in for it while the level is read
+const THERMO_BRIGHTNESS = spinnerIds('thermo__brightness');
 const THERMO_BACKLIGHT_MENU = 'thermo__backlight-menu';
 const THERMO_VIEW_MENU = 'thermo__view-menu';
 // the swatch of the colour set, drawn larger (colorprompt.css)
@@ -215,7 +215,8 @@ function thermoDisplayPanelTemplate() {
         ${dropdownButtonTemplate({
           buttonId: 'thermo__btn-brightness',
           icon: 'fad fa-sun',
-          iconId: THERMO_BRIGHTNESS_ICON,
+          ...THERMO_BRIGHTNESS,
+          iconSpinner: true,
           buttonClass: 'thermo__brightness',
           menuId: THERMO_BACKLIGHT_MENU,
           menuContent: `
@@ -315,7 +316,8 @@ function thermoWindowTemplate(climateRooms) {
       ${gridButtonTemplate({
         buttonId: 'thermo__btn-refresh',
         icon: 'fad fa-sync-alt',
-        iconId: THERMO_REFRESH_ICON
+        ...THERMO_REFRESH,
+        iconSpinner: true
       })}
       ${gridButtonTemplate({
         buttonId: 'thermo__btn-settings',
@@ -413,7 +415,8 @@ export function openThermoWindow(climateRooms) {
     sourceRoom: thermoSavedSource(climateRooms),
     mainPanel: document.getElementById('thermo__main'),
     logPanel: document.getElementById('thermo__log'),
-    brightnessIcon: document.getElementById(THERMO_BRIGHTNESS_ICON),
+    brightnessText: document.getElementById(THERMO_BRIGHTNESS.textId),
+    brightnessSpinner: document.getElementById(THERMO_BRIGHTNESS.spinnerId),
     backlightSlider: document.getElementById('thermo__backlight-slider'),
     logTitle: document.getElementById('thermo__log-title'),
     viewIcon: document.getElementById('thermo__view-icon'),
@@ -429,7 +432,8 @@ export function openThermoWindow(climateRooms) {
     fanIcon: document.getElementById('thermo__fan-icon'),
     fanText: document.getElementById('thermo__fan-text'),
     upButton: document.getElementById('thermo__btn-up'),
-    refreshIcon: document.getElementById(THERMO_REFRESH_ICON),
+    refreshText: document.getElementById(THERMO_REFRESH.textId),
+    refreshSpinner: document.getElementById(THERMO_REFRESH.spinnerId),
     downButton: document.getElementById('thermo__btn-down'),
     status: null,           // the fields of the last status read, or null
     setpoint: null,         // on the display: the thermostat's, or a press of ours
@@ -520,7 +524,7 @@ async function thermoRefresh(thermoWindow) {
   const sequence = thermoWindow.readSeq;
   const climate = thermoWindow.sourceRoom.climate;
   thermoShowSource(thermoWindow);
-  thermoWindow.refreshIcon.classList.add(THERMO_SPIN_CLASS);
+  showSpinner(thermoWindow.refreshText, thermoWindow.refreshSpinner, true);
   const statusRead = thermoRequest(THERMO_DEVICE);
   let climateRead = statusRead;
   const climateIsThermostat = climate.target === THERMO_TARGET && climate.cmd === THERMO_DEVICE;
@@ -528,11 +532,11 @@ async function thermoRefresh(thermoWindow) {
     climateRead = sendCmd('main', climate.target, climate.cmd);
   }
   const [statusReply, climateReply] = await Promise.all([statusRead, climateRead]);
-  // a newer read stops the Refresh icon when it lands
+  // a newer read stops the Refresh spinner when it lands
   if (thermoWindow.closed === true || sequence !== thermoWindow.readSeq) {
     return;
   }
-  thermoWindow.refreshIcon.classList.remove(THERMO_SPIN_CLASS);
+  showSpinner(thermoWindow.refreshText, thermoWindow.refreshSpinner, false);
   thermoShowStatus(thermoWindow, statusReply);
   thermoShowClimate(thermoWindow, climate, climateReply);
 }
@@ -828,8 +832,8 @@ function thermoCloseIfOpen(menuId) {
   return true;
 }
 
-// Mode or Fan: reads the thermostat first (Refresh icon turning), marks the choice in force,
-// and opens the menu. A second press closes it; a press elsewhere during the read takes
+// Mode or Fan: reads the thermostat first (Refresh spinner turning), marks the choice in
+// force, and opens the menu. A second press closes it; a press elsewhere during the read takes
 // the menu token and the menu stays shut.
 async function thermoOpenChoiceMenu(thermoWindow, kind) {
   const setting = THERMO_SETTINGS[kind];
@@ -874,8 +878,8 @@ async function thermoSaveChoice(thermoWindow, kind, code) {
   thermoRefresh(thermoWindow);
 }
 
-// Brightness: reads the level (the circle's icon turning), puts it on the slider and opens
-// the menu. A second press closes it; a press elsewhere during the read, or a failed
+// Brightness: reads the level (a spinner in the circle's icon's place), puts it on the
+// slider and opens the menu. A second press closes it; a press elsewhere during the read, or a failed
 // read, leaves it shut.
 async function thermoOpenBrightnessMenu(thermoWindow) {
   if (thermoCloseIfOpen(THERMO_BACKLIGHT_MENU) === true) {
@@ -883,9 +887,9 @@ async function thermoOpenBrightnessMenu(thermoWindow) {
   }
   removeDropdowns();
   const token = beginMenuRequest();
-  thermoWindow.brightnessIcon.classList.add(THERMO_SPIN_CLASS);
+  showSpinner(thermoWindow.brightnessText, thermoWindow.brightnessSpinner, true);
   const reply = await thermoRequest(`${THERMO_DEVICE}_backlight`);
-  thermoWindow.brightnessIcon.classList.remove(THERMO_SPIN_CLASS);
+  showSpinner(thermoWindow.brightnessText, thermoWindow.brightnessSpinner, false);
   if (thermoWindow.closed === true || !menuRequestCurrent(token)) {
     return;
   }

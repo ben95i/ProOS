@@ -710,6 +710,18 @@ html.theme-light .button:not(.red_btn_menu) {
   animation: rotation 1s linear infinite;
 }
 
+/* A .btn-spinner standing in for its button's icon (a template's iconSpinner): the icon's
+   size, --button-icon-size where the button sets one, else 1em of the button's font as
+   the icon is, centred where the icon is and drawn in the icon's colour. */
+.icon-spinner.btn-spinner {
+  --icon-spinner-diameter: var(--button-icon-size, 1em);
+  width: var(--icon-spinner-diameter);
+  height: var(--icon-spinner-diameter);
+  margin-left: calc(var(--icon-spinner-diameter) / -2);
+  margin-top: calc(var(--icon-spinner-diameter) / -2);
+  border-top-color: currentColor;
+}
+
 @keyframes rotation {
   0% {
     transform: rotate(0deg);

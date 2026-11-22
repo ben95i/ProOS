@@ -959,7 +959,7 @@ export default class Lists {
     })}
     ${gridButtonTemplate({
       buttonId: ADD_BTN_ID,
-      icon: 'fad fa-folder-plus',
+      icon: 'fas fa-plus',
       buttonClass: 'button__sml list__btn'
     })}
     <div class="list__status" id="${STATUS_ID}">
@@ -1404,11 +1404,13 @@ export default class Lists {
     if (waiting) {
       return;
     }
-    // the delete button becomes an X once something is picked
+    // the delete button's duotone trash becomes a solid X once something is picked
     const select = this.mode === MODE_SELECT;
     const confirm = this.selected.size > 0;
     const icon = byId(DEL_ICON_ID);
+    icon.classList.toggle("fas", confirm);
     icon.classList.toggle("fa-times", confirm);
+    icon.classList.toggle("fad", !confirm);
     icon.classList.toggle("fa-trash-alt", !confirm);
     icon.classList.toggle(DEL_ICON_ON_CLASS, select);
   }
@@ -1552,13 +1554,17 @@ export default class Lists {
     }
   }
 
-  // Into a list or back out: an empty search, nothing picked, the panel at the top.
+  // Into a list or back out: an empty search, nothing picked, the panel at the top. A list
+  // long enough for a search box opens with the caret in it.
   showView(view, id = null) {
     this.query = "";
     this.openId = id;
     this.view = view;
     this.setMode(MODE_OPEN);
     this.resetScroll();
+    if (this.searchable()) {
+      this.refocusSearch();
+    }
   }
 
   // Every view starts at the top. On iOS a fling overrides a scrollTop write, so the
