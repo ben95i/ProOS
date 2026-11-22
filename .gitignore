@@ -8,6 +8,7 @@ esp32/*/test/build
 esp32/*/test/output
 shared/fontawesome
 pve/vmbkps
+vzdump-*
 pve/network
 .DS_Store
 *auto.creds*

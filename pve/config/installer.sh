@@ -163,6 +163,12 @@ chown root:root /etc/systemd/system/file-monitor.service
 cp -f $TMPDIR/apicmds.sh /usr/bin/
 chmod +x /usr/bin/apicmds.sh
 chown root:root /usr/bin/apicmds.sh
+cp -f $TMPDIR/tank-backup.sh /usr/bin/
+chmod +x /usr/bin/tank-backup.sh
+chown root:root /usr/bin/tank-backup.sh
+cp -f $TMPDIR/pve-backup.sh /usr/bin/
+chmod +x /usr/bin/pve-backup.sh
+chown root:root /usr/bin/pve-backup.sh
 cp -f $TMPDIR/file-monitor.sh /usr/bin/
 chmod +x /usr/bin/file-monitor.sh
 chown root:root /usr/bin/file-monitor.sh
@@ -301,10 +307,6 @@ chown root:root /etc/cron.d/zfsutils-linux
 rm -f /etc/cron.d/zfsutils-linux.dpkg-dist
 rm -f /etc/cron.d/rsnapshot
 
-## Delete Obsolete Services
-rm -f /etc/systemd/system/actiontrig.service
-rm -f /etc/systemd/system/actiontrig.timer
-
 ## Disable Replication Service
 systemctl mask pvesr.timer
 
@@ -314,7 +316,7 @@ systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
 ## Reload Daemons
 systemctl daemon-reload
 
-## Start Services on Boot
+## Service Configuration
 systemctl enable proos-boot
 systemctl enable smartmontools
 systemctl enable apcupsd
@@ -322,7 +324,6 @@ systemctl enable file-monitor.service
 systemctl enable --now hourlyjob.timer
 systemctl enable --now hourlyjob-sd.service
 systemctl enable rclone-gsync.service
-## skipped by the unit until /etc/rclone/rclone.conf exists
 systemctl restart rclone-gsync.service
 
 ## Clean-up

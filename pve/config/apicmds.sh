@@ -12,12 +12,7 @@ DRIVES_PATH="/opt/bkpdrives.txt"
 TANK_ROOT="/mnt/datastore"
 REGDATA="$TANK_ROOT/.regions"
 BINDMNTS="/mnt/bindmnts"
-TANK_DATA="$TANK_ROOT/data"
-TANK_MEDIA="$TANK_ROOT/media"
 TANK_SNAPS="$TANK_ROOT/.zfs/snapshot"
-PROOS_DIR="$TANK_DATA/Projects/ProOS"
-RSYNC_BIN="nice -n 19 ionice -c 3 rsync"
-RSYNC_OPTIONS="-aP --delete --delete-excluded"
 
 function END_ROUTINE() {
   TRAILER=$(date)
@@ -119,13 +114,18 @@ function UMOUNT_RAMDSK(){
   fi
 }
 
-## Store backup dates in array
-CURBKPDTES=()
-function SAVEBKPDATES () {
-  local _POOL="$1"
-  touch "$EXTBKPS/$_POOL/LastSynced.txt"
-  local _CURDATE=$(date '+%F %r')
-  CURBKPDTES+=( "$_POOL|${_CURDATE// /_}" )
+## Hands the command over to one of the host's own scripts, which prints its
+## own trailer. exec keeps this process, so file-monitor still sees one job.
+## Usage: RUN_SCRIPT <script path> [arguments...]
+## e.g.   RUN_SCRIPT /usr/bin/pve-backup.sh "$CMD" "$RAMDISK"
+function RUN_SCRIPT() {
+  local scriptPath="$1"
+  shift
+  if [ ! -x "$scriptPath" ]; then
+    echo "'$scriptPath' not installed!"
+    END_ROUTINE
+  fi
+  exec "$scriptPath" "$@"
 }
 
 if [ "$CMD" == "clearlog" ]; then
@@ -135,168 +135,9 @@ if [ "$CMD" == "clearlog" ]; then
   END_ROUTINE
 fi
 
-## External Drive Backups ##
+## External Drive Backups (tank-backup.sh) ##
 if [[ "$CMD" == "backupstd" || "$CMD" == "backupchk" ]]; then
-  ## Standard or Checksum RSYNC
-  if [ "$CMD" == "backupstd" ]; then
-    CHECKSUM=""
-  fi
-  if [ "$CMD" == "backupchk" ]; then
-    echo "checksum compare option selected, this backup will take awhile!"
-    CHECKSUM="--checksum"
-  fi
-  REQUIRE_RAMDISK
-  WAIT_TIME=60
-  if ! ( set -o noclobber; : > "$RAMDISK/backupsvr.lock" ) 2>/dev/null; then
-    echo "already running!"
-    echo "delete '$RAMDISK/backupsvr.lock' to remove lock if program failed"
-    END_ROUTINE
-  fi
-  trap 'rm -f "$RAMDISK/backupsvr.lock"' EXIT
-  trap 'exit 143' TERM INT
-  echo "****************** starting backup **********************"
-  echo " "
-  ## Turn on indicator LED
-  curl -s -f 'http://ledwall.home/api?action=main&arg=whtledon' > /dev/null 2>&1 &
-  ## Read Backup Drive Names
-  if [ ! -e "$DRIVES_PATH" ]; then
-    echo "drives file '$DRIVES_PATH' not found, aborting backup!"
-    curl -s -f 'http://ledwall.home/api?action=main&arg=whtledoff' > /dev/null 2>&1
-    END_ROUTINE
-  fi
-  readarray -t ZFSPOOLS < "$DRIVES_PATH"
-  #######################
-  ## RSYNC ##############
-  for _POOL in "${ZFSPOOLS[@]}"; do
-    ## Remove Invalid Characters
-    POOL=$(echo $_POOL | sed -e 's/\r//g')
-    if [ ! "$POOL" == "" ]; then
-      ## USB Flash Drives
-      if [ "${POOL::3}" == "usb" ]; then
-        #################################
-        if [ ! -e "$EXTBKPS/$POOL/Data" ]; then
-          echo "flash drive not connected $POOL"
-        else
-          #### Data Share ####
-          if [ ! -e "$PROOS_DIR" ]; then
-            echo "Data' share not found!"
-          else
-            echo "syncing 'Data' share to $POOL drive..."
-            $RSYNC_BIN $CHECKSUM --exclude="**CDs.zip" --exclude="**CDs.7z" --exclude="**USB.img" --exclude="**USB.7z" --exclude="**USB.zip" \
-              --exclude="**HD.img" --exclude="**HD.7z" --exclude="**HD.zip" --exclude="**VM.img" --exclude="**VM.7z" --exclude="**VM.zip" \
-              $TANK_DATA/ $EXTBKPS/$POOL/Data/ $RSYNC_OPTIONS
-          fi
-          #### Regions Share ####
-          if [ ! -e "$REGDATA/DB" ]; then
-            echo "'Regions' share not found!"
-          else
-            echo "syncing 'Regions' share to $POOL drive..."
-            $RSYNC_BIN $CHECKSUM --exclude="Archive/ALUTqMiuxVtjfuair7WIgQ/" --exclude="Games/" $REGDATA/ $EXTBKPS/$POOL/.Regions/ $RSYNC_OPTIONS
-          fi
-          ##### END BACKUP #####
-          SAVEBKPDATES "$POOL"
-        fi
-      fi
-      ## Hard Drives
-      if [ "${POOL::3}" == "hdd" ]; then
-        #################################
-        if [ ! -e "$EXTBKPS/$POOL/Data" ]; then
-          echo "hard drive not connected $POOL"
-        else      
-          #### Data Share ####
-          if [ ! -e "$PROOS_DIR" ]; then
-            echo "Data' share not found!"
-          else
-            echo "syncing 'Data' share to $POOL drive..."
-            $RSYNC_BIN $CHECKSUM $TANK_DATA/ $EXTBKPS/$POOL/Data/ $RSYNC_OPTIONS
-          fi
-          #### Regions Share ####
-          if [ ! -e "$REGDATA/DB" ]; then
-            echo "'Regions' share not found!"
-          else
-            echo "syncing 'Regions' share to $POOL drive..."
-            $RSYNC_BIN $CHECKSUM $REGDATA/ $EXTBKPS/$POOL/.Regions/ $RSYNC_OPTIONS
-          fi
-          #### Media Share ####
-          if [ ! -e "$TANK_MEDIA/Music" ]; then
-            echo "'Media' share not found!"
-          else
-            echo "syncing 'Media' share to $POOL drive..."
-            $RSYNC_BIN $CHECKSUM $TANK_MEDIA/ $EXTBKPS/$POOL/Media/ $RSYNC_OPTIONS
-          fi
-          ##### END BACKUP #####
-          SAVEBKPDATES "$POOL"
-        fi
-      fi
-      echo "" 
-    fi  
-  done
-  ################################
-  ## Write backup dates to file ##
-  if [ ! -f "$STATUSFILE" ]; then
-    if : > "$STATUSFILE" 2>/dev/null; then
-      echo "created new status file '$STATUSFILE'."
-    else
-      echo "WARNING: cannot create '$STATUSFILE' -- backup dates not recorded!"
-    fi
-  fi
-  if [ -f "$STATUSFILE" ]; then
-    ## Read status file into array
-    echo " " 
-    echo "last backup dates: "
-    readarray -t STATFILEARR < "$STATUSFILE"
-    for STATFILE_LAST in "${STATFILEARR[@]}"; do
-      echo "$STATFILE_LAST"
-    done
-    ## Backup last file
-    cp -f "$STATUSFILE" "$STATUSFILE.bak"
-    ## Delete status files content
-    truncate -s 0 "$STATUSFILE"
-    ## Read through each item in current drive status array
-    for CURBKP_ITEM in "${CURBKPDTES[@]}"; do
-      ## skip blank or malformed entries (must be DRIVE|DATE)
-      [[ "$CURBKP_ITEM" == *"|"* ]] || continue
-      ENTRY_FOUND=""
-      CURBKP_DRIVE=${CURBKP_ITEM%|*}
-      CURBKP_DATE=${CURBKP_ITEM#*|}
-      ## Read through each item in status file array
-      for STATIDX in "${!STATFILEARR[@]}"; do
-        STATFILE_ITEM=${STATFILEARR[$STATIDX]}
-        [[ "$STATFILE_ITEM" == *"|"* ]] || continue
-        STATFILE_DRIVE=${STATFILE_ITEM%|*}
-        STATFILE_DATE=${STATFILE_ITEM#*|}
-        ## Scan for matching drive entry
-        if [ "$STATFILE_DRIVE" == "$CURBKP_DRIVE" ]; then
-          ## Update existing entry
-          STATFILEARR[$STATIDX]="$STATFILE_DRIVE|$CURBKP_DATE"
-          ENTRY_FOUND="yes"
-          break
-        fi
-      done
-      ## Add new entry if no exisiting data found
-      if [ "$ENTRY_FOUND" != "yes" ]; then
-        STATFILEARR+=("$CURBKP_DRIVE|$CURBKP_DATE")
-      fi
-    done
-    ## Write array to new file
-    echo " " 
-    echo "current backup dates: "
-    for NEWSTATFILE_ITEM in "${STATFILEARR[@]}"; do
-      echo "$NEWSTATFILE_ITEM" >> "$STATUSFILE"
-      echo "$NEWSTATFILE_ITEM"
-    done
-    echo " "
-  fi
-  echo "triggering drive detach in $WAIT_TIME second(s)."
-  sleep $WAIT_TIME
-  ## Unlock State File
-  rm -f "$RAMDISK/backupsvr.lock"
-  ## Write drive detach trigger file
-  touch "$RAMDISK/detach_bkps.txt"
-  ## Turn off indicator LED
-  curl -s -f 'http://ledwall.home/api?action=main&arg=whtledoff' > /dev/null 2>&1 &
-  echo "****************** backup complete **********************"
-  END_ROUTINE
+  RUN_SCRIPT /usr/bin/tank-backup.sh "$CMD" "$RAMDISK"
 fi
 
 if [ "$CMD" == "last_backup_dates" ]; then
@@ -479,83 +320,9 @@ if [ "$CMD" == "syslog" ]; then
   /usr/bin/sys-check
   END_ROUTINE
 fi
-  ###### Server VM Backup Script ######################
+###### Server VM Backup Script (pve-backup.sh) ######
 if [ "$CMD" == "pve_vmsbkp" ]; then
-  REQUIRE_RAMDISK
-  ### Lock file -- atomic create via noclobber (see backup lock above)
-  if ! ( set -o noclobber; : > "$RAMDISK/pvebackup.lock" ) 2>/dev/null; then
-    echo "PVE backup already running!"
-    echo "delete '$RAMDISK/pvebackup.lock' to remove lock if program aborted."
-    END_ROUTINE
-  fi
-  trap 'rm -f "$RAMDISK/pvebackup.lock"' EXIT
-  trap 'exit 143' TERM INT
-  ###
-  echo " "
-  echo "Backing-up Files LXC 101..."
-  vzdump 101 --mode snapshot --compress zstd --node pve --storage local --remove 1 --exclude-path /mnt \
-    --exclude-path /home/ben
-  cp /etc/pve/lxc/101.conf $PROOS_DIR/files/lxc.conf
-  chown -v tank:shared $PROOS_DIR/files/lxc.conf
-  ###
-  echo " "
-  echo "Backing-up Management LXC 102..."
-  vzdump 102 --mode snapshot --compress zstd --node pve --storage local --remove 1 --exclude-path /mnt
-  cp /etc/pve/lxc/102.conf $PROOS_DIR/mgmt/lxc.conf
-  chown -v tank:shared $PROOS_DIR/mgmt/lxc.conf
-  ### 
-  echo " "
-  echo "Backing-up CIFS LXC 104..."
-  vzdump 104 --mode snapshot --compress zstd --node pve --storage local --remove 1 --exclude-path /mnt
-  cp /etc/pve/lxc/104.conf $PROOS_DIR/cifs/lxc.conf
-  chown -v tank:shared $PROOS_DIR/cifs/lxc.conf
-  ###
-  echo " "
-  echo "Backing-up Automate LXC 106..."
-  vzdump 106 --mode snapshot --compress zstd --node pve --storage local --remove 1 --exclude-path /mnt \
-    --exclude-path /var/www/html
-  cp /etc/pve/lxc/106.conf $PROOS_DIR/automate/lxc.conf
-  chown -v tank:shared $PROOS_DIR/automate/lxc.conf
-  ###
-  echo " "
-  echo "Backing-up Media LXC 108..."
-  vzdump 108 --mode snapshot --compress zstd --node pve --storage local --remove 1 --exclude-path /mnt
-  cp /etc/pve/lxc/108.conf $PROOS_DIR/media/lxc.conf
-  chown -v tank:shared $PROOS_DIR/media/lxc.conf
-  ###
-  echo " "
-  echo "Backing-up Router KVM 100..."
-  vzdump 100 --mode snapshot --compress zstd --node pve --storage local --remove 1 --exclude-path /mnt
-  cp /etc/pve/qemu-server/100.conf $PROOS_DIR/pve/vmbkps/vzdump-qemu-100.conf
-  chown -v tank:shared $PROOS_DIR/pve/vmbkps/vzdump-qemu-100.conf
-  ###
-  echo " "
-  echo "Backing-up AppleTalk KVM 103..."
-  vzdump 103 --mode snapshot --compress zstd --node pve --storage local --remove 1 --exclude-path /mnt
-  cp /etc/pve/qemu-server/103.conf $PROOS_DIR/appletalk/qemu.conf
-  chown -v tank:shared $PROOS_DIR/appletalk/qemu.conf
-  ###  
-  echo " "
-  echo "Backing-up Xana KVM 105..."
-  vzdump 105 --mode snapshot --compress zstd --node pve --storage local --remove 1 --exclude-path /mnt
-  cp /etc/pve/qemu-server/105.conf $PROOS_DIR/xana/qemu.conf
-  chown -v tank:shared $PROOS_DIR/xana/qemu.conf
-  ###
-  echo " "
-  echo "Backing-up Unifi KVM 107..."
-  vzdump 107 --mode snapshot --compress zstd --node pve --storage local --remove 1
-  cp /etc/pve/qemu-server/107.conf $PROOS_DIR/pve/vmbkps/vzdump-qemu-107.conf
-  chown -v tank:shared $PROOS_DIR/pve/vmbkps/vzdump-qemu-107.conf
-  ###
-  ### Copy to ZFS Pool
-  ###
-  echo " "
-  echo "Copying VM's to Datastore..."
-  rsync --progress -a /var/lib/vz/dump/vzdump-* $PROOS_DIR/pve/vmbkps/
-  chown -Rv tank:shared $PROOS_DIR/pve/vmbkps/vzdump-*
-  echo "Backup Complete."
-  rm -f "$RAMDISK/pvebackup.lock"
-  END_ROUTINE
+  RUN_SCRIPT /usr/bin/pve-backup.sh "$CMD" "$RAMDISK"
 fi
 
 ### end ###
