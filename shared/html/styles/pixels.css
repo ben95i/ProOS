@@ -5,7 +5,7 @@
   /* on whole pixels, so its sliders leave no line behind (see #bthr__prompt) */
   top: round(var(--prompt-centre-top), 1px);
   left: round(50%, 1px);
-  transform: translate(round(-50%, 1px), round(-50%, 1px));
+  transform: translate(round(-50%, 1px), round(var(--prompt-centre-shift), 1px));
   /* the bathroom settings window's width */
   width: 302px;
   height: auto;

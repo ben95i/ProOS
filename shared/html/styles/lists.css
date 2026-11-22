@@ -33,17 +33,35 @@
   color: var(--main-40-white);
 }
 
+/* hidden in place while nothing may be deleted, so the title stays centred */
+.list__navbtn--off {
+  visibility: hidden;
+}
+
 /* the menu rows' glow */
 @media (hover: hover) and (pointer: fine) {
-  #list__btn-back:hover {
+  #list__btn-del:hover,
+  #list__btn-lock:hover {
     color: #fff;
     text-shadow: var(--menu-glow);
   }
 }
 
+/* The header's two sides, two buttons wide whatever they hold (save and lock on the
+   left, the trash on the right), so the title between them stays centred. */
+.list__side {
+  display: flex;
+  flex-shrink: 0;
+  width: 90px;
+}
+
+.list__side--end {
+  justify-content: flex-end;
+}
+
 .list__title {
   flex-grow: 1;
-  padding-right: 45px; /* balances the back button */
+  min-width: 0px;
   text-align: center;
   color: #fff;
   font-size: 25px;
@@ -318,35 +336,43 @@ html.theme-light .list__round--on:not(.list__round--del) i {
   padding-top: 8px;
 }
 
-/* save state dot -- green once the server holds what is on screen */
-.list__dot {
-  display: none;
-  position: absolute;
-  top: 18px;
-  right: 18px;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background-color: var(--green-ind);
-  box-shadow: 0px 0px 6px var(--green-ind);
+/* save button: a floppy disk, green once the server holds what is on screen */
+.list__save {
+  position: relative;
+}
+
+/* The floppy glyph ends 1/16 em above the lock's (32 of the font's 512 units), so it is
+   moved down by that much to stand on the lock's baseline. */
+.list__save #list__save-icon {
+  position: relative;
+  top: 0.0625em;
+  color: var(--green-ind);
+  text-shadow: 0px 0px 6px var(--green-ind);
+}
+
+/* nothing tried yet: the icon is hidden, the ring in the button still shows */
+.list__save--hidden #list__save-icon {
+  visibility: hidden;
 }
 
 /* edits not given to the server yet */
-.list__dot--unsaved {
-  background-color: var(--yellow-ind);
-  box-shadow: 0px 0px 6px var(--yellow-ind);
+.list__save--unsaved #list__save-icon {
+  color: var(--yellow-ind);
+  text-shadow: 0px 0px 6px var(--yellow-ind);
 }
 
-/* Ring round the dot while the server is waited on: centre 28px in; 30px across
-   leaves a 5px gap. */
+/* Ring round the floppy disk while the server is waited on, centred on it by margins
+   (the animation holds the transform); 36px across clears the 22px icon. */
 .list__spinner {
   pointer-events: none;
   position: absolute;
   display: none;
-  top: 13px;
-  right: 13px;
-  width: 30px;
-  height: 30px;
+  top: 50%;
+  left: 50%;
+  margin-top: -18px;
+  margin-left: -18px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   border-top: 3px solid #fff;
   border-right: 3px solid transparent;
@@ -360,24 +386,14 @@ html.theme-light .list__round--on:not(.list__round--del) i {
 }
 
 /* offers itself only with something to save */
-.list__dot--save {
+.list__save--ready {
   cursor: pointer;
 }
 
-/* widens the tap area past the 20px dot without moving or reshaping it */
-.list__dot--save::before {
-  content: "";
-  position: absolute;
-  top: -12px;
-  left: -12px;
-  right: -12px;
-  bottom: -12px;
-}
-
 /* a write failed: edits stay in memory, closing offers retry or discard */
-.list__dot--error {
-  background-color: var(--alert-red);
-  box-shadow: 0px 0px 6px var(--alert-red);
+.list__save--error #list__save-icon {
+  color: var(--alert-red);
+  text-shadow: 0px 0px 6px var(--alert-red);
 }
 
 /* unsaved changes dialog, covers the window until it is answered */
@@ -401,7 +417,7 @@ html.theme-light .list__round--on:not(.list__round--del) i {
 
 .list__dialog-msg {
   padding-bottom: 15px;
-  font-size: 25px;
+  font-size: 22px;
   color: #fff;
   user-select: none;
   -webkit-user-select: none;
@@ -442,21 +458,36 @@ html.theme-light .list__round--on:not(.list__round--del) i {
   height: var(--window-button-height);
 }
 
-/* the delete button's icon in delete mode */
+/* the header's trash in delete mode */
 #list__del-icon.list__del-icon--on {
   color: var(--alert-red);
 }
 
-/* Encrypted lists: the corner lock, a row's badge and the password prompt, which is
-   the unsaved dialog with boxes. */
-
-/* the lock shares the corner with the back button and its glow with it */
-@media (hover: hover) and (pointer: fine) {
-  #list__btn-lock:hover {
-    color: #fff;
-    text-shadow: var(--menu-glow);
-  }
+/* the header's trash holds the count badge over its top right corner */
+#list__btn-del {
+  position: relative;
 }
+
+/* how many rows are picked, in delete mode's red */
+.list__del-count {
+  display: none;
+  position: absolute;
+  top: 0px;
+  right: 2px;
+  min-width: 18px;
+  padding: 0px 5px;
+  box-sizing: border-box;
+  border-radius: 9px;
+  background-color: var(--alert-red);
+  color: #fff;
+  font-size: 13px;
+  line-height: 18px;
+  text-align: center;
+  pointer-events: none;
+}
+
+/* Encrypted lists: the header's lock, a row's badge and the password prompt, which is
+   the unsaved dialog with boxes. */
 
 /* open: the header's white, readable from across the room */
 #list__lock-icon.list__lock-icon--on {

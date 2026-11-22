@@ -2,12 +2,16 @@
 // the window (default export). Both levels support add, rename, multi-select delete and drag
 // re-order. Unchecked items float to the top; checked ones drag, and every item does while
 // none is checked. A list of over SEARCH_MIN_ITEMS items has a search box that hides rows
-// in place. Add puts an unsaved placeholder row first; once named it keeps that place.
+// in place. Add puts an unsaved placeholder row first with its name box open; once named it
+// keeps that place.
 //
 // lists.save, one line per item: LIST_ID|LIST_NAME|ITEM_ID|ITEM_NAME|CHECK_STATE. Row order is
 // the order; an empty list's line has empty item fields. The first window to open claims
 // lists-lock.save; others are read only. Nothing saves on a timer: only on close, hide and
-// unload. The corner dot: green taken, yellow outstanding, red after a failed write.
+// unload. The floppy disk in the header's left corner: green taken, yellow outstanding, red
+// after a failed write, and pressed it saves; the lock beside it opens the encrypted lists.
+// The trash in the header's right corner starts delete mode, where it leaves the mode
+// (a trash with an undo arrow) until rows are picked, then asks before deleting them.
 //
 // An encrypted list is one row, LIST_ID|!ENC|0|E1.<iv>.<ciphertext>|0. While locked, its
 // blob sits in memory undrawn and is written back untouched. A list added while the encrypted
@@ -30,7 +34,8 @@ const WIN_TITLE = 'Lists';
 const WIN_ID = 'list__win';
 const LIST_ID = 'list__list';
 const TITLE_ID = 'list__title';
-const DOT_ID = 'list__dot';
+const SAVE_ID = 'list__save';
+const SAVE_ICON_ID = 'list__save-icon';
 const STATUS_ID = 'list__status';
 const OVERLAY_ID = 'list__overlay';
 const BACK_BTN_ID = 'list__btn-back';
@@ -41,6 +46,14 @@ const RETRY_BTN_ID = 'list__btn-retry';
 const DISCARD_BTN_ID = 'list__btn-discard';
 const DEL_ICON_ID = 'list__del-icon';
 const DEL_ICON_ON_CLASS = 'list__del-icon--on';
+const DEL_COUNT_ID = 'list__del-count';
+// the prompt that asks before rows are deleted
+const DEL_OVERLAY_ID = 'list__delask';
+const DEL_MSG_ID = 'list__delask-msg';
+const DEL_OK_BTN_ID = 'list__btn-delask-ok';
+const DEL_CANCEL_BTN_ID = 'list__btn-delask-cancel';
+// a header button hidden in place, so the title stays centred
+const NAVBTN_OFF_CLASS = 'list__navbtn--off';
 const ROW_CLASS = 'list__row';
 const LABEL_CLASS = 'list__label';
 const LABEL_NEW_CLASS = 'list__label--new';
@@ -70,17 +83,18 @@ const ROW_LOCK_CLASS = 'list__rowlock';
 const LOCK_HOLD_CLASS = 'list__lock-icon--hold';
 // how long the lock is held down to offer a password change
 const LOCK_HOLD_MS = 2500;
-const DOT_UNSAVED_CLASS = 'list__dot--unsaved';
-const DOT_SAVE_CLASS = 'list__dot--save';
+const SAVE_HIDDEN_CLASS = 'list__save--hidden';
+const SAVE_UNSAVED_CLASS = 'list__save--unsaved';
+const SAVE_READY_CLASS = 'list__save--ready';
+const SAVE_ERROR_CLASS = 'list__save--error';
 const SPINNER_ID = 'list__spinner';
 const SPINNER_ON_CLASS = 'list__spinner--on';
-const DOT_ERROR_CLASS = 'list__dot--error';
 const COL_DELIMITER = '|';
-// dot states
-const DOT_HIDDEN = 0;  // nothing tried yet
-const DOT_SAVED = 1;   // the server holds what is on screen
-const DOT_UNSAVED = 2; // edits the server has not been given
-const DOT_ERROR = 3;   // a write failed
+// save button states
+const SAVE_HIDDEN = 0;  // nothing tried yet
+const SAVE_SAVED = 1;   // the server holds what is on screen
+const SAVE_UNSAVED = 2; // edits the server has not been given
+const SAVE_ERROR = 3;   // a write failed
 // Stored names are printable ASCII without "|". An item may hold several lines, stored
 // with "~" for each newline, so "~" is taken out of the text. List names stay on one line.
 const MAX_NAME_LENGTH = 64;
@@ -220,7 +234,7 @@ class ListStore {
     this.sealing = null;    // re-encrypt in flight, awaited before a write
     // the encrypted lists' password and key; starts locked
     this.crypt = new FileCrypt({ file: PWD_FILE });
-    // The lock's own traffic stays out of this.online: the dot reports the list only.
+    // The lock's own traffic stays out of this.online: the save button reports the list only.
     this.lock = new FileLock({
       file: LOCK_FILE,
       onLost: () => this.lockLost()
@@ -566,7 +580,7 @@ class ListStore {
     return this.lock.owned === true && this.readOnly !== true;
   }
 
-  // An edit was made: turns the dot yellow, writing nothing.
+  // An edit was made: turns the save button yellow, writing nothing.
   markChanged() {
     this.dirty = true;
     // every open list is marked and re-sealed, keeping blobs ready for a write that cannot wait
@@ -767,7 +781,7 @@ export default class Lists {
     if (document.visibilityState !== 'hidden' || this.store.dirty !== true) {
       return;
     }
-    this.store.save().then(() => this.updateDot());
+    this.store.save().then(() => this.updateSave());
   }
 
   // The page is being torn down: the browser is handed the list to finish. iOS Safari
@@ -824,10 +838,10 @@ export default class Lists {
     this.render();
   }
 
-  // Writes the list with the ring turning, leaving the dot on the answer.
+  // Writes the list with the ring turning, leaving the save button on the answer.
   async saveOut() {
     const sent = await this.runBusy(() => this.store.save());
-    this.updateDot();
+    this.updateSave();
     return sent;
   }
 
@@ -908,7 +922,7 @@ export default class Lists {
       return;
     }
     this.renderActions();
-    this.updateDot();
+    this.updateSave();
   }
 
   // the file is parsed: the rows go up, the buttons wait on the lock
@@ -929,20 +943,29 @@ export default class Lists {
     if (this.isOpen()) {
       return;
     }
-    // the back button starts hidden: the window opens on the lists view
+    // The save icon starts hidden until the first read answers, the trash until the edit lock
+    // does, and the back button until a list is opened; updateSave() and renderActions()
+    // show them. Both sides of the header are one width, so the title is centred.
     const markup = html`
 <div id="${WIN_ID}" class="prompt_win list__win nohide">
-  <span class="list__dot" id="${DOT_ID}"></span>
-  <span class="list__spinner" id="${SPINNER_ID}"></span>
   <div class="list__header">
-    <button type="button" class="list__navbtn" id="${BACK_BTN_ID}"
-      style="display: none;">
-      <i class="fad fa-chevron-left"></i>
-    </button>
-    <button type="button" class="list__navbtn" id="${LOCK_BTN_ID}">
-      <i class="fad fa-lock" id="${LOCK_ICON_ID}"></i>
-    </button>
+    <div class="list__side">
+      <button type="button" class="list__navbtn list__save ${SAVE_HIDDEN_CLASS}"
+        id="${SAVE_ID}">
+        <i class="fad fa-save" id="${SAVE_ICON_ID}"></i>
+        <span class="list__spinner" id="${SPINNER_ID}"></span>
+      </button>
+      <button type="button" class="list__navbtn" id="${LOCK_BTN_ID}">
+        <i class="fad fa-lock" id="${LOCK_ICON_ID}"></i>
+      </button>
+    </div>
     <div class="list__title" id="${TITLE_ID}">${WIN_TITLE}</div>
+    <div class="list__side list__side--end">
+      <button type="button" class="list__navbtn ${NAVBTN_OFF_CLASS}" id="${DEL_BTN_ID}">
+        <i class="fad fa-trash-alt" id="${DEL_ICON_ID}"></i>
+        <span class="list__del-count" id="${DEL_COUNT_ID}"></span>
+      </button>
+    </div>
   </div>
   <div class="list__list scroll-bar-style" id="${LIST_ID}"></div>
   <div class="list__actions">
@@ -952,9 +975,8 @@ export default class Lists {
       buttonClass: 'button__sml list__btn'
     })}
     ${gridButtonTemplate({
-      buttonId: DEL_BTN_ID,
-      icon: 'fad fa-trash-alt',
-      iconId: DEL_ICON_ID,
+      buttonId: BACK_BTN_ID,
+      icon: 'fad fa-arrow-left',
       buttonClass: 'button__sml list__btn'
     })}
     ${gridButtonTemplate({
@@ -978,6 +1000,23 @@ export default class Lists {
         ${gridButtonTemplate({
           buttonId: RETRY_BTN_ID,
           label: 'Retry',
+          buttonClass: 'list__dlg-btn'
+        })}
+      </div>
+    </div>
+  </div>
+  <div class="list__overlay" id="${DEL_OVERLAY_ID}">
+    <div class="list__dialog">
+      <div class="list__dialog-msg" id="${DEL_MSG_ID}">Delete?</div>
+      <div class="list__dialog-btns">
+        ${gridButtonTemplate({
+          buttonId: DEL_OK_BTN_ID,
+          label: 'Yes',
+          buttonClass: 'list__dlg-btn'
+        })}
+        ${gridButtonTemplate({
+          buttonId: DEL_CANCEL_BTN_ID,
+          label: 'No',
           buttonClass: 'list__dlg-btn'
         })}
       </div>
@@ -1014,6 +1053,7 @@ export default class Lists {
   </div>
 </div>`;
     document.body.insertAdjacentHTML('beforeend', markup);
+    setShown(BACK_BTN_ID, false);
     const win = byId(WIN_ID);
     Object.keys(this.listeners).forEach(name => {
       win.addEventListener(name, this.listeners[name]);
@@ -1118,7 +1158,7 @@ export default class Lists {
     return [...list.getElementsByClassName(ROW_CLASS)];
   }
 
-  // re-draws the header, rows, buttons and dot
+  // re-draws the header, rows, buttons and save button
   render() {
     const list = this.listElem();
     if (!list) {
@@ -1136,7 +1176,7 @@ export default class Lists {
       // waiting on the first read: no rows yet, and the ring says so
       list.innerHTML = "";
       this.renderActions();
-      this.updateDot();
+      this.updateSave();
       return;
     }
     // the search box, on a list long enough, above the rows
@@ -1154,13 +1194,13 @@ export default class Lists {
     this.applyFilter();
     this.clampScroll(list);
     this.renderActions();
-    this.updateDot();
+    this.updateSave();
     if (searching) {
       this.refocusSearch();
     }
   }
 
-  // the title and the two buttons in the header's left corner
+  // the header's title: the open list's name, or the window's
   renderHeader(items) {
     const entry = this.openList();
     let title = WIN_TITLE;
@@ -1168,12 +1208,6 @@ export default class Lists {
       title = entry.name;
     }
     byId(TITLE_ID).innerText = title;
-    // The back button belongs to the items view and the lock to the lists view; they share
-    // the slot, so the centred title does not move.
-    const backBtn = byId(BACK_BTN_ID);
-    setShown(backBtn, items === true);
-    setShown(LOCK_BTN_ID, items !== true);
-    this.updateLockIcon();
   }
 
   // the rows, the no-match placeholder and the total beneath them
@@ -1363,7 +1397,7 @@ export default class Lists {
     return makeElement('span', ROW_LOCK_CLASS, '<i class="fad fa-lock"></i>');
   }
 
-  // the header lock: shut while the encrypted lists are, open once they are
+  // the lock button: shut while the encrypted lists are, open once they are
   updateLockIcon() {
     const icon = byId(LOCK_ICON_ID);
     if (!icon) {
@@ -1393,6 +1427,12 @@ export default class Lists {
 
   // shows the buttons the current state allows
   renderActions() {
+    // The header's lock belongs to the lists view and the back button to the items view.
+    // Both only read, so a read only window has them too.
+    const items = this.view === VIEW_ITEMS;
+    setShown(BACK_BTN_ID, items);
+    setShown(LOCK_BTN_ID, !items);
+    this.updateLockIcon();
     // read only hides what would write, with a notice; waiting hides it without
     const settling = this.settling === true;
     const readOnly = !settling && this.store.readOnly === true;
@@ -1400,65 +1440,91 @@ export default class Lists {
     const loading = this.busy === true && this.store.loaded !== true;
     const waiting = readOnly || settling || loading;
     setShown(STATUS_ID, readOnly, "flex");
-    [ADD_BTN_ID, DEL_BTN_ID].forEach(id => setShown(id, !waiting));
+    setShown(ADD_BTN_ID, !waiting);
+    byId(DEL_BTN_ID).classList.toggle(NAVBTN_OFF_CLASS, waiting);
     if (waiting) {
       return;
     }
-    // the delete button's duotone trash becomes a solid X once something is picked
+    this.updateDeleteIcon();
+  }
+
+  // The header's trash: plain outside delete mode; in it red, with an undo arrow while
+  // nothing is picked (a press leaves the mode), and a count once rows are (a press asks to
+  // delete them).
+  updateDeleteIcon() {
     const select = this.mode === MODE_SELECT;
-    const confirm = this.selected.size > 0;
+    const pickedCount = this.selected.size;
+    const leaving = select && pickedCount === 0;
     const icon = byId(DEL_ICON_ID);
-    icon.classList.toggle("fas", confirm);
-    icon.classList.toggle("fa-times", confirm);
-    icon.classList.toggle("fad", !confirm);
-    icon.classList.toggle("fa-trash-alt", !confirm);
+    icon.classList.toggle("fa-trash-undo-alt", leaving);
+    icon.classList.toggle("fa-trash-alt", !leaving);
     icon.classList.toggle(DEL_ICON_ON_CLASS, select);
+    const badge = byId(DEL_COUNT_ID);
+    let badgeText = "";
+    if (select && pickedCount > 0) {
+      badgeText = String(pickedCount);
+    }
+    badge.innerText = badgeText;
+    setShown(badge, badgeText !== "", "block");
+    let title = "Delete";
+    if (leaving) {
+      title = "Leave delete mode";
+    } else if (select) {
+      title = `Delete ${this.deleteText(pickedCount)}`;
+    }
+    byId(DEL_BTN_ID).title = title;
+  }
+
+  // what the picked rows are called: deleteText(2) -> "2 lists", or "2 items" in a list
+  deleteText(count) {
+    let noun = 'list';
+    if (this.view === VIEW_ITEMS) {
+      noun = 'item';
+    }
+    return this.totalText(count, noun);
   }
 
   // green once the server has the edits, yellow until then, red after a failed write
-  dotState() {
+  saveState() {
     if (this.store.online === null) {
-      return DOT_HIDDEN;
+      return SAVE_HIDDEN;
     }
     if (this.store.online === false) {
-      return DOT_ERROR;
+      return SAVE_ERROR;
     }
     if (this.store.dirty === true) {
-      return DOT_UNSAVED;
+      return SAVE_UNSAVED;
     }
-    return DOT_SAVED;
+    return SAVE_SAVED;
   }
 
-  // paints the ring and the dot
-  updateDot() {
+  // Paints the ring and the floppy disk. The ring sits in the button, so the icon alone is
+  // hidden before anything has been tried, and the ring still shows the first read.
+  updateSave() {
     // the ring turns while the server is waited on
     const spinner = byId(SPINNER_ID);
     if (spinner) {
       spinner.classList.toggle(SPINNER_ON_CLASS, this.busy === true);
     }
-    const dot = byId(DOT_ID);
-    if (!dot) {
+    const button = byId(SAVE_ID);
+    if (!button) {
       return;
     }
-    const state = this.dotState();
-    if (state === DOT_HIDDEN) {
-      setShown(dot, false);
-      return;
-    }
-    setShown(dot, true, "block");
-    dot.classList.toggle(DOT_UNSAVED_CLASS, state === DOT_UNSAVED);
-    dot.classList.toggle(DOT_ERROR_CLASS, state === DOT_ERROR);
+    const state = this.saveState();
+    button.classList.toggle(SAVE_HIDDEN_CLASS, state === SAVE_HIDDEN);
+    button.classList.toggle(SAVE_UNSAVED_CLASS, state === SAVE_UNSAVED);
+    button.classList.toggle(SAVE_ERROR_CLASS, state === SAVE_ERROR);
     // pressing it saves, so it takes presses only with something to write
     const canSave = this.store.dirty === true && this.store.canWrite();
-    dot.classList.toggle(DOT_SAVE_CLASS, canSave);
+    button.classList.toggle(SAVE_READY_CLASS, canSave);
     if (canSave) {
-      dot.title = "Save changes";
+      button.title = "Save changes";
     } else {
-      dot.removeAttribute('title');
+      button.removeAttribute('title');
     }
   }
 
-  // the dot pressed: writes now
+  // the save button pressed: writes now
   async saveNow() {
     if (this.store.dirty !== true || !this.store.canWrite()) {
       return;
@@ -1554,17 +1620,14 @@ export default class Lists {
     }
   }
 
-  // Into a list or back out: an empty search, nothing picked, the panel at the top. A list
-  // long enough for a search box opens with the caret in it.
+  // Into a list or back out: an empty search, nothing picked, the panel at the top. The
+  // search box is left unfocused until it is pressed.
   showView(view, id = null) {
     this.query = "";
     this.openId = id;
     this.view = view;
     this.setMode(MODE_OPEN);
     this.resetScroll();
-    if (this.searchable()) {
-      this.refocusSearch();
-    }
   }
 
   // Every view starts at the top. On iOS a fling overrides a scrollTop write, so the
@@ -1595,7 +1658,8 @@ export default class Lists {
     }
   }
 
-  // The add button: a placeholder, unsaved and gone unless pressed and named.
+  // The add button: a placeholder with its name box open for typing, unsaved and gone unless
+  // named. Opened inside the press, as iOS raises the keyboard only for a focus made there.
   addEntry() {
     // the search goes first, or the row could arrive out of view
     this.query = "";
@@ -1617,6 +1681,7 @@ export default class Lists {
     this.render();
     // it is the first row
     this.resetScroll();
+    this.beginRename(entry.id);
   }
 
   // Takes the placeholder away, spliced in place; the caller re-draws.
@@ -1639,7 +1704,8 @@ export default class Lists {
     return true;
   }
 
-  // First press turns the check boxes on; the second deletes what is picked, or leaves.
+  // First press turns the check boxes on; the second asks to delete what is picked, or
+  // leaves when nothing is.
   deleteAction() {
     if (this.mode !== MODE_SELECT) {
       this.setMode(MODE_SELECT);
@@ -1647,6 +1713,25 @@ export default class Lists {
     }
     if (this.selected.size === 0) {
       this.setMode(MODE_OPEN);
+      return;
+    }
+    this.showDeletePrompt(true);
+  }
+
+  // Shows or hides the prompt that asks before the picked rows go, naming how many.
+  showDeletePrompt(show) {
+    if (show === true) {
+      const what = this.deleteText(this.selected.size);
+      // broken before the count, so the question never wraps with one word left over
+      byId(DEL_MSG_ID).innerText = `Are you sure you want to delete\n${what}?`;
+    }
+    setShown(DEL_OVERLAY_ID, show === true, "flex");
+  }
+
+  // The prompt's Delete: the picked rows go, unless the window went read only meanwhile.
+  confirmDelete() {
+    this.showDeletePrompt(false);
+    if (this.rowsLocked() || this.mode !== MODE_SELECT || this.selected.size === 0) {
       return;
     }
     const picked = this.selected;
@@ -1723,6 +1808,10 @@ export default class Lists {
       value = "";
     }
     const namebox = this.makeNamebox(multi, value);
+    if (pending) {
+      // the placeholder's words stay as the box's hint
+      namebox.placeholder = entry.name;
+    }
     this.sizeNamebox(namebox, row, label);
     label.replaceWith(namebox);
     if (multi) {
@@ -1866,7 +1955,7 @@ export default class Lists {
     return state;
   }
 
-  // The lock in the corner: unlocked, it locks; locked, it asks for the password, or a new one.
+  // The lock button: unlocked, it locks; locked, it asks for the password, or a new one.
   async lockPress() {
     if (!this.cryptoOk()) {
       return;
@@ -2088,7 +2177,7 @@ export default class Lists {
     if (!wasOpen) {
       await this.store.lockUp();
     }
-    this.updateDot();
+    this.updateSave();
     this.render();
     if (out.error) {
       warn(`${out.error}.`);
@@ -2135,7 +2224,7 @@ export default class Lists {
 
   // routes a press on the window
   handleClick(event) {
-    if (event.target.closest(`#${DOT_ID}`)) {
+    if (event.target.closest(`#${SAVE_ID}`)) {
       this.saveNow();
       return;
     }
@@ -2205,6 +2294,13 @@ export default class Lists {
         return;
       case PWD_CANCEL_BTN_ID:
         this.closePassword();
+        return;
+      case DEL_OK_BTN_ID:
+        this.confirmDelete();
+        return;
+      // the picked rows stay picked
+      case DEL_CANCEL_BTN_ID:
+        this.showDeletePrompt(false);
         return;
       case CLOSE_BTN_ID:
         this.closeWindow();

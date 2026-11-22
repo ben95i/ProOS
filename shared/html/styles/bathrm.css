@@ -6,11 +6,11 @@
 #bthr__prompt {
   /* Centred on whole pixels where the browser can round. On a half pixel (an odd window
      or screen height) a slider's fill, which is its thumb's wide box-shadow, can leave a
-     light line along the slider's bottom edge as the thumb moves. Browsers without
-     round() keep .prompt_win's centring. The Pixels and thermostat windows do the same. */
+     light line along the slider's bottom edge as the thumb moves. The Pixels and
+     thermostat windows do the same. */
   top: round(var(--prompt-centre-top), 1px);
   left: round(50%, 1px);
-  transform: translate(round(-50%, 1px), round(-50%, 1px));
+  transform: translate(round(-50%, 1px), round(var(--prompt-centre-shift), 1px));
   /* as wide as its three buttons (260px, face to wall) plus 20px padding and 1px
      border each side */
   width: 302px;

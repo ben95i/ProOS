@@ -54,10 +54,24 @@
      5px gap) and below them. */
   --prompt-clear-top: 70px;
   --prompt-clear-bottom: 5px;
-  /* that space's height, and its middle as a window's top (the window is moved up
-     half its own height); 100% is the screen's height where they are used */
+  /* that space's height; 100% is the screen's height where it is used */
   --prompt-space-height: calc(100% - var(--prompt-clear-top) - var(--prompt-clear-bottom));
-  --prompt-centre-top: calc(var(--prompt-clear-top) - -0.5 * var(--prompt-space-height));
+  /* the lowest a window's middle may sit: about the top of the Pixels group, so on a
+     tall screen a window stands over the APT and Pixels groups rather than low on the
+     screen. The page's groups are drawn in fixed px from the top, so this is the same
+     place on every screen. */
+  --prompt-centre-max: 480px;
+  /* where a window's top is placed: the space's middle, or the lowest middle when the
+     space's middle is below it (the window is then moved up by --prompt-centre-shift) */
+  --prompt-space-centre: calc(var(--prompt-clear-top) - -0.5 * var(--prompt-space-height));
+  --prompt-centre-top: min(var(--prompt-space-centre), var(--prompt-centre-max));
+  /* the window's vertical shift: up half its own height (100% is the window's height
+     here), but never so far that a window too tall to centre on the lowest middle
+     passes under the top bar; such a window stands just under the bar instead. A
+     window in a short screen is never that tall (it fits the space), so there it is
+     centred in the space, as before. */
+  --prompt-centre-reach: calc(var(--prompt-clear-top) - var(--prompt-centre-max));
+  --prompt-centre-shift: max(-50%, var(--prompt-centre-reach));
   /* the height of every prompt window's own buttons (Close, Refresh, Send …); the
      bookmark edit window's keep their own */
   --window-button-height: 70px;
@@ -424,8 +438,9 @@ input[type="checkbox"] {
 }
 
 /* Every prompt window: fixed, so it stays in view on a scrolled page, and centred in
-   the space under the top bar, never taller than it: a window that does not fit
-   scrolls inside, so its top never passes under the bar. margin-right keeps a window
+   the space under the top bar, or no lower than --prompt-centre-max on a tall screen,
+   never taller than that space: a window that does not fit scrolls inside, so its top
+   never passes under the bar. margin-right keeps a window
    sized by its content from shrinking to the half of the screen right of its left
    edge. */
 .prompt_win {
@@ -436,7 +451,7 @@ input[type="checkbox"] {
   top: var(--prompt-centre-top);
   left: 50%;
   margin-right: -50%;
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, var(--prompt-centre-shift));
   max-height: var(--prompt-space-height);
   overflow-y: auto;
   color: #fff;

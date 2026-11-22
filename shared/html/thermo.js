@@ -70,7 +70,7 @@ const THERMO_SETTINGS = {
     },
     menuId: 'thermo__mode-menu',
     // the one refusal the thermostat gives a valid mode
-    refusedText: 'The thermostat refused it: cool is refused while its sensor has failed.',
+    refusedText: 'The HVAC refused it: cool is refused while its sensor has failed.',
     choices: [
       { code: '1', label: 'Heat', icon: 'fad fa-fire-alt', running: RUNNING_HEAT },
       { code: '2', label: 'Cool', icon: 'fad fa-snowflake', running: RUNNING_COOL },
@@ -83,7 +83,7 @@ const THERMO_SETTINGS = {
     field: STATUS_FIELDS.fan,
     isRunning: (fields) => fields[STATUS_FIELDS.fanRelay] === RELAY_CLOSED,
     menuId: 'thermo__fan-menu',
-    refusedText: 'The thermostat refused it.',
+    refusedText: 'The HVAC refused it.',
     choices: [
       { code: '0', label: 'Auto' },
       { code: '1', label: 'On' }
@@ -103,7 +103,7 @@ const THERMO_TEXT_COLORS = [
   { code: '11', label: 'Blue', color: '#296dff' },
   { code: '13', label: 'Magenta', color: '#ff00ff' }
 ];
-const THERMO_READ_REFUSED = 'The thermostat refused it: its firmware may be older than this command.';
+const THERMO_READ_REFUSED = 'The HVAC refused it: its firmware may be older than this command.';
 
 //// thermometers ////
 
@@ -295,7 +295,7 @@ function thermoWindowTemplate(climateRooms) {
       ${thermoSourceTemplate(climateRooms)}
     </fieldset>
     <fieldset class="btn-group thermo__controls">
-      <div class="btn-group-label"><span>Thermostat</span></div>
+      <div class="btn-group-label"><span>HVAC</span></div>
       <div class="thermo__lcd" id="thermo__lcd"></div>
       ${thermoStateButtonTemplate('mode', THERMO_ICON_CLASS)}
       ${thermoStateButtonTemplate('fan', `${THERMO_ICON_CLASS} fad fa-fan`)}
@@ -326,7 +326,7 @@ function thermoWindowTemplate(climateRooms) {
     </div>
   </div>
   <div class="thermo__logview ${THERMO_HIDDEN_CLASS}" id="thermo__log">
-    <div class="btn-group-label thermo__setup-title"><i class="fad fa-thermometer-half"></i><span>Thermostat Setup</span></div>
+    <div class="btn-group-label thermo__setup-title"><i class="fad fa-thermometer-half"></i><span>HVAC Setup</span></div>
     ${thermoDisplayPanelTemplate()}
     <fieldset class="btn-group thermo__log">
       <div class="btn-group-label">${thermoViewTitleTemplate()}</div>
@@ -784,7 +784,7 @@ function thermoReportFailure(what, error, refusedText) {
     return;
   }
   if (error === THERMO_OFFLINE) {
-    reportNotConnected(what, 'The thermostat is offline.');
+    reportNotConnected(what, 'The HVAC is offline.');
     return;
   }
   if (error === PICO_REFUSED) {
@@ -809,8 +809,8 @@ async function thermoSaveSetpoint(thermoWindow, value) {
   }
   const { answer, error } = thermoParseNumber(reply);
   if (error !== '') {
-    thermoReportFailure(`setting the thermostat to ${value}°F`, error,
-      `The thermostat refused it: the setpoint runs ${SETPOINT_MIN} to ${SETPOINT_MAX}°F.`);
+    thermoReportFailure(`setting the HVAC to ${value}°F`, error,
+      `The HVAC refused it: the setpoint runs ${SETPOINT_MIN} to ${SETPOINT_MAX}°F.`);
     thermoWindow.setpointPending = false;
     thermoRefresh(thermoWindow);
     return;
@@ -872,7 +872,7 @@ async function thermoSaveChoice(thermoWindow, kind, code) {
   const error = thermoReplyError(reply);
   if (error !== '') {
     const choice = thermoChoice(kind, code);
-    thermoReportFailure(`setting the thermostat ${setting.what} to ${choice.label}`,
+    thermoReportFailure(`setting the HVAC ${setting.what} to ${choice.label}`,
       error, setting.refusedText);
   }
   thermoRefresh(thermoWindow);
@@ -895,7 +895,7 @@ async function thermoOpenBrightnessMenu(thermoWindow) {
   }
   const { answer, error } = thermoParseNumber(reply);
   if (error !== '') {
-    thermoReportFailure('reading the thermostat backlight level', error, THERMO_READ_REFUSED);
+    thermoReportFailure('reading the HVAC backlight level', error, THERMO_READ_REFUSED);
     return;
   }
   thermoWindow.backlightSlider.value = answer;
@@ -922,8 +922,8 @@ async function thermoSaveBacklight(thermoWindow, level) {
   }
   const { error } = thermoParseNumber(reply);
   if (error !== '') {
-    thermoReportFailure(`setting the thermostat backlight to ${level}`, error,
-      'The thermostat refused it: the backlight runs 0 to 255.');
+    thermoReportFailure(`setting the HVAC backlight to ${level}`, error,
+      'The HVAC refused it: the backlight runs 0 to 255.');
   }
 }
 
@@ -947,7 +947,7 @@ async function thermoReadColor(thermoWindow) {
   }
   const { answer, error } = thermoParseNumber(reply);
   if (error !== '') {
-    thermoReportFailure('reading the thermostat text colour', error, THERMO_READ_REFUSED);
+    thermoReportFailure('reading the HVAC text colour', error, THERMO_READ_REFUSED);
     thermoMarkColor(null);
     return;
   }
@@ -966,8 +966,8 @@ async function thermoSaveColor(thermoWindow, textColor) {
   }
   const error = thermoReplyError(reply);
   if (error !== '') {
-    thermoReportFailure(`setting the thermostat text colour to ${textColor.label}`, error,
-      'The thermostat refused it: the text colours run 0 to 14.');
+    thermoReportFailure(`setting the HVAC text colour to ${textColor.label}`, error,
+      'The HVAC refused it: the text colours run 0 to 14.');
     if (sequence === thermoWindow.colorSeq) {
       thermoReadColor(thermoWindow);
     }
