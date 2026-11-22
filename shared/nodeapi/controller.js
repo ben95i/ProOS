@@ -14,8 +14,6 @@ const util = require('util');
 const execFileAsync = util.promisify(execFile);
 
 const PROCESS_TIMEOUT = 3000; // in (ms)
-const MAX_PING_WAIT = "0.5";  // in (sec)
-const NET_RANGE = "192.168.1.0/24";
 const IP_ADRS = {
     lrthermo1: "192.168.1.3",
     lrxmit: "192.168.1.12",
@@ -31,7 +29,7 @@ const IP_ADRS = {
 const { OPCLEDparser } = require('./ledparser');
 const { runSiteLookup } = require('./sitelookup');
 const { runWeatherWidget } = require('./weather');
-const { runScanNetwork } = require('./netscan');
+const { localPing } = require('./ping');
 
 //// helpers ////
 
@@ -55,19 +53,6 @@ function splitByDelimiter(str, delimiter = '-') {
 // a level as the three digits the transmitter expects: 7 -> "007"
 function padOctet(value) {
   return String(value).padStart(3, "0");
-}
-
-// "1" when the host answers a ping, "0" when it does not
-async function localPing(ip) {
-    try {
-        await execFileAsync('/usr/bin/ping',
-            ['-4', '-A', '-c', '1', '-i', MAX_PING_WAIT, '-W', MAX_PING_WAIT, ip], {
-            timeout: PROCESS_TIMEOUT
-        });
-        return "1";
-    } catch (error) {
-        return "0";
-    }
 }
 
 // everything a failed child process can tell us, on one line
@@ -640,16 +625,10 @@ async function bathroomStatus() {
 //// server actions ////
 
 // Writes the request into the log and drops a trigger file for the shell
-// side to pick up. The network scan answers into the log directly instead.
+// side to pick up.
 async function runServerCommand(baseWWW, secondArg) {
     const logFile = path.join(baseWWW, '/ram/sysout.txt');
     if (!secondArg) return "empty server command!";
-    if (secondArg === "netscan") {
-        await fsPromises.appendFile(logFile, `Scanning network range ${NET_RANGE}...\n`);
-        const scanResult = await runScanNetwork(NET_RANGE);
-        await fsPromises.appendFile(logFile, `${scanResult}\n`);
-        return "OK";
-    }
     await fsPromises.appendFile(logFile, `\n${secondArg} sent.\n`);
     await fsPromises.writeFile(path.join(baseWWW, `/ram/${secondArg}.txt`), '');
     return "OK";

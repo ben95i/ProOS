@@ -6,7 +6,7 @@
 import { classDisplay, base64URLSafeEncode, sendCmd, html, fetchAnswer,
   savePOST, fileURL, promptWindow, onButtons, setDisplayById,
   registerListeners, gridButtonTemplate, dropdownButtonTemplate, textBoxTemplate,
-  GoToExtPage } from './utils.js';
+  GoToExtPage, onDemandModule } from './utils.js';
 import { removeDropdowns, openDropdown } from './dropdowns.js';
 import { reportError } from './error.js';
 import { EXT_PAGES } from './opts.js';
@@ -22,6 +22,9 @@ const OPTIONS_WINDOW_CLASS = 'svropt__prompt';
 const OPTIONS_PANEL_CONTAINER_ID = 'svropt-panel-container';
 // every option panel button's size
 const OPTION_BUTTON_CLASS = 'svropt_button';
+
+// the LAN Scanner (Network > LAN Scanner), loaded by its first use; main.js preloads it
+export const loadLanScanner = onDemandModule(() => import('./lanscan.js'), 'the LAN scanner');
 
 // the command a panel button has armed, or null
 let pendingServerCommand = null;
@@ -117,7 +120,8 @@ registerListeners({
   'btn-upload':           () => showUpload(),
   ...menuOpeners(['atalk', 'cifs', 'unifi', 'xana', 'system', 'netwrk', 'router']),
   ...commandButtons(['startatalk', 'stopatalk', 'startcifs', 'stopcifs', 'startunifi',
-    'stopunifi', 'startxana', 'stopxana', 'syslog', 'netscan', 'clearlog', 'rebootrouter']),
+    'stopunifi', 'startxana', 'stopxana', 'syslog', 'clearlog', 'rebootrouter']),
+  'btn-svr-netscan':      () => openLanScanner(),
   'btn-ext-unifi':        () => GoToExtPage(EXT_PAGES.unifi),
   'btn-ext-system':       () => GoToExtPage(EXT_PAGES.proxmox),
   'btn-open-backup':      () => openServerPanel(svrOptBackupTemplate),
@@ -329,6 +333,16 @@ function closeServerOptions() {
   const panelContainer = document.getElementById(OPTIONS_PANEL_CONTAINER_ID);
   if (panelContainer) {
     panelContainer.innerHTML = "";
+  }
+}
+
+// Network menu, LAN Scanner: closes the options window and opens the scanner (lanscan.js),
+// over the log window.
+async function openLanScanner() {
+  closeServerOptions();
+  const lanScanModule = await loadLanScanner();
+  if (lanScanModule) {
+    lanScanModule.openLanScanner();
   }
 }
 
