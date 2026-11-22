@@ -26,7 +26,7 @@ One codebase serves three device models. `main.js` reads the model at load from 
 
 | Model | Detected by | What it draws |
 | --- | --- | --- |
-| Server | `PAGE_NAME` is `SITE_NAME` (`Automate`), as `opts.js` is served on the automate host | Full page: top nav (main menu, bookmarks, room status, room selector, weather, stats), APT, Pixels and room groups, server options |
+| Server | `PAGE_NAME` is `SITE_NAME` (`Automate`), as `opts.js` is served on the automate host | Full page: top nav (main menu, bookmarks, room selector, weather, room status), APT, Pixels and room groups, server options |
 | LED Pi | any other `PAGE_NAME`, with `LED_PI` set to true in `opts.js` by the module's installer (`ledwall`, `ledgrid`, `ktchpi`) | Pixels group, LED text scroller, Pi main menu, Pi options, log window |
 | Pi | any other `PAGE_NAME`, with `LED_PI` left false (a Pi's installer sets its `brand.txt` name there: "Bedroom", "AudioCPU", "Doorway") | Pi main menu, Pi options, log window |
 
@@ -98,10 +98,9 @@ Every icon in the bar is the size of the status light's dot: `--nav-status-size`
 | --- | --- |
 | Main menu (list icon) | About window, Colors (theme colour picker), stars animation switch. The Pi models get About, Colors, stars, System (log window) and Home. |
 | Bookmarks (star) | Bookmarks menu with search, add, edit and drag re-order, kept in a file under its own edit lock |
-| Room status light | Polls `<room>status` every 10 s with a countdown ring; hatched once the readings go stale after 50 s idle, red on an error. Tapped, it lists each device with a green, black or red dot. |
 | Room selector (centre) | The current room's name, as text only; opens a menu of the other rooms |
 | Weather | The weather widget and its menu; reads the `weather` command once a minute |
-| Stats (network icon) | Runs the `status` command, which probes every host in the `statsmenu` file, and shows a green or black dot per host |
+| Room status light (right end) | Polls `<room>status` every 10 s with a countdown ring; hatched once the readings go stale after 50 s idle, red on an error. Tapped, it lists each device with a green, black or red dot, in a menu ending level with the bar's right edge. |
 
 ### Pixels
 
@@ -123,7 +122,7 @@ The Server log window arms one command at a time from three option panels (main,
 
 ### HVAC button
 
-APT's HVAC button shows what the thermostat is doing as three icons and no text: a flame, a snowflake and a fan, all black while nothing runs. Every room status read (`<room>status`, every 10 s) hands its `HVAC` field to `onRoomStatusHvac()` in `main.js` (passed to `RoomStateManager` as `onHvac`), which `hvacButtonState()` decodes into `off`, `heat`, `cool`, `fan` or `error` and `showHvacState()` draws: the flame orange while heating and the snowflake blue while cooling, as the thermostat window lights its mode, the fan green while it runs alone, as the window's blower but not turning, and on an error, a sensor fault or a failed room status read, a red alert in the fan's place. The colours are the `.hvac__icon` rules at the end of `styles/thermo.css`. Pressing it opens the temperature and thermostat window.
+APT's HVAC button shows what the thermostat is doing as three icons and no text: a flame, a snowflake and a fan, in the button's own text colour while nothing runs (white, or black with the light theme). Every room status read (`<room>status`, every 10 s) hands its `HVAC` field to `onRoomStatusHvac()` in `main.js` (passed to `RoomStateManager` as `onHvac`), which `hvacButtonState()` decodes into `off`, `heat`, `cool`, `fan` or `error` and `showHvacState()` draws: the flame orange while heating and the snowflake blue while cooling, as the thermostat window lights its mode, the fan green while it runs alone, as the window's blower but not turning, and on an error, a sensor fault or a failed room status read, a red alert in the fan's place. The colours are the `.hvac__icon` rules at the end of `styles/thermo.css`. Pressing it opens the temperature and thermostat window.
 
 ### Temperature and thermostat window
 
@@ -262,7 +261,6 @@ Every query value has to match `[A-Za-z0-9_.#%@&-]*`, or the route answers 400 w
 | `server.js` | (entry) | The app, the three core routes, query validation, `safePath()` |
 | `controller.js` | `executeMain` | Command dispatch, the room transmitters and Picos, room scenes and room status, server commands |
 | `ledparser.js` | `OPCLEDparser` | Sends an LED command to every host in `menus/ledhosts.txt` (one `URL|NAME` per line; an older `URL|link|NAME` line still reads) at once through one queue per host: one request in flight per host, and a newer brightness (`fc_set`) or scene command replaces the waiting one of its kind, so the last value always lands. `fc_set` and `hex` answer `OK` at once; other commands wait up to 1.5 s and answer `OK` or `No answer from <names>`. `fc_leds` answers with the first host's level. `fc_host_status` and `fc_host_set_<n>`, with the host's NAME as `var`, are the Pixels window's: the first passes on the host's own `fc_status` once checked (`{ effect, state, color, brightness }`, state `off` · `active` · `paused` · `color`), the second sets its brightness and answers `OK`; both answer `No answer from <name>` when it does not. Server-only: the Pis install `rpi/ledparser.js` over it |
-| `statusupd.js` | `runStatusUpdate` | Probes each `HOST\|NAME\|ACTION` row of `menus/statsmenu.txt` (`ping`, or `ssh` as a TCP connect to port 22), 12 at a time, and answers `HOST\|grnind or blkind\|NAME\|ACTION` rows |
 | `weather.js` | `runWeatherWidget` | Open-Meteo reading for the place in `weather.json`, cached 5 minutes: `{ location, temperature, condition, humidity, timeOfDay, lastUpdated }` |
 | `sitelookup.js` · `favicon.js` | `runSiteLookup` · `runFaviconLookup` | For a new bookmark: a page's title and its favicon as a 24 × 24, 32-colour PNG in URL-safe base64; `{ title: "", icon: "" }` on any failure |
 | `netscan.js` | `runScanNetwork` | `nmap -sn` over 192.168.1.0/24, as a table of address, hostname, vendor and MAC |
@@ -286,7 +284,6 @@ Device addresses are in one table at the top of `controller.js`, `IP_ADRS`: `lrt
 | `brpi` | a command | Passed straight to the Bedroom Pi (`ampstate`, `inputstate`, `vol…`, the input names) |
 | `relax` | a sound | Plays it on the Bedroom Pi, turns the TV off and sleeps the bedroom PC |
 | `relaxmenu` · `relaxstop` | | The sound list as menu rows, or stop |
-| `status` | | `runStatusUpdate()` |
 | `weather` | | `runWeatherWidget()` |
 | `sitelookup` | a URL, base64 | `runSiteLookup()` |
 | `server` | a command name | Appends "`<name>` sent." to `ram/sysout.txt` and drops an empty `ram/<name>.txt` trigger file for the host's shell side to act on; `netscan` runs here instead and writes its table into the log |

@@ -6,7 +6,7 @@ The system has three layers. At the centre is one Proxmox server, which routes t
 
 ### Features
 
-- **Automate web app.** One page that drives the apartment room by room: lamps and dimmers, ceiling lights, TVs, PCs (wake-on-LAN, sleep, power relays), the stereo amps' power, inputs, volume and subwoofers, the motorised bed and its LED strip, and the bathroom's motion-sensing light. Also live room status, scenes (room, lights, all on / off), temperature and humidity, weather, network host status, bookmarks, encrypted shared lists, photo and video upload, and a live doorway camera.
+- **Automate web app.** One page that drives the apartment room by room: lamps and dimmers, ceiling lights, TVs, PCs (wake-on-LAN, sleep, power relays), the stereo amps' power, inputs, volume and subwoofers, the motorised bed and its LED strip, and the bathroom's motion-sensing light. Also live room status, scenes (room, lights, all on / off), temperature and humidity, weather, bookmarks, encrypted shared lists, photo and video upload, and a live doorway camera.
 - **LED pixels.** Pis drive LED walls, grids and strips through Fadecandy or WS2812 directly, with C++ effects (text scroll, spectrum, maze, noise, orbits and more), video playback on the pixels, shuffle, and per-host brightness, kept in sync from one control.
 - **Raspberry Pi modules.** A shared Pi base plus one small module per Pi: AirPlay and Bluetooth audio receivers, LED hosts, IR and motion-recording cameras with cloud upload, and the bedroom hub's serial bridge. Each Pi runs a read-only root filesystem so it survives losing power, recovers its own Wi-Fi, falls back to a setup hotspot, and compiles its C/C++ programs on install.
 - **Microcontroller firmware.** Pico W lamp and light controllers and an HVAC thermostat (SmartThermo) with their own HTTP API, and Arduino/AVR boards for the bedroom hub, bed motor, switched outlets, the integrated amp and an IR remote hub.
@@ -79,7 +79,7 @@ DNS domain `home`, LAN 192.168.1.0/24, gateway and DNS the router at 192.168.1.1
 | `lrthermo1` | Pico W | .3 | SmartThermo, the living room's HVAC thermostat (firmware in `pico/SmartThermo/`) |
 | `wkst` | Workstation | | This machine: mounts the `files` shares under `/mnt/*` with autofs (`auto.files`), detached while `files` is down by `share-watchdog.sh` (so this repo, `/mnt/Data/Projects/ProOS`, is the Data share) |
 
-The Automate status menu (`shared/html/menus/statsmenu.txt`) and the LED host list (`menus/ledhosts.txt`) are the living lists of hosts the website talks to.
+The LED host list (`shared/html/menus/ledhosts.txt`) is the living list of LED hosts the website talks to; the other device addresses are in `IP_ADRS` in `shared/nodeapi/controller.js`.
 
 ## Deployment: `login.sh`
 

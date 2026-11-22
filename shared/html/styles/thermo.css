@@ -575,13 +575,10 @@ html.theme-light .thermometer .temperature:before {
   min-height: 0;
 }
 
-/* The APT HVAC button (main.js): its flame, snowflake and fan black while nothing
-   runs, each lit as the thermostat window's icons are while it runs; the fan does
-   not turn. On an error the alert in the fan's place is red. */
-.hvac__icon {
-  color: #000;
-}
-
+/* The APT HVAC button (main.js): its flame, snowflake and fan in the button's own
+   text colour while nothing runs (white, or black with the light theme), each lit
+   as the thermostat window's icons are while it runs; the fan does not turn. On an
+   error the alert in the fan's place is red. */
 .hvac__icon.is-heat {
   color: var(--orange-ind);
 }

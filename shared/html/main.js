@@ -3,7 +3,7 @@
 // by Ben Provenzano III
 
 import { classDisplay, cleanString, base64URLSafeEncode, sendCmd,
-  TIMEOUT_INTERVAL, setSpinner, setDisplayById, menuRow, registerListeners,
+  TIMEOUT_INTERVAL, setDisplayById, menuRow, registerListeners,
   dispatchRegisteredListener, gridButtonTemplate, dropdownButtonTemplate,
   GoToExtPage, onDemandModule, singleFlight } from './utils.js';
 import { clearVolumePopupTimer } from './volctrl.js';
@@ -317,8 +317,6 @@ function topNavTemplate(f) {
     ${f.isServer ? `
     <a id="btn-show-bookmarks">
       <i class="fad fa-star"></i>
-    </a>
-    <a id="status_anchor">
     </a>` : ''}
   </div>
   ${f.isServer ? `
@@ -330,9 +328,7 @@ function topNavTemplate(f) {
   <div id="topnav-right">
     <a id="weather_anchor">
     </a>
-    <a id="nav_stats_menu">
-      <i id="navstats-icon" class="fad fa-chart-network"></i>
-      <i id="navstats-spinner"></i>
+    <a id="status_anchor">
     </a>
   </div>` : ''}
 </div>`;
@@ -341,8 +337,7 @@ registerListeners({
   'btn-mainmenu':        () => App.mainMenu && App.mainMenu.showMenu(),
   'btn-show-bookmarks':  () => showBookmarks(),
   'room_anchor':         () => openRoomDropdown(),
-  'btn-add-bookmark':    () => App.bookmarks && App.bookmarks.addBookmark(),
-  'nav_stats_menu':      () => showStatusMenu()
+  'btn-add-bookmark':    () => App.bookmarks && App.bookmarks.addBookmark()
 });
 
 // The menus' containers; MainMenu fills mainmenu with its own rows.
@@ -351,11 +346,10 @@ function navDropdownsTemplate() {
 <div class="nav_dd_left">
   <div class="dd-content dd-menu" id="mainmenu"></div>
   <div class="dd-content dd-menu" id="bookmarks"></div>
-  <div class="dd-content dd-menu" id="roomstatus"></div>
   <div class="dd-content dd-menu" id="main-room-dropdown"></div>
 </div>
 <div class="nav_dd_right">
-  <div class="dd-content dd-menu ind-button" id="statsmenu"></div>
+  <div class="dd-content dd-menu" id="roomstatus"></div>
 </div>`;
 }
 registerListeners({
@@ -812,25 +806,6 @@ function showBookmarks() {
       App.bookmarks = new bookmarksModule.default();
     }
     App.bookmarks.toggle();
-  });
-}
-
-// the stats button: probes the network's hosts into its menu
-function showStatusMenu() {
-  const _menu = 'statsmenu';
-  const iconId = 'navstats-icon';
-  const spinnerId = 'navstats-spinner';
-  const spinnerClass = 'right-nav-spinner';
-  if (!openDropdown(_menu)) {
-    setSpinner(iconId, spinnerId, false, spinnerClass);
-    return;
-  }
-  setSpinner(iconId, spinnerId, true, spinnerClass);
-  const token = beginMenuRequest();
-  sendCmd('main', 'status').then((data) => {
-    setSpinner(iconId, spinnerId, false, spinnerClass);
-    if (!menuRequestCurrent(token)) { return; }
-    drawMenu(data, _menu);
   });
 }
 

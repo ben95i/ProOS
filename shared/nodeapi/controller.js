@@ -29,7 +29,6 @@ const IP_ADRS = {
 
 // imports //
 const { OPCLEDparser } = require('./ledparser');
-const { runStatusUpdate } = require('./statusupd');
 const { runSiteLookup } = require('./sitelookup');
 const { runWeatherWidget } = require('./weather');
 const { runScanNetwork } = require('./netscan');
@@ -742,9 +741,6 @@ async function executeMain(baseWWW, firstArg, secondArg) {
         case "relaxmenu":
         case "relaxstop":
             return await callApi(IP_ADRS.brpi, firstArg, '', '');
-        case "status":
-            try { return await runStatusUpdate(baseWWW); }
-            catch (exc) { return "status update exception: " + exc.message; }
         case "sitelookup":
             return await runSiteLookup(secondArg);
         case "server":

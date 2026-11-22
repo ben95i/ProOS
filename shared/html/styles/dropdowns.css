@@ -32,9 +32,14 @@
 }
 
 .nav_dd_right {
-  right: 165px;
   position: absolute;
   display: block;
+}
+
+/* room status menu: under the light, at the bar's right end; .dd-menu is fixed, so
+   it ends level with the bar's 5px margin */
+#roomstatus {
+  right: 5px;
 }
 
 /* room menu: centred under the selector; .dd-menu is fixed, so only horizontal
