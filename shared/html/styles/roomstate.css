@@ -24,16 +24,15 @@
   transition: opacity 0.5s ease, visibility 0.5s ease, stroke-dashoffset 0s;
 }
 
-/* the dot and its gap, spaced as the icons beside it; the ring overhangs */
+/* The dot fills a .nav-icon slot, as every bar icon's size is the dot's; the svg's
+   countdown ring overhangs it evenly. */
 #status_anchor {
   position: relative;
-  width: calc(var(--nav-icon-size) - -1 * var(--nav-icon-gap));
   height: 60px;
   display: inline-flex !important;
   align-items: center;
   justify-content: center;
   margin: 0;
-  padding: 0;
 }
 
 #status_anchor.status-loading .spinner-path {

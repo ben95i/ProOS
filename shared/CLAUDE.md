@@ -26,7 +26,7 @@ One codebase serves three device models. `main.js` reads the model at load from 
 
 | Model | Detected by | What it draws |
 | --- | --- | --- |
-| Server | `PAGE_NAME` is `SITE_NAME` (`Automate`), as `opts.js` is served on the automate host | Full page: top nav (main menu, bookmarks, room selector, weather, room status), APT, Pixels and room groups, server options |
+| Server | `PAGE_NAME` is `SITE_NAME` (`Automate`), as `opts.js` is served on the automate host | Full page: top nav (main menu, bookmarks, room selector, room status, weather), APT, Pixels and room groups, server options |
 | LED Pi | any other `PAGE_NAME`, with `LED_PI` set to true in `opts.js` by the module's installer (`ledwall`, `ledgrid`, `ktchpi`) | Pixels group, LED text scroller, Pi main menu, Pi options, log window |
 | Pi | any other `PAGE_NAME`, with `LED_PI` left false (a Pi's installer sets its `brand.txt` name there: "Bedroom", "AudioCPU", "Doorway") | Pi main menu, Pi options, log window |
 
@@ -92,15 +92,15 @@ The width comes from `screen.width` and `screen.height` alone (and `screen.orien
 
 ### Top bar
 
-Every icon in the bar is the size of the status light's dot: `--nav-status-size` on `.topnav` (`styles/main.css`) sets the light, and `--nav-icon-size` is worked out from it, so the bar's sizes are changed there alone and do not follow the site's font size. `--nav-icon-gap`, on the same rule, is the space between two icons.
+Every icon in the bar is the size of the status light's dot: `--nav-status-size` on `.topnav` (`styles/main.css`) sets the light, and `--nav-icon-size` is worked out from it, so the bar's sizes are changed there alone and do not follow the site's font size. Each icon's anchor (main menu, bookmarks and the add button drawn beside it while its menu is open, status light, weather) takes the `.nav-icon` class, one slot one icon wide with the icon centred in it and half of `--nav-icon-gap` (on `.topnav`, 20 px) each side, so the icons are always that gap apart and the end ones half a gap from the bar's ends; a glyph wider than the slot (the star, the wider weather icons) overhangs it evenly, and the bar never moves as the weather icon changes. A new bar icon takes the class and nothing else for its size or spacing.
 
 | Item | What it does |
 | --- | --- |
 | Main menu (list icon) | About window, Colors (theme colour picker), stars animation switch. The Pi models get About, Colors, stars, System (log window) and Home. |
 | Bookmarks (star) | Bookmarks menu with search, add, edit and drag re-order, kept in a file under its own edit lock |
 | Room selector (centre) | The current room's name, as text only; opens a menu of the other rooms |
-| Weather | The weather widget and its menu; reads the `weather` command once a minute |
-| Room status light (right end) | Polls `<room>status` every 10 s with a countdown ring; hatched once the readings go stale after 50 s idle, red on an error. Tapped, it lists each device with a green, black or red dot, in a menu ending level with the bar's right edge. |
+| Room status light (right) | Polls `<room>status` every 10 s with a countdown ring; hatched once the readings go stale after 50 s idle, red on an error. Tapped, it lists each device with a green, black or red dot, in a menu ending level with the bar's right edge. |
+| Weather (right end) | The weather widget, its temperature badge over the icon's top left corner (on the right the bar's end cut it off), and its menu, which also ends level with the bar's right edge; reads the `weather` command once a minute |
 
 ### Pixels
 

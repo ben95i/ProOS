@@ -2,13 +2,12 @@
 
 /* Weather Status */
 
+/* the slot's size is .nav-icon's, so a wider weather icon does not move the bar */
 .weather-icon-container {
   border: none;
   outline: none;
   position: relative;
   height: 60px;
-  /* the widest icon and its gap, so the bar does not move */
-  width: calc(var(--nav-icon-size) * 1.25 - -1 * var(--nav-icon-gap));
 }
 
 .weather-icon-container i {
@@ -16,10 +15,13 @@
   text-align: center;
 }
 
+/* Over the icon's top left corner, its left edge 10px before the slot's whatever the
+   gap: on the right it was cut off by the bar's end. Out of the flow, so the bar's
+   spacing is not touched. */
 .weather-badge {
   position: absolute;
   top: 7px;
-  right: 3px;
+  left: calc(var(--nav-icon-gap) / 2 - 10px);
   background-color: var(--main-color);
   color: #fff;
   font-size: 15px;

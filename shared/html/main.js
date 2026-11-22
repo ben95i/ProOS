@@ -311,11 +311,11 @@ function topNavTemplate(f) {
   return `
 <div class="topnav nohide">
   <div id="topnav-left">
-    <a id="btn-mainmenu">
+    <a id="btn-mainmenu" class="nav-icon">
       <i class="fad fa-list"></i>
     </a>
     ${f.isServer ? `
-    <a id="btn-show-bookmarks">
+    <a id="btn-show-bookmarks" class="nav-icon">
       <i class="fad fa-star"></i>
     </a>` : ''}
   </div>
@@ -326,9 +326,9 @@ function topNavTemplate(f) {
     </a>
   </div>
   <div id="topnav-right">
-    <a id="weather_anchor">
+    <a id="status_anchor" class="nav-icon">
     </a>
-    <a id="status_anchor">
+    <a id="weather_anchor" class="nav-icon">
     </a>
   </div>` : ''}
 </div>`;

@@ -217,14 +217,17 @@ export default class WeatherWidget {
       `<i class="${ERROR_ICON}" style="color: var(--red-ind);"></i> Error Loading Weather`));
   }
 
-  // places the drop-down under the icon and shows it
+  // Places the drop-down under the icon, which ends the bar, so the menu ends level
+  // with the bar's right edge, as the room status menu does; then shows it.
   _placeDropdown() {
     const rect = this.container.getBoundingClientRect();
+    const barRect = this.container.closest('.topnav').getBoundingClientRect();
+    const pageWidth = document.documentElement.clientWidth;
+    const barRightGap = pageWidth - barRect.right;
     const style = this.dropdown.style;
     style.position = 'fixed';
     style.top = `${rect.bottom + 5}px`;
-    style.left = `${rect.left + (rect.width / 2)}px`;
-    style.transform = 'translateX(-80%)';
+    style.right = `${barRightGap}px`;
     style.zIndex = '9999';
     style.display = 'block';
   }

@@ -217,7 +217,7 @@ export default class Bookmarks {
     if (starBtn) {
       starBtn.insertAdjacentHTML("afterend", html`
         <div class="bookmark-buttons" id="${BUTTONS_ID}">
-          <a id="${ADD_BTN_ID}">
+          <a id="${ADD_BTN_ID}" class="nav-icon">
             <i class="fad fa-folder-plus"></i>
             <span class="${SPINNER_CLASS}"></span>
           </a>

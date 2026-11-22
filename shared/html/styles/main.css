@@ -284,8 +284,9 @@ input[type="checkbox"] {
      (roomstate.js). Change the size here alone. */
   --nav-status-size: 38px;
   --nav-icon-size: calc(var(--nav-status-size) * 34 / 50);
-  /* The space between two icons */
-  --nav-icon-gap: 20px;
+  /* The space between two icons' slots (.nav-icon); half of it each side of a slot,
+     so the end icons sit half a gap from the bar's ends. Change the spacing here alone. */
+  --nav-icon-gap: 22px;
   display: flex;
   align-items: center;
   margin: 5px;
@@ -309,7 +310,6 @@ input[type="checkbox"] {
   justify-content: center;
   position: relative;
   height: 60px;
-  padding: 0px calc(var(--nav-icon-gap) / 2) 0px calc(var(--nav-icon-gap) / 2);
   text-align: center;
   text-decoration: none;
   color: #fff;
@@ -330,6 +330,16 @@ input[type="checkbox"] {
   .topnav i:hover {
     color: #fff;
   }
+}
+
+/* Every icon in the bar (main menu, bookmarks and its add button, status light,
+   weather) has the one slot: one icon wide, centred, with half a gap each side, so
+   icons are always --nav-icon-gap apart and the bar never moves as an icon changes.
+   A glyph wider than the slot (the star, some weather icons) overhangs it evenly. */
+.nav-icon {
+  box-sizing: content-box;
+  width: var(--nav-icon-size);
+  padding: 0px calc(var(--nav-icon-gap) / 2) 0px calc(var(--nav-icon-gap) / 2);
 }
 
 /* Each icon group takes half of what the selector leaves, centring it; a group
