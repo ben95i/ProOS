@@ -12,7 +12,7 @@ import { installViewportScale } from './viewport.js';
 import { LED_PI, SITE_NAME, PAGE_NAME, HOME_PAGE_URL, EXT_PAGES } from './opts.js';
 import { configureMenus, removeDropdowns, openDropdown, drawMenu,
   destroyActiveSwitches, beginMenuRequest, menuRequestCurrent,
-  showDynFileMenu, showPowerMenu, sendLeds } from './dropdowns.js';
+  showLedEffectMenu, showPowerMenu, sendLeds } from './dropdowns.js';
 import { LIVING_ROOM_CONFIG } from './livingrm.js';
 import { BEDROOM_CONFIG } from './bedrm.js';
 import { BATHROOM_CONFIG, closeBathroomSettings } from './bathrm.js';
@@ -403,7 +403,7 @@ function mainGridTemplate(f) {
 </div>`;
 }
 registerListeners({
-  'btn-ledeffectmenu':     () => showDynFileMenu('ledeffectmenu', true),
+  'btn-ledeffectmenu':     () => showLedEffectMenu(),
   'btn-ledcolorprompt':    () => openPixelColors(),
   'btn-power-fc_leds':     () => showPowerMenu('fc_leds'),
   'btn-cmd-leds-off':      () => sendLeds('stop'),

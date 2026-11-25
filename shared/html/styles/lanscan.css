@@ -10,6 +10,7 @@
 #lanscan__prompt {
   --lanscan-gap: 10px;     /* the thermostat window's gap */
   --lanscan-wall: 5px;     /* a .button's walls */
+  --lanscan-logo-height: 12px;   /* a maker's logo in a row (ASUS 56 px, GIGABYTE 88 px wide) */
   display: flex;
   flex-direction: column;
   /* the narrowest that still fits the longest maker nmap gives ("Proxmox Server
@@ -208,6 +209,39 @@
   color: var(--main-40-white);
 }
 
+/* A maker with its own logo (img/logos/, used as a mask so it takes the icon's colour): the
+   wordmark in the icon's place, --lanscan-logo-height tall and as wide as its shape, so on
+   that row the name starts after it. */
+.lanscan__row--logo {
+  grid-template-columns: 26px 138px auto 1fr;
+}
+
+.lanscan__row > .lanscan__logo {
+  grid-area: icon;
+  display: block;
+  height: var(--lanscan-logo-height);
+  background-color: var(--main-40-white);
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+
+/* each logo's shape, from its file's viewBox */
+.lanscan__logo--asus {
+  aspect-ratio: 501 / 107;
+  -webkit-mask-image: url(../img/logos/asus.svg);
+  mask-image: url(../img/logos/asus.svg);
+}
+
+.lanscan__logo--gigabyte {
+  aspect-ratio: 588 / 80;
+  -webkit-mask-image: url(../img/logos/gigabyte.svg);
+  mask-image: url(../img/logos/gigabyte.svg);
+}
+
 .lanscan__ip {
   grid-area: ip;
 }
@@ -233,16 +267,16 @@
   color: #a6a9ad;
 }
 
-/* an offline tracked host: everything in the faded grey, Offline in capitals */
+/* an offline tracked host: everything in the faded grey, Offline in the maker's place
+   and type */
 .lanscan__row.is-offline > span,
 .lanscan__row.is-offline .lanscan__icon,
 .lanscan__row.is-offline .lanscan__host i {
   color: #6f7075;
 }
 
-.lanscan__row.is-offline .lanscan__vendor {
-  text-transform: uppercase;
-  letter-spacing: .1em;
+.lanscan__row.is-offline > .lanscan__logo {
+  background-color: #6f7075;
 }
 
 /* Close and Refresh under the list, one gap from it and from the window's edge */

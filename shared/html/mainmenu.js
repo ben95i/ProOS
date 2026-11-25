@@ -4,6 +4,7 @@
 
 import { hexToRgb, gridButtonTemplate, registerListeners, onDemandModule } from './utils.js';
 import { openDropdown, drawMenu } from './dropdowns.js';
+import { THEME_COLORS } from './opts.js';
 
 // the colour picker, loaded by its first use
 const loadColorPrompt = onDemandModule(() => import('./colorprompt.js'), 'the colour picker');
@@ -37,7 +38,6 @@ export default class MainMenu {
   static ROW_ID = 'menu-theme-color';
   static ROW_LABEL = 'Colors';
   static ROW_ICON = 'fad fa-tint';
-  static PALETTE_FILE = 'thememenu';
   static PROMPT_NAME = 'Theme';
 
   // BT.601 weights, for a colour's brightness as the eye reads it
@@ -128,15 +128,8 @@ export default class MainMenu {
     const colorRow = this.colorRow();
     menuElement.querySelector('#btn-about').after(colorRow, starsRow);
     App.dynMenuNodes.push(colorRow);
-    this.readPalette();
-  }
-
-  // the picker's palette, so it is usually in by the time the row is pressed
-  async readPalette() {
-    const colorPromptModule = await loadColorPrompt();
-    if (colorPromptModule) {
-      colorPromptModule.loadPaletteFile(MainMenu.PALETTE_FILE);
-    }
+    // the picker, so it is usually in by the time the row is pressed
+    loadColorPrompt.preload();
   }
 
   // The colour row: drawn in the theme colour, and opens the picker.
@@ -173,7 +166,7 @@ export default class MainMenu {
       this.apply(this.pending);
     }, {
       name: MainMenu.PROMPT_NAME,
-      presetFile: MainMenu.PALETTE_FILE,
+      palette: THEME_COLORS,
       onClose: () => this.closePrompt()
     });
   }

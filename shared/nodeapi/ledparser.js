@@ -1,9 +1,6 @@
-const fsPromises = require('fs/promises');
-
-const LED_MENU_FILE = "/menus/ledhosts.txt";
-// The effects Shuffle picks from, one per line. The Pis read the same file
-// from their own copy of the site (rpi/ledparser.js).
-const SHUFFLE_FILE = "/menus/ledshuffle.txt";
+// The LED hosts, and the effects Shuffle picks from, as opts.json lists them.
+// The Pis pick from the same list in their own copy (rpi/ledparser.js).
+const { LED_HOSTS, LED_SHUFFLE } = require('./options');
 
 // Every other device call in the API gives up after 3 s as well.
 const SEND_TIMEOUT = 3000; // in (ms)
@@ -19,39 +16,21 @@ const ANSWER_WAIT = 1500; // in (ms)
 // with it.
 const NO_ANSWER_PREFIX = "No answer from";
 
-// The Pixels window's commands for one host, which is named in the second
-// argument as its NAME in ledhosts.txt: its status, and setting its level.
+// The Pixels window's host list, and its commands for one host, which is
+// named in the second argument as its name in opts.json: its status, and
+// setting its level.
+const HOST_LIST_COMMAND = "fc_host_list";
 const HOST_STATUS_COMMAND = "fc_host_status";
 const HOST_SET_PREFIX = "fc_host_set_"; // followed by the level, 0-255
 
 // what a host's fc_status (rpi/ledparser.js) may answer
 const HOST_STATES = ["off", "active", "paused", "color"];
-const HOST_EFFECT_PATTERN = /^[A-Za-z0-9_-]+$/; // an effect name, as in ledeffectmenu.txt
+const HOST_EFFECT_PATTERN = /^[A-Za-z0-9_-]+$/; // an effect name, as in LED_EFFECTS in html/opts.js
 const HOST_COLOR_PATTERN = /^[0-9A-F]{6}$/;
 const LEVEL_MAX = 255;
 
 // One send queue per host, kept for the life of the API, by host URL.
 const hostLanes = new Map();
-
-// Reads the LED hosts out of ledhosts.txt, one per line as URL|NAME. The
-// name is the line's last field, so an older URL|link|NAME line reads the
-// same; a line with no name goes by its URL.
-// 'http://ledwall.home:80|LEDwall' -> { url: 'http://ledwall.home:80', name: 'LEDwall' }
-async function readLEDHosts(baseWWW) {
-    const data = await fsPromises.readFile(baseWWW + LED_MENU_FILE, 'utf-8');
-    return data.split('\n')
-        .filter(line => line.trim() !== "")
-        .map(line => {
-            const fields = line.split('|');
-            const url = fields[0].trim();
-            const lastField = fields[fields.length - 1].trim();
-            let name = url;
-            if (fields.length > 1 && lastField !== "") {
-                name = lastField;
-            }
-            return { url, name };
-        });
-}
 
 /**
  * The commands for one host. At most one request is in flight to the host,
@@ -129,7 +108,6 @@ function laneFor(host) {
         lane = new HostLane(host);
         hostLanes.set(host.url, lane);
     }
-    // a name edited in ledhosts.txt is picked up without a restart
     lane.host = host;
     return lane;
 }
@@ -245,41 +223,41 @@ async function hostCommand(hosts, command, hostName) {
 }
 
 // Picks the Shuffle effect here, so every host plays the same one. Without
-// the list, each host is sent "shuffle" and picks its own, as before.
-async function pickShuffleEffect(baseWWW) {
-    try {
-        const data = await fsPromises.readFile(baseWWW + SHUFFLE_FILE, 'utf-8');
-        const effects = data.split('\n')
-            .map(line => line.trim())
-            .filter(line => line !== "");
-        if (effects.length > 0) {
-            return effects[Math.floor(Math.random() * effects.length)];
-        }
-    } catch (error) {}
-    return "shuffle";
+// the list, each host is sent "shuffle" and picks its own.
+function pickShuffleEffect() {
+    if (LED_SHUFFLE.length === 0) {
+        return "shuffle";
+    }
+    const randomIndex = Math.floor(Math.random() * LED_SHUFFLE.length);
+    return LED_SHUFFLE[randomIndex];
 }
 
 /**
- * Sends an LED command to every host in ledhosts.txt, or reads the level
- * back when varA is "fc_leds". The fc_host_ commands reach one host only,
- * named in varB.
+ * Sends an LED command to every host in opts.json, or reads the level back
+ * when varA is "fc_leds". fc_host_list answers the hosts themselves; the
+ * other fc_host_ commands reach one host only, named in varB.
  *
  * OPCLEDparser(baseWWW, 'abstract')      -> "OK", or "No answer from LEDwall"
  * OPCLEDparser(baseWWW, 'fc_set_120')    -> "OK" at once
  * OPCLEDparser(baseWWW, 'fc_leds')       -> the level, e.g. "128"
+ * OPCLEDparser(baseWWW, 'fc_host_list')  -> [{ url: 'http://192.168.1.12:80', name: 'LEDwall' }]
  * OPCLEDparser(baseWWW, 'fc_host_status', 'LEDwall')  -> LEDwall's status object
  * OPCLEDparser(baseWWW, 'fc_host_set_120', 'LEDwall') -> "OK"
  *
- * @param {string} baseWWW - web root path
+ * @param {string} baseWWW - the web root; not used here, and kept so the call
+ *   matches the Pis' rpi/ledparser.js
  * @param {string} varA - the command, or 'fc_leds' to read the level
  * @param {string} varB - the secondary argument, or the host's name
  * @returns {Promise<string|object>}
  */
 async function OPCLEDparser(baseWWW, varA, varB = "") {
     try {
-        const hosts = await readLEDHosts(baseWWW);
+        const hosts = LED_HOSTS;
+        if (varA === HOST_LIST_COMMAND) {
+            return hosts;
+        }
         if (hosts.length === 0) {
-            return "no LED hosts in ledhosts.txt";
+            return "no LED hosts in opts.json";
         }
         if (varA === "fc_leds") {
             return await readLevel(hosts);
@@ -289,13 +267,10 @@ async function OPCLEDparser(baseWWW, varA, varB = "") {
         }
         let command = varA;
         if (command === "shuffle") {
-            command = await pickShuffleEffect(baseWWW);
+            command = pickShuffleEffect();
         }
         return await sendToAllHosts(hosts, command, varB);
     } catch (error) {
-        if (error.code === 'ENOENT') {
-            return "ledhosts.txt not found.";
-        }
         return `An error occurred while parsing LED configuration: ${error.message}`;
     }
 }

@@ -49,8 +49,8 @@ export async function sendCmd(act, arg1, arg2 = '', options = {}) {
   }
 }
 
-// Reads a menu file at a full URL as text; undefined with the failure reported.
-// loadMenu(fileURL('read', 'ledeffectmenu'))
+// Reads a menu's rows at a full URL as text; undefined with the failure reported.
+// loadMenu('https://automate.home/api?var=&arg=relaxmenu&action=main')
 export async function loadMenu(url) {
   const fileName = fileNameOf(url);
   try {
@@ -314,31 +314,6 @@ export function splitByDelimiter(str, delimiter = '-') {
 export function isNumeric(value) {
   return typeof value === 'string' && value.trim() !== '' &&
     Number.isInteger(Number(value));
-}
-
-// Palette file (`hex|name` per line) -> [{ color, name }]. A line with no colour is
-// dropped; a value without its "#" still reads.
-export function parsePalette(fileText) {
-  const colors = [];
-  if (!fileText || typeof fileText !== 'string') {
-    return colors;
-  }
-  for (const line of splitMenuData(fileText)) {
-    const row = line.trim();
-    if (row === '') {
-      continue;
-    }
-    const field = row.split('|');
-    let color = field[0].trim();
-    if (color === '') {
-      continue;
-    }
-    if (!color.startsWith('#')) {
-      color = `#${color}`;
-    }
-    colors.push({ color: color, name: (field[1] || '').trim() });
-  }
-  return colors;
 }
 
 // cuts a name to length, marking that it was cut

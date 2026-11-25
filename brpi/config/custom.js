@@ -1,7 +1,8 @@
-const fs = require('fs');
 const { execFile } = require('child_process');
 const util = require('util');
 const execFileAsync = util.promisify(execFile);
+// the relax sounds, as opts.json lists them: [{ command, name }]
+const { RELAX_SOUNDS } = require('./options');
 
 const PROCESS_TIMEOUT = 4500;
 const MAX_QUEUE_SIZE = 8;
@@ -17,16 +18,12 @@ const SUDO = '/usr/bin/sudo';
 const ZTERM = '/usr/bin/ztermcom';
 
 const RELAX_CMD = '/opt/rpi/relaxrun.sh';
-const RELAX_MENU = '/var/www/html/menus/relaxmenu.txt';
 const RELAX_MENU_TAG = 'relaxmenu';
 const RELAX_ACTIVE_TAG = 'relaxactive';
 const RELAX_STOP_ROW = 'stop|relaxstop|Stop';
 
 // Currently running relaxrun.sh command (arg2), or null when nothing is running.
 let relaxState = null;
-
-// Cached relaxmenu.txt contents, reloaded when the file's mtime changes.
-let relaxMenuCache = { mtimeMs: null, entries: [] };
 
 const fifoQueue = [];
 let isQueueProcessing = false;
@@ -118,36 +115,11 @@ function hexToRgb(hex_in) {
 
 // --- relax menu / state -----------------------------------------------------
 
-// Parse relaxmenu.txt into [{ command, display }]. Blank lines and lines
-// starting with # are ignored. Result is cached until the file's mtime changes.
-function loadRelaxMenu() {
-    try {
-        const { mtimeMs } = fs.statSync(RELAX_MENU);
-        if (mtimeMs === relaxMenuCache.mtimeMs) return relaxMenuCache.entries;
-        const entries = fs.readFileSync(RELAX_MENU, 'utf8')
-            .split(/\r?\n/)
-            .map(line => line.trim())
-            .filter(line => line.length > 0 && !line.startsWith('#'))
-            .map(line => {
-                const parts = line.split('|');
-                return {
-                    command: (parts[0] || '').trim(),
-                    display: parts.slice(1).join('|').trim()
-                };
-            })
-            .filter(entry => entry.command.length > 0);
-        relaxMenuCache = { mtimeMs, entries };
-    } catch (error) {
-        console.error(`Failed to read ${RELAX_MENU}: ${error.message}`);
-    }
-    return relaxMenuCache.entries;
-}
-
+// Is cmd one of the relax sounds in opts.json? With none listed, playback is
+// not blocked on it.
 function isKnownRelaxCommand(cmd) {
-    const menu = loadRelaxMenu();
-    // If the menu file can't be read at all, don't block playback on validation.
-    if (menu.length === 0) return true;
-    return menu.some(entry => entry.command === cmd);
+    if (RELAX_SOUNDS.length === 0) return true;
+    return RELAX_SOUNDS.some(sound => sound.command === cmd);
 }
 
 // Stops relaxrun.sh and clears the tracked state. State is cleared on failure
@@ -184,11 +156,10 @@ async function startRelax(cmd) {
 // COMMAND|relaxmenu|DISPLAY_NAME  (or relaxactive for the running command).
 // When one of the menu commands is active, "stop|relaxstop|Stop" is prepended.
 function relaxDisplayMenu() {
-    const menu = loadRelaxMenu();
-    if (menu.length === 0) return `unable to read ${RELAX_MENU}`;
-    const lines = menu.map(({ command, display }) =>
-        `${command}|${command === relaxState ? RELAX_ACTIVE_TAG : RELAX_MENU_TAG}|${display}`);
-    if (menu.some(({ command }) => command === relaxState)) {
+    if (RELAX_SOUNDS.length === 0) return 'no relax sounds in opts.json';
+    const lines = RELAX_SOUNDS.map(({ command, name }) =>
+        `${command}|${command === relaxState ? RELAX_ACTIVE_TAG : RELAX_MENU_TAG}|${name}`);
+    if (RELAX_SOUNDS.some(({ command }) => command === relaxState)) {
         lines.unshift(RELAX_STOP_ROW);
     }
     return lines.join('\n');

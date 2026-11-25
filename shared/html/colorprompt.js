@@ -3,31 +3,11 @@
 // hex without the "#", throttled while dragging.
 
 import { hexToRgb, rgbToHex, rgbToHexFromStyle, hsvToRgb, rgbToHsv,
-    parsePalette, readFile, sendCmd,
-    gridButtonTemplate } from './utils.js';
+    sendCmd, gridButtonTemplate } from './utils.js';
+import { DEVICE_COLORS } from './opts.js';
 
 const PROMPT_ANCHOR_ID = 'color-popup';
 const HEX_COLOR = /^#[0-9A-F]{6}$/i;
-// the default palette file, hex|name per line
-const DEFAULT_PALETTE_FILE = 'colorpallet';
-// palette file -> its read, done once per page; an empty read is asked for again
-const paletteRequests = new Map();
-
-// Reads a palette file, at most once per page per file; [] when it cannot be read, and
-// the prompt then works without a grid.
-export function loadPaletteFile(file) {
-  if (!paletteRequests.has(file)) {
-    const request = readFile(file).then((fileText) => {
-      const palette = parsePalette(fileText);
-      if (palette.length === 0) {
-        paletteRequests.delete(file);
-      }
-      return palette;
-    });
-    paletteRequests.set(file, request);
-  }
-  return paletteRequests.get(file);
-}
 
 // Destroys an open prompt, as one left mid-drag holds listeners on window.
 export function closeColorPrompt() {
@@ -38,7 +18,8 @@ export function closeColorPrompt() {
 }
 
 // Opens the page's one prompt on startHex, without sending that colour.
-// options: name (in the heading), presetFile, onClose
+// options: name (in the heading), palette (its swatches, [hex, name] each, DEVICE_COLORS
+// in opts.js when left out), onClose
 export function showColorPrompt(startHex, onColorChange, options) {
   closeColorPrompt();
   const colorPrompt = new ColorPrompt(onColorChange, options);
@@ -81,9 +62,9 @@ class ColorPrompt {
     this.presetColors = [];
     // uppercase hex -> its palette name, for the box under the grid
     this.presetNames = new Map();
-    this.presetFile = DEFAULT_PALETTE_FILE;
-    if (options.presetFile) {
-      this.presetFile = options.presetFile;
+    this.palette = DEVICE_COLORS;
+    if (options.palette) {
+      this.palette = options.palette;
     }
     this.promptTitle = `Select ${options.name} Color`;
     this.onCloseCallback = options.onClose;
@@ -140,10 +121,10 @@ class ColorPrompt {
     this.hexInputElement           = this.anchorElement.querySelector('#hex-color');
     this.hexLabelElement           = this.anchorElement.querySelector('#hex-color-label');
     this.titleElement.innerText = this.promptTitle;
+    this.setPresets(this.palette);
     this.buildPresetGrid();
     this.bindEvents();
     this.anchorElement.style.display = 'flex';
-    this.loadPresets();
   }
 
   // Clears the markup and its listeners; onClose is told once, after the markup has gone.
@@ -158,37 +139,22 @@ class ColorPrompt {
     }
   }
 
-  // keeps a palette with its name lookup, dropping any colour that is not six digit hex
-  setPresets(presets) {
+  // Keeps a palette ([hex, name] each) with its name lookup, dropping any colour that is
+  // not six digit hex: setPresets([['#FF9329', 'Candle']])
+  setPresets(palette) {
     this.presetColors = [];
     this.presetNames.clear();
-    presets.forEach(preset => {
-      const hexColor = preset.color.trim();
+    palette.forEach(([hexValue, colorName]) => {
+      const hexColor = hexValue.trim();
       if (!HEX_COLOR.test(hexColor)) {
         return;
       }
       const upperColor = hexColor.toUpperCase();
-      this.presetColors.push({ color: upperColor, name: preset.name });
-      if (preset.name) {
-        this.presetNames.set(upperColor, preset.name);
+      this.presetColors.push({ color: upperColor, name: colorName });
+      if (colorName) {
+        this.presetNames.set(upperColor, colorName);
       }
     });
-  }
-
-  // Fills the grid from the palette file, with the prompt already usable.
-  async loadPresets() {
-    const palette = await loadPaletteFile(this.presetFile);
-    // closed, or replaced, while the file was being read
-    if (!this.presetGridElement.isConnected) {
-      return;
-    }
-    if (palette.length === 0) {
-      return;
-    }
-    this.setPresets(palette);
-    this.buildPresetGrid();
-    // the highlight and the name key off the palette; no command goes out
-    this.updateUIFromState(false);
   }
 
   // draws the swatches; an empty grid stands down

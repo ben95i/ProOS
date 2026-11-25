@@ -26,7 +26,7 @@ One Proxmox server (`pve`) runs the network's services as LXC containers and KVM
   ┌─────────────────────────── pve (Proxmox, 192.168.1.8) ──────────────────────────┐
   │  automate LXC 106 ── lighttpd → node API ──┬─ HTTP → Pis (port 80 /api)          │
   │      /var/www/html/ram  ═══ bind ═══╗      ├─ HTTP → Pico W lamps (port 4000)    │
-  │                                     ║      └─ LED hosts (ledhosts.txt)           │
+  │                                     ║      └─ LED hosts (opts.json)              │
   │  host tmpfs /mnt/ramdisk ◄══════════╝                                            │
   │      ▲ file-monitor.sh → apicmds.sh (backups, regions, start/stop VMs)           │
   │  files LXC 101 (SMB) · mgmt LXC 102 · legacy LXC 104 · media LXC 108             │
@@ -70,7 +70,7 @@ DNS domain `home`, LAN 192.168.1.0/24, gateway and DNS the router at 192.168.1.1
 | `brpi` | Pi | .15 | Bedroom Pi (wired, Wi-Fi off): AirPlay, serial bridge to the bedroom hub and the amp, relax sounds |
 | `ledwall` | Pi | .12 (`lrxmit` in the API) | LEDwall: the 93-pixel LED ring (Fadecandy) and the living room's command host. Its `custom.js` serves `extcom` (living room stereo codes over serial on `/dev/ttyAMA0`), the white LED, the front button and the desktop PC power relay (`pc_power`) |
 | `ledgrid` | Pi Zero | | WS2812 grid driven directly (`opcserver`) |
-| `ktchpi` | Pi | .22 | Kitchen Pi (formerly `ledstrip`): 3×60 LED strips (Fadecandy), "Kitchen" in `ledhosts.txt` |
+| `ktchpi` | Pi | .22 | Kitchen Pi (formerly `ledstrip`): 3×60 LED strips (Fadecandy), "Kitchen" in `ledHosts` in `shared/nodeapi/opts.json` |
 | `doorway` | Pi | | IMX462 IR camera: `rtspcam` (RTSP on :8554/cam), `minimotion` recorder, `ldrdetect` day/night; clips go to the files server's Cameras and GSync (Google Drive) shares at once, over autofs; a clip neither share took is kept instead on a 2 GiB ext4 partition at the end of the SD card (label `camfallback`, `fallback_dir = /mnt/fallback/minimotion`), made once by `rpi/fallbackpart.sh` from the doorway installer when that space is free (marker `/etc/fallbackpart.enabled`) and repaired and mounted by `boot.sh`; `camcleanup.sh` keeps `GSync/Cameras/Doorway` under 14.5 GB and the fallback folder under 1.9 GB with its own 0.5 GB reserve, oldest first (settings in `doorway/config/camcleanup.conf`) |
 | `homepi` | Pi | | Family-home camera hub: `motion` with two cameras, uploads via rclone; `camcleanup.sh` keeps the flash drive and Google Drive camera folders under their limits (settings in `homepi/config/camcleanup.conf`) |
 | `btpi` · `lrpi` | Pi | | Audio receivers: AirPlay (shairport-sync) and Bluetooth (BlueALSA) into a stereo; `btpi` adds Bluetooth to a vintage stereo, `lrpi` (formerly `stereo`) is the living room's, branded "Living Room" |
@@ -79,7 +79,7 @@ DNS domain `home`, LAN 192.168.1.0/24, gateway and DNS the router at 192.168.1.1
 | `lrthermo1` | Pico W | .3 | SmartThermo, the living room's HVAC thermostat (firmware in `pico/SmartThermo/`) |
 | `wkst` | Workstation | | This machine: mounts the `files` shares under `/mnt/*` with autofs (`auto.files`), detached while `files` is down by `share-watchdog.sh` (so this repo, `/mnt/Data/Projects/ProOS`, is the Data share) |
 
-The LED host list (`shared/html/menus/ledhosts.txt`) is the living list of LED hosts the website talks to; the other device addresses are in `IP_ADRS` in `shared/nodeapi/controller.js`.
+The LED host list (`ledHosts` in `shared/nodeapi/opts.json`) is the living list of LED hosts the website talks to; the other device addresses are in `IP_ADRS` in `shared/nodeapi/controller.js`.
 
 ## Deployment: `login.sh`
 
@@ -146,10 +146,10 @@ Pis run with an OverlayFS root, so writes go to RAM and the Pi can be unplugged 
 
 The Pis run the same `shared/nodeapi/server.js`, but `rpi/controller.js` replaces the server's command dispatch: `server <cmd>` → `sudo servercmds.sh <cmd>`, `confwpa` → Wi-Fi setup, everything else → `exeCustom()` in `custom.js`. The base `rpi/custom.js` is a stub; a module with real commands ships `config/custom.js`, which its `config/installer.sh` copies over it:
 
-- `brpi/config/custom.js`: serial via `ztermcom` (one FIFO queue, at most 8 waiting) to the amp on `/dev/ttyUSB0` and the bedroom hub on `/dev/ttyAMA0` (`hwcom`, `usbcom`), amp power/inputs/volume, `bed_leds_hex_set`, relax sounds (`relaxmenu.txt`, `relaxrun.sh` → `rpi-relaxloop.service`), activity LED flash.
+- `brpi/config/custom.js`: serial via `ztermcom` (one FIFO queue, at most 8 waiting) to the amp on `/dev/ttyUSB0` and the bedroom hub on `/dev/ttyAMA0` (`hwcom`, `usbcom`), amp power/inputs/volume, `bed_leds_hex_set`, relax sounds (`relaxSounds` in `opts.json`, `relaxrun.sh` → `rpi-relaxloop.service`), activity LED flash.
 - `ledwall/config/custom.js`: `extcom` (serial), `front_btn` (LED shuffle), white LED, `pc_power`.
 
-`rpi/ledparser.js` replaces the server's LED fan-out with the local effect runner: it spawns one effect binary from `/opt/rpi/effects`, plays videos through `mp4toleds`, and sets brightness through the proxy. Shuffle picks from `menus/ledshuffle.txt`. Each command also records what the pixels show, which `fc_status` (`/api?action=leds&arg=fc_status`) answers as JSON with the brightness: `{ effect, state, color, brightness }`, state `off` (stopped, or black), `active`, `paused` (also an effect that ended on its own) or `color` (RRGGBB); the server's Pixels window reads it.
+`rpi/ledparser.js` replaces the server's LED fan-out with the local effect runner: it spawns one effect binary from `/opt/rpi/effects`, plays videos through `mp4toleds`, and sets brightness through the proxy. Shuffle picks from `ledShuffle` in the API's `opts.json`. Each command also records what the pixels show, which `fc_status` (`/api?action=leds&arg=fc_status`) answers as JSON with the brightness: `{ effect, state, color, brightness }`, state `off` (stopped, or black), `active`, `paused` (also an effect that ended on its own) or `color` (RRGGBB); the server's Pixels window reads it.
 
 ### Local services and ports
 

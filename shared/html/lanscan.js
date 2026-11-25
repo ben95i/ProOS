@@ -1,7 +1,7 @@
 // Automate - LAN Scanner (server page only, from Server > Options > Network): a window
 // listing every host on the LAN, filled in live from the API's streamed scan
 // (GET /api/netscan, nodeapi/netscan.js), each host showing the moment it is found. Every
-// host in menus/trackedhosts.txt is listed, checked for SSH (a blue SSH indicator) before
+// tracked host in the API's opts.json is listed, checked for SSH (a blue SSH indicator) before
 // a ping (green), and greyed out as Offline when neither answers. Four boxes over the list
 // count All, Online, Offline and Tracked, and pick which the list shows. State is on
 // App.lanScanner while open.
@@ -82,6 +82,14 @@ const LANSCAN_VENDOR_ICONS = [
 ];
 // a maker not in the table, or none reported
 const LANSCAN_DEFAULT_ICON = 'fad fa-network-wired';
+// Makers drawn with their own logo (img/logos/<logo>.svg) in the icon's place, matched in
+// any case: 'ASUSTek Computer' -> 'asus'. The logos are wordmarks, so such a row's name
+// starts after its logo (lanscan__row--logo).
+const LANSCAN_VENDOR_LOGOS = [
+  { matches: ['asus'], logo: 'asus' },
+  { matches: ['giga-byte', 'gigabyte'], logo: 'gigabyte' }
+];
+const LANSCAN_LOGO_ROW_CLASS = 'lanscan__row--logo';
 
 //// window ////
 
@@ -292,12 +300,27 @@ function vendorIcon(vendor) {
   return LANSCAN_DEFAULT_ICON;
 }
 
+// a maker's own logo, or null for one without: 'Giga-byte Technology' -> 'gigabyte'
+function vendorLogo(vendor) {
+  if (typeof vendor !== 'string') {
+    return null;
+  }
+  const vendorLower = vendor.toLowerCase();
+  const found = LANSCAN_VENDOR_LOGOS.find(entry => {
+    return entry.matches.some(match => vendorLower.includes(match));
+  });
+  if (found) {
+    return found.logo;
+  }
+  return null;
+}
+
 // One host as a row:
 // { key: "tracked:ledgrid.home", ip: "192.168.1.23", hostname: "ledgrid.home", vendor: null,
 //   mac: null, online: false, tracked: true, ssh: false } ->
 // { key: "tracked:ledgrid.home", address: "192.168.1.23", name: "ledgrid.home",
-//   vendor: "---", mac: "---", icon: "fad fa-network-wired", online: false, tracked: true,
-//   ssh: false, indicator: "offline", statusText: "Offline" }
+//   vendor: "---", mac: "---", icon: "fad fa-network-wired", logo: null, online: false,
+//   tracked: true, ssh: false, indicator: "offline", statusText: "Offline" }
 export function lanScanRow(host) {
   const online = host.online === true;
   const ssh = host.ssh === true;
@@ -317,6 +340,7 @@ export function lanScanRow(host) {
     vendor: fieldText(host.vendor),
     mac: fieldText(host.mac),
     icon: vendorIcon(host.vendor),
+    logo: vendorLogo(host.vendor),
     online: online,
     tracked: host.tracked === true,
     ssh: ssh,
@@ -370,9 +394,10 @@ function showHost(lanScanner, host) {
 }
 
 // A row's parts, built node by node, as names come from the network:
-//   indicator | address over MAC | device icon | name over maker (or Offline)
+//   indicator | address over MAC | device icon or maker's logo | name over maker (or Offline)
 function fillRowElement(element, row) {
   element.classList.toggle(LANSCAN_OFFLINE_CLASS, !row.online);
+  element.classList.toggle(LANSCAN_LOGO_ROW_CLASS, row.logo !== null);
   const indicatorDot = makeElement('span', `lanscan__ind lanscan__ind--${row.indicator}`);
   if (row.ssh) {
     // its own element, so it can be trimmed to its capitals and centred in the dot
@@ -384,7 +409,15 @@ function fillRowElement(element, row) {
   address.textContent = row.address;
   const mac = makeElement('span', 'lanscan__mac');
   mac.textContent = row.mac;
-  const icon = makeElement('i', `${row.icon} lanscan__icon`);
+  let icon = null;
+  if (row.logo !== null) {
+    // the logo is a mask, so it takes the icon's colour (grey while offline)
+    icon = makeElement('span', `lanscan__logo lanscan__logo--${row.logo}`);
+    icon.setAttribute('role', 'img');
+    icon.setAttribute('aria-label', row.vendor);
+  } else {
+    icon = makeElement('i', `${row.icon} lanscan__icon`);
+  }
   const name = makeElement('span', 'lanscan__host');
   if (row.tracked) {
     name.appendChild(makeElement('i', LANSCAN_TRACKED_ICON));

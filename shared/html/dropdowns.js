@@ -4,9 +4,10 @@
 // What only the page knows is handed in through configureMenus().
 
 import { classDisplay, cleanString, splitMenuData, isNumeric, splitByDelimiter,
-  sendCmd, loadMenu, fileURL, makeElement, setSpinner, menuRow,
+  sendCmd, loadMenu, makeElement, setSpinner, menuRow,
   indicator, requestThrottle, dropdownButtonTemplate } from './utils.js';
 import { reportException, reportNotConnected, logError } from './error.js';
+import { LED_EFFECTS } from './opts.js';
 import { subwooferVolumeEnabled, subwooferVolumeMode,
   SUBWOOFER_CLASS } from './volctrl.js';
 import ToggleSwitch, { toggleSwitchCallback } from './switch.js';
@@ -125,10 +126,10 @@ export function destroyActiveSwitches() {
 
 //// drawing a menu ////
 
-// Draws a menu from HOST|TYPE|NAME rows. TwoColumns reads HOST|NAME with the menu's id
-// as the type. MenuScroll false is for redrawing a menu already on screen (its
-// scroll step measures a fixed menu against the page offset, walking the page down).
-export function drawMenu(data, menuId, { TwoColumns = false, MenuScroll = true } = {}) {
+// Draws a menu from HOST|TYPE|NAME rows. MenuScroll false is for redrawing a menu already
+// on screen (its scroll step measures a fixed menu against the page offset, walking the
+// page down).
+export function drawMenu(data, menuId, { MenuScroll = true } = {}) {
   removeDynMenus();
   if (data === null || data === undefined) {
     // the request that came back empty has already reported why
@@ -156,14 +157,8 @@ export function drawMenu(data, menuId, { TwoColumns = false, MenuScroll = true }
     const rowColumns = rowLine.split("|");
     // 0=Host, 1=Type, 2=Name
     const hostColumn = rowColumns[0];
-    let rowType = rowColumns[1];
-    let rowLabel = '';
-    if (TwoColumns === true) {
-      rowType = menuId;
-      rowLabel = rowColumns[1];
-    } else {
-      rowLabel = rowColumns[2].trim();
-    }
+    const rowType = rowColumns[1];
+    const rowLabel = rowColumns[2].trim();
     const rowElement = createListItem(hostColumn, rowType, rowLabel, rowIndex);
     App.dynMenuNodes.push(rowElement);
     fragment.appendChild(rowElement);
@@ -239,9 +234,12 @@ const throttledSliderSend = requestThrottle((action, host, command) => {
 const SETTING_SWITCH_WIDTH = '54px';
 const SETTING_SWITCH_HEIGHT = '26px';
 
+// the Animated menu's id, and the row type of its effects
+const LED_EFFECT_MENU = 'ledeffectmenu';
+
 // Row type -> the function that fills the row in; any other type is a status row.
 const ROW_BUILDERS = {
-  'ledeffectmenu': buildLedEffectRow,
+  [LED_EFFECT_MENU]: buildLedEffectRow,
   'pixelsmore': buildPixelsMoreRow,
   'room': buildRoomRow,
   'relaxmenu': buildRelaxRow,
@@ -503,9 +501,17 @@ function fillDropdown(menuId, fetchRows, drawConfig) {
   });
 }
 
-// a menu whose rows come out of a file on the device
-export function showDynFileMenu(menuId, twoColumnRows = false) {
-  fillDropdown(menuId, () => loadMenu(fileURL('read', menuId)), { TwoColumns: twoColumnRows });
+// The Pixels group's Animated menu: one row per effect in LED_EFFECTS (opts.js), which
+// plays it, or opens the scroller for TextScroll (buildLedEffectRow).
+export function showLedEffectMenu() {
+  if (!openDropdown(LED_EFFECT_MENU)) {
+    return;
+  }
+  let menuData = '';
+  LED_EFFECTS.forEach(([effectCommand, effectName]) => {
+    menuData += menuRow(effectCommand, LED_EFFECT_MENU, effectName);
+  });
+  drawMenu(menuData, LED_EFFECT_MENU);
 }
 
 // a menu whose rows come back from a device API call

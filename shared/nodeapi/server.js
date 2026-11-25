@@ -3,7 +3,7 @@
 //
 // Main routes:
 //   GET  /api?action=&arg=&var=   device commands, answered as JSON
-//   GET  /api/read?file=          a menu or saved file, as JSON text
+//   GET  /api/read?file=          a saved file or the log, as JSON text
 //   POST /api/write?file=         writes a saved file (text/plain body)
 //   GET  /api/camera/<name>       live camera stream (camstream.js)
 
@@ -28,7 +28,7 @@ const maxReadSize = 256 * 256;
 const regex = /^[A-Za-z0-9_.#%@&-]*$/;
 const baseWWW = '/var/www/html';
 
-// menu files live under menus/, saved state and the log under ram/
+// saved state and the log live under ram/
 const safePath = (subdir, filename) => {
     if (filename.includes('..')) throw new Error('directory traversal attempt blocked');
     return path.join(`${baseWWW}/${subdir}`, `${filename}.txt`);
@@ -78,9 +78,12 @@ app.get('/api/read', [
     try {
         if (badRequest(req, res)) return;
         const fileArg = req.query.file;
-        let subdir = 'menus';
-        if (fileArg === 'sysout' || fileArg?.includes('.save')) subdir = 'ram';
-        const file = readFileSync(safePath(subdir, fileArg), 'utf8');
+        // only the log and saved state; any other file in ram/ stays unread
+        const readable = fileArg === 'sysout' || fileArg.includes('.save');
+        if (!readable) {
+            return res.status(404).json(`no readable file ${fileArg}`);
+        }
+        const file = readFileSync(safePath('ram', fileArg), 'utf8');
         res.status(200).json(file.slice(-maxReadSize));
     } catch (err) {
         res.status(500).json(`internal server error: ${err.message}`);
@@ -109,7 +112,7 @@ app.post('/api/write', express.text({ type: '*/*', limit: '5mb' }), [
 app.use(express.json({ limit: '1mb' }));
 registerUploadRoutes(app);
 registerCameraRoutes(app);
-registerNetscanRoutes(app, baseWWW);
+registerNetscanRoutes(app);
 
 app.listen(httpPort, '127.0.0.1', () => {
     console.log(`${hostname} API running on port ${httpPort}`);

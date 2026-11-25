@@ -1,18 +1,20 @@
-// Automate - Pixels window (server page only): one box per LED host in the ledhosts file,
+// Automate - Pixels window (server page only): one box per LED host the API lists,
 // with its name, status line, page link and brightness slider. Every host is asked at
 // once, so one that is off shows "Not available" without holding up the rest. State is
 // on App.pixelsWindow while open.
 
-import { sendCmd, readFile, splitMenuData, promptWindow, onButtons,
+import { sendCmd, promptWindow, onButtons,
   makeElement, requestThrottle, gridButtonTemplate, showSpinner } from './utils.js';
 import { removeDropdowns, spinnerIds, SLIDER_MS } from './dropdowns.js';
+import { LED_EFFECTS } from './opts.js';
 
-// the LED hosts, URL|NAME per line; nodeapi/ledparser.js uses the same list
-const PIXELS_HOST_FILE = 'ledhosts';
-// the Animated menu's effects, effect|Name per line
-const PIXELS_EFFECT_FILE = 'ledeffectmenu';
+// The LED hosts, from the API's opts.json, the list every LED command goes to:
+//   fc_host_list -> [{ url: 'http://192.168.1.12:80', name: 'LEDwall' }]
+const PIXELS_LIST_CMD = 'fc_host_list';
+// effect -> its name in the Animated menu: 'maze' => 'Maze'
+const PIXELS_EFFECT_NAMES = new Map(LED_EFFECTS);
 
-// One host's commands (nodeapi/ledparser.js), with its NAME as the second argument:
+// One host's commands (nodeapi/ledparser.js), with its name as the second argument:
 //   fc_host_status -> { effect: "maze", state: "active", color: null, brightness: 128 }
 //   fc_host_set_120 -> "OK"
 // Anything else means the host did not answer.
@@ -23,7 +25,7 @@ const PIXELS_SET_OK = 'OK';
 const PIXELS_PROMPT_ID = 'pixels__prompt';
 const PIXELS_TITLE = 'Pixels';
 const PIXELS_LOADING = 'Loading...';
-const PIXELS_NO_FILE = 'Could not read the host list';
+const PIXELS_NO_LIST = 'Could not read the host list';
 const PIXELS_NO_HOSTS = 'No LED hosts listed';
 const PIXELS_UNAVAILABLE = 'Not available';
 
@@ -87,8 +89,6 @@ export function openPixelsWindow() {
     refreshSpinner: document.getElementById(PIXELS_REFRESH.spinnerId),
     // per host, in file order: its name, box, state line and slider
     hosts: [],
-    // effect -> its name in the Animated menu
-    effectNames: new Map(),
     // bumped per load, so an older host list cannot draw over a newer one
     loadSeq: 0,
     // one throttle serves every slider, as only one can be dragged at a time
@@ -124,51 +124,12 @@ export function closePixelsWindow() {
   pixelsWindow.win.remove();
 }
 
-// ledhosts file text -> [{ url, name }]. The name is the line's last field, so an older
-// URL|link|NAME line reads the same; a line with no name goes by its URL.
-// 'http://ledwall.home:80|LEDwall' -> { url: 'http://ledwall.home:80', name: 'LEDwall' }
-function parsePixelHosts(fileText) {
-  const hosts = [];
-  for (const line of splitMenuData(fileText)) {
-    const fields = line.split('|');
-    const url = fields[0].trim();
-    if (url === '') {
-      continue;
-    }
-    const lastField = fields[fields.length - 1].trim();
-    let name = url;
-    if (fields.length > 1 && lastField !== '') {
-      name = lastField;
-    }
-    hosts.push({ url: url, name: name });
-  }
-  return hosts;
-}
-
-// ledeffectmenu file text -> Map of effect to name; an unreadable file gives none.
-// 'maze|Maze' -> 'maze' => 'Maze'
-function parseEffectNames(fileText) {
-  const effectNames = new Map();
-  if (fileText === null) {
-    return effectNames;
-  }
-  for (const line of splitMenuData(fileText)) {
-    const fields = line.split('|');
-    const effect = fields[0].trim();
-    if (effect === '' || fields.length < 2) {
-      continue;
-    }
-    effectNames.set(effect, fields[1].trim());
-  }
-  return effectNames;
-}
-
 // the Refresh button's spinner in its icon's place while the hosts are asked, or the icon
 function pixelsShowRefreshing(pixelsWindow, refreshing) {
   showSpinner(pixelsWindow.refreshText, pixelsWindow.refreshSpinner, refreshing);
 }
 
-// Reads the host list and effect names, draws a box per host, then asks every host at once;
+// Reads the host list, draws a box per host, then asks every host at once;
 // each box fills in as its answer lands, with the Refresh spinner turning until the last.
 // While the list is unchanged the boxes stay, sliders moving to the new level.
 async function pixelsLoadHosts(pixelsWindow) {
@@ -178,20 +139,16 @@ async function pixelsLoadHosts(pixelsWindow) {
     pixelsShowMessage(pixelsWindow, PIXELS_LOADING, false);
   }
   pixelsShowRefreshing(pixelsWindow, true);
-  const [fileText, effectFileText] = await Promise.all([
-    readFile(PIXELS_HOST_FILE),
-    readFile(PIXELS_EFFECT_FILE)
-  ]);
+  const hostList = await sendCmd('leds', PIXELS_LIST_CMD);
   if (pixelsWindow.closed === true || sequence !== pixelsWindow.loadSeq) {
     return;
   }
-  pixelsWindow.effectNames = parseEffectNames(effectFileText);
   let hosts = [];
   let listError = '';
-  if (fileText === null) {
-    listError = PIXELS_NO_FILE;
+  if (!Array.isArray(hostList)) {
+    listError = PIXELS_NO_LIST;
   } else {
-    hosts = parsePixelHosts(fileText);
+    hosts = hostList;
     if (hosts.length === 0) {
       listError = PIXELS_NO_HOSTS;
     }
@@ -404,7 +361,7 @@ function pixelsShowState(pixelsWindow, hostControls, status) {
   } else if (status.state === 'active' || status.state === 'paused') {
     let effectName = PIXELS_EFFECT_FALLBACK;
     if (status.effect !== null) {
-      effectName = pixelsWindow.effectNames.get(status.effect) || status.effect;
+      effectName = PIXELS_EFFECT_NAMES.get(status.effect) || status.effect;
     }
     lineText = `${effectName} ${PIXELS_STATE_TEXT[status.state]}`;
   }

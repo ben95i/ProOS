@@ -1,22 +1,21 @@
 // LAN Scanner (Server > Options > Network > LAN Scanner): GET /api/netscan
 // streams one scan of the LAN to the page as it happens, one JSON event per
-// line. The hosts in menus/trackedhosts.txt are checked at once, SSH first
+// line. The tracked hosts in opts.json are checked at once, SSH first
 // then a ping, and each is sent the moment its check ends; nmap runs beside
 // them, and when it is done the hosts it found are sent, a tracked one again
 // with its MAC and maker filled in. A page opening while a scan runs joins it.
 
 const { execFile } = require('child_process');
 const dns = require('dns').promises;
-const fsPromises = require('fs/promises');
 const net = require('net');
 const util = require('util');
 const { localPing } = require('./ping');
+// The hosts every scan lists, up or down: ['ledwall.home', ...]
+const { TRACKED_HOSTS } = require('./options');
 const execFileAsync = util.promisify(execFile);
 
 const ROUTE = '/api/netscan';
 const NET_RANGE = '192.168.1.0/24';
-// The hosts every scan lists, up or down, one name per line: ledwall.home
-const TRACKED_HOSTS_FILE = '/menus/trackedhosts.txt';
 // how long a tracked host's name may take to resolve
 const LOOKUP_TIMEOUT = 3000; // in (ms)
 // a hung nmap would hold every later scan, as they join the running one
@@ -98,25 +97,14 @@ class NetworkScan {
     }
 }
 
-// Reads trackedhosts.txt into its names, each once, blank lines skipped. A
-// missing file means no tracked hosts.
-// 'ledwall.home\nktchpi.home\n' -> ['ledwall.home', 'ktchpi.home']
-async function readTrackedHosts(baseWWW) {
-    let fileText = '';
-    try {
-        fileText = await fsPromises.readFile(baseWWW + TRACKED_HOSTS_FILE, 'utf-8');
-    } catch (error) {
-        if (error.code === 'ENOENT') {
-            return [];
-        }
-        throw error;
-    }
+// The tracked hosts' names, each once whatever its case:
+// ['ledwall.home', 'LEDwall.home', 'ktchpi.home'] -> ['ledwall.home', 'ktchpi.home']
+function readTrackedHosts() {
     const names = [];
     const seenNames = new Set();
-    fileText.split('\n').forEach(line => {
-        const name = line.trim();
+    TRACKED_HOSTS.forEach(name => {
         const nameKey = name.toLowerCase();
-        if (name === '' || seenNames.has(nameKey)) {
+        if (seenNames.has(nameKey)) {
             return;
         }
         seenNames.add(nameKey);
@@ -142,14 +130,14 @@ async function resolveHost(name) {
     }
 }
 
-// trackedhosts.txt's names, resolved all at once, each with the host record
+// The tracked hosts' names, resolved all at once, each with the host record
 // the page is sent, offline until a check or nmap finds it:
 // -> [{ name: 'ledwall.home', addresses: ['192.168.1.12'], matched: false,
 //       checked: null, host: { key: 'tracked:ledwall.home', ip: '192.168.1.12',
 //       hostname: 'ledwall.home', vendor: null, mac: null, online: false,
 //       tracked: true, ssh: false } }]
-async function resolveTrackedHosts(baseWWW) {
-    const names = await readTrackedHosts(baseWWW);
+async function resolveTrackedHosts() {
+    const names = readTrackedHosts();
     return Promise.all(names.map(async name => {
         const addresses = await resolveHost(name);
         let address = null;
@@ -300,7 +288,7 @@ async function sendDevice(scan, device, trackedHosts) {
 
 // One scan, start to last host. nmap and the tracked hosts' checks run side
 // by side; an nmap failure is thrown once the tracked hosts are all sent.
-async function runScan(scan, baseWWW) {
+async function runScan(scan) {
     scan.send({ type: 'start', range: NET_RANGE });
     let nmapError = null;
     const nmapRun = execFileAsync('/usr/bin/sudo', ['/usr/bin/nmap', '-sn', NET_RANGE], {
@@ -309,7 +297,7 @@ async function runScan(scan, baseWWW) {
         nmapError = error;
         return [];
     });
-    const trackedHosts = await resolveTrackedHosts(baseWWW);
+    const trackedHosts = await resolveTrackedHosts();
     const trackedChecks = trackedHosts.map(tracked => {
         tracked.checked = checkTrackedHost(scan, tracked);
         return tracked.checked;
@@ -332,14 +320,13 @@ async function runScan(scan, baseWWW) {
  * A host is sent again whenever it changes, under the same key. Untracked
  * hosts are not checked (ssh: false); their keys are "ip:<address>".
  * @param {object} app - the Express app
- * @param {string} baseWWW - the site's folder, holding menus/trackedhosts.txt
  */
-function registerNetscanRoutes(app, baseWWW) {
+function registerNetscanRoutes(app) {
     app.get(ROUTE, (req, res) => {
         if (runningScan === null) {
             const scan = new NetworkScan();
             runningScan = scan;
-            runScan(scan, baseWWW)
+            runScan(scan)
                 .then(() => scan.finish({ type: 'done' }))
                 .catch(error => scan.finish({
                     type: 'error',
