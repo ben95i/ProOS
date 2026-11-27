@@ -1,14 +1,15 @@
-// Automate - Server window: the log window and its option panels (the server's main,
-// backup and regions, or a Pi's one). A panel button arms one server command and the
-// send button sends it; password commands ask first. Also the windows the panels open:
-// password prompt, guest Wi-Fi, a Pi's Wi-Fi setup, upload.
+// Automate - Server window: the log window and its option panels (the server's main and
+// regions, or a Pi's one). A panel button arms one server command and the send button
+// sends it; password commands ask first. Also the windows the panels open: password
+// prompt, guest Wi-Fi, a Pi's Wi-Fi setup, upload. The main panel's Backup button opens
+// the backup wizard, which runs apart from the log window and the server log.
 
 import { classDisplay, base64URLSafeEncode, sendCmd, html, fetchAnswer,
   savePOST, fileURL, promptWindow, onButtons, setDisplayById,
   registerListeners, gridButtonTemplate, dropdownButtonTemplate, textBoxTemplate,
   GoToExtPage, onDemandModule } from './utils.js';
 import { removeDropdowns, openDropdown } from './dropdowns.js';
-import { reportError } from './error.js';
+import { reportError, showPopup } from './error.js';
 import { EXT_PAGES } from './opts.js';
 import Uploader from './upload.js';
 import { SSIDpwd } from './wifi.js';
@@ -124,34 +125,12 @@ registerListeners({
   'btn-svr-netscan':      () => openLanScanner(),
   'btn-ext-unifi':        () => GoToExtPage(EXT_PAGES.unifi),
   'btn-ext-system':       () => GoToExtPage(EXT_PAGES.proxmox),
-  'btn-open-backup':      () => openServerPanel(svrOptBackupTemplate),
+  'btn-open-backup':      () => openBackupWizard(),
   'btn-open-regions':     () => openServerPanel(svrOptRegionsTemplate),
   'btn-wifi-prompt':      () => wifiPrompt(),
   'btn-ext-edgeswitch':   () => GoToExtPage(EXT_PAGES.edgeswitch),
   'btn-close-svr-opt1':   () => closeServerOptions(),
   'btn-ext-router':       () => GoToExtPage(EXT_PAGES.router)
-});
-
-// the server's backup panel
-function svrOptBackupTemplate() {
-  return `
-<div class="svropt__panel svropt__backup">
-  ${optionButton('btn-svr-last_backup_dates', 'fad fa-history', 'History')}
-  ${optionButton('btn-svr-backupchk', '', 'Checksum')}
-  ${optionButton('btn-svr-pve_vmsbkp', '', 'VMs/LXCs')}
-  ${optionButton('btn-pwd-unlock', 'fad fa-lock-open', 'Unlock')}
-  ${optionButton('btn-svr-backupstd', '', 'Standard')}
-  ${optionButton('btn-svr-detach_bkps', 'fad fa-eject', 'Eject')}
-  ${optionButton('btn-close-svr-opt2', 'fas fa-times', 'Close')}
-  ${optionButton('btn-svr-pve_listsnaps', '', 'Snapshots')}
-  ${optionButton('btn-open-svr-opt1', 'fad fa-arrow-left', 'Back')}
-</div>`;
-}
-registerListeners({
-  ...commandButtons(['last_backup_dates', 'backupchk', 'pve_vmsbkp', 'backupstd', 'detach_bkps', 'pve_listsnaps']),
-  'btn-pwd-unlock':     () => getPassword('pwd'),
-  'btn-close-svr-opt2': () => closeServerOptions(),
-  'btn-open-svr-opt1':  () => openServerPanel(svrOptMainTemplate)
 });
 
 // the server's regions panel: archive, snapshot and RAM disk mounts
@@ -163,7 +142,8 @@ function svrOptRegionsTemplate() {
       <a id="btn-pwd-fusearch_unmnt"><i class="fad fa-eject"></i> Detach</a>`)}
   ${optionMenu('snapshots', '', 'Snapshots', `
       <a id="btn-svr-mnt_snap_region"><i class="fad fa-link"></i> Attach</a>
-      <a id="btn-svr-unmnt_snap_region"><i class="fad fa-eject"></i> Detach</a>`)}
+      <a id="btn-svr-unmnt_snap_region"><i class="fad fa-eject"></i> Detach</a>
+      <a id="btn-svr-pve_listsnaps"><i class="fad fa-list"></i> List</a>`)}
   ${optionMenu('ramdisk', '', 'RAM Disk', `
       <a id="btn-svr-mnt_ram_region"><i class="fad fa-link"></i> Attach</a>
       <a id="btn-svr-unmnt_ram_region"><i class="fad fa-eject"></i> Detach</a>`)}
@@ -174,7 +154,8 @@ function svrOptRegionsTemplate() {
 }
 registerListeners({
   ...menuOpeners(['archive', 'snapshots', 'ramdisk']),
-  ...commandButtons(['mnt_snap_region', 'unmnt_snap_region', 'mnt_ram_region', 'unmnt_ram_region', 'unmnt_all']),
+  ...commandButtons(['mnt_snap_region', 'unmnt_snap_region', 'pve_listsnaps', 'mnt_ram_region',
+    'unmnt_ram_region', 'unmnt_all']),
   'btn-pwd-fusearch':       () => getPassword('fusearch'),
   'btn-pwd-fusearch_unmnt': () => serverAction('unmnt_arch_region'),
   'btn-close-svr-opt3':     () => closeServerOptions(),
@@ -310,7 +291,7 @@ function clearPendingCmd() {
 }
 
 // the command each password file is saved for
-const PASSWORD_COMMANDS = { pwd: 'attach_bkps', fusearch: 'mnt_arch_region' };
+const PASSWORD_COMMANDS = { fusearch: 'mnt_arch_region' };
 
 // A password was saved: sends the command that uses it.
 function afterPOSTActions(passwordFile) {
@@ -339,6 +320,12 @@ function closeServerOptions() {
   if (panelContainer) {
     panelContainer.innerHTML = "";
   }
+}
+
+// Main panel, Backup: the backup wizard, which is not built yet.
+function openBackupWizard() {
+  closeServerOptions();
+  showPopup('The backup wizard is not built yet.');
 }
 
 // Network menu, LAN Scanner: closes the options window and opens the scanner (lanscan.js),

@@ -46,7 +46,7 @@ Every top-level folder is one of four kinds. `login.sh` tells them apart by the 
 | Pi base | `rpi/` | Programs, `config/` (installer, systemd units, system configs), `effects/` (LED programs) | Copied to every Pi first, to `/opt/rpi` |
 | Pi module | `brpi` `btpi` `doorway` `homepi` `ktchpi` `ledgrid` `ledwall` `lrpi` | `boot.sh`, `config/` (`installer.sh`, `brand.txt`, `config.txt`, other configs), extra programs or firmware | Overlaid onto `/opt/rpi` after the base, with `config/` sent to `/opt/rpi/config/module/` |
 | Server (LXC / VM / PC) | `automate` `files` `legacy` `media` `mgmt` (LXC); `appletalk` `xana` (VM); `pve` (the Proxmox host); `brpc` (a physical PC) | `config/installer.sh` plus the files it installs; `lxc.conf` / `qemu.conf` / `pc.conf` marker | Tarred to `/tmp/config` and `installer.sh` run |
-| Not deployed | `shared/` (Automate site, deployed with `automate` and every Pi), `wkst/` (this workstation, `install.sh` run by hand), `router/` and `unifi/` (only their VM backups, written by `pve_vmsbkp`) | | |
+| Not deployed | `shared/` (Automate site, deployed with `automate` and every Pi), `wkst/` (this workstation, `install.sh` run by hand), `router/` and `unifi/` (only their VM backups, written by the backup wizard's VM backup) | | |
 
 `login.sh` refuses `rpi`, `wkst`, `shared`, `sources`, `login`, `logon` and `.ssh` as host names.
 
@@ -200,10 +200,41 @@ This is how the Automate Server window controls the host:
 
 1. The host mounts a 128 MB tmpfs at `/mnt/ramdisk` (owner `tank:shared`, setgid), bind-mounted into the automate LXC as `/var/www/html/ram`.
 2. The node API's `server <name>` command appends to `ram/sysout.txt` and creates an empty `ram/<name>.txt`.
-3. `file-monitor.service` (`pve/config/file-monitor.sh`) watches the ramdisk with inotify, claims each `*.txt` trigger atomically into `spool/`, and runs `/usr/bin/apicmds.sh <name> /mnt/ramdisk` in the background (at most 4 at once), appending output to `sysout.txt`. Data files are on its `IGNORE` list (`sysout.txt`, `*.save.txt`, `*.lock`, `pwd.txt`, `fusearch.txt`, `drives.txt`, `*.tmp`) — a new data file kept in `ram/` must be added there or it will be consumed as a command.
-4. The website polls `sysout.txt` into the log window.
+3. `file-monitor.service` (`pve/config/file-monitor.sh`) watches the ramdisk with inotify, claims each `*.txt` trigger atomically into `spool/`, and runs `/usr/bin/apicmds.sh <name> /mnt/ramdisk` in the background (at most 4 at once), appending output to `sysout.txt`. The backup wizard's `bkp_*` commands append to `bkplog.txt` instead (see *Backup jobs*). Data files are on its `IGNORE` list (`sysout.txt`, `*.save.txt`, `*.lock`, `bkppwd.txt`, `fusearch.txt`, `bkpstatus.txt`, `bkplog.txt`, `drives.txt`, `*.tmp`) — a new data file kept in `ram/` must be added there or it will be consumed as a command. `pve/config/installer.sh` restarts the service on its new script unless a job holds a lock.
+4. The website reads `sysout.txt` into the log window when it opens and on its Refresh button.
 
-`apicmds.sh` commands: `backupstd`, `backupchk` (rsync to external pools, lock `backupsvr.lock`; handed to `/usr/bin/tank-backup.sh`, `pve/config/tank-backup.sh`), `last_backup_dates`, `attach_bkps`, `detach_bkps`, region mounts (`mnt_/unmnt_arch_region` gocryptfs Archive, `mnt_/unmnt_ram_region`, `mnt_/unmnt_snap_region`, `unmnt_all`), `pve_listsnaps`, `start/stop` for `legacy` (LXC 104), `xana` (105, plus `restorexana`), `unifi` (107), `atalk` (103), `rebootrouter`, `syslog` (`sys-check`), `pve_vmsbkp` (handed to `/usr/bin/pve-backup.sh`, `pve/config/pve-backup.sh`), `clearlog`. A command handed to its own script is `exec`ed by `RUN_SCRIPT` with the same two arguments (`<name> <RAM disk>`), so each script can also be run by hand, e.g. `pve-backup.sh pve_vmsbkp /mnt/ramdisk`. A new server command needs a case here and an option in `shared/html/server.js`.
+`apicmds.sh` commands: the backup wizard's jobs, every `bkp_*` command (handed to `/usr/bin/tank-backup.sh`, `pve/config/tank-backup.sh`; see *Backup jobs*), region mounts (`mnt_/unmnt_arch_region` gocryptfs Archive, `mnt_/unmnt_ram_region`, `mnt_/unmnt_snap_region`, `unmnt_all`), `pve_listsnaps`, `start/stop` for `legacy` (LXC 104), `xana` (105, plus `restorexana`), `unifi` (107), `atalk` (103), `rebootrouter`, `syslog` (`sys-check`), `clearlog`. A command handed to its own script is `exec`ed by `RUN_SCRIPT` with the same two arguments (`<name> <RAM disk>`), so each script can also be run by hand, e.g. `tank-backup.sh bkp_status /mnt/ramdisk`. A new server command needs a case here and an option in `shared/html/server.js`.
+
+### Backup jobs (`tank-backup.sh`)
+
+The website's backup wizard (Server > Options > Backup) runs every backup as a job on the host: attaching the external backup pools, backing tank up to them, backing the guests up, and detaching the pools. None of it uses the server log: the API (`shared/nodeapi/backup.js`, `/api/backup/…`) drops a `bkp_*` trigger, file-monitor sends the command's output to `ram/bkplog.txt` instead of `sysout.txt`, and the job writes its own log there.
+
+The pools in `bkpdrives.txt` (installed as `/opt/bkpdrives.txt`; `usb*` and `hdd*` names, `tank`, `datastore` and `rpool` refused) are encrypted ZFS pools, each with one `<pool>/extbkp` dataset mounted at `/mnt/extbkps/<pool>` (set up as in `pve/README.txt`).
+
+| Command | Job | Does |
+| --- | --- | --- |
+| `bkp_attach` | `attach` | The API writes the passphrase to `ram/bkppwd.txt` (mode 600) first. Each connected pool (`zpool import` lists it) is imported, its key loaded and its dataset mounted, one step per pool; one whose key or mount fails (a wrong passphrase) is exported again, so nothing stays half attached. Pools not connected are only listed. The passphrase is shredded when the job ends, even when refused |
+| `bkp_standard` · `bkp_checksum` | `standard` · `checksum` | One step per share of each attached pool: `data` → `Data`, `.regions` → `.Regions` and, on an `hdd*` pool, `media` → `Media` (a `usb*` pool skips disk images, Games and the Archive region's files), `--checksum` for `bkp_checksum`, rsync's `--info=progress2` turned into progress events. Only a pool ZFS has mounted at `/mnt/extbkps/<pool>` (its `mounted` and `mountpoint` properties and the mount on that folder) is written; a share is synced only when its sanity path is on tank (`Projects/ProOS`, `.regions/DB`, `media/Music`). A pool's date goes into `/mnt/extbkps/status.txt` only when every share's rsync answered 0, or 24 (files vanished, a warning). The LEDwall's white LED is lit meanwhile |
+| `bkp_standard_eject` · `bkp_checksum_eject` | as above | The same, then detaches the pools in the same job, unless it was cancelled |
+| `bkp_vms` | `vms` | `pve-backup.sh`: a vzdump of each guest, one step each (a KVM guest's vzdump percent as progress) |
+| `bkp_detach` | `detach` | Every imported backup pool, mounted or not, is unmounted, its key unloaded and exported, one step each; a busy one stays attached |
+| `bkp_cancel` | | Stops the running backup or VM backup: kills its worker (the rsync, or `pve-backup.sh` and its vzdump) by the PID in `ram/bkpworker.pid`. The pools stay attached and the pools finished before keep their dates |
+| `bkp_status` | | Rewrites `ram/bkpstatus.txt`, printing nothing |
+
+One job runs at a time: `ram/bkpjob.lock` holds `<job>|<pid>`, and a job asked for meanwhile is refused (`@REFUSED` in the running job's log; the API refuses it first). Every job and `bkp_status` rewrite `ram/bkpstatus.txt`: `STATE|<idle or job>`, `UPDATED|<time>`, then `POOL|<name>|<state>|<last backup>|<shares>` per pool, the state `attached`, `unmounted` (imported, not mounted), `connected` or `absent`.
+
+Each job begins `ram/bkplog.txt` afresh (a new file, so the API can tell a new job's log by its inode) and logs plain text lines and event lines, which the wizard draws from. Their fields, split by `|`, are listed at the top of `tank-backup.sh`:
+
+| Event | Meaning |
+| --- | --- |
+| `@JOB\|<job>\|<epoch ms>` | The first line |
+| `@PHASE\|<phase>` | `attach`, `backup`, `record`, `detach` |
+| `@STEP\|<n>\|<count>\|<group>\|<item>` | A step of the phase starts: pool and share, guest id and name, or pool and `attach` / `detach` |
+| `@PROGRESS\|<step %>\|<overall %>\|<transferred>\|<rate>\|<eta>` | At most once per percent or every 5 s; step % is `-` while the worker gives none (an LXC's vzdump) |
+| `@STEP_END\|<n>\|<ok, warn, failed or cancelled>\|<detail>` | The step's outcome |
+| `@POOL\|<pool>\|<outcome>` | `attached`, `already`, `wrongpass`, `failed`, `done`, `incomplete`, `skipped`, `detached`, `busy` |
+| `@CANCEL\|<epoch ms>` · `@REFUSED\|<job>\|<running>` | Cancel asked for; a job refused |
+| `@DONE\|<job>\|<ok, failed or cancelled>\|<summary>` | The last line (`failed`, `interrupted` when the job was killed) |
 
 ### Google Drive mount (`rclone-gsync`)
 
@@ -212,7 +243,7 @@ This is how the Automate Server window controls the host:
 ### Persistent state and backups
 
 - **Website state** (`bookmarks.save.txt`, `lists.save.txt`, their lock and password files) lives only in the RAM disk. `hourly.sh` (`hourlyjob.timer`, and `hourlyjob-sd.service` on shutdown) copies them to `/mnt/datastore/data/Documents/` (`Bookmarks.txt`, `Lists.txt`, keeping a `.bak`), and restores them into the RAM disk when they are missing after a reboot.
-- **`pve_vmsbkp`** vzdumps every guest (`BACKUP_GUEST` in `pve-backup.sh`, one call per guest), copies each guest's archives and logs (`vzdump-*`, git-ignored) into its own folder (101 → `files/`, 104 → `cifs/`; the router and UniFi, which have no host folder, into `router/` and `unifi/`, made on first run), and **overwrites `<host>/lxc.conf`, `appletalk/qemu.conf`, `xana/qemu.conf`, `router/vzdump-qemu-100.conf` and `unifi/vzdump-qemu-107.conf` in this repo** from `/etc/pve`. Those files are generated snapshots of the live config: edit the guest in Proxmox, not here. The router's and UniFi's are not named `qemu.conf`, so `login.sh` does not take their folders for servers. `pve/vmbkps/` holds older backups from before.
+- **The VM backup** (the backup wizard's `vms` job; `pve-backup.sh pve_vmsbkp /mnt/ramdisk` by hand) vzdumps every guest (`guestList` and `BACKUP_GUEST` in `pve-backup.sh`), copies each guest's archives and logs (`vzdump-*`, git-ignored) into its own folder (101 → `files/`, 104 → `cifs/`; the router and UniFi, which have no host folder, into `router/` and `unifi/`, made on first run), and **overwrites `<host>/lxc.conf`, `appletalk/qemu.conf`, `xana/qemu.conf`, `router/vzdump-qemu-100.conf` and `unifi/vzdump-qemu-107.conf` in this repo** from `/etc/pve`. Those files are generated snapshots of the live config: edit the guest in Proxmox, not here. The router's and UniFi's are not named `qemu.conf`, so `login.sh` does not take their folders for servers. `pve/vmbkps/` holds older backups from before.
 
 ## Conventions across the repo
 

@@ -6,9 +6,6 @@
 CMD="${1}"
 RAMDISK="${2}"
 
-EXTBKPS="/mnt/extbkps"
-STATUSFILE="$EXTBKPS/status.txt"
-DRIVES_PATH="/opt/bkpdrives.txt"
 TANK_ROOT="/mnt/datastore"
 REGDATA="$TANK_ROOT/.regions"
 BINDMNTS="/mnt/bindmnts"
@@ -117,7 +114,7 @@ function UMOUNT_RAMDSK(){
 ## Hands the command over to one of the host's own scripts, which prints its
 ## own trailer. exec keeps this process, so file-monitor still sees one job.
 ## Usage: RUN_SCRIPT <script path> [arguments...]
-## e.g.   RUN_SCRIPT /usr/bin/pve-backup.sh "$CMD" "$RAMDISK"
+## e.g.   RUN_SCRIPT /usr/bin/tank-backup.sh "$CMD" "$RAMDISK"
 function RUN_SCRIPT() {
   local scriptPath="$1"
   shift
@@ -135,20 +132,13 @@ if [ "$CMD" == "clearlog" ]; then
   END_ROUTINE
 fi
 
-## External Drive Backups (tank-backup.sh) ##
-if [[ "$CMD" == "backupstd" || "$CMD" == "backupchk" ]]; then
-  RUN_SCRIPT /usr/bin/tank-backup.sh "$CMD" "$RAMDISK"
-fi
-
-if [ "$CMD" == "last_backup_dates" ]; then
-  echo " " 
-  echo "last backup dates: "
-  readarray -t LSTBKPARR < "$STATUSFILE"
-  for LSTBKPLINE in "${LSTBKPARR[@]}"; do
-    echo "$LSTBKPLINE"
-  done
-  END_ROUTINE
-fi
+## Backup wizard jobs (tank-backup.sh): every bkp_* command. file-monitor sends
+## their output to bkplog.txt, never to sysout.txt.
+case "$CMD" in
+  bkp_*)
+    RUN_SCRIPT /usr/bin/tank-backup.sh "$CMD" "$RAMDISK"
+    ;;
+esac
 
 ## Detach All Regions
 if [ "$CMD" == "unmnt_all" ]; then
@@ -188,73 +178,6 @@ if [ "$CMD" == "mnt_snap_region" ]; then
 fi
 if [ "$CMD" == "unmnt_snap_region" ]; then
   UMOUNT_SNAP
-  END_ROUTINE
-fi
-
-### IMPORT ZFS ########################################   
-if [ "$CMD" == "attach_bkps" ]; then
-  REQUIRE_RAMDISK
-  if [ ! -e "$DRIVES_PATH" ]; then
-	  echo "drives file not found, aborting!"
-	else
-    readarray -t ZFSPOOLS < "$DRIVES_PATH"
-    for _POOL in "${ZFSPOOLS[@]}"; do
-      POOL=$(echo $_POOL | sed -e 's/\r//g')
-      if [ ! "$POOL" == "" ]; then
-        if [[ "$POOL" == "tank" ]] || \
-          [[ "$POOL" == "datastore" ]] || \
-          [[ "$POOL" == "rpool" ]]; then
-          echo "invalid pool specified."
-        else
-          echo "importing ZFS backup volume $POOL."
-          zpool import $POOL
-          zfs load-key -L file://$RAMDISK/pwd.txt $POOL/extbkp
-          zfs mount $POOL/extbkp
-          zpool status $POOL
-        fi
-        echo " "
-      fi
-    done
-  fi
-  zfs list
-  echo " "
-  if [ -e "$RAMDISK/pwd.txt" ]; then
-    shred -n 2 -z -u "$RAMDISK/pwd.txt"
-  fi
-  END_ROUTINE
-fi
-
-### EXPORT ZFS ########################################
-if [ "$CMD" == "detach_bkps" ]; then
-  if [ ! -e "$DRIVES_PATH" ]; then
-	  echo "drives file not found, aborting!"
-  else
-    readarray -t ZFSPOOLS < "$DRIVES_PATH"
-    for _POOL in "${ZFSPOOLS[@]}"; do
-      POOL=$(echo $_POOL | sed -e 's/\r//g')
-      if [ ! "$POOL" == "" ]; then
-        if [[ "$POOL" == "tank" ]] || \
-           [[ "$POOL" == "datastore" ]] || \
-           [[ "$POOL" == "rpool" ]] ; then
-          echo "invalid pool specified."
-        else
-          echo "unmounting ZFS backup volume $POOL."
-          if ! zfs unmount "$POOL/extbkp"; then
-            echo "WARNING: could not unmount $POOL/extbkp -- skipping export."
-            echo " "
-            continue
-          fi
-          if ! zpool export "$POOL"; then
-            echo "WARNING: export of $POOL failed (pool still in use?)."
-          fi
-        fi
-        echo " "
-      fi  
-    done 
-  fi
-  zfs unload-key -a
-  zpool status
-  zfs list
   END_ROUTINE
 fi
 
@@ -320,11 +243,6 @@ if [ "$CMD" == "syslog" ]; then
   /usr/bin/sys-check
   END_ROUTINE
 fi
-###### Server VM Backup Script (pve-backup.sh) ######
-if [ "$CMD" == "pve_vmsbkp" ]; then
-  RUN_SCRIPT /usr/bin/pve-backup.sh "$CMD" "$RAMDISK"
-fi
-
 ### end ###
 
 echo "unknown command!"

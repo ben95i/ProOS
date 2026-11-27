@@ -4,13 +4,15 @@
 #
 #  - events are read sequentially from a single inotifywait stream
 #  - each command is spawned in parallel (background job)
-#  - every job appends to the shared LOGPATH in O_APPEND mode
+#  - every job appends to the shared LOGPATH in O_APPEND mode, except the
+#    backup wizard's bkp_* jobs, which append to BKPLOGPATH
 #  - each trigger file is claimed atomically, so it fires exactly once
 #  - data files listed in IGNORE are never consumed or deleted
 #
 
 RAMPATH="/mnt/ramdisk"
 LOGPATH="$RAMPATH/sysout.txt"
+BKPLOGPATH="$RAMPATH/bkplog.txt"  # the backup wizard's log (tank-backup.sh)
 SPOOL="$RAMPATH/spool"           # claimed trigger files live here
 APICMDS="/usr/bin/apicmds.sh"
 MAXJOBS=4                        # safety valve against a flood of triggers
@@ -23,11 +25,13 @@ MAXJOBS=4                        # safety valve against a flood of triggers
 ## files are left untouched -- they are never claimed, run, or deleted.
 IGNORE=(
     "sysout.txt"        # the shared log itself
-    "drives.txt"        # read by backupstd/backupchk
-    "pwd.txt"           # ZFS load-key passphrase
+    "drives.txt"
+    "bkppwd.txt"        # backup drives' ZFS load-key passphrase
     "fusearch.txt"      # gocryptfs passfile
+    "bkpstatus.txt"     # backup drives' state, read by the API
+    "bkplog.txt"        # the backup wizard's log, read by the API
     "*.save.txt"        # persistant files
-    "*.lock"            # backupsvr.lock / pvebackup.lock
+    "*.lock"            # bkpjob.lock / pvebackup.lock
     "*.tmp"
 )
 
@@ -85,8 +89,13 @@ ensure_log
 
 ## clean up any triggers left over from an unclean shutdown.
 ## Locks too: KillMode=control-group means no job survives a service
-## stop, so any lock present at startup is by definition stale.
-rm -f "$SPOOL"/* "$RAMPATH"/*.lock 2>/dev/null
+## stop, so any lock present at startup is by definition stale, and so
+## are the backup job's worker PID and cancel flag. A backup passphrase
+## no job read is shredded.
+rm -f "$SPOOL"/* "$RAMPATH"/*.lock "$RAMPATH/bkpworker.pid" "$RAMPATH/bkpcancel.flag" 2>/dev/null
+if [ -e "$RAMPATH/bkppwd.txt" ]; then
+    shred -n 2 -z -u "$RAMPATH/bkppwd.txt" 2>/dev/null || rm -f "$RAMPATH/bkppwd.txt"
+fi
 
 ## on service stop, take the whole process group down with us
 shutdown() {
@@ -100,15 +109,22 @@ trap shutdown TERM INT
 ## dispatcher
 ## ---------------------------------------------------------------
 dispatch() {
-    local command="$1" claimed="$2"
+    local command="$1" claimed="$2" output="$LOGPATH"
 
     ensure_log
+
+    ## the backup wizard's commands log only to its own file; a job
+    ## starts that file afresh itself (tank-backup.sh), so this is where
+    ## a refusal or a cancel lands: the running job's log
+    case "$command" in
+        bkp_*) output="$BKPLOGPATH" ;;
+    esac
 
     # O_APPEND: every write is positioned at EOF by the kernel, so
     # parallel jobs cannot overwrite each other's output, and
     # 'clearlog' truncating the file does not strand the writers.
     # stdbuf -oL keeps whole lines together.
-    stdbuf -oL -eL "$APICMDS" "$command" "$RAMPATH" >> "$LOGPATH" 2>&1
+    stdbuf -oL -eL "$APICMDS" "$command" "$RAMPATH" >> "$output" 2>&1
 
     rm -f "$claimed"
 }

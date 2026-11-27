@@ -17,6 +17,7 @@ const { OPCLEDparser } = require('./ledparser');
 const { registerUploadRoutes } = require('./upload');
 const { registerCameraRoutes } = require('./camstream');
 const { registerNetscanRoutes } = require('./netscan');
+const { registerBackupRoutes } = require('./backup');
 
 const app = express();
 
@@ -113,6 +114,7 @@ app.use(express.json({ limit: '1mb' }));
 registerUploadRoutes(app);
 registerCameraRoutes(app);
 registerNetscanRoutes(app);
+registerBackupRoutes(app);
 
 app.listen(httpPort, '127.0.0.1', () => {
     console.log(`${hostname} API running on port ${httpPort}`);
