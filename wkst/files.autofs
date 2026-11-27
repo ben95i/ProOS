@@ -1,3 +1,12 @@
-# /etc/auto.master.d/files.autofs: the files server's shares, as a direct map
-# (absolute mount points, so /mnt/Local stays a plain local mount)
-/-  /etc/auto.files  --timeout=600
+# /etc/auto.master.d/files.autofs: the files server's shares
+#
+# SMB shares: an indirect map under /mnt/SMB (/mnt/SMB/<share>), so /mnt/Local
+# stays a plain local mount. Not a direct map: a direct map stacks each share on
+# an autofs mount at the same path, and KDE's trash then takes the share for
+# that autofs mount and refuses to trash on it ("The trash is not available for
+# this item's location"). --ghost lists every share in /mnt/SMB before it is
+# mounted.
+/mnt/SMB  /etc/auto.files  --timeout=600 --ghost
+#
+# SFTP mount: a direct map on /mnt/SFTP
+/-        /etc/auto.sftp   --timeout=600

@@ -4,15 +4,15 @@
  *  Color Selector Style
  */
 
-/* Placed as a .prompt_win: fixed, centred under the top bar and never taller than the
-   space there, scrolling inside when it does not fit. Its content stands at the top,
+/* Placed as a .prompt_win: fixed, centred across the screen just under the top bar and
+   never taller than the space there, scrolling inside when it does not fit. Its content stands at the top,
    so a scrolled window starts at its title. */
 #color-popup {
   display: none;
   position: fixed;
-  top: var(--prompt-centre-top);
+  top: var(--prompt-clear-top);
   left: 50%;
-  transform: translate(-50%, var(--prompt-centre-shift));
+  transform: translateX(-50%);
   margin-right: -50%;
   width: auto;
   height: auto;

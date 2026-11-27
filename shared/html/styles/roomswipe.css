@@ -1,0 +1,64 @@
+/* Automate: the top bar's room selector, a cube with a room name on each face
+   (roomswipe.js). */
+
+/*
+ *  Room Selector Cube
+ */
+
+/* The faces turn about a point --cube-depth (half a face's width, set by roomswipe.js)
+   behind them. A sideways drag turns the cube; an upright one still scrolls the page. */
+#room_anchor {
+  perspective: 400px;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Every face and an invisible copy of each room's name share one grid cell, so the cube
+   is the widest name wide whichever room it shows. Long names end in an ellipsis. */
+.room-cube__face,
+.room-cube__sizer {
+  grid-area: 1 / 1;
+  min-width: 0;
+  height: 46px;
+  line-height: 46px;
+  padding: 0px 14px 0px 14px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.room-cube__sizer {
+  visibility: hidden;
+}
+
+/* --face-angle and --face-light are set by roomswipe.js: 0deg and 1 face the user, a
+   quarter turn either way is edge on and dark. */
+.room-cube__face {
+  --face-angle: 0deg;
+  --face-light: 1;
+  text-align: center;
+  text-overflow: ellipsis;
+  background-color: var(--nav-menus-color);
+  border-radius: 14px;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform: translateZ(calc(var(--cube-depth, 0px) * -1)) rotateY(var(--face-angle)) translateZ(var(--cube-depth, 0px));
+  opacity: var(--face-light);
+}
+
+/* Hovered, the room's name glows as a menu row does, in place of the bar's hover
+   background, which would frame the face. */
+@media (hover: hover) and (pointer: fine) {
+  #room_anchor:hover {
+    background-color: transparent;
+  }
+
+  #room_anchor:hover .room-cube__front {
+    text-shadow: var(--menu-glow);
+  }
+}
+
+/* the turn's last stretch after a release; --cube-settle is set by roomswipe.js */
+#room_anchor.room-cube--settling .room-cube__face {
+  transition: transform var(--cube-settle) ease-out, opacity var(--cube-settle) ease-out;
+}

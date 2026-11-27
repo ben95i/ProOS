@@ -16,18 +16,10 @@ cp "$SCRIPT_DIR/nvidia-clocklock.service" /etc/systemd/system/nvidia-clocklock.s
 chmod 664 /etc/systemd/system/nvidia-clocklock.service
 systemctl enable --now nvidia-clocklock.service
 
+## Network shares: autofs mounts the files server's shares on access,
+## the SMB shares at /mnt/SMB/<share> and SFTP at /mnt/SFTP
+mkdir -p /mnt/SMB
 mkdir -p /mnt/SFTP
-mkdir -p /mnt/Data
-mkdir -p /mnt/Media
-mkdir -p /mnt/Scratch
-mkdir -p /mnt/Cameras
-mkdir -p /mnt/Regions
-mkdir -p /mnt/Games
-mkdir -p /mnt/MP3s
-mkdir -p /mnt/External
-mkdir -p /mnt/GSync
-
-## Network shares: autofs mounts the files server's shares on access
 apt-get install -y --no-upgrade --ignore-missing autofs cifs-utils sshfs sshpass
 cp "$SCRIPT_DIR/autofs.conf" /etc/autofs.conf
 chmod 644 /etc/autofs.conf
@@ -43,6 +35,9 @@ chown root:root /etc/auto.master.d/files.autofs
 cp "$SCRIPT_DIR/auto.files" /etc/auto.files
 chmod 644 /etc/auto.files
 chown root:root /etc/auto.files
+cp "$SCRIPT_DIR/auto.sftp" /etc/auto.sftp
+chmod 644 /etc/auto.sftp
+chown root:root /etc/auto.sftp
 
 cp "$SCRIPT_DIR/sshfs_wrapper.sh" /root/sshfs_wrapper.sh
 chmod +x /root/sshfs_wrapper.sh

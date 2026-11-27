@@ -19,6 +19,7 @@ import { BATHROOM_CONFIG, closeBathroomSettings } from './bathrm.js';
 import { serverOptionsTemplate, logFormTemplate, showLogWindow,
   closeLogWindow, loadLanScanner } from './server.js';
 import RoomStateManager from './roomstate.js';
+import RoomSwipe, { roomCubeTemplate } from './roomswipe.js';
 import AnimatedBackground from './stars.js';
 import MainMenu from './mainmenu.js';
 import WeatherWidget from './weather.js';
@@ -53,6 +54,7 @@ let serverMode = false;
 window.App = {
   starBackground: null,
   roomStateManager: null,
+  roomSwipe: null,
   weatherWidget: null,
   uploader: null,
   lists: null,
@@ -99,9 +101,16 @@ function loadFeatures() {
   resetActivityTimer();
 }
 
-// starts the server page's own services: the last room, its status, the weather
+// starts the server page's own services: the last room, the room selector's swipe, its
+// status, the weather
 function serverFeatures() {
   selectRoom(localStorage.getItem("ctls-mode"));
+  App.roomSwipe = new RoomSwipe('room_anchor', {
+    neighbourName: (step) => ROOM_CONFIGS[neighbourRoomKey(step)].name,
+    onTurn: turnRoom,
+    onRest: restOnRoom
+  });
+  App.roomSwipe.activate();
   App.roomStateManager = new RoomStateManager('status_anchor', onRoomStatusHvac);
   App.weatherWidget = new WeatherWidget();
   App.weatherWidget.activate();
@@ -242,9 +251,42 @@ function closePageMenus() {
 // a room menu row was picked: draws the room and reads its devices
 function pickRoom(roomKey) {
   selectRoom(roomKey);
+  // read here, so a swipe's rest still to come need not read it again
+  if (App.roomSwipe) {
+    App.roomSwipe.cancelRest();
+  }
   if (App.roomStateManager) {
     App.roomStateManager.restartRoomState();
   }
+}
+
+// The room step places from the one on screen in ROOM_CONFIGS order, wrapping round:
+// neighbourRoomKey(1) on the bathroom is 'lr', neighbourRoomKey(-1) on the living room 'bthr'.
+function neighbourRoomKey(step) {
+  const roomKeys = Object.keys(ROOM_CONFIGS);
+  const roomCount = roomKeys.length;
+  const currentPlace = roomKeys.indexOf(App.currentRoom);
+  const steppedPlace = currentPlace + step;
+  const wrappedRemainder = steppedPlace % roomCount;
+  const positivePlace = wrappedRemainder + roomCount;
+  const wrappedPlace = positivePlace % roomCount;
+  return roomKeys[wrappedPlace];
+}
+
+// A turn of the room selector landed: draws the room at once. Its devices are read only
+// once the swiping stops (restOnRoom()). The status refresh is left armed: stopping it
+// would let any click meanwhile start a read (activityBegin()).
+function turnRoom(step) {
+  selectRoom(neighbourRoomKey(step));
+}
+
+// The swiping stopped on a room: reads its devices, and counts the swipe as activity.
+// The read goes first, so the activity timer's own read finds one running.
+function restOnRoom() {
+  if (App.roomStateManager) {
+    App.roomStateManager.restartRoomState();
+  }
+  resetActivityTimer();
 }
 
 // what dropdowns.js's rows and close need from the page
@@ -324,7 +366,7 @@ function topNavTemplate(f) {
   ${f.isServer ? `
   <div id="room_center">
     <a id="room_anchor">
-      <span id="current-room-label"></span>
+      ${roomCubeTemplate(Object.values(ROOM_CONFIGS).map(config => config.name))}
     </a>
   </div>
   <div id="topnav-right">
@@ -861,6 +903,7 @@ App.destroyAll = function() {
   clearVolumePopupTimer();
   if (App.bookmarks) App.bookmarks.unloadBeacon();
   destroyActiveSwitches();
+  endService('roomSwipe', 'destroy');
   endService('roomStateManager', 'destroy');
   endService('starBackground', 'destroy');
   endService('lists', 'dispose');

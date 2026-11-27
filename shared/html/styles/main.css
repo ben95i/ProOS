@@ -56,22 +56,6 @@
   --prompt-clear-bottom: 5px;
   /* that space's height; 100% is the screen's height where it is used */
   --prompt-space-height: calc(100% - var(--prompt-clear-top) - var(--prompt-clear-bottom));
-  /* the lowest a window's middle may sit: about the top of the Pixels group, so on a
-     tall screen a window stands over the APT and Pixels groups rather than low on the
-     screen. The page's groups are drawn in fixed px from the top, so this is the same
-     place on every screen. */
-  --prompt-centre-max: 480px;
-  /* where a window's top is placed: the space's middle, or the lowest middle when the
-     space's middle is below it (the window is then moved up by --prompt-centre-shift) */
-  --prompt-space-centre: calc(var(--prompt-clear-top) - -0.5 * var(--prompt-space-height));
-  --prompt-centre-top: min(var(--prompt-space-centre), var(--prompt-centre-max));
-  /* the window's vertical shift: up half its own height (100% is the window's height
-     here), but never so far that a window too tall to centre on the lowest middle
-     passes under the top bar; such a window stands just under the bar instead. A
-     window in a short screen is never that tall (it fits the space), so there it is
-     centred in the space, as before. */
-  --prompt-centre-reach: calc(var(--prompt-clear-top) - var(--prompt-centre-max));
-  --prompt-centre-shift: max(-50%, var(--prompt-centre-reach));
   /* the height of every prompt window's own buttons (Close, Refresh, Send …); the
      bookmark edit window's keep their own */
   --window-button-height: 70px;
@@ -391,24 +375,18 @@ input[type="checkbox"] {
   overflow: hidden;
 }
 
-/* the room's name alone */
+/* The room's name alone, on the faces of a cube in one grid cell (roomswipe.css); the
+   cell shrinks with the bar, so its names truncate. */
 #room_anchor {
   max-width: 100%;
   min-width: 0;
   height: 60px;
   padding: 0px 8px 0px 8px;
-  display: inline-flex !important;
+  display: inline-grid !important;
+  grid-template-columns: minmax(0, max-content);
   align-items: center;
   justify-content: center;
   overflow: hidden;
-}
-
-/* long names end in an ellipsis */
-#current-room-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .right-padding {
@@ -437,10 +415,11 @@ input[type="checkbox"] {
   padding: 0px;
 }
 
-/* Every prompt window: fixed, so it stays in view on a scrolled page, and centred in
-   the space under the top bar, or no lower than --prompt-centre-max on a tall screen,
-   never taller than that space: a window that does not fit scrolls inside, so its top
-   never passes under the bar. margin-right keeps a window
+/* Every prompt window: fixed, so it stays in view on a scrolled page, centred across
+   the screen with its top just under the top bar on every screen, so a smaller screen
+   only shortens a window sized by the screen's height and never moves one. Never
+   taller than the space under the bar: a window that does not fit scrolls inside, so
+   its top never passes under the bar. margin-right keeps a window
    sized by its content from shrinking to the half of the screen right of its left
    edge. */
 .prompt_win {
@@ -448,10 +427,10 @@ input[type="checkbox"] {
   background-color: #000;
   border: 1px solid var(--border-color);
   position: fixed;
-  top: var(--prompt-centre-top);
+  top: var(--prompt-clear-top);
   left: 50%;
   margin-right: -50%;
-  transform: translate(-50%, var(--prompt-centre-shift));
+  transform: translateX(-50%);
   max-height: var(--prompt-space-height);
   overflow-y: auto;
   color: #fff;

@@ -77,7 +77,7 @@ DNS domain `home`, LAN 192.168.1.0/24, gateway and DNS the router at 192.168.1.1
 | `desk` | PC | .14 | Living room desktop, pinged by `wkststate` |
 | `lrmlamp1` · `bthrlight1` | Pico W | .18 · .21 | Living room lamp, bathroom light (firmware in `pico/`) |
 | `lrthermo1` | Pico W | .3 | SmartThermo, the living room's HVAC thermostat (firmware in `pico/SmartThermo/`) |
-| `wkst` | Workstation | | This machine: mounts the `files` shares under `/mnt/*` with autofs (`auto.files`), detached while `files` is down by `share-watchdog.sh` (so this repo, `/mnt/Data/Projects/ProOS`, is the Data share) |
+| `wkst` | Workstation | | This machine: mounts the `files` SMB shares as `/mnt/SMB/<share>` with an autofs indirect map (`auto.files`) and its SFTP mount on `/mnt/SFTP` with a direct map (`auto.sftp`), both listed in `files.autofs`, detached while `files` is down by `share-watchdog.sh` (so this repo, `/mnt/SMB/Data/Projects/ProOS`, is the Data share). Not a direct map on `/mnt/<share>`: that stacks each share on an autofs mount at the same path, and KDE's trash takes the share for the autofs mount and refuses to trash on it |
 
 The LED host list (`ledHosts` in `shared/nodeapi/opts.json`) is the living list of LED hosts the website talks to; the other device addresses are in `IP_ADRS` in `shared/nodeapi/controller.js`.
 

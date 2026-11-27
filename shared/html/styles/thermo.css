@@ -47,9 +47,8 @@
   --group-gap: var(--thermo-gap);
   --group-label-gap: var(--thermo-gap);
   /* on whole pixels, so its backlight slider leaves no line behind (see #bthr__prompt) */
-  top: round(var(--prompt-centre-top), 1px);
   left: round(50%, 1px);
-  transform: translate(round(-50%, 1px), round(var(--prompt-centre-shift), 1px));
+  transform: translateX(round(-50%, 1px));
   height: var(--thermo-window-height);
   display: grid;
   grid-template-rows: minmax(0, 1fr);

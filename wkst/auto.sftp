@@ -1,0 +1,9 @@
+# /etc/auto.sftp: autofs direct map for the files server's SFTP mount
+# Mounted on first access and unmounted after 10 idle minutes (--timeout in
+# /etc/auto.master.d/files.autofs). A mount that fails is retried on the next
+# access after negative_timeout (/etc/autofs.conf).
+# Must not be executable, or autofs runs it as a program map.
+#
+# <mount point>  <options>  <location>
+#
+/mnt/SFTP      -fstype=fuse.sshfs,rw,ssh_command=/root/sshfs_wrapper.sh,default_permissions,allow_other,reconnect,ServerAliveInterval=5,ServerAliveCountMax=3,uid=1000,gid=1000   :ben@files.home\:/
