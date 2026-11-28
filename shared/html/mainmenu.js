@@ -24,7 +24,7 @@ export default class MainMenu {
 
   static PI_MENU_HTML = `
     <a id="btn-about">About<i class="fad fa-info"></i></a>
-    <a id="btn-log-pi">System<i class="fad fa-wrench"></i></a>
+    <a id="btn-open-svr-pi">System<i class="fad fa-wrench"></i></a>
     <a id="btn-home-pi">Home<i class="fad fa-home"></i></a>
   `;
 

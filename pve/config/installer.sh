@@ -327,7 +327,7 @@ systemctl enable rclone-gsync.service
 systemctl restart rclone-gsync.service
 
 ## Restart the file monitor on its new script (its ignore list keeps data files such as
-## bkplog.txt from being run as commands), unless a job holds a lock: a restart stops
+## bkplog.save.txt from being run as commands), unless a job holds a lock: a restart stops
 ## every running job, a backup included
 if ls /mnt/ramdisk/*.lock >/dev/null 2>&1; then
   echo "WARNING: a backup job is running, file-monitor not restarted;"

@@ -1,54 +1,72 @@
-/* Automate: upload progress window (upload.js). The bar is main.css's
+/* Automate: upload progress panel of the Server options window (upload.js, server.js).
+   A .svropt__panel the size of the main panel: the heading, file rows, bar and
+   percentage in a box, over a centred row of icon-only buttons the LAN Scanner's size
+   (Close, Back, and Cancel while the upload runs). The bar is main.css's
    .progress_grid. Only the percentage line sets a font size, as the * rule sizes
    every element directly. */
 
-/* One row's height; five make the panel, and upload.js reads it back to scroll. */
+/* One row's height; five make the list, and upload.js reads it back to scroll. The
+   columns are the main panel's at their button width, so the panel keeps its size
+   whichever of its buttons are shown. */
 #upl__win {
   --upl-row-height: 38px;
+  grid-template-columns: repeat(3, var(--svropt-button-width));
+  /* the box to the button faces as far as the walls are from the window's edge: the
+     edge, and a wall for the face sitting a wall up */
+  row-gap: calc(var(--svropt-edge) - -1 * var(--svropt-wall));
 }
 
 /*
- *  Window
+ *  Progress box
  */
 
-#upl__win {
+/* Across the panel, and as tall as keeps the panel the main panel's height: its four
+   option rows and three row steps, less the button row and the gap over it beyond the
+   panel's own padding (the edge). Drawn up and left by a button's wall and a wall
+   wider, as a button's face sits, so its edges meet the panel's 10px edge; never
+   widening the panel, so a long name gives way instead. */
+.upl__progress {
+  grid-column: 1 / -1;
   display: flex;
   flex-direction: column;
-  /* wide enough for a long filename, never wider than the screen */
-  width: max-content;
-  min-width: 320px;
-  max-width: 90vw;
-  padding: 12px 16px 6px 16px;
-  box-sizing: border-box;
+  width: 0;
+  min-width: calc(100% - -1 * var(--svropt-wall));
+  height: calc(4 * var(--svropt-button-height) - -3 * var(--svropt-row-step) - var(--svropt-edge) - var(--window-button-height));
+  margin-top: calc(-1 * var(--svropt-wall));
+  margin-left: calc(-1 * var(--svropt-wall));
+  padding: 10px 14px 0 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
 }
 
 .upl__title {
-  padding-bottom: 10px;
+  flex: none;
+  padding-bottom: 6px;
 }
 
 /*
  *  File list
  */
 
-/* exactly five rows; the queue slides up */
+/* the rows take what the heading, bar and percentage leave; the queue slides up */
 .upl__list {
-  flex: none;
-  max-height: calc(var(--upl-row-height) * 5);
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   text-align: left;
   margin-bottom: 4px;
 }
 
-/* a fixed height, so five rows are five rows however tall a glyph is */
+/* a fixed height, so the rows line up however tall a glyph is */
 .upl__row {
   display: flex;
   align-items: center;
   height: var(--upl-row-height);
-  box-sizing: border-box;
 }
 
-/* the name gives way first, and does not widen the window */
+/* the name gives way first, and does not widen the panel */
 .upl__name {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -80,7 +98,7 @@
   color: var(--border-color);
 }
 
-/* Progress bar: the volume popup's, spanning the window and always on. */
+/* Progress bar: the volume popup's, spanning the box and always on. */
 
 #upl__win .progress_grid {
   display: block;
@@ -93,16 +111,34 @@
 
 /* a step below the rest */
 .upl__pct {
+  flex: none;
   font-size: 20px;
   color: var(--main-40-white);
   padding-bottom: 10px;
 }
 
 /*
- *  Close button
+ *  Buttons
  */
 
-/* centred on its own line, as a flex column stretches it */
-#upl__win .button {
-  align-self: center;
+/* Across the panel, its buttons centred one row step apart, faces and walls together
+   (the panel's padding is a wall wider on the left), three while the upload runs and
+   Close and Back once it has ended */
+.upl__actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: center;
+  gap: var(--svropt-row-step);
+}
+
+/* the LAN Scanner's buttons' size (lanscan.css) */
+.upl__btn {
+  width: 120px;
+  height: var(--window-button-height);
+  margin: 0;
+}
+
+/* Cancel once the uploads have ended */
+#upl__win .is-gone {
+  display: none;
 }

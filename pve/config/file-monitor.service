@@ -7,14 +7,11 @@ RequiresMountsFor=/mnt/ramdisk
 User=root
 Type=simple
 
-# systemd defaults to 0022, which would create the log without group
-# write. The tmpfs is mounted setgid, so the GROUP comes for free --
-# the OWNER does not: root creates it, so it needs an explicit chown.
+# systemd defaults to 0022, which would create the output files without
+# group write. The tmpfs is mounted setgid, so the GROUP comes for free --
+# the OWNER does not: root creates them, so file-monitor.sh chowns each.
 UMask=0002
 
-# runs after the tmpfs is mounted, before the watcher starts.
-ExecStartPre=/bin/sh -c 'touch /mnt/ramdisk/sysout.txt && chown tank:shared /mnt/ramdisk/sysout.txt'
-ExecStartPre=-/bin/sh -c '/usr/bin/apicmds.sh clearlog /mnt/ramdisk >> /mnt/ramdisk/sysout.txt 2>&1'
 ExecStart=/usr/bin/file-monitor.sh
 
 LogLevelMax=notice
@@ -28,7 +25,8 @@ KillMode=control-group
 KillSignal=SIGTERM
 TimeoutStopSec=30
 
-# jobs write to /mnt/ramdisk/sysout.txt, keep the journal quiet
+# each job writes to its own file in /mnt/ramdisk (outputRoutes in
+# file-monitor.sh), keep the journal quiet
 StandardOutput=null
 StandardError=journal
 

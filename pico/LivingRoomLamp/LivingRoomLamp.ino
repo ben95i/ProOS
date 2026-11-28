@@ -1,9 +1,11 @@
 // =====================================================================================
 // WindowLamp.ino
 // Raspberry Pi Pico W (arduino-pico core) living room window lamp controller:
-//   - lamp #1: a switched lamp, toggled by the power button
+//   - lamp #1: a switched lamp, toggled by the rotary encoder's push button
 //   - lamp #2: one 12-bit PWM LED with anti-logarithmic brightness and non-blocking fades,
 //     dimmed by the rotary encoder
+//   - the encoder and its button sit in a remote box on a 3.5 mm TRS cable, the button sharing
+//     the encoder's two lines (wiring in remote-wiring.svg)
 //   - HTTP command API on port 4000
 //   - rolling in-memory log returned over HTTP
 //
@@ -18,18 +20,18 @@
 // shared libraries
 #include <WiFi.h>
 #include <neotimer.h>
-#include <RotaryEncoder.h>
+#include <hardware/gpio.h>
+#include <hardware/timer.h>
 #include <stdarg.h>
 
 // local libraries
 #include "creds.h"
 
 // ---- GPIO pins ----
-const uint8_t POWER_BUTTON_PIN = 3;
 const uint8_t LAMP1_POWER_PIN = 21;
 const uint8_t LAMP2_POWER_PIN = 4;
-const uint8_t ENCODER_PIN_A = 14;
-const uint8_t ENCODER_PIN_B = 15;
+const uint8_t ENCODER_PIN_A = 14; // TRS tip
+const uint8_t ENCODER_PIN_B = 15; // TRS ring
 const uint8_t CYW43_GPIO_PIN_OFFSET = 64; // arduino-pico numbers the Wi-Fi chip's GPIOs from 64
 const uint8_t REGULATOR_MODE_PIN = CYW43_GPIO_PIN_OFFSET + CYW43_WL_GPIO_SMPS_PIN; // RT6150 PS pin, HIGH = PWM mode
 
@@ -111,19 +113,42 @@ char httpBodyBuffer[HTTP_BODY_BUFFER_SIZE];
 uint16_t httpBodyLength = 0;
 bool httpReplyUsesBody = false; // true when the reply is in httpBodyBuffer instead of commandReplyOut
 
-// ---- power button ----
+// ---- power button (the encoder's push button) ----
 const uint8_t BUTTON_DEBOUNCE_MS = 75;
-const uint8_t BUTTON_PRESSED = LOW;      // the button pulls its pin to ground
+const uint8_t BUTTON_PRESSED = LOW;      // the button pulls both encoder lines to ground
 const uint8_t BUTTON_RELEASED = HIGH;
-uint8_t buttonLastReading = BUTTON_RELEASED; // raw pin state on the previous pass
+uint8_t buttonLastReading = BUTTON_RELEASED; // raw button state on the previous pass
 uint8_t buttonState = BUTTON_RELEASED;       // debounced state
-uint32_t buttonLastChangeMs = 0;             // when the raw pin state last changed
+uint32_t buttonLastChangeMs = 0;             // when the raw button state last changed
 
-// ---- rotary encoder ----
-// LatchMode::FOUR3 reports one position count per physical detent
-RotaryEncoder rotaryEncoder(ENCODER_PIN_B, ENCODER_PIN_A, RotaryEncoder::LatchMode::FOUR3);
+// ---- rotary encoder and its push button, over one 3.5 mm TRS cable ----
+// The encoder's A contact is on the plug's tip, B on its ring, and its common on the sleeve.
+// The push button pulls A and B low together through a BAT54C (two Schottky diodes with a
+// shared cathode), so the three signals fit the cable's three conductors. The encoder rests at
+// each detent with both contacts open (A and B HIGH) and a turn changes one line at a time, so
+// both lines falling within BUTTON_TRANSIT_MAX_US of leaving the detent is the button, not a
+// turn. External 10k pull-ups at the Pico hold both lines HIGH, also with the plug out.
+// A state holds both lines as B | (A << 1): 3 = both HIGH, 0 = both LOW.
+const uint8_t ENCODER_REST_STATE = 3;       // at a detent, button up
+const uint8_t ENCODER_BOTH_LOW_STATE = 0;   // halfway through a detent, or the button held
+const int8_t ENCODER_QUARTERS_PER_DETENT = 4;
+const uint32_t BUTTON_TRANSIT_MAX_US = 500; // a hand needs milliseconds to turn from a detent to halfway
+// Quarter step counted for each move from one state to the next, indexed (old << 2) | new:
+// +1 or -1, or 0 for no move or a skipped state. The same directions as the RotaryEncoder
+// library this replaces, so a turn dims the same way.
+const int8_t ENCODER_QUARTER_STEP_TABLE[16] = {
+   0, -1,  1,  0,
+   1,  0,  0, -1,
+  -1,  0,  0,  1,
+   0,  1, -1,  0,
+};
 const long ENCODER_LEVELS_PER_DETENT = 8; // brightness levels applied per detent
-long encoderLastPosition = 0;             // position already applied to the brightness
+uint8_t encoderState = ENCODER_REST_STATE; // state at the last edge (encoderISR only, after setup)
+int8_t encoderQuarterSteps = 0;            // quarter steps since the last detent (encoderISR only)
+uint32_t encoderLeftRestUs = 0;            // when the state last left the detent (encoderISR only)
+volatile long encoderDetentCount = 0;      // detents turned, written by encoderISR
+volatile bool encoderButtonHeld = false;   // raw button state, written by encoderISR
+long encoderLastPosition = 0;              // detent count already applied to the brightness
 
 // ---- lamp #1 (switched) ----
 const uint8_t LAMP1_PIN_ON = LOW;   // the output is active low
@@ -463,14 +488,80 @@ void setLamp2Directly(int16_t requestedLevel, LevelChangeSource source) {
 
 // ==== power button and encoder ====
 
-// Interrupt service routine: updates the encoder state machine on any pin edge.
-void encoderISR() {
-  rotaryEncoder.tick();
+// Reads A and B in one register read, so both are sampled at the same instant, and returns
+// them as one state, B | (A << 1): A HIGH and B LOW gives 2.
+uint8_t readEncoderState() {
+  uint32_t allPins = gpio_get_all();
+  uint32_t pinA = (allPins >> ENCODER_PIN_A) & 1u;
+  uint32_t pinB = (allPins >> ENCODER_PIN_B) & 1u;
+  uint32_t pinABit = pinA << 1;
+  uint8_t state = (uint8_t)(pinABit | pinB);
+  return state;
 }
 
-// Reads the debounced power button; each press toggles lamp #1.
+// Interrupt service routine for any edge on A or B. Counts a detent in encoderDetentCount when
+// the state comes back to rest four quarter steps from where it left, and sets
+// encoderButtonHeld while the button holds both lines low: both LOW reached within
+// BUTTON_TRANSIT_MAX_US of leaving rest. A press drops the quarter step its two edges may have
+// counted, and turns are not counted while it is held.
+void encoderISR() {
+  uint8_t newState = readEncoderState();
+  uint8_t oldState = encoderState;
+  bool stateChanged = (newState != oldState);
+  if (!stateChanged) {
+    // the other line's interrupt for edges already read
+    return;
+  }
+  encoderState = newState;
+  uint32_t nowUs = time_us_32();
+  bool atRest = (newState == ENCODER_REST_STATE);
+  if (encoderButtonHeld) {
+    if (atRest) {
+      encoderButtonHeld = false;
+      encoderQuarterSteps = 0;
+    }
+    return;
+  }
+  bool leavingRest = (oldState == ENCODER_REST_STATE);
+  if (leavingRest) {
+    encoderLeftRestUs = nowUs;
+  }
+  bool bothLow = (newState == ENCODER_BOTH_LOW_STATE);
+  if (bothLow) {
+    uint32_t transitUs = nowUs - encoderLeftRestUs;
+    bool tooFastForAHand = (transitUs < BUTTON_TRANSIT_MAX_US);
+    if (tooFastForAHand) {
+      encoderButtonHeld = true;
+      encoderQuarterSteps = 0;
+      return;
+    }
+  }
+  uint8_t oldStateBits = oldState << 2;
+  uint8_t tableIndex = oldStateBits | newState;
+  int8_t quarterStep = ENCODER_QUARTER_STEP_TABLE[tableIndex];
+  encoderQuarterSteps = encoderQuarterSteps + quarterStep;
+  if (!atRest) {
+    return;
+  }
+  // a turn back to the detent it left, or a bounce, comes back with fewer than four
+  bool turnedForward = (encoderQuarterSteps >= ENCODER_QUARTERS_PER_DETENT);
+  bool turnedBackward = (encoderQuarterSteps <= -ENCODER_QUARTERS_PER_DETENT);
+  if (turnedForward) {
+    encoderDetentCount = encoderDetentCount + 1;
+  } else if (turnedBackward) {
+    encoderDetentCount = encoderDetentCount - 1;
+  }
+  encoderQuarterSteps = 0;
+}
+
+// Reads the debounced power button, held while encoderISR sees both encoder lines pulled low;
+// each press toggles lamp #1. The debounce also hides a turn mistaken for a press while an
+// interrupt ran late, as the turn reaches the next detent within a few ms.
 void readPowerButton() {
-  uint8_t reading = digitalRead(POWER_BUTTON_PIN);
+  uint8_t reading = BUTTON_RELEASED;
+  if (encoderButtonHeld) {
+    reading = BUTTON_PRESSED;
+  }
   bool readingChanged = (reading != buttonLastReading);
   if (readingChanged) {
     // restart the debounce time
@@ -496,7 +587,7 @@ void readPowerButton() {
 // Applies the encoder movement since the last pass to lamp #2's brightness. A positive
 // position change (encoder turned left) lowers the brightness.
 void readEncoder() {
-  long encoderPosition = rotaryEncoder.getPosition();
+  long encoderPosition = encoderDetentCount; // one 32-bit read, so encoderISR can't tear it
   long positionChange = encoderPosition - encoderLastPosition;
   bool encoderMoved = (positionChange != 0);
   if (!encoderMoved) {
@@ -869,9 +960,12 @@ void setup() {
   // the on-board LED stays lit while starting up
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, HIGH);
-  pinMode(POWER_BUTTON_PIN, INPUT_PULLUP);
   pinMode(LAMP1_POWER_PIN, OUTPUT);
   digitalWrite(LAMP1_POWER_PIN, LAMP1_PIN_OFF);
+  // the internal pull-ups back up the external 10k ones the cable needs
+  pinMode(ENCODER_PIN_A, INPUT_PULLUP);
+  pinMode(ENCODER_PIN_B, INPUT_PULLUP);
+  encoderState = readEncoderState();
   // every RP2040 GPIO can raise an interrupt
   attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_A), encoderISR, CHANGE);
   attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_B), encoderISR, CHANGE);

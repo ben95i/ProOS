@@ -51,7 +51,7 @@ function UMNT_FUSEFS () {
 function MNT_FUSEFS () {
   VOLNME="$1"
   FUSEPTH="$BINDMNTS/$VOLNME"
-  FUSEPWD="$RAMDISK/fusearch.txt"
+  FUSEPWD="$RAMDISK/fusearch.save.txt"
   UMNT_FUSEFS "$VOLNME"
   UNCAPSTR="${VOLNME,,}"
   echo "attaching $UNCAPSTR..."
@@ -125,15 +125,8 @@ function RUN_SCRIPT() {
   exec "$scriptPath" "$@"
 }
 
-if [ "$CMD" == "clearlog" ]; then
-  REQUIRE_RAMDISK
-  truncate -s 0 "$RAMDISK/sysout.txt"
-  timeout 30 bash -c "printf '%s\n' \"\$(fastfetch --pipe -s Title:Separator:OS:Host:Kernel:Uptime:CPU:Memory:Swap:Disk | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g' | tr -cd '\11\12\15\40-\176' | sed -E 's/[[:space:]]+$//')\""
-  END_ROUTINE
-fi
-
-## Backup wizard jobs (tank-backup.sh): every bkp_* command. file-monitor sends
-## their output to bkplog.txt, never to sysout.txt.
+## Backup wizard jobs (tank-backup.sh): every bkp_* command. file-monitor appends
+## their output to bkplog.save.txt (its outputRoutes).
 case "$CMD" in
   bkp_*)
     RUN_SCRIPT /usr/bin/tank-backup.sh "$CMD" "$RAMDISK"
@@ -238,7 +231,7 @@ if [ "$CMD" == "rebootrouter" ]; then
   qm reboot 100
   END_ROUTINE
 fi
-### Write Server Log ##################################   
+### System Status (sys-check) ########################   
 if [ "$CMD" == "syslog" ]; then
   /usr/bin/sys-check
   END_ROUTINE

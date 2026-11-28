@@ -30,6 +30,7 @@ These are the code style rules for everything in ProOS. Project structure (where
 - Draw a grid's or a window's buttons with `gridButtonTemplate()` and `dropdownButtonTemplate()` rather than writing the `<button>` markup out.
 - Draw a prompt window's text box with `textBoxTemplate()`; any other text box takes the `.text-box` class from `main.css`, so every box has the one look.
 - Give every button an id; handlers pick a button by its id, not its place in the window.
+- A Close (`fas fa-times`) or Back (`fad fa-arrow-left`) button is icon only, with no label.
 - Register a template's buttons with `registerListeners()` directly under the template.
 - Reuse the site's own helpers: `sendCmd`, `openDeviceMenu`, `drawMenu`, `promptWindow`, `onButtons`, `readFile` / `writeFile`, and `reportError` / `showPopup` from `error.js` for failures and notices.
 

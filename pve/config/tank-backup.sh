@@ -8,7 +8,7 @@
 ## Proxmox guest up (pve-backup.sh), detaches the pools, and reports their state.
 ##
 ## Usage: tank-backup.sh <command> <RAM disk path>
-##   bkp_attach            attaches the connected pools with the passphrase in <RAM disk>/bkppwd.txt
+##   bkp_attach            attaches the connected pools with the passphrase in <RAM disk>/bkppwd.save.txt
 ##   bkp_standard          rsyncs tank to every attached pool
 ##   bkp_checksum          the same with a checksum compare (slow)
 ##   bkp_standard_eject    either backup, then detaches the pools (unless cancelled)
@@ -16,18 +16,18 @@
 ##   bkp_vms               vzdump of every guest into the repo (pve-backup.sh)
 ##   bkp_detach            unmounts, locks and exports every imported pool
 ##   bkp_cancel            stops the running backup or VM backup
-##   bkp_status            rewrites <RAM disk>/bkpstatus.txt, printing nothing
+##   bkp_status            rewrites <RAM disk>/bkpstatus.save.txt, printing nothing
 ## e.g.   tank-backup.sh bkp_status /mnt/ramdisk
-## Run by apicmds.sh, which file-monitor runs with its output going to bkplog.txt;
-## nothing here writes to the server log (sysout.txt).
+## Run by apicmds.sh, which file-monitor runs with its output going to bkplog.save.txt;
+## nothing here writes to any other command's output file.
 ##
 ## RAM disk files:
-##   bkpjob.lock    "<job>|<pid>" while a job runs: one job at a time
-##   bkpworker.pid  the running rsync or pve-backup.sh, for bkp_cancel
-##   bkpcancel.flag cancel asked for
-##   bkpstatus.txt  every pool's state (see WRITE_STATUS)
-##   bkplog.txt     the current job's log: begun afresh by each job, plain text lines
-##                  and event lines starting "@", fields split by "|":
+##   bkpjob.lock         "<job>|<pid>" while a job runs: one job at a time
+##   bkpworker.pid       the running rsync or pve-backup.sh, for bkp_cancel
+##   bkpcancel.flag      cancel asked for
+##   bkpstatus.save.txt  every pool's state (see WRITE_STATUS)
+##   bkplog.save.txt     the current job's log: begun afresh by each job, plain text lines
+##                       and event lines starting "@", fields split by "|":
 ##     @JOB|<job>|<start, epoch ms>             first line: attach, standard, checksum, vms, detach
 ##     @PHASE|<phase>                           attach, backup, record, eject, detach
 ##     @STEP|<n>|<count>|<group>|<item>         a unit of the phase starts: pool and share,
@@ -68,9 +68,9 @@ progressEvery=5
 jobLock="$ramDisk/bkpjob.lock"
 workerPidPath="$ramDisk/bkpworker.pid"
 cancelFlag="$ramDisk/bkpcancel.flag"
-drivesStatusPath="$ramDisk/bkpstatus.txt"
-logPath="$ramDisk/bkplog.txt"
-passwordPath="$ramDisk/bkppwd.txt"
+drivesStatusPath="$ramDisk/bkpstatus.save.txt"
+logPath="$ramDisk/bkplog.save.txt"
+passwordPath="$ramDisk/bkppwd.save.txt"
 
 ## the running job: its name, whether this process holds the lock, its FIFO folder
 jobName=""
@@ -137,7 +137,7 @@ function LOCKED_PID() {
 }
 
 ## Starts a job: takes the job lock (or prints @REFUSED and answers 1, the running
-## job's log getting that line), begins a fresh bkplog.txt with its @JOB line and sends
+## job's log getting that line), begins a fresh bkplog.save.txt with its @JOB line and sends
 ## all further output into it. A new file rather than an emptied one, so the API can
 ## tell the page a new job's log began by its inode.
 ## Usage: START_JOB <job>   e.g. START_JOB standard || exit 0
@@ -371,7 +371,7 @@ function LAST_BACKUP_DATE() {
   echo "$sortableDate"
 }
 
-## Rewrites the RAM disk's bkpstatus.txt, one row a line, for the API:
+## Rewrites the RAM disk's bkpstatus.save.txt, one row a line, for the API:
 ##   STATE|idle                                (or the job holding the lock)
 ##   UPDATED|2026-11-27 14:03:22.123456789
 ##   POOL|hdd4tb-03|attached|2026-11-20 15:12|Data Regions Media
@@ -472,7 +472,7 @@ function ATTACH_POOL() {
 ## Attaches every connected or imported pool, one @STEP each, printing each one's @POOL
 ## outcome; pools not connected are only listed. Sets attachedCount and failedCount, or
 ## answers 1 with poolsError set when it cannot start.
-## Usage: ATTACH_POOLS   (in a job, with the passphrase in bkppwd.txt)
+## Usage: ATTACH_POOLS   (in a job, with the passphrase in bkppwd.save.txt)
 attachOutcome=""
 attachedCount=0
 failedCount=0

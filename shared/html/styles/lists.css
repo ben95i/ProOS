@@ -396,7 +396,8 @@ html.theme-light .list__round--on:not(.list__round--del) i {
   text-shadow: 0px 0px 6px var(--alert-red);
 }
 
-/* unsaved changes dialog, covers the window until it is answered */
+/* unsaved changes dialog, covers the window until it is answered; the dialog rules
+   below are also the Server options window's Archive password (server.js) */
 .list__overlay {
   display: none;
   position: absolute;

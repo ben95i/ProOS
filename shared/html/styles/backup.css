@@ -160,12 +160,14 @@
 
 .bkp__stage.is-done .bkp__node,
 .bkp__stage.is-failed .bkp__node,
+.bkp__stage.is-cancelled .bkp__node,
 .bkp__stage.is-skipped .bkp__node {
   color: #fff;
 }
 
 .bkp__stage.is-done .bkp__num,
 .bkp__stage.is-failed .bkp__num,
+.bkp__stage.is-cancelled .bkp__num,
 .bkp__stage.is-skipped .bkp__num {
   display: none;
 }
@@ -196,6 +198,11 @@
 .bkp__stage.is-failed .bkp__node {
   border-color: var(--alert-red);
   background-color: var(--red-ind);
+}
+
+.bkp__stage.is-cancelled .bkp__node {
+  border-color: var(--yellow-ind);
+  background-color: color-mix(in srgb, var(--yellow-ind), #000 60%);
 }
 
 .bkp__stage.is-skipped .bkp__node {
@@ -241,6 +248,11 @@
 
 .bkp__stage.is-failed .bkp__sub {
   color: var(--alert-red);
+}
+
+/* a cancelled backup in the ring's yellow */
+.bkp__stage.is-cancelled .bkp__sub {
+  color: var(--yellow-ind);
 }
 
 .bkp__stage.is-done .bkp__sub {
@@ -385,8 +397,9 @@ html.theme-light .button.bkp__chip:not(.is-picked) {
   margin-top: 6px;
 }
 
-/* Close, Log and Refresh: the line's full width, the first face level with the nodes
-   (a .button's face sits 5 px up and left of its box) and the last wall on the edge */
+/* Close, Back, Log and Refresh: the line's full width, the first face level with the
+   nodes (a .button's face sits 5 px up and left of its box) and the last wall on the
+   edge */
 .bkp__actions {
   display: flex;
   gap: 12px;
@@ -398,6 +411,11 @@ html.theme-light .button.bkp__chip:not(.is-picked) {
   width: auto;
   height: var(--window-button-height);
   margin: 0;
+}
+
+/* the Log button while the log is shown, a step lighter, as an armed button once was */
+.button.bkp__action.is-on {
+  background-color: var(--main-white-20);
 }
 
 /* the log box: a Pico read-out's black and grey edge (main.css .pico-logbox), in a

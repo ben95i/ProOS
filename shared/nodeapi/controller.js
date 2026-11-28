@@ -624,12 +624,10 @@ async function bathroomStatus() {
 
 //// server actions ////
 
-// Writes the request into the log and drops a trigger file for the shell
-// side to pick up.
+// Drops a trigger file, ram/<command>.txt, for the host's file-monitor to pick up;
+// the command's output goes to its own file there (ram/<command>.out.save.txt).
 async function runServerCommand(baseWWW, secondArg) {
-    const logFile = path.join(baseWWW, '/ram/sysout.txt');
     if (!secondArg) return "empty server command!";
-    await fsPromises.appendFile(logFile, `\n${secondArg} sent.\n`);
     await fsPromises.writeFile(path.join(baseWWW, `/ram/${secondArg}.txt`), '');
     return "OK";
 }

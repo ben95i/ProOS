@@ -1,12 +1,14 @@
-/* Automate: LAN Scanner window (lanscan.js). Four count boxes in a flat group, drawn as
+/* Automate: LAN Scanner panel of the options window (lanscan.js, server.js). Four count
+   boxes in a flat group, drawn as
    the thermostat window's mode and blower boxes, over a list in a Pico log box's black
    and grey edge. Every space between the window's edge, the group, the list and the
    buttons is --lanscan-gap, to a button's walls rather than its face, as in the
    thermostat window. Rules resizing shared classes win by loading after them. */
 
-/* Most of the screen's height, the list taking what the group and buttons leave; never
-   taller than the space between the top bar and the screen's edge (.prompt_win), nor
-   wider than the screen. */
+/* The panel, the size the scanner's own window was: most of the screen's height, the
+   list taking what the group and buttons leave; never taller than the space between the
+   top bar and the screen's edge, as the options window (a .prompt_win) is no taller,
+   nor wider than the screen. */
 #lanscan__prompt {
   --lanscan-gap: 10px;     /* the thermostat window's gap */
   --lanscan-wall: 5px;     /* a .button's walls */
@@ -14,10 +16,12 @@
   display: flex;
   flex-direction: column;
   /* the narrowest that still fits the longest maker nmap gives ("Proxmox Server
-     Solutions GmbH") on one line; even, so the centred window lands on whole pixels */
-  width: 492px;
-  max-width: 96vw;
-  height: 79vh;
+     Solutions GmbH") on one line, inside the options window's 1px border, which makes
+     the window 492px: even, so the centred window lands on whole pixels */
+  width: 490px;
+  max-width: calc(96vw - 2px);
+  height: calc(79vh - 2px);
+  max-height: calc(100vh - var(--prompt-clear-top) - var(--prompt-clear-bottom) - 2px);
   padding: var(--lanscan-gap);
   color: #fff;
 }
@@ -279,7 +283,7 @@
   background-color: #6f7075;
 }
 
-/* Close and Refresh under the list, one gap from it and from the window's edge */
+/* Close, Back and Refresh under the list, one gap from it and from the panel's edge */
 .lanscan__actions {
   flex-shrink: 0;
   justify-content: center;

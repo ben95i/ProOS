@@ -1,10 +1,9 @@
 #!/bin/bash
-## Save bookmarks file from RAM disk hourly
+## Save files from RAM disk hourly
 
 RAM_USER="tank:shared"
 RAM_DISK="/mnt/ramdisk"
 DS_PATH="/mnt/datastore/data/Documents"
-RAM_SYSOUT="$RAM_DISK/sysout.txt"
 
 BKP_BMKS="$DS_PATH/Bookmarks.txt"
 OLD_BMKS="$DS_PATH/.Bookmarks.bak"
@@ -18,7 +17,8 @@ LCK_LISTS="$RAM_DISK/lists-lock.save.txt"
 RAM_LISTS_PWD="$RAM_DISK/lists-pwd.save.txt"
 BKP_LISTS_PWD="$DS_PATH/.ListsPassword.txt"
 
-if [ -f "$RAM_SYSOUT" ]; then
+## only with the tmpfs mounted: an empty folder would mean a restore into the root disk
+if findmnt --mountpoint "$RAM_DISK" >/dev/null 2>&1; then
   ## Bookmarks
   if [ -f "$RAM_BMKS" ]; then
     echo "saving bookmarks to disk..."
@@ -71,7 +71,7 @@ if [ -f "$RAM_SYSOUT" ]; then
     fi
   fi
 else
-  echo "RAM disk not setup or file-monitor is not running, not executing!" 
+  echo "RAM disk not mounted, not executing!"
 fi
 
 exit

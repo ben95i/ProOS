@@ -16,8 +16,8 @@ import { configureMenus, removeDropdowns, openDropdown, drawMenu,
 import { LIVING_ROOM_CONFIG } from './livingrm.js';
 import { BEDROOM_CONFIG } from './bedrm.js';
 import { BATHROOM_CONFIG, closeBathroomSettings } from './bathrm.js';
-import { serverOptionsTemplate, logFormTemplate, showLogWindow,
-  closeLogWindow, loadLanScanner, loadBackupWizard } from './server.js';
+import { serverOptionsTemplate, openServerOptions, closeServerWindows,
+  loadLanScanner, loadBackupWizard } from './server.js';
 import RoomStateManager from './roomstate.js';
 import RoomSwipe, { roomCubeTemplate } from './roomswipe.js';
 import AnimatedBackground from './stars.js';
@@ -159,7 +159,6 @@ function buildPageHTML(model) {
     mainGridTemplate(select),
     serverOptionsTemplate(select),
     textScrollTemplate(select),
-    logFormTemplate(),
     '<div id="color-popup"></div>',
     cameraPopupTemplate(),
     '<p class="pg-bottom"></p>'
@@ -398,9 +397,9 @@ function navDropdownsTemplate() {
 </div>`;
 }
 registerListeners({
-  'btn-about':   () => App.mainMenu && App.mainMenu.aboutPrompt(),
-  'btn-log-pi':  () => openLogWindow(),
-  'btn-home-pi': () => GoToHomePage()
+  'btn-about':       () => App.mainMenu && App.mainMenu.aboutPrompt(),
+  'btn-open-svr-pi': () => openServerWindow(),
+  'btn-home-pi':     () => GoToHomePage()
 });
 
 // the main grid (server + LED Pi): the server-only APT group, Pixels, then the
@@ -531,7 +530,7 @@ function roomControlsTemplate() {
     label: 'Doorway'
   })}
   ${gridButtonTemplate({
-    buttonId: 'btn-open-log-svr',
+    buttonId: 'btn-open-svr',
     icon: 'fad fa-terminal',
     label: 'Server'
   })}
@@ -558,7 +557,7 @@ registerListeners({
   'btn-cmd-lightson':   () => sendCmd('main', 'lightson'),
   'btn-cmd-lightsoff':  () => sendCmd('main', 'lightsoff'),
   'btn-open-cam':       () => openCamWindow(),
-  'btn-open-log-svr':   () => openLogWindow(true)
+  'btn-open-svr':       () => openServerWindow()
 });
 
 //// HVAC button ////
@@ -745,9 +744,8 @@ function cameraPopupTemplate() {
 </div>`;
 }
 
-// the log and camera windows close together, as closePopup() closes both
+// the camera window's buttons
 registerListeners({
-  'btn-log-close':      () => closePopup(),
   'btn-cam-close':      () => closePopup(),
   'btn-cam-fullscreen': () => App.cameraView.toggleFullscreen()
 });
@@ -854,11 +852,10 @@ function showBookmarks() {
   });
 }
 
-// Server button, or System on the Pi models: the log window, over nothing else;
-// openOptions (the Server button) also opens the options window over it
-function openLogWindow(openOptions = false) {
+// Server button, or System on the Pi models: the options window, over nothing else
+function openServerWindow() {
   closePopup();
-  showLogWindow(openOptions);
+  openServerOptions();
 }
 
 // Doorway button: the camera's live stream
@@ -875,10 +872,11 @@ async function openCamWindow() {
   App.cameraView.open();
 }
 
-// closes the log and camera windows
+// closes the camera window and the Server windows (options, command output), so the
+// one opened shows alone
 function closePopup() {
   cameraOpenCount += 1;
-  closeLogWindow();
+  closeServerWindows();
   setDisplayById("cam-popup", "none");
   if (App.cameraView) {
     App.cameraView.close();

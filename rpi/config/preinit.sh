@@ -5,11 +5,9 @@
 ### Set CPU clock speed scaling
 echo "schedutil" > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
 
-### Setup Website System Log File
+### Website RAM folder: each Pi option command's output file (servercmds.sh)
 mkdir -p /var/www/html/ram
-/opt/rpi/servercmds.sh clearlog
-chmod -R 777 /var/www/html/ram/*
-chown -R www-data:www-data /var/www/html/ram/*
+chown www-data:www-data /var/www/html/ram
 
 ### Start network configuration website / automation API
 systemctl --no-block start nodeapi.service

@@ -311,7 +311,7 @@ mkdir -p "$WWWPATH"
 chown -R "$WWW_NAME":"$WWW_GROUP" $TMPDIR/html
 rsync -a -t --delete --exclude='/ram/' $TMPDIR/html/ $WWWPATH/
 mkdir -p "$WWWPATH/ram"
-touch "$WWWPATH/ram/sysout.txt"
+rm -f "$WWWPATH/ram/sysout.txt"
 chown -R "$WWW_NAME":"$WWW_GROUP" "$WWWPATH/ram"
 mkdir -p /var/www/sessions
 chmod -R g+rx /var/www/sessions

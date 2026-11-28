@@ -3,9 +3,10 @@
 //
 // Main routes:
 //   GET  /api?action=&arg=&var=   device commands, answered as JSON
-//   GET  /api/read?file=          a saved file or the log, as JSON text
+//   GET  /api/read?file=          a saved file or a command's output, as JSON text
 //   POST /api/write?file=         writes a saved file (text/plain body)
 //   GET  /api/camera/<name>       live camera stream (camstream.js)
+//   GET  /api/svrcmd?cmd=&out=    a server command, its output streamed (svrcmd.js)
 
 const os = require('os');
 const path = require('path');
@@ -18,6 +19,7 @@ const { registerUploadRoutes } = require('./upload');
 const { registerCameraRoutes } = require('./camstream');
 const { registerNetscanRoutes } = require('./netscan');
 const { registerBackupRoutes } = require('./backup');
+const { registerSvrCmdRoutes } = require('./svrcmd');
 
 const app = express();
 
@@ -28,8 +30,11 @@ const httpPort = 3000;
 const maxReadSize = 256 * 256;
 const regex = /^[A-Za-z0-9_.#%@&-]*$/;
 const baseWWW = '/var/www/html';
+// .save files the page writes but /api/read never answers: the passphrases the host's
+// jobs read (the backup drives' key, the Archive region's gocryptfs passfile)
+const UNREADABLE_FILES = ['bkppwd.save', 'fusearch.save'];
 
-// saved state and the log live under ram/
+// saved state and command output live under ram/
 const safePath = (subdir, filename) => {
     if (filename.includes('..')) throw new Error('directory traversal attempt blocked');
     return path.join(`${baseWWW}/${subdir}`, `${filename}.txt`);
@@ -79,8 +84,11 @@ app.get('/api/read', [
     try {
         if (badRequest(req, res)) return;
         const fileArg = req.query.file;
-        // only the log and saved state; any other file in ram/ stays unread
-        const readable = fileArg === 'sysout' || fileArg.includes('.save');
+        // only saved state and command output (.save), never a passphrase; any other file
+        // in ram/ stays unread
+        const isSavedFile = fileArg.includes('.save');
+        const isPassphrase = UNREADABLE_FILES.includes(fileArg);
+        const readable = isSavedFile && !isPassphrase;
         if (!readable) {
             return res.status(404).json(`no readable file ${fileArg}`);
         }
@@ -115,6 +123,7 @@ registerUploadRoutes(app);
 registerCameraRoutes(app);
 registerNetscanRoutes(app);
 registerBackupRoutes(app);
+registerSvrCmdRoutes(app);
 
 app.listen(httpPort, '127.0.0.1', () => {
     console.log(`${hostname} API running on port ${httpPort}`);

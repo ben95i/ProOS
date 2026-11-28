@@ -4,13 +4,13 @@
 // tank-backup.sh), started as every server command is: an empty trigger file
 // ram/<command>.txt that the host's file-monitor claims and runs. The host
 // writes back three files into the same RAM disk, which these routes read:
-//   bkpjob.lock    "<job>|<pid>" while a job runs; one job at a time
-//   bkpstatus.txt  every backup pool's state
-//   bkplog.txt     the current job's log, begun afresh by each job: plain text
-//                  lines and "@" event lines (@JOB, @PHASE, @STEP, @PROGRESS,
-//                  @STEP_END, @POOL, @CANCEL, @REFUSED, @DONE; their fields are
-//                  listed at the top of tank-backup.sh)
-// None of it touches the server log (sysout).
+//   bkpjob.lock         "<job>|<pid>" while a job runs; one job at a time
+//   bkpstatus.save.txt  every backup pool's state
+//   bkplog.save.txt     the current job's log, begun afresh by each job: plain text
+//                       lines and "@" event lines (@JOB, @PHASE, @STEP, @PROGRESS,
+//                       @STEP_END, @POOL, @CANCEL, @REFUSED, @DONE; their fields are
+//                       listed at the top of tank-backup.sh)
+// None of it touches another command's output file.
 //
 // Mounted with one line in server.js:
 //   const { registerBackupRoutes } = require('./backup');
@@ -46,9 +46,9 @@ const ROUTE = '/api/backup';
 // the host's RAM disk, bind-mounted into the automate LXC
 const RAM_DIR = '/var/www/html/ram';
 const LOCK_FILE = path.join(RAM_DIR, 'bkpjob.lock');
-const STATUS_FILE = path.join(RAM_DIR, 'bkpstatus.txt');
-const LOG_FILE = path.join(RAM_DIR, 'bkplog.txt');
-const PASSWORD_FILE = path.join(RAM_DIR, 'bkppwd.txt');
+const STATUS_FILE = path.join(RAM_DIR, 'bkpstatus.save.txt');
+const LOG_FILE = path.join(RAM_DIR, 'bkplog.save.txt');
+const PASSWORD_FILE = path.join(RAM_DIR, 'bkppwd.save.txt');
 // the most of the log one read answers
 const MAX_LOG_CHUNK = 256 * 1024;
 const MAX_PASSPHRASE_BYTES = 512;
@@ -100,7 +100,7 @@ async function runningJob() {
     return jobOfLock(lockText);
 }
 
-// bkpstatus.txt text -> { state, updated, pools }
+// bkpstatus.save.txt text -> { state, updated, pools }
 // "STATE|idle\nUPDATED|2026-11-27 14:03:22.1\nPOOL|hdd4tb-03|attached|2026-11-20 15:12|Data Regions Media"
 // -> { state: 'idle', updated: '2026-11-27 14:03:22.1', pools: [{ name: 'hdd4tb-03',
 //      state: 'attached', lastBackup: '2026-11-20 15:12', shares: ['Data', 'Regions', 'Media'] }] }

@@ -528,7 +528,7 @@ export function gridButtonTemplate(config) {
 }
 
 // A prompt window's text box in the site's one style (.text-box, .text-box--prompt):
-// textBoxTemplate({ boxId: 'pass__textbox', type: 'password' })
+// textBoxTemplate({ boxId: 'svropt__pwd-box', type: 'password' })
 // config: boxId, optional type ("text" by default), placeholder, boxClass
 export function textBoxTemplate(config) {
   let boxType = 'text';

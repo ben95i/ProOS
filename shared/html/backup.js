@@ -7,7 +7,7 @@
 // Every backup runs as a job on the host (pve tank-backup.sh) through the API's
 // /api/backup routes (nodeapi/backup.js); BackupFlow reads the pools' status and the job's
 // log (when the window opens, after an action, on Refresh, and every second only while
-// the host is busy) and works out the stage the window draws. Never the server log (sysout). Loaded on
+// the host is busy) and works out the stage the window draws. Loaded on
 // demand by server.js; App.backupWizard while open. A job goes on when the window closes,
 // and a window opened later picks it up from its log.
 
@@ -28,6 +28,8 @@ const BUSY_POLL_MS = 1000;
 const JOB_START_WAIT_MS = 20000;
 // a drive rescan that has not landed by then is given up on
 const RESCAN_WAIT_MS = 15000;
+// the drives' state a job writes after letting go of its lock, given up on after this
+const SETTLE_WAIT_MS = 15000;
 // the most log lines a job model keeps
 const MAX_JOB_LINES = 3000;
 
@@ -59,7 +61,14 @@ const POOL_OUTCOME_TEXT = {
   busy: 'Busy, still attached'
 };
 const POOL_OUTCOME_GOOD = ['attached', 'already', 'done', 'detached'];
-// a pool's state (bkpstatus.txt) on screen, as a drive scan writes it into the log
+// a drive's state after its outcome in a job's attach or detach phase: phase -> outcome
+// -> state; an outcome not listed leaves the drive as it was (a failed attach or a wrong
+// passphrase exports it again, a busy eject leaves it attached)
+const POOL_OUTCOME_STATES = {
+  attach: { attached: 'attached', already: 'attached', wrongpass: 'connected', failed: 'connected' },
+  detach: { detached: 'connected' }
+};
+// a pool's state (bkpstatus.save.txt) on screen, as a drive scan writes it into the log
 const POOL_STATE_TEXT = {
   attached: 'Unlocked',
   unmounted: 'Imported, not mounted',
@@ -79,6 +88,8 @@ const CANCELLABLE_JOBS = ['standard', 'checksum', 'vms'];
 //// window settings ////
 
 const WIZARD_ID = 'bkp__prompt';
+// on the Log button while the log is shown
+const LOG_ON_CLASS = 'is-on';
 const REFRESH_BUTTON = spinnerIds('bkp__refresh');
 const DRIVE_JOBS = ['standard', 'checksum'];
 const EXTERNAL_JOBS = ['attach', 'standard', 'checksum', 'detach'];
@@ -105,6 +116,7 @@ const STAGE_PHASES = { unlock: 'attach', backup: 'backup', eject: 'detach' };
 const NODE_ICONS = {
   done: 'fas fa-check',
   failed: 'fas fa-times',
+  cancelled: 'fas fa-ban',
   skipped: 'fas fa-minus'
 };
 // the ring: its radius in the 120 x 120 drawing, and its length
@@ -366,6 +378,9 @@ class BackupFlow {
     this.rescan = null;
     // Refresh asked for a read of the host's state, and it has not landed yet
     this.refreshing = false;
+    // when a read first found the job's lock gone but the status still the one written
+    // during the job (see statusSettling()), or null
+    this.settleSince = null;
     // the drive scans' lines written into the log since the job on show began; a new
     // job's log starts with them, as the host writes nothing for a scan
     this.scanLines = [];
@@ -397,16 +412,33 @@ class BackupFlow {
   }
 
   // true while the host is working on something this window waits for: a job runs (or
-  // holds its lock while it rewrites the drives' state after its last line, which a
-  // stale status keeps true through a dropped connection), a job asked for has not
-  // begun, a drive scan is awaited, or the first status (the API asked for a scan)
+  // holds its lock after its last line, which a stale status keeps true through a
+  // dropped connection), it has let go of its lock and not yet written the drives'
+  // state, a job asked for has not begun, a drive scan is awaited, or the first status
+  // (the API asked for a scan)
   hostBusy() {
     const lockHeld = this.status !== null && this.status.running !== null;
     const stage = this.stage;
-    if (lockHeld || this.pending !== null || this.rescan !== null) {
+    if (lockHeld || this.pending !== null || this.rescan !== null || this.statusSettling()) {
       return true;
     }
     return stage === 'running' || stage === 'loading';
+  }
+
+  // True while the job on show has ended but the status is still the one it wrote when it
+  // began (statusBeforeJobEnd): the host writes the drives' state after a job only once
+  // its lock is gone, so the next reads bring it. Given up on after SETTLE_WAIT_MS, so a
+  // status the host never rewrites stops the reads.
+  statusSettling() {
+    if (!this.statusBeforeJobEnd) {
+      this.settleSince = null;
+      return false;
+    }
+    if (this.settleSince === null) {
+      this.settleSince = Date.now();
+    }
+    const settlingMs = Date.now() - this.settleSince;
+    return settlingMs < SETTLE_WAIT_MS;
   }
 
   // Reads the status and the log until closed: every BUSY_POLL_MS while the host is
@@ -599,12 +631,53 @@ class BackupFlow {
     return null;
   }
 
-  // the pools in one state: poolsIn('attached') -> [{ name, state, lastBackup, shares }]
-  poolsIn(poolState) {
+  // True when the job on show has ended (@DONE) but the status is still the one it wrote
+  // when it began (its STATE the job's name, not idle), so its drives' states are from
+  // before the job: the host rewrites it only after the job lets go of its lock.
+  get statusBeforeJobEnd() {
+    const status = this.status;
+    const job = this.job;
+    if (status === null || status.updated === null || job.done === null) {
+      return false;
+    }
+    return status.state !== 'idle' && status.state === job.name;
+  }
+
+  // The drives as they stand: the host's status, with the job's outcomes for each drive
+  // (POOL_OUTCOME_STATES) applied while that status is from before the job ended, so an
+  // unlock or eject shows its result at once rather than when the host next writes.
+  // pools -> [{ name, state, lastBackup, shares }]
+  get pools() {
     if (this.status === null) {
       return [];
     }
-    return this.status.pools.filter(pool => pool.state === poolState);
+    if (!this.statusBeforeJobEnd) {
+      return this.status.pools;
+    }
+    const jobStates = {};
+    this.job.phases.forEach(phase => {
+      const outcomeStates = POOL_OUTCOME_STATES[phase.name];
+      if (outcomeStates === undefined) {
+        return;
+      }
+      Object.entries(phase.pools).forEach(([poolName, outcome]) => {
+        if (outcomeStates[outcome] !== undefined) {
+          jobStates[poolName] = outcomeStates[outcome];
+        }
+      });
+    });
+    return this.status.pools.map(pool => {
+      const stateAfterJob = jobStates[pool.name];
+      if (stateAfterJob === undefined) {
+        return pool;
+      }
+      return { ...pool, state: stateAfterJob };
+    });
+  }
+
+  // the pools in one state: poolsIn('attached') -> [{ name, state, lastBackup, shares }]
+  poolsIn(poolState) {
+    return this.pools.filter(pool => pool.state === poolState);
   }
 
   // the newest last backup of any pool ("2026-11-20 15:12"), or null
@@ -633,12 +706,14 @@ class BackupFlow {
 
   // what the running job is doing: "Backing up", "Cancelling...", "Waiting for the server..."
   get phaseText() {
-    if (this.job.cancelRequested && this.job.done === null) {
-      return 'Cancelling...';
-    }
     const phase = currentPhase(this.job);
     if (this.pending !== null || phase === null) {
       return 'Waiting for the server...';
+    }
+    // a cancel stops the backup phase only; an eject after it runs on
+    const cancelling = this.job.cancelRequested && this.job.done === null;
+    if (cancelling && phase.name === 'backup') {
+      return 'Cancelling...';
     }
     return BACKUP_PHASE_TITLES[phase.name] || phase.name;
   }
@@ -768,8 +843,9 @@ class BackupFlow {
 
 //// window ////
 
-// Opens the wizard and starts reading the backup's state.
-export function openBackupWizard() {
+// Opens the wizard and starts reading the backup's state. actions.onBack is its Back
+// (server.js: the options window's main panel): openBackupWizard({ onBack }).
+export function openBackupWizard(actions = {}) {
   if (App.backupWizard) {
     return;
   }
@@ -796,6 +872,7 @@ export function openBackupWizard() {
     <div id="bkp__logslot"></div>
     <div class="bkp__actions">
       ${gridButtonTemplate({ buttonId: 'bkp__close', icon: 'fas fa-times', buttonClass: 'bkp__action' })}
+      ${gridButtonTemplate({ buttonId: 'bkp__back', icon: 'fad fa-arrow-left', buttonClass: 'bkp__action' })}
       ${gridButtonTemplate({ buttonId: 'bkp__log', icon: 'fad fa-terminal', buttonClass: 'bkp__action' })}
       ${gridButtonTemplate({
         buttonId: 'bkp__refresh',
@@ -808,6 +885,8 @@ export function openBackupWizard() {
   `);
   const wizard = {
     win: win,
+    // what Back does
+    onBack: actions.onBack,
     flow: null,
     ring: document.getElementById('bkp__ring'),
     ringArc: null,
@@ -982,12 +1061,23 @@ function ejectOutcome(job, ejectPhase) {
   return { started: job.started, result: ejectResult, summary: ejectSummary };
 }
 
-// a result as a stage state: ok -> done, anything else -> failed
+// a result as a stage state, as the ring colours it: ok -> done, cancelled -> cancelled,
+// anything else -> failed
 function resultState(result) {
   if (result === 'ok') {
     return 'done';
   }
+  if (result === 'cancelled') {
+    return 'cancelled';
+  }
   return 'failed';
+}
+
+// true until the host has answered with a status (loading), and while it does not answer
+// (offline): the drives' states on hand are none, or old
+function drivesUnknown(flow) {
+  const stage = flow.stage;
+  return stage === 'loading' || stage === 'offline';
 }
 
 // The attach stage: { state, text, open, hidden }. Done once a drive is connected, or while
@@ -1001,18 +1091,18 @@ function attachState(wizard, driveCount) {
   if (wizard.backupType === 'vms') {
     return { state: 'skipped', hidden: true };
   }
+  if (stage === 'loading') {
+    return { state: 'waiting', text: 'Reading the drives...' };
+  }
+  if (stage === 'offline') {
+    return { state: 'waiting', text: '' };
+  }
   let connectedText = '';
   if (driveCount > 0) {
     connectedText = `${driveCount} drive(s) connected`;
   }
   if (stage === 'running' || stage === 'finished' || driveCount > 0) {
     return { state: 'done', text: connectedText };
-  }
-  if (stage === 'loading') {
-    return { state: 'waiting', text: 'Reading the drives...' };
-  }
-  if (stage === 'offline') {
-    return { state: 'waiting', text: '' };
   }
   if (flow.rescan !== null) {
     return { state: 'working', text: 'Looking for the drives...' };
@@ -1023,27 +1113,48 @@ function attachState(wizard, driveCount) {
   return { state: 'open', text: '' };
 }
 
-// The unlock stage: { state, text, open, hidden }
+// Why the last unlock failed: "Wrong passphrase" when a drive refused it (every drive has
+// the same one), else the job's summary ("no backup drives connected").
+function unlockFailureText(job) {
+  const attachPhase = jobPhase(job, 'attach');
+  if (attachPhase !== null && Object.values(attachPhase.pools).includes('wrongpass')) {
+    return 'Wrong passphrase';
+  }
+  return job.done.summary;
+}
+
+// The unlock stage: { state, text, open, hidden }. Done once a drive is unlocked, with the
+// passphrase box still there for a drive left locked (one connected since), unless a job
+// runs or the last job ejected it.
 function unlockState(wizard, runningJob, attachedCount, lockedCount) {
   const flow = wizard.flow;
   const job = flow.job;
   const unlockFailed = job.name === 'attach' && job.done !== null && job.done.result !== 'ok';
+  const ejectDone = wizard.lastEjectDone;
+  const ejectWasLastJob = ejectDone !== null && ejectDone.started === job.started;
+  const canUnlockMore = lockedCount > 0 && flow.stage !== 'running' && !ejectWasLastJob;
+  const canUnlock = lockedCount > 0 && flow.stage !== 'running';
   if (wizard.backupType === 'vms') {
     return { state: 'skipped', hidden: true };
   }
   if (runningJob === 'attach') {
     return { state: 'working', text: flow.phaseText };
   }
+  if (drivesUnknown(flow)) {
+    return { state: 'waiting', text: '' };
+  }
   if (attachedCount > 0) {
     // an unlock that left a drive behind says so
     let unlockText = `${attachedCount} drive(s) unlocked`;
     if (unlockFailed) {
       unlockText = job.done.summary;
+    } else if (lockedCount > 0) {
+      unlockText = `${unlockText}, ${lockedCount} locked`;
     }
-    return { state: 'done', text: unlockText };
+    return { state: 'done', text: unlockText, open: canUnlockMore };
   }
   if (flow.stage === 'finished' && unlockFailed) {
-    return { state: 'failed', text: job.done.summary, open: lockedCount > 0 };
+    return { state: 'failed', text: unlockFailureText(job), open: canUnlock };
   }
   if (lockedCount > 0) {
     return { state: 'open', text: `${lockedCount} drive(s) connected and locked` };
@@ -1115,22 +1226,39 @@ function backupState(wizard, runningJob, attachedCount) {
   return { state: 'open', text: 'Choose Standard or Checksum' };
 }
 
-// The eject stage: { state, text, hidden }
+// The eject stage: { state, text, open, hidden }; hidden for VMs/LXCs with nothing
+// unlocked, and after an eject that left every drive locked. An eject that left a drive
+// unlocked (busy) stays red with Eject now.
 function ejectState(wizard, runningJob, attachedCount) {
   const flow = wizard.flow;
   const jobRunning = flow.stage === 'running';
   const ejectDone = wizard.lastEjectDone;
+  const vmsPicked = wizard.backupType === 'vms';
   if (runningJob === 'detach' || ejectingAfterBackup(flow, runningJob)) {
     return { state: 'working', text: flow.phaseText };
   }
+  if (drivesUnknown(flow)) {
+    if (vmsPicked) {
+      return { state: 'skipped', hidden: true };
+    }
+    return { state: 'waiting', text: '' };
+  }
+  const ejectWasLastJob = ejectDone !== null && ejectDone.started === flow.job.started;
   if (attachedCount > 0 && !jobRunning) {
+    if (ejectWasLastJob && ejectDone.result !== 'ok') {
+      return { state: 'failed', text: ejectDone.summary, open: true };
+    }
     return { state: 'open', text: `${attachedCount} drive(s) still unlocked` };
   }
-  if (wizard.backupType === 'vms' && attachedCount === 0) {
+  if (vmsPicked && attachedCount === 0) {
     return { state: 'skipped', hidden: true };
   }
   if (ejectDone !== null && attachedCount === 0 && !jobRunning) {
-    return { state: resultState(ejectDone.result), text: ejectDone.summary };
+    // an eject that left nothing unlocked is over: the stage goes, a failed one stays red
+    if (ejectDone.result === 'ok') {
+      return { state: 'done', hidden: true };
+    }
+    return { state: 'failed', text: ejectDone.summary };
   }
   return { state: 'waiting', text: '' };
 }
@@ -1147,6 +1275,11 @@ function stageStates(wizard) {
   const attachedCount = flow.poolsIn('attached').length;
   const lockedCount = flow.poolsIn('connected').length + flow.poolsIn('unmounted').length;
   const driveCount = attachedCount + lockedCount;
+  // a scan that found no drive is forgotten once one is seen, so a drive gone later is
+  // asked for afresh
+  if (driveCount > 0) {
+    wizard.attachChecked = false;
+  }
   return {
     // always picked, so always done; the chips say which
     type: { state: 'done', text: '' },
@@ -1236,7 +1369,7 @@ function drawStageBodies(wizard, states) {
       drawWorking(key);
     }
   });
-  if (states.eject.state === 'open') {
+  if (states.eject.state === 'open' || states.eject.open === true) {
     document.getElementById('bkp__body-eject').innerHTML = gridButtonTemplate({
       buttonId: 'bkp__eject', icon: 'fad fa-eject', label: 'Eject now', buttonClass: 'bkp__go'
     });
@@ -1399,6 +1532,10 @@ function drawSteps(wizard, stageKey) {
 // scrolled up.
 function drawLog(wizard) {
   const logSlot = document.getElementById('bkp__logslot');
+  // the Log button lit while the log is shown; pressed again, it closes it
+  const logButton = document.getElementById('bkp__log');
+  logButton.classList.toggle(LOG_ON_CLASS, wizard.showLog);
+  logButton.setAttribute('aria-pressed', String(wizard.showLog));
   if (!wizard.showLog) {
     logSlot.textContent = '';
     return;
@@ -1471,6 +1608,12 @@ function pressButton(wizard, button) {
   switch (button.id) {
     case 'bkp__close':
       closeBackupWizard();
+      break;
+    case 'bkp__back':
+      closeBackupWizard();
+      if (wizard.onBack) {
+        wizard.onBack();
+      }
       break;
     case 'bkp__log':
       wizard.showLog = !wizard.showLog;

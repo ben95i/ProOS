@@ -575,7 +575,7 @@ html.theme-light .thermometer .temperature:before {
   gap: 10px;
 }
 
-/* the server log window's box (.popup-ctn, main.css), its padding dropped */
+/* the read-out's column (.popup-ctn, main.css), its padding dropped */
 .thermo__log .popup-ctn {
   padding: 0;
   min-height: 0;

@@ -1,13 +1,12 @@
-// Automate - LAN Scanner (server page only, from Server > Options > Network): a window
-// listing every host on the LAN, filled in live from the API's streamed scan
+// Automate - LAN Scanner (server page only, from Server > Options > Network): a panel of
+// the options window (server.js) listing every host on the LAN, filled in live from the API's streamed scan
 // (GET /api/netscan, nodeapi/netscan.js), each host showing the moment it is found. Every
 // tracked host in the API's opts.json is listed, checked for SSH (a blue SSH indicator) before
 // a ping (green), and greyed out as Offline when neither answers. Four boxes over the list
-// count All, Online, Offline and Tracked, and pick which the list shows. State is on
-// App.lanScanner while open.
+// count All, Online, Offline and Tracked, and pick which the list shows; Close, Back and
+// Refresh under it. State is on App.lanScanner while open.
 
-import { makeElement, promptWindow, onButtons, gridButtonTemplate,
-  showSpinner } from './utils.js';
+import { makeElement, onButtons, gridButtonTemplate, showSpinner } from './utils.js';
 import { spinnerIds } from './dropdowns.js';
 import { HttpError, reportError, reportException, reportNotConnected } from './error.js';
 
@@ -32,7 +31,7 @@ const LANSCAN_LIST_ID = 'lanscan__list';
 const LANSCAN_MESSAGE_ID = 'lanscan__message';
 // the Refresh button's label and the spinner standing in for its icon while a scan is read
 const LANSCAN_REFRESH = spinnerIds('lanscan__refresh');
-// the window's two buttons (sized in lanscan.css)
+// the panel's three buttons (sized in lanscan.css)
 const LANSCAN_BUTTON_CLASS = 'button_left_txtwin';
 
 // the list's one line of text while it has no rows to show
@@ -91,13 +90,11 @@ const LANSCAN_VENDOR_LOGOS = [
 ];
 const LANSCAN_LOGO_ROW_CLASS = 'lanscan__row--logo';
 
-//// window ////
+//// panel ////
 
-// Opens the window and starts a scan.
-export function openLanScanner() {
-  if (App.lanScanner) {
-    return;
-  }
+// The panel's markup, drawn into the options window by server.js, which then calls
+// openLanScanner() on it.
+export function lanScannerTemplate() {
   const statButtons = LANSCAN_FILTERS.map(filter => gridButtonTemplate({
     buttonId: `lanscan__filter-${filter.key}`,
     icon: filter.icon,
@@ -105,7 +102,8 @@ export function openLanScanner() {
       `<span class="lanscan__caption">${filter.label}</span>`,
     buttonClass: 'lanscan__stat'
   })).join('');
-  const win = promptWindow(LANSCAN_PROMPT_ID, `
+  return `
+  <div class="lanscan__window" id="${LANSCAN_PROMPT_ID}">
     <fieldset class="btn-group lanscan__panel">
       <div class="btn-group-label"><i class="fad fa-chart-network"></i><span id="${LANSCAN_TITLE_ID}">${LANSCAN_TITLE}</span></div>
       <div class="lanscan__stats">${statButtons}</div>
@@ -120,13 +118,28 @@ export function openLanScanner() {
         buttonClass: LANSCAN_BUTTON_CLASS
       })}
       ${gridButtonTemplate({
+        buttonId: 'lanscan__btn-back',
+        icon: 'fad fa-arrow-left',
+        buttonClass: LANSCAN_BUTTON_CLASS
+      })}
+      ${gridButtonTemplate({
         buttonId: 'lanscan__btn-refresh',
         icon: 'fad fa-sync-alt',
         ...LANSCAN_REFRESH,
         iconSpinner: true,
         buttonClass: LANSCAN_BUTTON_CLASS
       })}
-    </div>`);
+    </div>
+  </div>`;
+}
+
+// Binds the panel lanScannerTemplate() drew and starts a scan. actions holds what Close
+// and Back do: openLanScanner({ onClose, onBack }).
+export function openLanScanner(actions) {
+  if (App.lanScanner) {
+    return;
+  }
+  const win = document.getElementById(LANSCAN_PROMPT_ID);
   const lanScanner = {
     win: win,
     title: document.getElementById(LANSCAN_TITLE_ID),
@@ -147,7 +160,11 @@ export function openLanScanner() {
   App.lanScanner = lanScanner;
   onButtons(win, (button) => {
     if (button.id === 'lanscan__btn-close') {
-      closeLanScanner();
+      actions.onClose();
+      return;
+    }
+    if (button.id === 'lanscan__btn-back') {
+      actions.onBack();
       return;
     }
     if (button.id === 'lanscan__btn-refresh') {
@@ -163,7 +180,8 @@ export function openLanScanner() {
   startLanScan(lanScanner);
 }
 
-// Takes the window down and stops reading the scan (which the server finishes anyway).
+// Stops reading the scan (which the server finishes anyway) and forgets the panel, which
+// server.js removes with the options window's panel.
 export function closeLanScanner() {
   const lanScanner = App.lanScanner;
   if (!lanScanner) {
@@ -175,7 +193,6 @@ export function closeLanScanner() {
     lanScanner.abortController.abort();
     lanScanner.abortController = null;
   }
-  lanScanner.win.remove();
 }
 
 //// the scan ////

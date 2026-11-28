@@ -1,9 +1,11 @@
-// Automate - file uploader: 1MB chunks with a progress window, every type except
-// BLOCKED_EXT. new Uploader(); .pick() opens the file dialog, .destroy() is the teardown.
-// One file and one chunk at a time, in order, so the API can append each as it lands.
+// Automate - file uploader: 1MB chunks, every type except BLOCKED_EXT, its progress a
+// panel of the Server options window, the same size as the main panel: the file rows,
+// bar and percentage over Close, Back and Cancel. new Uploader({ showPanel, onClose,
+// onBack }) (server.js); .pick() opens the file dialog, or the panel while an upload runs,
+// and .destroy() is the teardown. Close and Back leave an upload running. One file and one
+// chunk at a time, in order, so the API can append each as it lands.
 
-import { html, makeElement, promptWindow, onButtons,
-  removeWindow, base64URLSafeEncode, sleep,
+import { html, makeElement, onButtons, base64URLSafeEncode, sleep,
   gridButtonTemplate } from './utils.js';
 import { showPopup, reportException } from './error.js';
 
@@ -31,8 +33,12 @@ const LIST_ID = 'upl__list';
 const BAR_ID = 'upl__bar';
 const PCT_ID = 'upl__pct';
 const CLOSE_BTN_ID = 'upl__btn-close';
-// the button's wording changes from Cancel to Close once the uploads are done
-const CLOSE_LABEL_ID = 'upl__btn-close-label';
+const BACK_BTN_ID = 'upl__btn-back';
+const CANCEL_BTN_ID = 'upl__btn-cancel';
+// the panel's buttons, the LAN Scanner's size (upload.css)
+const PANEL_BUTTON_CLASS = 'upl__btn';
+// Cancel once the uploads are done, leaving Close and Back centred
+const CANCEL_GONE_CLASS = 'is-gone';
 // per-file row states
 const ROW_WAITING = 'waiting';
 const ROW_SENDING = 'sending';
@@ -67,8 +73,11 @@ function shortName(name) {
 
 export default class Uploader {
 
-  // set up by pick()
-  constructor() {
+  // panelActions: showPanel(panelTemplate, afterDraw) draws the panel in the options
+  // window; onClose and onBack are its Close and Back
+  constructor(panelActions) {
+    this.panelActions = panelActions;
+    this.heading = '';        // the panel's heading, kept while it is not shown
     this.input = null;        // the hidden file input
     this.queue = [];          // [{ file, state, sent }]
     this.running = false;
@@ -80,10 +89,10 @@ export default class Uploader {
   }
 
   // Opens the file dialog on a fresh input, since a re-used one fires no change event
-  // for the same files.
+  // for the same files; while an upload runs, its panel instead.
   pick() {
     if (this.running === true) {
-      showPopup("[upload] an upload is already running.");
+      this.showPanel();
       return;
     }
     this.dropInput();
@@ -146,7 +155,8 @@ export default class Uploader {
       state: ROW_WAITING,
       sent: 0
     }));
-    this.drawWindow();
+    this.heading = 'Uploading';
+    this.showPanel();
     this.guardPage(true);
     let done = 0;
     let failed = 0;
@@ -185,20 +195,18 @@ export default class Uploader {
       heading = `Cancelled - ${done} of ${this.queue.length} uploaded`;
     }
     this.setTitle(heading);
-    this.setCloseLabel('Close');
+    this.showCancel(false);
+    // a run that went well says so in the panel's heading alone
     if (failed > 0) {
       reportException('uploading files',
         `${failed} of ${this.queue.length} file(s) failed to upload.`);
-    } else if (!wasCancelled && done > 0) {
-      showPopup(`[upload] ${done} file(s) uploaded.`);
     }
   }
 
-  // The window's button: mid-run it drops the request in flight, and the API is told to
-  // discard what it holds for that file; otherwise it closes the window.
-  close() {
+  // Cancel: drops the request in flight, and the API is told to discard what it holds for
+  // that file; the files after it are not sent.
+  cancel() {
     if (this.running !== true) {
-      removeWindow(WIN_ID);
       return;
     }
     this.cancelled = true;
@@ -207,7 +215,7 @@ export default class Uploader {
     }
   }
 
-  // ends the instance
+  // Ends the instance; its panel goes with the options window's (server.js).
   destroy() {
     this.cancelled = true;
     if (this.controller) {
@@ -215,7 +223,6 @@ export default class Uploader {
     }
     this.guardPage(false);
     this.dropInput();
-    removeWindow(WIN_ID);
     this.running = false;
   }
 
@@ -320,49 +327,94 @@ export default class Uploader {
     }
   }
 
-  //// the progress window ////
+  //// the progress panel ////
 
-  // draws the progress window
-  drawWindow() {
-    removeWindow(WIN_ID);
-    const win = promptWindow(WIN_ID, html`
-      <div class="upl__title" id="${TITLE_ID}">Uploading</div>
-      <div class="upl__list scroll-bar-style" id="${LIST_ID}"></div>
-      <div class="progress_grid">
-        <div class="bar_progress" id="${BAR_ID}"></div>
-      </div>
-      <div class="upl__pct" id="${PCT_ID}">0%</div>
-      ${gridButtonTemplate({
-        buttonId: CLOSE_BTN_ID,
-        icon: 'fas fa-times right-padding',
-        label: `<span id="${CLOSE_LABEL_ID}">Cancel</span>`,
-        buttonClass: 'button__med'
-      })}
-    `);
-    // a click inside must not close the menus underneath
-    win.classList.add('nohide');
-    onButtons(win, (button) => {
-      if (button.id === CLOSE_BTN_ID) {
-        this.close();
-      }
-    });
-    this.drawRows();
-    this.drawProgress();
+  // Shows the progress panel in the options window, drawn from the upload's state.
+  showPanel() {
+    this.panelActions.showPanel(() => this.panelTemplate(), () => this.bindPanel());
   }
 
-  // sets the window's heading
+  // The panel's markup: the heading, rows, bar and percentage in a box, over a centred
+  // row of icon-only buttons the LAN Scanner's size: Close, Back, and Cancel while the
+  // upload runs.
+  panelTemplate() {
+    return html`
+    <div class="svropt__panel upl__panel" id="${WIN_ID}">
+      <div class="upl__progress">
+        <div class="upl__title" id="${TITLE_ID}"></div>
+        <div class="upl__list scroll-bar-style" id="${LIST_ID}"></div>
+        <div class="progress_grid">
+          <div class="bar_progress" id="${BAR_ID}"></div>
+        </div>
+        <div class="upl__pct" id="${PCT_ID}">0%</div>
+      </div>
+      <div class="upl__actions">
+        ${gridButtonTemplate({
+          buttonId: CLOSE_BTN_ID,
+          icon: 'fas fa-times',
+          buttonClass: PANEL_BUTTON_CLASS
+        })}
+        ${gridButtonTemplate({
+          buttonId: BACK_BTN_ID,
+          icon: 'fad fa-arrow-left',
+          buttonClass: PANEL_BUTTON_CLASS
+        })}
+        ${gridButtonTemplate({
+          buttonId: CANCEL_BTN_ID,
+          icon: 'fad fa-ban',
+          buttonClass: PANEL_BUTTON_CLASS
+        })}
+      </div>
+    </div>`;
+  }
+
+  // Binds the panel's buttons and fills it in: Close and Back leave the upload running,
+  // Cancel stops it and is gone once it has ended.
+  bindPanel() {
+    const panel = document.getElementById(WIN_ID);
+    if (!panel) {
+      return;
+    }
+    onButtons(panel, (button) => {
+      if (button.id === CLOSE_BTN_ID) {
+        this.panelActions.onClose();
+      }
+      if (button.id === BACK_BTN_ID) {
+        this.panelActions.onBack();
+      }
+      if (button.id === CANCEL_BTN_ID) {
+        this.cancel();
+      }
+    });
+    this.setTitle(this.heading);
+    this.showCancel(this.running === true);
+    this.drawRows();
+    this.drawProgress();
+    const sendingIndex = this.queue.findIndex(entry => entry.state === ROW_SENDING);
+    if (sendingIndex >= 0) {
+      this.scrollToActive(sendingIndex);
+    }
+  }
+
+  // sets the panel's heading, kept for when it is drawn again
   setTitle(text) {
+    this.heading = text;
     const title = document.getElementById(TITLE_ID);
     if (title) {
       title.innerText = text;
     }
   }
 
-  // sets the button's wording
-  setCloseLabel(text) {
-    const label = document.getElementById(CLOSE_LABEL_ID);
-    if (label) {
-      label.innerText = text;
+  // shows Cancel while the upload runs; once it has ended Close and Back stand alone
+  showCancel(shown) {
+    const cancelButton = document.getElementById(CANCEL_BTN_ID);
+    if (!cancelButton) {
+      return;
+    }
+    if (shown) {
+      cancelButton.classList.remove(CANCEL_GONE_CLASS);
+    } else {
+      cancelButton.classList.add(CANCEL_GONE_CLASS);
     }
   }
 

@@ -1,0 +1,170 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 800" width="1100" height="800" font-family="Helvetica, Arial, sans-serif">
+  <title>LivingRoomLamp remote encoder over a 3.5 mm TRS cable</title>
+  <style>
+    .box { fill: none; stroke: #8a8f98; stroke-width: 1.5; stroke-dasharray: 7 5; }
+    .part { fill: #f6f7f9; stroke: #333; stroke-width: 2; }
+    .netA { fill: none; stroke: #1c64d6; stroke-width: 2.5; }
+    .netB { fill: none; stroke: #c2410c; stroke-width: 2.5; }
+    .netSw { fill: none; stroke: #7c3aed; stroke-width: 2.5; }
+    .netGnd { fill: none; stroke: #333; stroke-width: 2.5; }
+    .netPwr { fill: none; stroke: #15803d; stroke-width: 2.5; }
+    .sym { fill: none; stroke: #333; stroke-width: 2; }
+    .dotA { fill: #1c64d6; } .dotB { fill: #c2410c; } .dotSw { fill: #7c3aed; } .dotGnd { fill: #333; }
+    .title { font-size: 24px; font-weight: bold; fill: #111; }
+    .h { font-size: 15px; font-weight: bold; fill: #444; }
+    .lbl { font-size: 14px; fill: #222; }
+    .small { font-size: 12.5px; fill: #444; }
+    .pin { font-size: 14px; font-weight: bold; }
+    .mono { font-family: Menlo, Consolas, monospace; font-size: 13px; fill: #222; }
+  </style>
+  <rect x="0" y="0" width="1100" height="800" fill="#ffffff"/>
+
+  <text x="30" y="44" class="title">LivingRoomLamp: encoder + push button over a 3-pole (TRS) 3.5 mm cable</text>
+  <text x="30" y="70" class="small">The button pulls A and B low together through two Schottky diodes. At every detent A and B are both HIGH, and a turn changes one line at a time, so the firmware can tell the two apart.</text>
+
+  <!-- ===================== remote enclosure ===================== -->
+  <rect x="30" y="100" width="410" height="390" rx="10" class="box"/>
+  <text x="44" y="122" class="h">Remote enclosure</text>
+
+  <!-- encoder body with its two quadrature contacts to the common -->
+  <rect x="50" y="135" width="140" height="335" rx="8" class="part"/>
+  <text x="62" y="155" class="lbl" font-weight="bold">EC11 encoder</text>
+  <!-- contact A -->
+  <circle cx="150" cy="190" r="3.5" class="sym"/>
+  <circle cx="105" cy="190" r="3.5" class="sym"/>
+  <line x1="146" y1="188" x2="110" y2="172" class="sym"/>
+  <path d="M153.5 190 H170 V170 H190" class="netA"/>
+  <!-- contact B -->
+  <circle cx="150" cy="320" r="3.5" class="sym"/>
+  <circle cx="105" cy="320" r="3.5" class="sym"/>
+  <line x1="146" y1="318" x2="110" y2="302" class="sym"/>
+  <path d="M153.5 320 H170 V300 H190" class="netB"/>
+  <!-- common bus -->
+  <path d="M101.5 190 H85 V430 H190 M101.5 320 H85" class="netGnd"/>
+  <circle cx="85" cy="320" r="4" class="dotGnd"/>
+  <text x="62" y="222" class="small">A–C contact</text>
+  <text x="62" y="352" class="small">B–C contact</text>
+  <text x="62" y="455" class="small">open = HIGH at detents</text>
+  <text x="196" y="163" class="pin" fill="#1c64d6">A</text>
+  <text x="196" y="293" class="pin" fill="#c2410c">B</text>
+  <text x="196" y="423" class="pin" fill="#333">C</text>
+
+  <!-- wires to the cable -->
+  <line x1="190" y1="170" x2="470" y2="170" class="netA"/>
+  <line x1="190" y1="300" x2="470" y2="300" class="netB"/>
+  <line x1="190" y1="430" x2="470" y2="430" class="netGnd"/>
+
+  <!-- BAT54C: D1 from A down to the shared cathode, D2 from B up to it -->
+  <rect x="268" y="180" width="64" height="110" rx="6" fill="none" stroke="#7c3aed" stroke-width="1.2" stroke-dasharray="4 3"/>
+  <text x="212" y="205" class="small" fill="#7c3aed">BAT54C</text>
+  <text x="212" y="220" class="small" fill="#7c3aed">SOT-23</text>
+  <line x1="300" y1="170" x2="300" y2="192" class="netA"/>
+  <polygon points="289,192 311,192 300,212" fill="#333"/>
+  <line x1="288" y1="213" x2="312" y2="213" class="sym" stroke-width="2.5"/>
+  <line x1="300" y1="213" x2="300" y2="257" class="netSw"/>
+  <line x1="288" y1="257" x2="312" y2="257" class="sym" stroke-width="2.5"/>
+  <polygon points="289,278 311,278 300,258" fill="#333"/>
+  <line x1="300" y1="278" x2="300" y2="300" class="netB"/>
+  <text x="314" y="200" class="small">1 (A1)</text>
+  <text x="314" y="288" class="small">2 (A2)</text>
+  <text x="312" y="228" class="small">3 (K)</text>
+  <circle cx="300" cy="170" r="4.5" class="dotA"/>
+  <circle cx="300" cy="300" r="4.5" class="dotB"/>
+  <circle cx="300" cy="235" r="4.5" class="dotSw"/>
+
+  <!-- push switch: from the cathode node, hopping over B, down to the sleeve -->
+  <path d="M300 235 H385 V292 A8 8 0 0 1 385 308 V350" class="netSw"/>
+  <circle cx="385" cy="353.5" r="3.5" class="sym"/>
+  <circle cx="385" cy="392.5" r="3.5" class="sym"/>
+  <line x1="372" y1="345" x2="372" y2="401" class="sym" stroke-width="2.5"/>
+  <line x1="372" y1="373" x2="356" y2="373" class="sym"/>
+  <line x1="356" y1="364" x2="356" y2="382" class="sym"/>
+  <path d="M385 396 V430" class="netGnd"/>
+  <circle cx="385" cy="430" r="4.5" class="dotGnd"/>
+  <text x="396" y="368" class="lbl" font-weight="bold">SW</text>
+  <text x="396" y="385" class="small">push</text>
+
+  <!-- ===================== TRS plug and jack ===================== -->
+  <rect x="470" y="100" width="190" height="390" rx="10" class="box"/>
+  <text x="484" y="122" class="h">3.5 mm TRS</text>
+  <text x="484" y="140" class="small">plug ⇄ jack, 3 conductors</text>
+  <line x1="470" y1="170" x2="680" y2="170" class="netA"/>
+  <line x1="470" y1="300" x2="680" y2="300" class="netB"/>
+  <line x1="470" y1="430" x2="680" y2="430" class="netGnd"/>
+  <circle cx="565" cy="170" r="7" fill="#fff" stroke="#1c64d6" stroke-width="2.5"/>
+  <circle cx="565" cy="300" r="7" fill="#fff" stroke="#c2410c" stroke-width="2.5"/>
+  <circle cx="565" cy="430" r="7" fill="#fff" stroke="#333" stroke-width="2.5"/>
+  <text x="565" y="160" class="lbl" text-anchor="middle" font-weight="bold">Tip (L)</text>
+  <text x="565" y="290" class="lbl" text-anchor="middle" font-weight="bold">Ring (R)</text>
+  <text x="565" y="420" class="lbl" text-anchor="middle" font-weight="bold">Sleeve</text>
+  <text x="565" y="194" class="small" text-anchor="middle">A</text>
+  <text x="565" y="324" class="small" text-anchor="middle">B</text>
+  <text x="565" y="454" class="small" text-anchor="middle">C + SW → GND</text>
+
+  <!-- ===================== Pico W side ===================== -->
+  <rect x="680" y="100" width="400" height="390" rx="10" class="box"/>
+  <text x="694" y="122" class="h">Lamp controller</text>
+  <line x1="680" y1="170" x2="960" y2="170" class="netA"/>
+  <line x1="680" y1="300" x2="960" y2="300" class="netB"/>
+  <line x1="680" y1="430" x2="960" y2="430" class="netGnd"/>
+
+  <!-- pull-up on A -->
+  <circle cx="860" cy="170" r="4.5" class="dotA"/>
+  <line x1="860" y1="170" x2="860" y2="158" class="netA"/>
+  <rect x="851" y="122" width="18" height="36" class="part" stroke-width="1.8"/>
+  <line x1="860" y1="122" x2="860" y2="114" class="netPwr"/>
+  <line x1="846" y1="114" x2="874" y2="114" class="netPwr"/>
+  <text x="880" y="118" class="small" fill="#15803d" font-weight="bold">3V3</text>
+  <text x="876" y="145" class="lbl">10 kΩ</text>
+
+  <!-- pull-up on B -->
+  <circle cx="860" cy="300" r="4.5" class="dotB"/>
+  <line x1="860" y1="300" x2="860" y2="282" class="netB"/>
+  <rect x="851" y="242" width="18" height="40" class="part" stroke-width="1.8"/>
+  <line x1="860" y1="242" x2="860" y2="234" class="netPwr"/>
+  <line x1="846" y1="234" x2="874" y2="234" class="netPwr"/>
+  <text x="880" y="238" class="small" fill="#15803d" font-weight="bold">3V3</text>
+  <text x="876" y="267" class="lbl">10 kΩ</text>
+
+  <text x="694" y="372" class="small">Pull-ups at the Pico end: with the</text>
+  <text x="694" y="388" class="small">plug out both lines read HIGH (idle).</text>
+
+  <!-- Pico W header -->
+  <rect x="960" y="135" width="105" height="335" rx="8" class="part"/>
+  <text x="1012" y="155" class="lbl" font-weight="bold" text-anchor="middle">Pico W</text>
+  <text x="968" y="175" class="pin" fill="#1c64d6">GP14</text>
+  <text x="968" y="192" class="small">pin 19</text>
+  <text x="968" y="305" class="pin" fill="#c2410c">GP15</text>
+  <text x="968" y="322" class="small">pin 20</text>
+  <text x="968" y="435" class="pin" fill="#333">GND</text>
+  <text x="968" y="452" class="small">pin 18</text>
+  <text x="968" y="240" class="small" fill="#15803d" font-weight="bold">3V3(OUT)</text>
+  <text x="968" y="256" class="small">pin 36</text>
+
+  <!-- ===================== how the lines read ===================== -->
+  <text x="30" y="530" class="h">What the firmware sees (A, B)</text>
+  <rect x="30" y="542" width="560" height="196" rx="6" fill="#f6f7f9" stroke="#d0d4da"/>
+  <text x="46" y="566" class="mono" font-weight="bold">A  B   meaning</text>
+  <line x1="40" y1="575" x2="580" y2="575" stroke="#d0d4da"/>
+  <text x="46" y="597" class="mono">H  H   at a detent, button up</text>
+  <text x="46" y="621" class="mono">L  H   turning: a quarter step</text>
+  <text x="46" y="637" class="mono">H  L</text>
+  <text x="46" y="661" class="mono">L  L   reached ≥ 500 µs after leaving the detent:</text>
+  <text x="46" y="677" class="mono">       halfway through a turn</text>
+  <text x="46" y="701" class="mono">L  L   reached &lt; 500 µs after leaving the detent:</text>
+  <text x="46" y="717" class="mono">       button pressed, held until back to H H</text>
+
+  <!-- ===================== parts and notes ===================== -->
+  <text x="620" y="530" class="h">Parts and notes</text>
+  <text x="620" y="560" class="lbl">• BAT54C: two Schottky diodes with a shared cathode</text>
+  <text x="634" y="577" class="small">(~0.25 V drop: reads LOW). A 1N4148 pair also works, with less margin.</text>
+  <text x="620" y="602" class="lbl">• Two 10 kΩ pull-ups to 3V3, at the Pico end</text>
+  <text x="634" y="619" class="small">Leave the + pin of a KY-040 style board unconnected.</text>
+  <text x="620" y="644" class="lbl">• Optional filter: 1 kΩ in series + 10 nF to GND</text>
+  <text x="634" y="661" class="small">at GP14 and GP15. Use the same values on both lines.</text>
+  <text x="620" y="686" class="lbl">• Turning while the button is held is not counted;</text>
+  <text x="634" y="703" class="small">a press between detents is ignored.</text>
+  <text x="620" y="728" class="lbl">• GP3, the old button pin, is now free.</text>
+
+  <text x="30" y="775" class="small">Firmware: encoderISR() in LivingRoomLamp.ino reads both pins in one register read (gpio_get_all) and times the move from the detent to both LOW.</text>
+</svg>

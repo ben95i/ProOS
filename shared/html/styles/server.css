@@ -1,31 +1,16 @@
-/* Automate: Server window (server.js): log window size, armed send button, options
-   window and the prompts it opens. .svropt_button and .pass__prompt_btn come after
-   .button to resize it. */
+/* Automate: Server window (server.js): the options window, the command output window
+   and the prompts the options open. .svropt_button, .svrout__btn and .pinet__btn come
+   after .button to resize it. The Archive password over the options window takes the
+   lists window's dialog rules (lists.css). */
 
 /*
- *  Log Window
+ *  Window Measures
  */
 
-.log-popup {
-  width: 75vw;
-  height: 95%;
-}
-@media screen and (max-width: 900px) {
-  .log-popup {
-    width: 95%;
-  }
-}
-
-/* the send button, while a command is armed */
-.selected_btn {
-  background-color: var(--main-white-20) !important;
-}
-
-/*
- *  Server Options Window
- */
-
-.svropt__prompt {
+/* The options window's spacing and button size, which the command output window and
+   the upload panel are measured in too. */
+.svropt__prompt,
+#svrout__prompt {
   /* the black space between the window's border and the buttons, the same
      on all four sides */
   --svropt-edge: 10px;
@@ -33,6 +18,70 @@
   --svropt-gap: 8px;
   /* a .button's wall depth (its translate in main.css) */
   --svropt-wall: 5px;
+  /* an option button's size, and from one row to the next (the gap and a wall) */
+  --svropt-button-width: 135px;
+  --svropt-button-height: 100px;
+  --svropt-row-step: calc(var(--svropt-gap) - -1 * var(--svropt-wall));
+}
+
+/*
+ *  Command Output Window
+ */
+
+/* A command's output as it runs: its name over a Pico read-out's box (.pico-logbox,
+   main.css), as the thermostat titles its status, and Close and Back under it, as
+   the bathroom settings' log view. The size of the options window on its main panel
+   (three columns and four rows of option buttons, the panel's padding and the
+   window's 1px border: 458 x 466 px), worked out from the same measures so it follows
+   them; .prompt_win keeps it under the top bar on a short screen. */
+#svrout__prompt {
+  width: calc(3 * var(--svropt-button-width) - -2 * var(--svropt-row-step) - -2 * var(--svropt-edge) - -1 * var(--svropt-wall) - -2px);
+  max-width: 95vw;
+  height: calc(4 * var(--svropt-button-height) - -3 * var(--svropt-row-step) - -2 * var(--svropt-edge) - -1 * var(--svropt-wall) - -2px);
+  padding: var(--svropt-edge);
+}
+
+/* the box's column (.popup-ctn, main.css), filling the window, its padding dropped */
+.svrout__log {
+  height: 100%;
+  padding: 0;
+}
+
+/* The command's name and icon over the box, as the bathroom settings title their log
+   (a .btn-group-label, groups.css): centred, with 8px under its capitals. */
+#svrout__prompt .svrout__title {
+  justify-content: center;
+  padding: 0 0 8px;
+}
+
+/* the text gives back letter-spacing's trailing space, so it centres */
+#svrout__prompt .svrout__title span {
+  margin-right: -0.2em;
+}
+
+/* Close and Back centred under the box, as far from it as from the window's edge,
+   faces and walls together: a face sits a wall up and left of its button's place, so
+   the row's top padding is the window's edge and a wall (the box to the faces, the
+   edge), the window's padding is under the walls (the edge), and a wall of padding on
+   the left centres faces and walls across the window. The buttons are as far apart
+   as two option buttons. */
+#svrout__prompt .svrout__actions {
+  justify-content: center;
+  gap: var(--svropt-row-step);
+  padding: calc(var(--svropt-edge) - -1 * var(--svropt-wall)) 0 0 var(--svropt-wall);
+}
+
+.svrout__btn {
+  width: 120px;
+  height: var(--window-button-height);
+  margin: 0;
+}
+
+/*
+ *  Server Options Window
+ */
+
+.svropt__prompt {
   display: none;
   overflow-y: visible;
   width: auto;
@@ -43,8 +92,8 @@
 .svropt__panel {
   display: grid;
   grid-template-columns: repeat(3, auto);
-  column-gap: calc(var(--svropt-gap) - -1 * var(--svropt-wall));
-  row-gap: calc(var(--svropt-gap) - -1 * var(--svropt-wall));
+  column-gap: var(--svropt-row-step);
+  row-gap: var(--svropt-row-step);
   padding-top: calc(var(--svropt-edge) - -1 * var(--svropt-wall));
   padding-left: calc(var(--svropt-edge) - -1 * var(--svropt-wall));
   padding-right: var(--svropt-edge);
@@ -54,30 +103,57 @@
 .svropt_button {
   display: block;
   margin: 0;
-  width: 135px;
+  width: var(--svropt-button-width);
+  height: var(--svropt-button-height);
+}
+
+/* The bar over the panel while the command output window is hidden (server.js,
+   drawRunningBar()): the command's name and state across the panel's width, a press
+   opening the window again. Padded as the panel is, and as far from its first row as
+   two rows are from each other. */
+.svropt__running-row {
+  padding-top: calc(var(--svropt-edge) - -1 * var(--svropt-wall));
+  padding-left: calc(var(--svropt-edge) - -1 * var(--svropt-wall));
+  padding-right: var(--svropt-edge);
+  margin-bottom: calc(var(--svropt-gap) - var(--svropt-edge));
+}
+
+.svropt__running-row.is-hidden {
+  display: none;
+}
+
+.svropt__running {
+  display: block;
+  margin: 0;
+  width: 100%;
+  height: 55px;
+}
+
+/* the state's icon: green once finished, red once failed */
+.svropt__running.is-done i {
+  color: var(--green-ind);
+}
+
+.svropt__running.is-failed i {
+  color: var(--alert-red);
 }
 
 /*
- *  Password Prompt Style
+ *  Archive Password
  */
 
-#pass__prompt_win {
-  width: 350px;
-  height: auto;
-  padding: 16px;
+/* The lists window's password dialog (lists.css) over the options window: half its
+   padding above and below, so it fits over the regions panel's two rows. */
+#svropt__pwd .list__dialog {
+  padding-top: 10px;
+  padding-bottom: 10px;
 }
 
-/* the .text-box look, spaced from its label and buttons */
-#pass__textbox {
-  margin: 15px auto;
-}
-
-/* The password and Pi Wi-Fi prompts' button rows: their buttons 14px apart, and
-   centred as they look, faces and walls together, under the text box and between it
-   and the window's edge: --prompt-row-space from the box to the faces and from the
-   walls to the window's edge (11px padding above, 5px below, as the box and window
-   already keep 15px and 16px), and the walls' 5px to the right made up on the left. */
-#pass__prmbtnctr,
+/* The Pi Wi-Fi prompt's button row: its buttons 14px apart, and centred as they look,
+   faces and walls together, under the text box and between it and the window's edge:
+   --prompt-row-space from the box to the faces and from the walls to the window's edge
+   (11px padding above, 5px below, as the box and window already keep 15px and 16px),
+   and the walls' 5px to the right made up on the left. */
 #pinet__btnrow {
   /* how far a .button's face sits up and left of its walls (main.css) */
   --prompt-row-wall: 5px;
@@ -94,14 +170,9 @@
   padding-left: var(--prompt-row-wall);
 }
 
-.pass__prompt_btn,
 .pinet__btn {
   margin: 0px 7px;
   height: var(--window-button-height);
-}
-
-.pass__prompt_btn {
-  width: 120px;
 }
 
 /*
