@@ -17,7 +17,7 @@ import { LIVING_ROOM_CONFIG } from './livingrm.js';
 import { BEDROOM_CONFIG } from './bedrm.js';
 import { BATHROOM_CONFIG, closeBathroomSettings } from './bathrm.js';
 import { serverOptionsTemplate, logFormTemplate, showLogWindow,
-  closeLogWindow, loadLanScanner } from './server.js';
+  closeLogWindow, loadLanScanner, loadBackupWizard } from './server.js';
 import RoomStateManager from './roomstate.js';
 import RoomSwipe, { roomCubeTemplate } from './roomswipe.js';
 import AnimatedBackground from './stars.js';
@@ -34,7 +34,7 @@ const loadLists = onDemandModule(() => import('./lists.js'), 'the lists window')
 const loadBookmarks = onDemandModule(() => import('./bookmarks.js'), 'the bookmarks menu');
 const loadCamera = onDemandModule(() => import('./camera.js'), 'the camera window');
 const SERVER_PRELOADS = [loadThermo, loadPixels, loadColorPrompt, loadLists, loadBookmarks, loadCamera,
-  loadLanScanner];
+  loadLanScanner, loadBackupWizard];
 // the longest a server page waits for an idle moment before preloading them
 const PRELOAD_WAIT_MS = 2000;
 
@@ -65,6 +65,7 @@ window.App = {
   thermoWindow: null,
   pixelsWindow: null,
   lanScanner: null,
+  backupWizard: null,
   mainMenu: null,
   activeSwitches: [],
   dynMenuNodes: [],
@@ -922,6 +923,10 @@ App.destroyAll = function() {
   const lanScanModule = loadLanScanner.loaded();
   if (lanScanModule) {
     lanScanModule.closeLanScanner();
+  }
+  const backupModule = loadBackupWizard.loaded();
+  if (backupModule) {
+    backupModule.closeBackupWizard();
   }
   endService('bookmarks', 'close');
   endService('cameraView', 'close');

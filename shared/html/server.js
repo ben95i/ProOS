@@ -9,7 +9,7 @@ import { classDisplay, base64URLSafeEncode, sendCmd, html, fetchAnswer,
   registerListeners, gridButtonTemplate, dropdownButtonTemplate, textBoxTemplate,
   GoToExtPage, onDemandModule } from './utils.js';
 import { removeDropdowns, openDropdown } from './dropdowns.js';
-import { reportError, showPopup } from './error.js';
+import { reportError } from './error.js';
 import { EXT_PAGES } from './opts.js';
 import Uploader from './upload.js';
 import { SSIDpwd } from './wifi.js';
@@ -24,8 +24,10 @@ const OPTIONS_PANEL_CONTAINER_ID = 'svropt-panel-container';
 // every option panel button's size
 const OPTION_BUTTON_CLASS = 'svropt_button';
 
-// the LAN Scanner (Network > LAN Scanner), loaded by its first use; main.js preloads it
+// the LAN Scanner (Network > LAN Scanner) and the backup wizard (Backup), each loaded by
+// its first use; main.js preloads them
 export const loadLanScanner = onDemandModule(() => import('./lanscan.js'), 'the LAN scanner');
+export const loadBackupWizard = onDemandModule(() => import('./backup.js'), 'the backup wizard');
 
 // the command a panel button has armed, or null
 let pendingServerCommand = null;
@@ -322,10 +324,14 @@ function closeServerOptions() {
   }
 }
 
-// Main panel, Backup: the backup wizard, which is not built yet.
-function openBackupWizard() {
+// Main panel, Backup: closes the options window and opens the backup wizard (backup.js),
+// over the log window.
+async function openBackupWizard() {
   closeServerOptions();
-  showPopup('The backup wizard is not built yet.');
+  const backupModule = await loadBackupWizard();
+  if (backupModule) {
+    backupModule.openBackupWizard();
+  }
 }
 
 // Network menu, LAN Scanner: closes the options window and opens the scanner (lanscan.js),

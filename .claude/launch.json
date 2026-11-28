@@ -1,7 +1,14 @@
 {
   "version": "0.0.1",
   "configurations": [
-    { "name": "automate-measure", "runtimeExecutable": "python3",
-      "runtimeArgs": ["/run/flatpak/app/com.anthropic.ClaudeDesktop/claude-1000/-home-ben--claude-spares-spare-1Uxssg/89537d01-c896-4f09-81f6-5e6ad01146f0/scratchpad/srv/serve.py", "8765"], "port": 8765 }
+    {
+      "name": "automate-measure",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "/run/flatpak/app/com.anthropic.ClaudeDesktop/claude-1000/-home-ben--claude-spares-spare-1Uxssg/89537d01-c896-4f09-81f6-5e6ad01146f0/scratchpad/srv/serve.py",
+        "8765"
+      ],
+      "port": 8765
+    }
   ]
 }

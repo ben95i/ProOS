@@ -1,0 +1,454 @@
+/* Automate: backup wizard (backup.js): a ring showing where the backup stands, over a
+   line of five stages. Every control ends on the window's inner right edge: the stage
+   buttons' walls, the chips, the eject switch and the Close / Log / Refresh row. */
+
+#bkp__prompt {
+  width: 420px;
+  max-width: 96vw;
+  height: auto;
+  padding: 12px 18px 14px 18px;
+  color: #fff;
+}
+
+.bkp__title {
+  font-size: 22px;
+  line-height: 28px;
+  margin-bottom: 12px;
+}
+
+/* the ring, as the room status light's countdown ring, with its word in the middle; its
+   margins put the stroke's outer edge the same distance (19 px) from the title's ink above
+   and the first stage title's ink below, which starts 7 px further down its box */
+.bkp__ring {
+  position: relative;
+  width: 214px;
+  height: 214px;
+  margin: 0 auto 5px auto;
+}
+
+.bkp__svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.bkp__track {
+  fill: none;
+  stroke: var(--sec-60-black);
+  stroke-width: 9;
+}
+
+.bkp__arc {
+  fill: none;
+  stroke: var(--main-40-white);
+  stroke-width: 9;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.8s ease, stroke 0.3s ease;
+}
+
+.bkp__ring.is-ok .bkp__arc {
+  stroke: var(--green-ind);
+}
+
+.bkp__ring.is-failed .bkp__arc {
+  stroke: var(--alert-red);
+}
+
+.bkp__ring.is-cancelled .bkp__arc {
+  stroke: var(--yellow-ind);
+}
+
+/* a running job's ring breathes */
+.bkp__ring.is-running .bkp__arc {
+  animation: bkp-breathe 2s ease-in-out infinite;
+}
+
+@keyframes bkp-breathe {
+  50% {
+    stroke: var(--main-75-white);
+  }
+}
+
+.bkp__centre {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  /* 3 px between the lines' text boxes */
+  gap: 3px;
+}
+
+.bkp__centre i {
+  font-size: 26px;
+  color: var(--main-40-white);
+}
+
+.bkp__centre i:not([class*="fa-"]) {
+  display: none;
+}
+
+.bkp__centre-big {
+  font-size: 22px;
+  line-height: 28px;
+}
+
+.bkp__centre-small {
+  max-width: 140px;
+  color: #c1c1c1;
+  text-align: center;
+}
+
+/* the line of stages: no scroller of its own, so a scrollbar never moves its right edge
+   (the window scrolls when it does not fit) */
+.bkp__line {
+  text-align: left;
+}
+
+/* one stage: its node on the line, its text and body beside it */
+.bkp__stage {
+  position: relative;
+  display: flex;
+  gap: 14px;
+  padding-bottom: 16px;
+}
+
+/* a stage that does not apply (attach, unlock and eject for VMs/LXCs); display: flex
+   above would otherwise outrank the hidden attribute */
+.bkp__stage[hidden] {
+  display: none;
+}
+
+/* the line down to the next node on show */
+.bkp__stage:not(.is-last)::before {
+  content: '';
+  position: absolute;
+  left: 17px;
+  top: 38px;
+  bottom: 0;
+  width: 2px;
+  background-color: #444;
+}
+
+.bkp__stage.is-done:not(.is-last)::before {
+  background-color: var(--green-ind);
+}
+
+.bkp__node {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 2px solid #555;
+  background-color: var(--nav-menus-color);
+  color: #8a8a8a;
+}
+
+.bkp__num {
+  font-size: 16px;
+}
+
+.bkp__node-icon {
+  position: absolute;
+  font-size: 15px;
+}
+
+.bkp__stage.is-done .bkp__node,
+.bkp__stage.is-failed .bkp__node,
+.bkp__stage.is-skipped .bkp__node {
+  color: #fff;
+}
+
+.bkp__stage.is-done .bkp__num,
+.bkp__stage.is-failed .bkp__num,
+.bkp__stage.is-skipped .bkp__num {
+  display: none;
+}
+
+.bkp__stage.is-open .bkp__node,
+.bkp__stage.is-working .bkp__node {
+  border-color: var(--main-40-white);
+  background-color: var(--main-trans-35);
+  color: #fff;
+  box-shadow: 0 0 12px var(--main-trans-50);
+}
+
+.bkp__stage.is-working .bkp__node {
+  animation: bkp-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes bkp-pulse {
+  50% {
+    box-shadow: 0 0 2px var(--main-trans-50);
+  }
+}
+
+.bkp__stage.is-done .bkp__node {
+  border-color: var(--green-ind);
+  background-color: color-mix(in srgb, var(--green-ind), #000 55%);
+}
+
+.bkp__stage.is-failed .bkp__node {
+  border-color: var(--alert-red);
+  background-color: var(--red-ind);
+}
+
+.bkp__stage.is-skipped .bkp__node {
+  border-style: dashed;
+}
+
+.bkp__content {
+  flex: 1;
+  min-width: 0;
+  padding-top: 5px;
+}
+
+.bkp__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bkp__head i {
+  font-size: 15px;
+  color: var(--main-40-white);
+}
+
+.bkp__stage-title {
+  font-size: 19px;
+}
+
+.bkp__stage.is-waiting .bkp__head,
+.bkp__stage.is-skipped .bkp__head {
+  opacity: 0.5;
+}
+
+.bkp__sub {
+  margin-top: 2px;
+  color: #c1c1c1;
+}
+
+/* a stage with no line of text (Backup type, a stage waiting on an earlier one, an open
+   VMs/LXCs backup) */
+.bkp__sub:empty {
+  display: none;
+}
+
+.bkp__stage.is-failed .bkp__sub {
+  color: var(--alert-red);
+}
+
+.bkp__stage.is-done .bkp__sub {
+  color: var(--green-ind);
+}
+
+.bkp__body:not(:empty) {
+  margin-top: 10px;
+}
+
+/* the attach stage's prompt and check button, and the passphrase row */
+.bkp__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.bkp__prompt {
+  flex: 1;
+  color: #c1c1c1;
+}
+
+.text-box--prompt.bkp__pass {
+  flex: 1;
+  width: auto;
+  margin: 0;
+}
+
+/* a stage's own button: a smaller .button as wide as the stage, its wall on the edge */
+.button.bkp__go {
+  width: 100%;
+  height: 52px;
+  margin: 6px 0 0 0;
+  font-size: 18px;
+}
+
+.button.bkp__go--icon {
+  width: 60px;
+  height: 44px;
+  margin: 0;
+}
+
+.button.bkp__go:disabled {
+  opacity: 0.4;
+}
+
+.button.bkp__go--danger:not(:disabled) i {
+  color: var(--alert-red);
+}
+
+/* two choices as chips */
+.bkp__chips {
+  display: flex;
+  gap: 6px;
+}
+
+.button.bkp__chip {
+  flex: 1;
+  width: auto;
+  height: 42px;
+  margin: 0;
+  transform: none;
+  border: 1px solid var(--border-color);
+  border-radius: 21px;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+  color: #8a8a8a;
+  text-shadow: none;
+  white-space: nowrap;
+}
+
+.button.bkp__chip,
+.button.bkp__chip * {
+  font-size: 15px;
+}
+
+/* the picked chip filled and lit; the others hollow and grey */
+.button.bkp__chip.is-picked {
+  border-color: var(--main-40-white);
+  background-color: var(--main-trans-50);
+  box-shadow: 0 0 8px var(--main-trans-50), inset 0 0 6px var(--main-white-20);
+  color: #fff;
+}
+
+/* on the light theme only the picked chip, filled with the theme colour, turns black
+   (main.css html.theme-light .button); the hollow ones keep their grey on the window */
+html.theme-light .button.bkp__chip:not(.is-picked) {
+  color: #8a8a8a;
+  text-shadow: none;
+}
+
+/* off while a job runs: dimmed, its grey still readable on the black */
+.button.bkp__chip:disabled {
+  opacity: 0.7;
+}
+
+/* the Eject when finished row: 14 px clear of the chips above and of the Start button's
+   face below, the space the stage's line of text leaves above the chips (its baseline
+   to their top: the body's 10 px and the line's 4 px under the baseline); the face sits
+   5 px above its box, whose margin is 6 px, so 13 px under the row */
+.bkp__switchrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 14px 0 13px 0;
+}
+
+/* its label's capitals centred on the switch in every browser: the box trimmed to the
+   cap height and the baseline, whatever line box the font gives it */
+.bkp__switchlabel {
+  text-box: trim-both cap alphabetic;
+}
+
+/* a working stage's steps */
+.bkp__step {
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.bkp__step i {
+  font-size: 14px;
+  text-align: center;
+}
+
+.bkp__step-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.bkp__step-pct {
+  min-width: 34px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.bkp__total {
+  margin-top: 6px;
+}
+
+/* Close, Log and Refresh: the line's full width, the first face level with the nodes
+   (a .button's face sits 5 px up and left of its box) and the last wall on the edge */
+.bkp__actions {
+  display: flex;
+  gap: 12px;
+  padding: 6px 0 0 5px;
+}
+
+.button.bkp__action {
+  flex: 1;
+  width: auto;
+  height: var(--window-button-height);
+  margin: 0;
+}
+
+/* the log box: a Pico read-out's black and grey edge (main.css .pico-logbox), in a
+   wrapper with no padding of its own */
+.bkp__logwrap {
+  margin-bottom: 12px;
+  padding: 0;
+}
+
+.bkp__logbox {
+  display: block;
+  width: 100%;
+  height: 220px;
+}
+
+/* a running step's spinner set beside its name rather than over a button */
+.bkp__spinner.btn-spinner {
+  position: relative;
+  top: auto;
+  left: auto;
+  display: inline-block;
+  margin: 0;
+  width: 16px;
+  height: 16px;
+  border-top-color: var(--main-40-white);
+}
+
+/* a step's or drive's result colour */
+.bkp__good {
+  color: var(--green-ind);
+}
+
+.bkp__warn {
+  color: var(--yellow-ind);
+}
+
+.bkp__bad {
+  color: var(--alert-red);
+}
+
+.bkp__muted {
+  color: #c1c1c1;
+}
+
+/* text sized here: the * rule in main.css sets 22px on every element */
+.bkp__small,
+.bkp__small * {
+  font-size: 16px;
+}
+
+.bkp__tiny,
+.bkp__tiny * {
+  font-size: 13px;
+}
